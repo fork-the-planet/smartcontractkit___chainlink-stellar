@@ -8,10 +8,12 @@ members = [
   "contracts/pools/*",
   "contracts/registry",
   "contracts/router",
+  "contracts/common/*",
 ]
 
 [workspace.dependencies]
 soroban-sdk = "23"
+common-message = { path = "contracts/common/message" }
 
 [profile.release]
 opt-level = "z"

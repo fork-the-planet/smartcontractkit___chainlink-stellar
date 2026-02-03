@@ -45,4 +45,17 @@ pub enum OnRampError {
     SourceTokenDataTooLarge = 17,
     /// Chain is cursed by RMN
     CursedByRMN = 18,
+    /// Invalid token amount
+    InvalidTokenAmount = 19,
+    /// Invalid receiver address
+    InvalidReceiverAddress = 20,
+}
+
+impl From<common_message::Error> for OnRampError {
+    fn from(error: common_message::Error) -> Self {
+        match error {
+            common_message::Error::InvalidTokenAmount => OnRampError::InvalidTokenAmount,
+            common_message::Error::InvalidReceiverAddress => OnRampError::InvalidReceiverAddress,
+        }
+    }
 }

@@ -262,6 +262,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-authorization"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "common-guard"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "common-message"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -918,6 +939,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 name = "onramp"
 version = "0.0.0"
 dependencies = [
+ "common-message",
  "soroban-sdk",
 ]
 
