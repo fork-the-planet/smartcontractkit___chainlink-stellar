@@ -1,5 +1,5 @@
 [package]
-name = "ccvs/committee-verifier"
+name = "ccvs-committee-verifier"
 version = "0.0.0"
 edition = "2021"
 publish = false

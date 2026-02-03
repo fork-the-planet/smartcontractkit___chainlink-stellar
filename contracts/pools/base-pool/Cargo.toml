@@ -1,5 +1,5 @@
 [package]
-name = "pools/base-pool"
+name = "pools-base-pool"
 version = "0.0.0"
 edition = "2021"
 publish = false

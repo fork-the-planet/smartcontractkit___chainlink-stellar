@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+# Overview
+
+Using the Graphiti MCP should be a part of your workflow. If you have confirmed (important to be correct) a piece of 
+information about the project being worked on, add the memory. 
+
+It is VERY important that the information is confirmed to be accurate.
+
+Add information from docs contexts from conversations to ensure the knowledge graph has enough details and make sure to preprocess
+the information before sending it to the Graphiti MCP.
+
+Your model is more powerful that the one running in Graphiti and therefore more capable of preprocessing data.
+
+## Tags & Group IDs
+
+We will use various tags and namespaces while using the Graphiti MCP. Usually each project has a namespace as well as some
+general ones that are shared across projects.
+
+Here are some important Group IDs so far: 
+
+- "ccip-architecture"
+- "stellar-integration"
+

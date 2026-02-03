@@ -1,6 +1,12 @@
 # Rust's output directory
 target
 
+# Local docs
+context/
+
 # Local settings
 .soroban
 .stellar
+
+# Misc
+.DS_Store

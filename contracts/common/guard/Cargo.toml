@@ -1,11 +1,11 @@
 [package]
-name = "pools-burn-mint-pool"
+name = "common/guard"
 version = "0.0.0"
 edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib"]
 doctest = false
 
 [dependencies]
