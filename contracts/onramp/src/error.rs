@@ -59,3 +59,11 @@ impl From<common_message::Error> for OnRampError {
         }
     }
 }
+
+impl From<common_guard::GuardError> for OnRampError {
+    fn from(error: common_guard::GuardError) -> Self {
+        match error {
+            common_guard::GuardError::ReentrantCall => OnRampError::ReentrancyGuardReentrantCall,
+        }
+    }
+}

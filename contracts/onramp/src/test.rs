@@ -16,7 +16,6 @@ fn create_test_dynamic_config(env: &Env) -> DynamicConfig {
     DynamicConfig {
         fee_quoter: Address::generate(env),
         fee_aggregator: Address::generate(env),
-        reentrancy_guard_entered: false,
     }
 }
 
@@ -158,7 +157,6 @@ fn test_set_dynamic_config() {
     let new_dynamic_config = DynamicConfig {
         fee_quoter: new_fee_quoter.clone(),
         fee_aggregator: dynamic_config.fee_aggregator.clone(),
-        reentrancy_guard_entered: false,
     };
 
     client.set_dynamic_config(&new_dynamic_config);

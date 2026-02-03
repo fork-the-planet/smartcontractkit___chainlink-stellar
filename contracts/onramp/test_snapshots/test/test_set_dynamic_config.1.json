@@ -33,14 +33,6 @@
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "reentrancy_guard_entered"
-                      },
-                      "val": {
-                        "bool": false
-                      }
                     }
                   ]
                 }
@@ -137,14 +129,6 @@
                               },
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
-                              }
-                            },
-                            {
-                              "key": {
-                                "symbol": "reentrancy_guard_entered"
-                              },
-                              "val": {
-                                "bool": false
                               }
                             }
                           ]

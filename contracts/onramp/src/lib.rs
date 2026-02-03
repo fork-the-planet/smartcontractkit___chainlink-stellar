@@ -12,6 +12,7 @@ use events::{ConfigSetEvent, DestChainConfigSetEvent, CCIPMessageSentEvent, Owne
 use error::OnRampError;
 use types::{StaticConfig, DynamicConfig, DestChainConfig, DestChainConfigArgs, Receipt};
 use common_message::{MessageIdCompute, StellarToAnyMessage};
+use common_guard::ReentrancyGuard;
 
 // ============================================================
 // Storage Keys
@@ -178,24 +179,8 @@ impl OnRampContract {
         Self::require_initialized(&env)?;
         message.validate()?;
 
-        // Get configs
-        let dynamic_config: DynamicConfig = env
-            .storage()
-            .instance()
-            .get(&DYNAMIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)?;
-
-        // Reentrancy guard
-        if dynamic_config.reentrancy_guard_entered {
-            return Err(OnRampError::ReentrancyGuardReentrantCall);
-        }
-
-        // Set reentrancy guard
-        let mut updated_config = dynamic_config.clone();
-        updated_config.reentrancy_guard_entered = true;
-        env.storage()
-            .instance()
-            .set(&DYNAMIC_CONFIG, &updated_config);
+        // Enter reentrancy guard (uses temporary storage)
+        ReentrancyGuard::enter(&env)?;
 
         // Get destination chain config
         let mut dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
@@ -210,8 +195,8 @@ impl OnRampContract {
         // Validate message
         // TODO: move to message type impl
         if message.token_amounts.len() > 1 {
-            // Reset reentrancy guard before returning
-            Self::reset_reentrancy_guard(&env);
+            // Exit reentrancy guard before returning
+            ReentrancyGuard::exit(&env);
             return Err(OnRampError::CanOnlySendOneTokenPerMessage);
         }
 
@@ -251,11 +236,13 @@ impl OnRampContract {
             verifier_blobs: Vec::new(&env),
         }.publish(&env);
 
-        // Reset reentrancy guard
-        Self::reset_reentrancy_guard(&env);
+        // Exit reentrancy guard
+        ReentrancyGuard::exit(&env);
 
         // TODO: Placeholder to use fee_token_amount
         let _ = fee_token_amount;
+
+        // TODO: do we need to keep track of message IDs in storage for idempotency?
 
         Ok(message_id)
     }
@@ -343,11 +330,6 @@ impl OnRampContract {
     ) -> Result<(), OnRampError> {
         Self::require_initialized(&env)?;
         Self::require_owner(&env)?;
-
-        // Validate config - ensure reentrancy guard is not set in new config
-        if dynamic_config.reentrancy_guard_entered {
-            return Err(OnRampError::InvalidConfig);
-        }
 
         env.storage()
             .instance()
@@ -541,7 +523,6 @@ impl OnRampContract {
 
     // ========================================
     // Internal Helper Functions
-    // TODO: move most of these to the `common` or `guard` lib crates, use traits with a default implementation
     // ========================================
 
     fn require_initialized(env: &Env) -> Result<(), OnRampError> {
@@ -585,13 +566,6 @@ impl OnRampContract {
 
         dest_chains.set(dest_chain_selector, config.clone());
         env.storage().persistent().set(&DEST_CHAINS, &dest_chains);
-    }
-
-    fn reset_reentrancy_guard(env: &Env) {
-        if let Some(mut config) = env.storage().instance().get::<Symbol, DynamicConfig>(&DYNAMIC_CONFIG) {
-            config.reentrancy_guard_entered = false;
-            env.storage().instance().set(&DYNAMIC_CONFIG, &config);
-        }
     }
 }
 

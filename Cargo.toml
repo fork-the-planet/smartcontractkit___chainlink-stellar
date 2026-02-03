@@ -14,6 +14,7 @@ members = [
 [workspace.dependencies]
 soroban-sdk = "23"
 common-message = { path = "contracts/common/message" }
+common-guard = { path = "contracts/common/guard" }
 
 [profile.release]
 opt-level = "z"

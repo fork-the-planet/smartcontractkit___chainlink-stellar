@@ -26,10 +26,6 @@ pub struct DynamicConfig {
     pub fee_quoter: Address,
     /// Fee aggregator address (receives protocol fees)
     pub fee_aggregator: Address,
-    /// Reentrancy guard flag
-    /// TODO: use temporary storage for this instead of instance storage
-    /// and move it to the `guard` lib crate instead
-    pub reentrancy_guard_entered: bool,
 }
 
 /// Configuration for a specific destination chain.

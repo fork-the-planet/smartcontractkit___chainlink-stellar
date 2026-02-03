@@ -94,14 +94,6 @@
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                               }
-                            },
-                            {
-                              "key": {
-                                "symbol": "reentrancy_guard_entered"
-                              },
-                              "val": {
-                                "bool": false
-                              }
                             }
                           ]
                         }
