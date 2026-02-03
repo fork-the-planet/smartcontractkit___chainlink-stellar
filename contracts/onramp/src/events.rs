@@ -1,0 +1,46 @@
+use soroban_sdk::{Address, Bytes, BytesN, Vec, contractevent};
+
+use crate::{DestChainConfig, DynamicConfig, Receipt, StaticConfig};
+
+/// Event data for CCIPMessageSent
+#[contractevent(topics = ["onramp_1_7::CCIPMessageSent"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CCIPMessageSentEvent {
+    /// Destination chain selector
+    pub dest_chain_selector: u64,
+    /// Original sender address
+    pub sender: Address,
+    /// Unique message ID (hash of encoded message)
+    pub message_id: BytesN<32>,
+    /// Fee token used for payment
+    pub fee_token: Address,
+    /// Token amount before pool fees (0 if no tokens)
+    pub token_amount_before_fees: i128,
+    /// Full encoded message (MessageV1 format)
+    pub encoded_message: Bytes,
+    /// Receipts for all components
+    pub receipts: Vec<Receipt>,
+    /// Blobs from each verifier
+    pub verifier_blobs: Vec<Bytes>,
+}
+
+#[contractevent(topics = ["onramp_1_7::ConfigSet"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigSetEvent {
+    pub static_config: StaticConfig,
+    pub dynamic_config: DynamicConfig,
+}
+
+#[contractevent(topics = ["onramp_1_7::DestChainConfigSet"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DestChainConfigSetEvent {
+    pub dest_chain_selector: u64,
+    pub message_number: u64,
+    pub config: DestChainConfig,
+}
+
+#[contractevent(topics = ["onramp_1_7::OwnershipTransferred"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnershipTransferredEvent {
+    pub new_owner: Address,
+}
