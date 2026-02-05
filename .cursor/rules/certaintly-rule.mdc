@@ -1,0 +1,37 @@
+---
+name: certaintly-rule
+description: A rule about using TODOs in code
+---
+
+# Overview
+
+This rule describes how to ensure that the generated code is as close to being correct as possible.
+
+
+### Correctness
+
+When writing code, it is more important to write a few useful things rather than simply writing a lot of code.
+
+
+### TODO Comments
+
+If a part of the code to be written does not have a clear path for its implementation, it is better to leave it as a TODO comment as long as it aligns with the overall approach. 
+
+For example, if we writing a smart contract which requires a call into another (unimplemented) smart contract, we can use a TODO comment to signal that we need to revisit something. This approach allows maintaining the thought process in the correct direction while enabling us to go back and implement whatever is not implemented.
+
+Use this reasonably to avoid adding TODOs everywhere.
+
+
+### Planning
+
+When thinking about plans, let's call out any dependencies that are necessary for us to implement the compoents we are planning for.
+
+
+### Referencing Docs
+
+When uncertain about implemention, always try to reference relevant documentation (check if any project docs have been added) and try to reference the knowledge graph if available.
+
+
+### Function Signatures
+
+If we are aware that a method is needed but unsure about its implementation, we can take the approach of writing the method signature and leaving it unimplemented.
