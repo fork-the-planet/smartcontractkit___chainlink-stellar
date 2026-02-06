@@ -3,7 +3,7 @@ package integration
 
 import (
 	"context"
-	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	stellar_devenv "github.com/smartcontractkit/chainlink-ccv/devenv/stellar"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -28,11 +29,15 @@ func TestOnRampDeployAndInitialize(t *testing.T) {
 	// Deploy local Stellar network using devenv
 	chain := stellar_devenv.New(zerolog.New(os.Stdout))
 	input := &blockchain.Input{
-		Type:                     "stellar",
-		ChainID:                  STELLAR_LOCALNET_CHAIN_ID,
-		ContainerName:            "blockchain-stellar",
-		Port:                     "8010",
-		DockerCmdParamsOverrides: []string{},
+		Type:          "stellar",
+		ChainID:       STELLAR_LOCALNET_CHAIN_ID,
+		ContainerName: "blockchain-stellar",
+		Port:          "8055",
+		DockerCmdParamsOverrides: []string{
+			"--enable-soroban-rpc",
+			"--local",
+		},
+		Image: "stellar/quickstart:testing",
 	}
 
 	output, err := chain.DeployLocalNetwork(ctx, input)
@@ -46,6 +51,18 @@ func TestOnRampDeployAndInitialize(t *testing.T) {
 
 	// Create RPC client
 	rpcClient := rpcclient.NewClient(rpcURL, &http.Client{Timeout: 60 * time.Second})
+
+	// Wait for Friendbot to be ready - it takes longer than the RPC endpoint
+	// The quickstart container starts multiple services and friendbot initializes last
+	t.Log("Waiting for Friendbot to be ready (this can take up to 90 seconds)...")
+	if err := helpers.WaitForFriendbot(
+		ctx,
+		input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL,
+		3*time.Minute,
+	); err != nil {
+		t.Fatalf("Friendbot not ready: %v", err)
+	}
+	t.Log("Friendbot is ready")
 
 	deployerKP, err := keypair.Random()
 	if err != nil {
@@ -65,25 +82,24 @@ func TestOnRampDeployAndInitialize(t *testing.T) {
 	deployer := stellar_devenv.NewDeployer(rpcClient, networkPassphrase, deployerKP)
 
 	// Find the project root (where Cargo.toml is)
-	projectRoot := findProjectRoot(t)
-
-	// Build the OnRamp contract
-	t.Log("Building OnRamp contract...")
+	projectRoot := helpers.FindProjectRoot(t)
 
 	// Deploy the OnRamp contract
 	t.Log("Deploying OnRamp contract...")
 	onrampSalt := stellar_devenv.GenerateDeterministicSalt(deployerKP.Address(), "onramp")
-	onrampWasmPath := filepath.Join(projectRoot, "target", "wasm32-unknown-unknown", "release", "onramp.wasm")
+	onrampWasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
+
+	fmt.Printf("OnRamp WASM path: %s\n", onrampWasmPath)
 	contractID, err := deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
 	if err != nil {
 		t.Fatalf("Failed to deploy OnRamp: %v", err)
 	}
 
 	// Generate mock addresses for the configuration
-	mockFeeQuoter := generateMockContractID(t, deployerKP.Address(), "fee-quoter")
-	mockFeeAggregator := generateMockContractID(t, deployerKP.Address(), "fee-aggregator")
-	mockRMNRemote := generateMockContractID(t, deployerKP.Address(), "rmn-remote")
-	mockTokenAdminRegistry := generateMockContractID(t, deployerKP.Address(), "token-admin-registry")
+	mockFeeQuoter := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-quoter")
+	mockFeeAggregator := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-aggregator")
+	mockRMNRemote := helpers.GenerateMockContractID(t, deployerKP.Address(), "rmn-remote")
+	mockTokenAdminRegistry := helpers.GenerateMockContractID(t, deployerKP.Address(), "token-admin-registry")
 
 	t.Logf("Mock contracts - FeeQuoter: %s, FeeAggregator: %s, RMNRemote: %s, TokenAdminRegistry: %s",
 		mockFeeQuoter, mockFeeAggregator, mockRMNRemote, mockTokenAdminRegistry)
@@ -282,47 +298,3 @@ func TestOnRampDeployAndInitialize(t *testing.T) {
 
 // 	t.Log("✅ OnRamp destination chain config test passed!")
 // }
-
-// findProjectRoot finds the root of the chainlink-stellar project.
-func findProjectRoot(t *testing.T) string {
-	// Start from the current working directory
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-
-	// Walk up until we find Cargo.toml
-	for {
-		cargoPath := filepath.Join(dir, "Cargo.toml")
-		if _, err := os.Stat(cargoPath); err == nil {
-			return dir
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// Reached root without finding Cargo.toml
-			t.Fatal("Could not find project root (Cargo.toml)")
-		}
-		dir = parent
-	}
-}
-
-// generateMockContractID generates a deterministic mock contract ID for testing.
-func generateMockContractID(t *testing.T, deployerAddress, contractName string) string {
-	// Generate a deterministic salt
-	salt := stellar_devenv.GenerateDeterministicSalt(deployerAddress, contractName)
-
-	// Encode as a Stellar contract address
-	encoded, err := strkey.Encode(strkey.VersionByteContract, salt[:])
-	if err != nil {
-		t.Fatalf("Failed to encode mock contract ID: %v", err)
-	}
-	return encoded
-}
-
-// generateDeterministicKeypair generates a keypair from a seed string.
-// This is used for generating mock addresses.
-func generateDeterministicKeypair(seed string) (*keypair.Full, error) {
-	hash := sha256.Sum256([]byte(seed))
-	return keypair.FromRawSeed(hash)
-}
