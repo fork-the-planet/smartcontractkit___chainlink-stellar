@@ -214,8 +214,9 @@ impl OnRampContract {
         // 11. Call each verifier
         // 12. Emit event
 
-        // Increment message number
+        // Increment message number (sequence number for this destination)
         dest_config.message_number += 1;
+        let sequence_number = dest_config.message_number;
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
 
         // Generate message ID (keccak256(messageBytes))
@@ -224,6 +225,7 @@ impl OnRampContract {
         // Emit CCIPMessageSent event
         CCIPMessageSentEvent {
             dest_chain_selector,
+            sequence_number,
             sender: original_sender,
             message_id: message_id.clone(),
             fee_token: message.fee_token.clone(),

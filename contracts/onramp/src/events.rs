@@ -8,6 +8,8 @@ use crate::{DestChainConfig, DynamicConfig, Receipt, StaticConfig};
 pub struct CCIPMessageSentEvent {
     /// Destination chain selector
     pub dest_chain_selector: u64,
+    /// Sequence number for this message to the destination chain
+    pub sequence_number: u64,
     /// Original sender address
     pub sender: Address,
     /// Unique message ID (hash of encoded message)
