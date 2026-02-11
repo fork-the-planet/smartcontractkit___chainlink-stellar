@@ -214,8 +214,8 @@ func parseErrors(input string) []ErrorEnum {
 }
 
 func parseEvents(input string) []Event {
-	// Match: #[soroban_sdk::contractevent(topics = ["..."])] pub struct Name { ... }
-	eventRe := regexp.MustCompile(`(?s)#\[soroban_sdk::contractevent\s*\(\s*topics\s*=\s*\[([^\]]+)\][^)]*\)\s*(?:#\[derive[^\]]*\]\s*)*pub struct (\w+)\s*\{([^}]+)\}`)
+	// Match both source-level #[contractevent(...)] and generated #[soroban_sdk::contractevent(...)]
+	eventRe := regexp.MustCompile(`(?s)#\[(?:soroban_sdk::)?contractevent\s*\(\s*topics\s*=\s*\[([^\]]+)\][^)]*\)\s*\]\s*(?:#\[derive[^\]]*\]\s*)*pub struct (\w+)\s*\{([^}]+)\}`)
 	fieldRe := regexp.MustCompile(`pub (\w+):\s*([^,]+),`)
 	topicRe := regexp.MustCompile(`"([^"]+)"`)
 

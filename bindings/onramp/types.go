@@ -3,9 +3,8 @@ package onramp
 
 import (
 	"fmt"
-	"sort"
 
-	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -20,12 +19,12 @@ type Receipt struct {
 
 // ToScVal converts Receipt to an xdr.ScVal for contract calls.
 func (s Receipt) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"dest_bytes_overhead": uint32ToScVal(s.DestBytesOverhead),
-		"dest_gas_limit": uint32ToScVal(s.DestGasLimit),
-		"extra_args": bytesToScVal(s.ExtraArgs),
-		"fee_token_amount": i128ToScVal(s.FeeTokenAmount),
-		"issuer": addressToScVal(s.Issuer),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"dest_bytes_overhead": scval.Uint32ToScVal(s.DestBytesOverhead),
+		"dest_gas_limit": scval.Uint32ToScVal(s.DestGasLimit),
+		"extra_args": scval.BytesToScVal(s.ExtraArgs),
+		"fee_token_amount": scval.I128ToScVal(s.FeeTokenAmount),
+		"issuer": scval.AddressToScVal(s.Issuer),
 	})
 }
 
@@ -63,13 +62,13 @@ func ReceiptFromScVal(val xdr.ScVal) (*Receipt, error) {
 			}
 			result.ExtraArgs = []byte(v)
 		case "fee_token_amount":
-			v, err := i128FromScVal(entry.Val)
+			v, err := scval.I128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("fee_token_amount: %w", err)
 			}
 			result.FeeTokenAmount = v
 		case "issuer":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("issuer: %w", err)
 			}
@@ -90,11 +89,11 @@ type StaticConfig struct {
 
 // ToScVal converts StaticConfig to an xdr.ScVal for contract calls.
 func (s StaticConfig) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"chain_selector": uint64ToScVal(s.ChainSelector),
-		"max_usd_cents_per_message": uint32ToScVal(s.MaxUsdCentsPerMessage),
-		"rmn_remote": addressToScVal(s.RmnRemote),
-		"token_admin_registry": addressToScVal(s.TokenAdminRegistry),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"chain_selector": scval.Uint64ToScVal(s.ChainSelector),
+		"max_usd_cents_per_message": scval.Uint32ToScVal(s.MaxUsdCentsPerMessage),
+		"rmn_remote": scval.AddressToScVal(s.RmnRemote),
+		"token_admin_registry": scval.AddressToScVal(s.TokenAdminRegistry),
 	})
 }
 
@@ -114,7 +113,7 @@ func StaticConfigFromScVal(val xdr.ScVal) (*StaticConfig, error) {
 
 		switch string(key) {
 		case "chain_selector":
-			v, err := uint64FromScVal(entry.Val)
+			v, err := scval.Uint64FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("chain_selector: %w", err)
 			}
@@ -126,13 +125,13 @@ func StaticConfigFromScVal(val xdr.ScVal) (*StaticConfig, error) {
 			}
 			result.MaxUsdCentsPerMessage = uint32(v)
 		case "rmn_remote":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("rmn_remote: %w", err)
 			}
 			result.RmnRemote = v
 		case "token_admin_registry":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("token_admin_registry: %w", err)
 			}
@@ -151,9 +150,9 @@ type DynamicConfig struct {
 
 // ToScVal converts DynamicConfig to an xdr.ScVal for contract calls.
 func (s DynamicConfig) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"fee_aggregator": addressToScVal(s.FeeAggregator),
-		"fee_quoter": addressToScVal(s.FeeQuoter),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"fee_aggregator": scval.AddressToScVal(s.FeeAggregator),
+		"fee_quoter": scval.AddressToScVal(s.FeeQuoter),
 	})
 }
 
@@ -173,13 +172,13 @@ func DynamicConfigFromScVal(val xdr.ScVal) (*DynamicConfig, error) {
 
 		switch string(key) {
 		case "fee_aggregator":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("fee_aggregator: %w", err)
 			}
 			result.FeeAggregator = v
 		case "fee_quoter":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("fee_quoter: %w", err)
 			}
@@ -207,18 +206,18 @@ type DestChainConfig struct {
 
 // ToScVal converts DestChainConfig to an xdr.ScVal for contract calls.
 func (s DestChainConfig) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"address_bytes_length": uint32ToScVal(s.AddressBytesLength),
-		"base_execution_gas_cost": uint32ToScVal(s.BaseExecutionGasCost),
-		"default_ccvs": addressSliceToScVal(s.DefaultCcvs),
-		"default_executor": addressToScVal(s.DefaultExecutor),
-		"lane_mandated_ccvs": addressSliceToScVal(s.LaneMandatedCcvs),
-		"message_network_fee_usd_cents": uint32ToScVal(s.MessageNetworkFeeUsdCents),
-		"message_number": uint64ToScVal(s.MessageNumber),
-		"off_ramp": bytesToScVal(s.OffRamp),
-		"router": addressToScVal(s.Router),
-		"token_network_fee_usd_cents": uint32ToScVal(s.TokenNetworkFeeUsdCents),
-		"token_receiver_allowed": boolToScVal(s.TokenReceiverAllowed),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"address_bytes_length": scval.Uint32ToScVal(s.AddressBytesLength),
+		"base_execution_gas_cost": scval.Uint32ToScVal(s.BaseExecutionGasCost),
+		"default_ccvs": scval.AddressSliceToScVal(s.DefaultCcvs),
+		"default_executor": scval.AddressToScVal(s.DefaultExecutor),
+		"lane_mandated_ccvs": scval.AddressSliceToScVal(s.LaneMandatedCcvs),
+		"message_network_fee_usd_cents": scval.Uint32ToScVal(s.MessageNetworkFeeUsdCents),
+		"message_number": scval.Uint64ToScVal(s.MessageNumber),
+		"off_ramp": scval.BytesToScVal(s.OffRamp),
+		"router": scval.AddressToScVal(s.Router),
+		"token_network_fee_usd_cents": scval.Uint32ToScVal(s.TokenNetworkFeeUsdCents),
+		"token_receiver_allowed": scval.BoolToScVal(s.TokenReceiverAllowed),
 	})
 }
 
@@ -256,14 +255,14 @@ func DestChainConfigFromScVal(val xdr.ScVal) (*DestChainConfig, error) {
 			}
 			result.DefaultCcvs = make([]string, len(*vec))
 			for i, item := range *vec {
-				v, err := addressFromScVal(item)
+				v, err := scval.AddressFromScVal(item)
 				if err != nil {
 					return nil, err
 				}
 				result.DefaultCcvs[i] = v
 			}
 		case "default_executor":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("default_executor: %w", err)
 			}
@@ -275,7 +274,7 @@ func DestChainConfigFromScVal(val xdr.ScVal) (*DestChainConfig, error) {
 			}
 			result.LaneMandatedCcvs = make([]string, len(*vec))
 			for i, item := range *vec {
-				v, err := addressFromScVal(item)
+				v, err := scval.AddressFromScVal(item)
 				if err != nil {
 					return nil, err
 				}
@@ -288,7 +287,7 @@ func DestChainConfigFromScVal(val xdr.ScVal) (*DestChainConfig, error) {
 			}
 			result.MessageNetworkFeeUsdCents = uint32(v)
 		case "message_number":
-			v, err := uint64FromScVal(entry.Val)
+			v, err := scval.Uint64FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("message_number: %w", err)
 			}
@@ -300,7 +299,7 @@ func DestChainConfigFromScVal(val xdr.ScVal) (*DestChainConfig, error) {
 			}
 			result.OffRamp = []byte(v)
 		case "router":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("router: %w", err)
 			}
@@ -340,18 +339,18 @@ type DestChainConfigArgs struct {
 
 // ToScVal converts DestChainConfigArgs to an xdr.ScVal for contract calls.
 func (s DestChainConfigArgs) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"address_bytes_length": uint32ToScVal(s.AddressBytesLength),
-		"base_execution_gas_cost": uint32ToScVal(s.BaseExecutionGasCost),
-		"default_ccvs": addressSliceToScVal(s.DefaultCcvs),
-		"default_executor": addressToScVal(s.DefaultExecutor),
-		"dest_chain_selector": uint64ToScVal(s.DestChainSelector),
-		"lane_mandated_ccvs": addressSliceToScVal(s.LaneMandatedCcvs),
-		"message_network_fee_usd_cents": uint32ToScVal(s.MessageNetworkFeeUsdCents),
-		"off_ramp": bytesToScVal(s.OffRamp),
-		"router": addressToScVal(s.Router),
-		"token_network_fee_usd_cents": uint32ToScVal(s.TokenNetworkFeeUsdCents),
-		"token_receiver_allowed": boolToScVal(s.TokenReceiverAllowed),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"address_bytes_length": scval.Uint32ToScVal(s.AddressBytesLength),
+		"base_execution_gas_cost": scval.Uint32ToScVal(s.BaseExecutionGasCost),
+		"default_ccvs": scval.AddressSliceToScVal(s.DefaultCcvs),
+		"default_executor": scval.AddressToScVal(s.DefaultExecutor),
+		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
+		"lane_mandated_ccvs": scval.AddressSliceToScVal(s.LaneMandatedCcvs),
+		"message_network_fee_usd_cents": scval.Uint32ToScVal(s.MessageNetworkFeeUsdCents),
+		"off_ramp": scval.BytesToScVal(s.OffRamp),
+		"router": scval.AddressToScVal(s.Router),
+		"token_network_fee_usd_cents": scval.Uint32ToScVal(s.TokenNetworkFeeUsdCents),
+		"token_receiver_allowed": scval.BoolToScVal(s.TokenReceiverAllowed),
 	})
 }
 
@@ -389,20 +388,20 @@ func DestChainConfigArgsFromScVal(val xdr.ScVal) (*DestChainConfigArgs, error) {
 			}
 			result.DefaultCcvs = make([]string, len(*vec))
 			for i, item := range *vec {
-				v, err := addressFromScVal(item)
+				v, err := scval.AddressFromScVal(item)
 				if err != nil {
 					return nil, err
 				}
 				result.DefaultCcvs[i] = v
 			}
 		case "default_executor":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("default_executor: %w", err)
 			}
 			result.DefaultExecutor = v
 		case "dest_chain_selector":
-			v, err := uint64FromScVal(entry.Val)
+			v, err := scval.Uint64FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("dest_chain_selector: %w", err)
 			}
@@ -414,7 +413,7 @@ func DestChainConfigArgsFromScVal(val xdr.ScVal) (*DestChainConfigArgs, error) {
 			}
 			result.LaneMandatedCcvs = make([]string, len(*vec))
 			for i, item := range *vec {
-				v, err := addressFromScVal(item)
+				v, err := scval.AddressFromScVal(item)
 				if err != nil {
 					return nil, err
 				}
@@ -433,7 +432,7 @@ func DestChainConfigArgsFromScVal(val xdr.ScVal) (*DestChainConfigArgs, error) {
 			}
 			result.OffRamp = []byte(v)
 		case "router":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("router: %w", err)
 			}
@@ -464,9 +463,9 @@ type TokenAmount struct {
 
 // ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
 func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"amount": i128ToScVal(s.Amount),
-		"token": addressToScVal(s.Token),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"amount": scval.I128ToScVal(s.Amount),
+		"token": scval.AddressToScVal(s.Token),
 	})
 }
 
@@ -486,13 +485,13 @@ func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
 
 		switch string(key) {
 		case "amount":
-			v, err := i128FromScVal(entry.Val)
+			v, err := scval.I128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("amount: %w", err)
 			}
 			result.Amount = v
 		case "token":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("token: %w", err)
 			}
@@ -510,8 +509,8 @@ type AnyToStellarMessage struct {
 
 // ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
 func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"placeholder": uint64ToScVal(s.Placeholder),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"placeholder": scval.Uint64ToScVal(s.Placeholder),
 	})
 }
 
@@ -531,7 +530,7 @@ func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
 
 		switch string(key) {
 		case "placeholder":
-			v, err := uint64FromScVal(entry.Val)
+			v, err := scval.Uint64FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("placeholder: %w", err)
 			}
@@ -553,12 +552,12 @@ type StellarToAnyMessage struct {
 
 // ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
 func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"data": bytesToScVal(s.Data),
-		"extra_args": bytesToScVal(s.ExtraArgs),
-		"fee_token": addressToScVal(s.FeeToken),
-		"receiver": bytesToScVal(s.Receiver),
-		"token_amounts": structSliceToScVal(s.TokenAmounts),
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"data": scval.BytesToScVal(s.Data),
+		"extra_args": scval.BytesToScVal(s.ExtraArgs),
+		"fee_token": scval.AddressToScVal(s.FeeToken),
+		"receiver": scval.BytesToScVal(s.Receiver),
+		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
 	})
 }
 
@@ -590,7 +589,7 @@ func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
 			}
 			result.ExtraArgs = []byte(v)
 		case "fee_token":
-			v, err := addressFromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("fee_token: %w", err)
 			}
@@ -678,241 +677,62 @@ var GuardErrorMessage = map[int]string{
 	1: "reentrant call",
 }
 
-// Helper functions for ScVal conversions
-
-func uint64ToScVal(v uint64) xdr.ScVal {
-	xdrU64 := xdr.Uint64(v)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvU64,
-		U64:  &xdrU64,
-	}
+// ConfigSetEvent represents the ConfigSetEvent event.
+// Topics: [onramp_1_7_ConfigSet]
+type ConfigSetEvent struct {
+	StaticConfig StaticConfig
+	DynamicConfig DynamicConfig
+	// Event metadata
+	Ledger uint32
+	TxHash string
 }
 
-func uint32ToScVal(v uint32) xdr.ScVal {
-	xdrU32 := xdr.Uint32(v)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvU32,
-		U32:  &xdrU32,
-	}
+// ConfigSetEventTopic is the event topic identifier.
+const ConfigSetEventTopic = "onramp_1_7_ConfigSet"
+
+// CCIPMessageSentEvent represents the CCIPMessageSentEvent event.
+// Topics: [onramp_1_7_CCIPMessageSent]
+type CCIPMessageSentEvent struct {
+	DestChainSelector uint64
+	SequenceNumber uint64
+	Sender string
+	MessageId [32]byte
+	FeeToken string
+	TokenAmountBeforeFees int64
+	EncodedMessage []byte
+	Receipts []Receipt
+	VerifierBlobs [][]byte
+	// Event metadata
+	Ledger uint32
+	TxHash string
 }
 
-func boolToScVal(v bool) xdr.ScVal {
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvBool,
-		B:    &v,
-	}
+// CCIPMessageSentEventTopic is the event topic identifier.
+const CCIPMessageSentEventTopic = "onramp_1_7_CCIPMessageSent"
+
+// DestChainConfigSetEvent represents the DestChainConfigSetEvent event.
+// Topics: [onramp_1_7_DestChainConfigSet]
+type DestChainConfigSetEvent struct {
+	DestChainSelector uint64
+	MessageNumber uint64
+	Config DestChainConfig
+	// Event metadata
+	Ledger uint32
+	TxHash string
 }
 
-func i128ToScVal(v int64) xdr.ScVal {
-	var hi int64
-	if v < 0 {
-		hi = -1 // Sign extend for negative numbers
-	}
-	lo := uint64(v)
-	parts := xdr.Int128Parts{
-		Hi: xdr.Int64(hi),
-		Lo: xdr.Uint64(lo),
-	}
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvI128,
-		I128: &parts,
-	}
+// DestChainConfigSetEventTopic is the event topic identifier.
+const DestChainConfigSetEventTopic = "onramp_1_7_DestChainConfigSet"
+
+// OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
+// Topics: [onramp_1_7_OwnershipTransferred]
+type OwnershipTransferredEvent struct {
+	NewOwner string
+	// Event metadata
+	Ledger uint32
+	TxHash string
 }
 
-func bytesToScVal(b []byte) xdr.ScVal {
-	bytes := xdr.ScBytes(b)
-	return xdr.ScVal{
-		Type:  xdr.ScValTypeScvBytes,
-		Bytes: &bytes,
-	}
-}
+// OwnershipTransferredEventTopic is the event topic identifier.
+const OwnershipTransferredEventTopic = "onramp_1_7_OwnershipTransferred"
 
-func bytes32ToScVal(b [32]byte) xdr.ScVal {
-	bytes := xdr.ScBytes(b[:])
-	return xdr.ScVal{
-		Type:  xdr.ScValTypeScvBytes,
-		Bytes: &bytes,
-	}
-}
-
-func addressToScVal(addr string) xdr.ScVal {
-	scAddr := parseAddress(addr)
-	return xdr.ScVal{
-		Type:    xdr.ScValTypeScvAddress,
-		Address: scAddr,
-	}
-}
-
-func vecToScVal(items []xdr.ScVal) xdr.ScVal {
-	scVec := xdr.ScVec(items)
-	vecPtr := &scVec
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvVec,
-		Vec:  &vecPtr,
-	}
-}
-
-func symbolToScVal(sym string) xdr.ScVal {
-	scSym := xdr.ScSymbol(sym)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &scSym,
-	}
-}
-
-func buildStructScVal(fields map[string]xdr.ScVal) (xdr.ScVal, error) {
-	// Soroban requires ScMap keys to be sorted lexicographically
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	entries := make([]xdr.ScMapEntry, 0, len(fields))
-	for _, k := range keys {
-		v := fields[k]
-		sym := xdr.ScSymbol(k)
-		entries = append(entries, xdr.ScMapEntry{
-			Key: xdr.ScVal{
-				Type: xdr.ScValTypeScvSymbol,
-				Sym:  &sym,
-			},
-			Val: v,
-		})
-	}
-	scMap := xdr.ScMap(entries)
-	mapPtr := &scMap
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvMap,
-		Map:  &mapPtr,
-	}, nil
-}
-
-func parseAddress(addr string) *xdr.ScAddress {
-	if len(addr) == 0 {
-		return nil
-	}
-
-	if addr[0] == 'C' {
-		decoded, err := strkey.Decode(strkey.VersionByteContract, addr)
-		if err != nil {
-			return nil
-		}
-		return buildContractScAddress(decoded)
-	}
-
-	if addr[0] == 'G' {
-		decoded, err := strkey.Decode(strkey.VersionByteAccountID, addr)
-		if err != nil {
-			return nil
-		}
-		var pubKey xdr.Uint256
-		copy(pubKey[:], decoded)
-		accountID := xdr.AccountId{
-			Type:    xdr.PublicKeyTypePublicKeyTypeEd25519,
-			Ed25519: &pubKey,
-		}
-		return &xdr.ScAddress{
-			Type:      xdr.ScAddressTypeScAddressTypeAccount,
-			AccountId: &accountID,
-		}
-	}
-
-	return nil
-}
-
-func buildContractScAddress(contractIDBytes []byte) *xdr.ScAddress {
-	if len(contractIDBytes) != 32 {
-		return nil
-	}
-	xdrBytes := make([]byte, 0, 36)
-	xdrBytes = append(xdrBytes, 0, 0, 0, 1)
-	xdrBytes = append(xdrBytes, contractIDBytes...)
-
-	var addr xdr.ScAddress
-	if err := addr.UnmarshalBinary(xdrBytes); err != nil {
-		return nil
-	}
-	return &addr
-}
-
-func addressFromScVal(val xdr.ScVal) (string, error) {
-	addr, ok := val.GetAddress()
-	if !ok {
-		return "", fmt.Errorf("not an address type: %v", val.Type)
-	}
-
-	switch addr.Type {
-	case xdr.ScAddressTypeScAddressTypeAccount:
-		accountID := addr.MustAccountId()
-		pubKey := accountID.Ed25519
-		if pubKey == nil {
-			return "", fmt.Errorf("account ID has no Ed25519 key")
-		}
-		return strkey.Encode(strkey.VersionByteAccountID, (*pubKey)[:])
-	case xdr.ScAddressTypeScAddressTypeContract:
-		contractID := addr.MustContractId()
-		return strkey.Encode(strkey.VersionByteContract, contractID[:])
-	default:
-		return "", fmt.Errorf("unsupported address type: %s", addr.Type)
-	}
-}
-
-func uint64FromScVal(val xdr.ScVal) (uint64, error) {
-	u64, ok := val.GetU64()
-	if !ok {
-		return 0, fmt.Errorf("not a u64 type: %v", val.Type)
-	}
-	return uint64(u64), nil
-}
-
-func bytes32FromScVal(val xdr.ScVal) ([32]byte, error) {
-	bytes, ok := val.GetBytes()
-	if !ok {
-		return [32]byte{}, fmt.Errorf("not a bytes type: %v", val.Type)
-	}
-	if len(bytes) != 32 {
-		return [32]byte{}, fmt.Errorf("expected 32 bytes, got %d", len(bytes))
-	}
-	var result [32]byte
-	copy(result[:], bytes)
-	return result, nil
-}
-
-func i128FromScVal(val xdr.ScVal) (int64, error) {
-	i128, ok := val.GetI128()
-	if !ok {
-		return 0, fmt.Errorf("not an i128 type: %v", val.Type)
-	}
-	return int64(i128.Lo), nil
-}
-
-// mustToScVal panics if ToScVal returns an error.
-func mustToScVal(val xdr.ScVal, err error) xdr.ScVal {
-	if err != nil {
-		panic(err)
-	}
-	return val
-}
-
-// addressSliceToScVal converts a slice of address strings to xdr.ScVal.
-func addressSliceToScVal(items []string) xdr.ScVal {
-	scVals := make([]xdr.ScVal, len(items))
-	for i, item := range items {
-		scVals[i] = addressToScVal(item)
-	}
-	return vecToScVal(scVals)
-}
-
-// structSliceToScVal converts a slice of structs with ToScVal to xdr.ScVal.
-func structSliceToScVal[T interface{ ToScVal() (xdr.ScVal, error) }](items []T) xdr.ScVal {
-	scVals := make([]xdr.ScVal, len(items))
-	for i := range items {
-		val, err := items[i].ToScVal()
-		if err != nil {
-			panic(err)
-		}
-		scVals[i] = val
-	}
-	return vecToScVal(scVals)
-}

@@ -17,10 +17,11 @@ func main() {
 	name := flag.String("name", "", "Contract name (e.g., OnRamp)")
 	pkg := flag.String("pkg", "", "Go package name for generated code")
 	out := flag.String("out", "", "Output directory for generated files")
+	events := flag.String("events", "", "Optional path to Rust events source file (e.g., contracts/onramp/src/events.rs)")
 	flag.Parse()
 
 	if *name == "" || *pkg == "" || *out == "" {
-		fmt.Fprintln(os.Stderr, "Usage: stellar contract bindings rust --wasm <contract.wasm> | go run ./generator -name <Name> -pkg <package> -out <dir>")
+		fmt.Fprintln(os.Stderr, "Usage: stellar contract bindings rust --wasm <contract.wasm> | go run ./generator -name <Name> -pkg <package> -out <dir> [-events <events.rs>]")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -39,6 +40,18 @@ func main() {
 		os.Exit(1)
 	}
 	contract.Name = *name
+
+	// Optionally parse events from Rust source file
+	if *events != "" {
+		eventsSource, err := os.ReadFile(*events)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read events file: %v\n", err)
+			os.Exit(1)
+		}
+		parsedEvents := parseEvents(string(eventsSource))
+		contract.Events = append(contract.Events, parsedEvents...)
+		fmt.Printf("Parsed %d events from %s\n", len(parsedEvents), *events)
+	}
 
 	// Create output directory
 	if err := os.MkdirAll(*out, 0755); err != nil {

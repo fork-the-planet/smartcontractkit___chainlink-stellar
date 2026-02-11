@@ -21,6 +21,7 @@ func GenerateClient(pkg string, contract *Contract) string {
 	}
 	b.WriteString("\n")
 	b.WriteString("\t\"github.com/smartcontractkit/chainlink-stellar/bindings\"\n")
+	b.WriteString("\t\"github.com/smartcontractkit/chainlink-stellar/bindings/scval\"\n")
 	if len(contract.Events) > 0 {
 		b.WriteString("\tprotocolrpc \"github.com/stellar/go-stellar-sdk/protocols/rpc\"\n")
 	}
@@ -147,7 +148,7 @@ func generateMethod(b *strings.Builder, contract *Contract, fn Function) {
 func generateReturnValueParsing(b *strings.Builder, returnType string) {
 	switch {
 	case returnType == "u64":
-		b.WriteString("\tv, err := uint64FromScVal(*result)\n")
+		b.WriteString("\tv, err := scval.Uint64FromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn 0, err\n")
 		b.WriteString("\t}\n")
@@ -159,7 +160,7 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn uint32(v), nil\n")
 	case returnType == "i128":
-		b.WriteString("\tv, err := i128FromScVal(*result)\n")
+		b.WriteString("\tv, err := scval.I128FromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn 0, err\n")
 		b.WriteString("\t}\n")
@@ -171,13 +172,13 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn v, nil\n")
 	case returnType == "soroban_sdk::Address":
-		b.WriteString("\tv, err := addressFromScVal(*result)\n")
+		b.WriteString("\tv, err := scval.AddressFromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn \"\", err\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn v, nil\n")
 	case strings.HasPrefix(returnType, "soroban_sdk::BytesN<"):
-		b.WriteString("\tv, err := bytes32FromScVal(*result)\n")
+		b.WriteString("\tv, err := scval.Bytes32FromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn [32]byte{}, err\n")
 		b.WriteString("\t}\n")
@@ -267,17 +268,17 @@ func generateEventParser(b *strings.Builder, event Event) {
 func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 	switch {
 	case f.Type == "u64":
-		b.WriteString("\t\t\tv, err := uint64FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.Uint64FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
 	case f.Type == "i128":
-		b.WriteString("\t\t\tv, err := i128FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.I128FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
 	case f.Type == "soroban_sdk::Address":
-		b.WriteString("\t\t\tv, err := addressFromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.AddressFromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
@@ -287,7 +288,7 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = []byte(v)\n", target))
 		b.WriteString("\t\t\t}\n")
 	case strings.HasPrefix(f.Type, "soroban_sdk::BytesN<"):
-		b.WriteString("\t\t\tv, err := bytes32FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.Bytes32FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
@@ -377,33 +378,33 @@ func isStructType(rustType string) bool {
 func getArgConverter(rustType, varName string) string {
 	switch rustType {
 	case "u64":
-		return fmt.Sprintf("uint64ToScVal(%s)", varName)
+		return fmt.Sprintf("scval.Uint64ToScVal(%s)", varName)
 	case "u32":
-		return fmt.Sprintf("uint32ToScVal(%s)", varName)
+		return fmt.Sprintf("scval.Uint32ToScVal(%s)", varName)
 	case "i128":
-		return fmt.Sprintf("i128ToScVal(%s)", varName)
+		return fmt.Sprintf("scval.I128ToScVal(%s)", varName)
 	case "bool":
-		return fmt.Sprintf("boolToScVal(%s)", varName)
+		return fmt.Sprintf("scval.BoolToScVal(%s)", varName)
 	case "soroban_sdk::Address":
-		return fmt.Sprintf("addressToScVal(%s)", varName)
+		return fmt.Sprintf("scval.AddressToScVal(%s)", varName)
 	case "soroban_sdk::Bytes":
-		return fmt.Sprintf("bytesToScVal(%s)", varName)
+		return fmt.Sprintf("scval.BytesToScVal(%s)", varName)
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
-		return fmt.Sprintf("bytes32ToScVal(%s)", varName)
+		return fmt.Sprintf("scval.Bytes32ToScVal(%s)", varName)
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
 		innerType := extractVecInnerType(rustType)
 		if innerType == "soroban_sdk::Address" {
-			return fmt.Sprintf("addressSliceToScVal(%s)", varName)
+			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", varName)
 		}
-		return fmt.Sprintf("structSliceToScVal(%s)", varName)
+		return fmt.Sprintf("scval.StructSliceToScVal(%s)", varName)
 	}
 
 	// Struct - call ToScVal
-	return fmt.Sprintf("mustToScVal(%s.ToScVal())", varName)
+	return fmt.Sprintf("scval.MustToScVal(%s.ToScVal())", varName)
 }
 
 func zeroValue(rustType string) string {

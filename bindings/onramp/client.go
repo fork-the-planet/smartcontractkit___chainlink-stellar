@@ -4,8 +4,11 @@ package onramp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -41,7 +44,7 @@ func (c *OnRampClient) Owner(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("no return value from owner")
 	}
 
-	v, err := addressFromScVal(*result)
+	v, err := scval.AddressFromScVal(*result)
 	if err != nil {
 		return "", err
 	}
@@ -51,8 +54,8 @@ func (c *OnRampClient) Owner(ctx context.Context) (string, error) {
 // GetFee calls the get_fee function on the contract.
 func (c *OnRampClient) GetFee(ctx context.Context, destChainSelector uint64, message StellarToAnyMessage) (int64, error) {
 	args := []xdr.ScVal{
-		uint64ToScVal(destChainSelector),
-		mustToScVal(message.ToScVal()),
+		scval.Uint64ToScVal(destChainSelector),
+		scval.MustToScVal(message.ToScVal()),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_fee", args)
@@ -64,7 +67,7 @@ func (c *OnRampClient) GetFee(ctx context.Context, destChainSelector uint64, mes
 		return 0, fmt.Errorf("no return value from get_fee")
 	}
 
-	v, err := i128FromScVal(*result)
+	v, err := scval.I128FromScVal(*result)
 	if err != nil {
 		return 0, err
 	}
@@ -74,9 +77,9 @@ func (c *OnRampClient) GetFee(ctx context.Context, destChainSelector uint64, mes
 // Initialize calls the initialize function on the contract.
 func (c *OnRampClient) Initialize(ctx context.Context, owner string, staticConfig StaticConfig, dynamicConfig DynamicConfig) error {
 	args := []xdr.ScVal{
-		addressToScVal(owner),
-		mustToScVal(staticConfig.ToScVal()),
-		mustToScVal(dynamicConfig.ToScVal()),
+		scval.AddressToScVal(owner),
+		scval.MustToScVal(staticConfig.ToScVal()),
+		scval.MustToScVal(dynamicConfig.ToScVal()),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
@@ -123,7 +126,7 @@ func (c *OnRampClient) GetDynamicConfig(ctx context.Context) (*DynamicConfig, er
 // SetDynamicConfig calls the set_dynamic_config function on the contract.
 func (c *OnRampClient) SetDynamicConfig(ctx context.Context, dynamicConfig DynamicConfig) error {
 	args := []xdr.ScVal{
-		mustToScVal(dynamicConfig.ToScVal()),
+		scval.MustToScVal(dynamicConfig.ToScVal()),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_dynamic_config", args)
@@ -138,7 +141,7 @@ func (c *OnRampClient) SetDynamicConfig(ctx context.Context, dynamicConfig Dynam
 // TransferOwnership calls the transfer_ownership function on the contract.
 func (c *OnRampClient) TransferOwnership(ctx context.Context, newOwner string) error {
 	args := []xdr.ScVal{
-		addressToScVal(newOwner),
+		scval.AddressToScVal(newOwner),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
@@ -153,10 +156,10 @@ func (c *OnRampClient) TransferOwnership(ctx context.Context, newOwner string) e
 // ForwardFromRouter calls the forward_from_router function on the contract.
 func (c *OnRampClient) ForwardFromRouter(ctx context.Context, destChainSelector uint64, message StellarToAnyMessage, feeTokenAmount int64, originalSender string) ([32]byte, error) {
 	args := []xdr.ScVal{
-		uint64ToScVal(destChainSelector),
-		mustToScVal(message.ToScVal()),
-		i128ToScVal(feeTokenAmount),
-		addressToScVal(originalSender),
+		scval.Uint64ToScVal(destChainSelector),
+		scval.MustToScVal(message.ToScVal()),
+		scval.I128ToScVal(feeTokenAmount),
+		scval.AddressToScVal(originalSender),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "forward_from_router", args)
@@ -168,7 +171,7 @@ func (c *OnRampClient) ForwardFromRouter(ctx context.Context, destChainSelector 
 		return [32]byte{}, fmt.Errorf("no return value from forward_from_router")
 	}
 
-	v, err := bytes32FromScVal(*result)
+	v, err := scval.Bytes32FromScVal(*result)
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -178,7 +181,7 @@ func (c *OnRampClient) ForwardFromRouter(ctx context.Context, destChainSelector 
 // WithdrawFeeTokens calls the withdraw_fee_tokens function on the contract.
 func (c *OnRampClient) WithdrawFeeTokens(ctx context.Context, feeTokens []string) error {
 	args := []xdr.ScVal{
-		addressSliceToScVal(feeTokens),
+		scval.AddressSliceToScVal(feeTokens),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "withdraw_fee_tokens", args)
@@ -193,7 +196,7 @@ func (c *OnRampClient) WithdrawFeeTokens(ctx context.Context, feeTokens []string
 // GetDestChainConfig calls the get_dest_chain_config function on the contract.
 func (c *OnRampClient) GetDestChainConfig(ctx context.Context, destChainSelector uint64) (*DestChainConfig, error) {
 	args := []xdr.ScVal{
-		uint64ToScVal(destChainSelector),
+		scval.Uint64ToScVal(destChainSelector),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_dest_chain_config", args)
@@ -211,7 +214,7 @@ func (c *OnRampClient) GetDestChainConfig(ctx context.Context, destChainSelector
 // GetPoolBySourceToken calls the get_pool_by_source_token function on the contract.
 func (c *OnRampClient) GetPoolBySourceToken(ctx context.Context, sourceToken string) (string, error) {
 	args := []xdr.ScVal{
-		addressToScVal(sourceToken),
+		scval.AddressToScVal(sourceToken),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_pool_by_source_token", args)
@@ -223,7 +226,7 @@ func (c *OnRampClient) GetPoolBySourceToken(ctx context.Context, sourceToken str
 		return "", fmt.Errorf("no return value from get_pool_by_source_token")
 	}
 
-	v, err := addressFromScVal(*result)
+	v, err := scval.AddressFromScVal(*result)
 	if err != nil {
 		return "", err
 	}
@@ -246,7 +249,7 @@ func (c *OnRampClient) GetAllDestChainConfigs(ctx context.Context) error {
 // ApplyDestChainConfigUpdates calls the apply_dest_chain_config_updates function on the contract.
 func (c *OnRampClient) ApplyDestChainConfigUpdates(ctx context.Context, destChainConfigArgs []DestChainConfigArgs) error {
 	args := []xdr.ScVal{
-		structSliceToScVal(destChainConfigArgs),
+		scval.StructSliceToScVal(destChainConfigArgs),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_dest_chain_config_updates", args)
@@ -261,7 +264,7 @@ func (c *OnRampClient) ApplyDestChainConfigUpdates(ctx context.Context, destChai
 // GetExpectedNextMessageNumber calls the get_expected_next_message_number function on the contract.
 func (c *OnRampClient) GetExpectedNextMessageNumber(ctx context.Context, destChainSelector uint64) (uint64, error) {
 	args := []xdr.ScVal{
-		uint64ToScVal(destChainSelector),
+		scval.Uint64ToScVal(destChainSelector),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_expected_next_message_number", args)
@@ -273,10 +276,318 @@ func (c *OnRampClient) GetExpectedNextMessageNumber(ctx context.Context, destCha
 		return 0, fmt.Errorf("no return value from get_expected_next_message_number")
 	}
 
-	v, err := uint64FromScVal(*result)
+	v, err := scval.Uint64FromScVal(*result)
 	if err != nil {
 		return 0, err
 	}
 	return v, nil
+}
+
+// WaitForConfigSetEvent waits for a ConfigSetEvent event.
+func (c *OnRampClient) WaitForConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ConfigSetEvent) bool) (*ConfigSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ConfigSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseConfigSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &ConfigSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "static_config":
+			// TODO: parse complex type
+		case "dynamic_config":
+			// TODO: parse complex type
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForCCIPMessageSentEvent waits for a CCIPMessageSentEvent event.
+func (c *OnRampClient) WaitForCCIPMessageSentEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*CCIPMessageSentEvent) bool) (*CCIPMessageSentEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{CCIPMessageSentEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseCCIPMessageSentEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseCCIPMessageSentEvent(e protocolrpc.EventInfo) (*CCIPMessageSentEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &CCIPMessageSentEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.DestChainSelector = v
+			}
+		case "sequence_number":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.SequenceNumber = v
+			}
+		case "sender":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Sender = v
+			}
+		case "message_id":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err == nil {
+				result.MessageId = v
+			}
+		case "fee_token":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.FeeToken = v
+			}
+		case "token_amount_before_fees":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err == nil {
+				result.TokenAmountBeforeFees = v
+			}
+		case "encoded_message":
+			v, ok := entry.Val.GetBytes()
+			if ok {
+				result.EncodedMessage = []byte(v)
+			}
+		case "receipts":
+			// TODO: parse complex type
+		case "verifier_blobs":
+			// TODO: parse complex type
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForDestChainConfigSetEvent waits for a DestChainConfigSetEvent event.
+func (c *OnRampClient) WaitForDestChainConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*DestChainConfigSetEvent) bool) (*DestChainConfigSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{DestChainConfigSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseDestChainConfigSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseDestChainConfigSetEvent(e protocolrpc.EventInfo) (*DestChainConfigSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &DestChainConfigSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.DestChainSelector = v
+			}
+		case "message_number":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.MessageNumber = v
+			}
+		case "config":
+			// TODO: parse complex type
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForOwnershipTransferredEvent waits for a OwnershipTransferredEvent event.
+func (c *OnRampClient) WaitForOwnershipTransferredEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferredEvent) bool) (*OwnershipTransferredEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferredEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseOwnershipTransferredEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransferredEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &OwnershipTransferredEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "new_owner":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.NewOwner = v
+			}
+		}
+	}
+
+	return result, nil
 }
 

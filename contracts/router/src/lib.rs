@@ -9,6 +9,8 @@ use soroban_sdk::{
 };
 
 use common_authorization::Ownable;
+use common_interfaces::onramp::OnRampClient;
+use common_interfaces::rmn_proxy::RmnProxyClient;
 use common_message::StellarToAnyMessage;
 use error::RouterError;
 use events::{
@@ -104,7 +106,7 @@ impl RouterContract {
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
 
         // Cross-contract call to OnRamp to get fee
-        let onramp_client = onramp::OnRampContractClient::new(&env, &onramp);
+        let onramp_client = OnRampClient::new(&env, &onramp);
         let fee = onramp_client.get_fee(&dest_chain_selector, &message);
 
         Ok(fee)
@@ -153,7 +155,7 @@ impl RouterContract {
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
 
         // Get fee from OnRamp and validate fee_token_amount >= required_fee
-        let onramp_client = onramp::OnRampContractClient::new(&env, &onramp);
+        let onramp_client = OnRampClient::new(&env, &onramp);
         let required_fee = onramp_client.get_fee(&dest_chain_selector, &message);
         if fee_token_amount < required_fee {
             return Err(RouterError::InsufficientFeeTokenAmount);
@@ -607,7 +609,7 @@ impl RouterContract {
             .ok_or(RouterError::NotInitialized)?;
 
         // Cross-contract call to RMN Proxy to check curse status
-        let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(env, &config.rmn_proxy);
+        let rmn_proxy_client = RmnProxyClient::new(env, &config.rmn_proxy);
         let is_cursed = rmn_proxy_client.is_cursed();
 
         if is_cursed {
