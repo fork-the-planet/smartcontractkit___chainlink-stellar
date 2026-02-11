@@ -19,7 +19,7 @@ func TestOnRamp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, rpcClient, networkPassphrase := helpers.SetupTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _ := helpers.SetupTestEnv(ctx, t)
 
 	t.Run("can deploy onramp contract", func(t *testing.T) {
 		// Deploy the OnRamp contract
@@ -42,8 +42,8 @@ func TestOnRamp(t *testing.T) {
 		t.Logf("Mock contracts - FeeQuoter: %s, FeeAggregator: %s, RMNRemote: %s, TokenAdminRegistry: %s",
 			mockFeeQuoter, mockFeeAggregator, mockRMNRemote, mockTokenAdminRegistry)
 
-		// Create OnRamp client using devenv
-		onRampClient := onrampbindings.NewOnRampClientWithRPC(rpcClient, networkPassphrase, deployerKP, contractID)
+		// Create OnRamp client using the deployer as the Invoker
+		onRampClient := onrampbindings.NewOnRampClient(deployer, contractID)
 
 		// Initialize the OnRamp contract using devenv types
 		t.Log("Initializing OnRamp contract...")

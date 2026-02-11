@@ -33,7 +33,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
-	ccvcodec "github.com/smartcontractkit/chainlink-stellar/ccv/codec"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -82,6 +82,7 @@ type Chain struct {
 	networkPassphrase string
 	sorobanRPCURL     string
 	deployerKeypair   *keypair.Full
+	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
 }
@@ -178,7 +179,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	// 2. Initialize it with proper config
 	// For now, we use the deterministic address and will deploy when WASM is available
 	c.onRampContractID = onRampAddr
-	c.onRampClient = onrampbindings.NewOnRampClientWithRPC(c.rpcClient, c.networkPassphrase, c.deployerKeypair, onRampAddr)
+	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onRampAddr)
 
 	c.logger.Info().
 		Str("onRampAddress", onRampAddr).
@@ -335,6 +336,9 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 		return nil, fmt.Errorf("failed to create deployer keypair: %w", err)
 	}
 	c.deployerKeypair = deployerKP
+
+	// Create the deployer which serves as the common Invoker for contract interactions
+	c.deployer = stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, c.deployerKeypair)
 
 	c.logger.Info().
 		Str("sorobanRPCURL", c.sorobanRPCURL).
@@ -537,11 +541,11 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Msg("Sending CCIP message from Stellar")
 
 	// Build the message
-	message := ccvcodec.StellarToAnyMessage{
+	message := onrampbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: make([]ccvcodec.TokenAmount, 0), // No token transfers for basic test
-		FeeToken:     c.deployerKeypair.Address(),     // Use deployer as fee token placeholder
+		TokenAmounts: make([]onrampbindings.TokenAmount, 0), // No token transfers for basic test
+		FeeToken:     c.deployerKeypair.Address(),           // Use deployer as fee token placeholder
 		ExtraArgs:    []byte{},
 	}
 

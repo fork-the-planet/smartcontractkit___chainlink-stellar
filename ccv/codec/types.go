@@ -2,70 +2,22 @@ package ccvcodec
 
 import (
 	"fmt"
-	"sort"
 
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// OnRampStaticConfig represents the static configuration for the OnRamp contract.
-type OnRampStaticConfig struct {
-	ChainSelector         uint64
-	TokenAdminRegistry    string // Contract address (C...)
-	RMNRemote             string // Contract address (C...)
-	MaxUsdCentsPerMessage uint32
-}
-
-// OnRampDynamicConfig represents the dynamic configuration for the OnRamp contract.
-type OnRampDynamicConfig struct {
-	FeeQuoter     string // Contract address (C...)
-	FeeAggregator string // Contract address (C...)
-}
-
-// DestChainConfig represents the configuration for a destination chain.
-type DestChainConfig struct {
-	Router               string   // Contract address (C...) or account (G...)
-	MessageNumber        uint64   // Last used message number
-	AddressBytesLength   uint32   // e.g., 20 for EVM, 32 for Stellar
-	TokenReceiverAllowed bool     // Whether token receiver is allowed
-	MessageNetworkFeeUsd uint32   // Network fee in USD cents for messages
-	TokenNetworkFeeUsd   uint32   // Network fee in USD cents for tokens
-	BaseExecutionGasCost uint32   // Base gas cost for execution
-	DefaultExecutor      string   // Executor address
-	LaneMandatedCCVs     []string // Lane-mandated CCV addresses
-	DefaultCCVs          []string // Default CCV addresses
-	OffRamp              []byte   // OffRamp address bytes on destination
-}
-
-// DestChainConfigArgs represents arguments for configuring a destination chain.
-type DestChainConfigArgs struct {
-	DestChainSelector    uint64
-	Router               string
-	AddressBytesLength   uint32
-	TokenReceiverAllowed bool
-	MessageNetworkFeeUsd uint32
-	TokenNetworkFeeUsd   uint32
-	BaseExecutionGasCost uint32
-	DefaultExecutor      string
-	LaneMandatedCCVs     []string
-	DefaultCCVs          []string
-	OffRamp              []byte
-}
-
-// StellarToAnyMessage represents a CCIP message from Stellar.
-type StellarToAnyMessage struct {
-	Receiver     []byte        // Raw receiver address bytes
-	Data         []byte        // Arbitrary data payload
-	TokenAmounts []TokenAmount // Token amounts to transfer
-	FeeToken     string        // Fee token address
-	ExtraArgs    []byte        // Extra arguments
-}
-
-// TokenAmount represents a token amount for transfers.
-type TokenAmount struct {
-	Token  string // Token contract address
-	Amount int64  // Amount to transfer (i128 in contract, int64 for Go simplicity)
-}
+// Type aliases -- the bindings types are the source of truth for contract types.
+// These aliases preserve backward compatibility for consumers that reference the codec types.
+type (
+	OnRampStaticConfig  = onrampbindings.StaticConfig
+	OnRampDynamicConfig = onrampbindings.DynamicConfig
+	DestChainConfig     = onrampbindings.DestChainConfig
+	DestChainConfigArgs = onrampbindings.DestChainConfigArgs
+	StellarToAnyMessage = onrampbindings.StellarToAnyMessage
+	TokenAmount         = onrampbindings.TokenAmount
+)
 
 // MessageSentResult contains the result of sending a CCIP message.
 type MessageSentResult struct {
@@ -88,24 +40,7 @@ type CCIPMessageSentEvent struct {
 	TxHash                string
 }
 
-// ToScVal converts OnRampStaticConfig to an xdr.ScVal for contract calls.
-func (c *OnRampStaticConfig) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"chain_selector":            uint64ToScVal(c.ChainSelector),
-		"token_admin_registry":      addressToScVal(c.TokenAdminRegistry),
-		"rmn_remote":                addressToScVal(c.RMNRemote),
-		"max_usd_cents_per_message": uint32ToScVal(c.MaxUsdCentsPerMessage),
-	})
-}
-
-// ToScVal converts OnRampDynamicConfig to an xdr.ScVal for contract calls.
-func (c *OnRampDynamicConfig) ToScVal() (xdr.ScVal, error) {
-	return buildStructScVal(map[string]xdr.ScVal{
-		"fee_quoter":     addressToScVal(c.FeeQuoter),
-		"fee_aggregator": addressToScVal(c.FeeAggregator),
-	})
-}
-
+// ToScVal converts CCIPMessageSentEvent to an xdr.ScVal for contract calls.
 func (c *CCIPMessageSentEvent) ToScVal() (xdr.ScVal, error) {
 	scVal, err := buildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector":      uint64ToScVal(c.DestChainSelector),
@@ -126,58 +61,9 @@ func (c *CCIPMessageSentEvent) ToScVal() (xdr.ScVal, error) {
 	return scVal, nil
 }
 
-// ToScVal converts DestChainConfigArgs to an xdr.ScVal for contract calls.
-func (c *DestChainConfigArgs) ToScVal() (xdr.ScVal, error) {
-	// Convert CCV lists to ScVal vectors
-	laneMandatedScVals := make([]xdr.ScVal, len(c.LaneMandatedCCVs))
-	for i, addr := range c.LaneMandatedCCVs {
-		laneMandatedScVals[i] = addressToScVal(addr)
-	}
-
-	defaultCCVScVals := make([]xdr.ScVal, len(c.DefaultCCVs))
-	for i, addr := range c.DefaultCCVs {
-		defaultCCVScVals[i] = addressToScVal(addr)
-	}
-
-	return buildStructScVal(map[string]xdr.ScVal{
-		"dest_chain_selector":           uint64ToScVal(c.DestChainSelector),
-		"router":                        addressToScVal(c.Router),
-		"address_bytes_length":          uint32ToScVal(c.AddressBytesLength),
-		"token_receiver_allowed":        boolToScVal(c.TokenReceiverAllowed),
-		"message_network_fee_usd_cents": uint32ToScVal(c.MessageNetworkFeeUsd),
-		"token_network_fee_usd_cents":   uint32ToScVal(c.TokenNetworkFeeUsd),
-		"base_execution_gas_cost":       uint32ToScVal(c.BaseExecutionGasCost),
-		"default_executor":              addressToScVal(c.DefaultExecutor),
-		"lane_mandated_ccvs":            vecToScVal(laneMandatedScVals),
-		"default_ccvs":                  vecToScVal(defaultCCVScVals),
-		"off_ramp":                      bytesToScVal(c.OffRamp),
-	})
-}
-
-// ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
-func (m *StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
-	tokenAmountScVals := make([]xdr.ScVal, len(m.TokenAmounts))
-	for i, ta := range m.TokenAmounts {
-		taScVal, err := buildStructScVal(map[string]xdr.ScVal{
-			"token":  addressToScVal(ta.Token),
-			"amount": i128ToScVal(ta.Amount),
-		})
-		if err != nil {
-			return xdr.ScVal{}, err
-		}
-		tokenAmountScVals[i] = taScVal
-	}
-
-	return buildStructScVal(map[string]xdr.ScVal{
-		"receiver":      bytesToScVal(m.Receiver),
-		"data":          bytesToScVal(m.Data),
-		"token_amounts": vecToScVal(tokenAmountScVals),
-		"fee_token":     addressToScVal(m.FeeToken),
-		"extra_args":    bytesToScVal(m.ExtraArgs),
-	})
-}
-
-// Helper functions for ScVal conversions
+// -----------------------------------------------------------------------
+// XDR helper functions used by codec-specific types (CCIPMessageSentEvent)
+// -----------------------------------------------------------------------
 
 func uint64ToScVal(v uint64) xdr.ScVal {
 	xdrU64 := xdr.Uint64(v)
@@ -192,13 +78,6 @@ func uint32ToScVal(v uint32) xdr.ScVal {
 	return xdr.ScVal{
 		Type: xdr.ScValTypeScvU32,
 		U32:  &xdrU32,
-	}
-}
-
-func boolToScVal(v bool) xdr.ScVal {
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvBool,
-		B:    &v,
 	}
 }
 
@@ -244,25 +123,9 @@ func vecToScVal(items []xdr.ScVal) xdr.ScVal {
 	}
 }
 
-func symbolToScVal(sym string) xdr.ScVal {
-	scSym := xdr.ScSymbol(sym)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &scSym,
-	}
-}
-
 func buildStructScVal(fields map[string]xdr.ScVal) (xdr.ScVal, error) {
-	// Soroban requires ScMap keys to be sorted lexicographically
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
 	entries := make([]xdr.ScMapEntry, 0, len(fields))
-	for _, k := range keys {
-		v := fields[k]
+	for k, v := range fields {
 		sym := xdr.ScSymbol(k)
 		entries = append(entries, xdr.ScMapEntry{
 			Key: xdr.ScVal{
@@ -293,8 +156,6 @@ func parseAddress(addr string) *xdr.ScAddress {
 		if err != nil {
 			return nil
 		}
-		// Build ScAddress for contract using MakeScAddress helper if available,
-		// or construct manually. The ContractId field type varies by SDK version.
 		return buildContractScAddress(decoded)
 	}
 
