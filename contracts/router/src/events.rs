@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, Address};
+use soroban_sdk::{contractevent, Address, BytesN};
 
 // ============================================================
 // Events
@@ -39,17 +39,21 @@ pub struct OffRampRemovedEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MessageExecutedEvent {
     /// Message ID
-    pub message_id: soroban_sdk::BytesN<32>,
+    pub message_id: BytesN<32>,
     /// Source chain selector
     pub source_chain_selector: u64,
     /// OffRamp that delivered the message
     pub offramp: Address,
 }
 
-/// Emitted when ownership is transferred.
-#[contractevent(topics = ["router_OwnershipTransferred"])]
+/// Emitted when a CCIP send request is initiated through the Router.
+#[contractevent(topics = ["router_CCIPSendRequested"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OwnershipTransferredEvent {
-    /// New owner address
-    pub new_owner: Address,
+pub struct CCIPSendRequestedEvent {
+    /// Message ID returned by OnRamp
+    pub message_id: BytesN<32>,
+    /// Destination chain selector
+    pub dest_chain_selector: u64,
+    /// Original sender who initiated the request
+    pub sender: Address,
 }

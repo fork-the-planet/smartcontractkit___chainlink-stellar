@@ -33,3 +33,27 @@ pub enum RouterError {
     /// OffRamp already exists for this source chain
     OffRampAlreadyExists = 12,
 }
+
+impl From<common_authorization::AuthError> for RouterError {
+    fn from(e: common_authorization::AuthError) -> Self {
+        match e {
+            common_authorization::AuthError::NotInitialized => RouterError::NotInitialized,
+            _ => RouterError::Unauthorized,
+        }
+    }
+}
+
+impl From<onramp::error::OnRampError> for RouterError {
+    fn from(_e: onramp::error::OnRampError) -> Self {
+        RouterError::OnRampError
+    }
+}
+
+impl From<rmn_proxy::error::RmnProxyError> for RouterError {
+    fn from(e: rmn_proxy::error::RmnProxyError) -> Self {
+        match e {
+            rmn_proxy::error::RmnProxyError::NotInitialized => RouterError::NotInitialized,
+            _ => RouterError::BadRMNSignal,
+        }
+    }
+}

@@ -1,5 +1,5 @@
 [package]
-name = "router"
+name = "rmn_proxy"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -10,10 +10,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-common-message = { workspace = true }
 common-authorization = { workspace = true }
-onramp = { path = "../onramp" }
-rmn_proxy = { path = "../rmn_proxy" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
