@@ -106,6 +106,26 @@ func (c *OnRampDynamicConfig) ToScVal() (xdr.ScVal, error) {
 	})
 }
 
+func (c *CCIPMessageSentEvent) ToScVal() (xdr.ScVal, error) {
+	scVal, err := buildStructScVal(map[string]xdr.ScVal{
+		"dest_chain_selector":      uint64ToScVal(c.DestChainSelector),
+		"sequence_number":          uint64ToScVal(c.SequenceNumber),
+		"sender":                   addressToScVal(c.Sender),
+		"message_id":               bytesToScVal(c.MessageID[:]),
+		"fee_token":                addressToScVal(c.FeeToken),
+		"token_amount_before_fees": i128ToScVal(c.TokenAmountBeforeFees),
+		"encoded_message":          bytesToScVal(c.EncodedMessage),
+		"ledger":                   uint32ToScVal(c.Ledger),
+		"tx_hash":                  bytesToScVal([]byte(c.TxHash)),
+	})
+
+	if err != nil {
+		return xdr.ScVal{}, err
+	}
+
+	return scVal, nil
+}
+
 // ToScVal converts DestChainConfigArgs to an xdr.ScVal for contract calls.
 func (c *DestChainConfigArgs) ToScVal() (xdr.ScVal, error) {
 	// Convert CCV lists to ScVal vectors
