@@ -1,4 +1,4 @@
-package stellar
+package stellar_e2e_tests
 
 import (
 	"encoding/hex"
@@ -54,8 +54,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	}
 	require.NotNil(t, evmChain, "need at least one evm chain for this test")
 
-	// Use custom helper since chain-selectors doesn't support Stellar lookups yet
-	stellarDetails, err := stellar.GetChainDetailsByChainIDForStellar(stellarChain.ChainID)
+	stellarDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(stellarChain.ChainID, chain_selectors.FamilyStellar)
 	require.NoError(t, err)
 
 	evmDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(evmChain.ChainID, chain_selectors.FamilyEVM)
@@ -69,6 +68,11 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	chains, err := lib.ChainsMap(ctx)
 	require.NoError(t, err)
+
+	// add stellar chain to the map
+	stellarChainImpl := stellar.New(l)
+	chains[stellarDetails.ChainSelector] = stellarChainImpl
+
 	destChain := chains[evmDetails.ChainSelector]
 	require.NotNil(t, destChain)
 
@@ -166,8 +170,8 @@ func newStellarToEVMMessage(
 ) protocol.Message {
 	// For testing, we use placeholder addresses
 	// In production, these would come from deployed contracts
-	stellarOnRamp := protocol.UnknownAddress(make([]byte, 32))  // Stellar addresses are 32 bytes
-	evmOffRamp := protocol.UnknownAddress(make([]byte, 20))     // EVM addresses are 20 bytes
+	stellarOnRamp := protocol.UnknownAddress(make([]byte, 32)) // Stellar addresses are 32 bytes
+	evmOffRamp := protocol.UnknownAddress(make([]byte, 20))    // EVM addresses are 20 bytes
 	stellarSender := protocol.UnknownAddress(make([]byte, 32))
 
 	// Placeholder CCV and executor addresses
