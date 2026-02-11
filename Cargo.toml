@@ -7,6 +7,7 @@ members = [
   "contracts/offramp",
   "contracts/pools/*",
   "contracts/registry",
+  "contracts/rmn_proxy",
   "contracts/router",
   "contracts/common/*",
 ]
@@ -15,6 +16,7 @@ members = [
 soroban-sdk = "23"
 common-message = { path = "contracts/common/message" }
 common-guard = { path = "contracts/common/guard" }
+common-authorization = { path = "contracts/common/authorization" }
 
 [profile.release]
 opt-level = "z"

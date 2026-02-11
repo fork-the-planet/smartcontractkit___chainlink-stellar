@@ -1114,10 +1114,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmn_proxy"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "router"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
  "common-message",
+ "onramp",
+ "rmn_proxy",
  "soroban-sdk",
 ]
 
