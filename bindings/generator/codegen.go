@@ -16,7 +16,7 @@ func GenerateTypes(pkg string, contract *Contract) string {
 	// Imports
 	b.WriteString("import (\n")
 	b.WriteString("\t\"fmt\"\n\n")
-	b.WriteString("\t\"github.com/stellar/go-stellar-sdk/strkey\"\n")
+	b.WriteString("\t\"github.com/smartcontractkit/chainlink-stellar/bindings/scval\"\n")
 	b.WriteString("\t\"github.com/stellar/go-stellar-sdk/xdr\"\n")
 	b.WriteString(")\n\n")
 
@@ -35,9 +35,6 @@ func GenerateTypes(pkg string, contract *Contract) string {
 		generateEventStruct(&b, e)
 	}
 
-	// Generate helper functions
-	generateHelpers(&b)
-
 	return b.String()
 }
 
@@ -54,7 +51,7 @@ func generateStruct(b *strings.Builder, s Struct) {
 	// ToScVal method - use value receiver for generics compatibility
 	b.WriteString(fmt.Sprintf("// ToScVal converts %s to an xdr.ScVal for contract calls.\n", s.Name))
 	b.WriteString(fmt.Sprintf("func (s %s) ToScVal() (xdr.ScVal, error) {\n", s.Name))
-	b.WriteString("\treturn buildStructScVal(map[string]xdr.ScVal{\n")
+	b.WriteString("\treturn scval.BuildStructScVal(map[string]xdr.ScVal{\n")
 	for _, f := range s.Fields {
 		converter := getToScValConverter(f.Type, "s."+snakeToPascal(f.Name))
 		b.WriteString(fmt.Sprintf("\t\t\"%s\": %s,\n", f.Name, converter))
@@ -89,7 +86,7 @@ func generateStruct(b *strings.Builder, s Struct) {
 func generateFromScValField(b *strings.Builder, f Field, target string) {
 	switch {
 	case f.Type == "u64":
-		b.WriteString(fmt.Sprintf("\t\t\tv, err := uint64FromScVal(entry.Val)\n"))
+		b.WriteString(fmt.Sprintf("\t\t\tv, err := scval.Uint64FromScVal(entry.Val)\n"))
 		b.WriteString("\t\t\tif err != nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
@@ -101,7 +98,7 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t%s = uint32(v)\n", target))
 	case f.Type == "i128":
-		b.WriteString("\t\t\tv, err := i128FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.I128FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err != nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
@@ -113,7 +110,7 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t%s = v\n", target))
 	case f.Type == "soroban_sdk::Address":
-		b.WriteString("\t\t\tv, err := addressFromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.AddressFromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err != nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
@@ -125,7 +122,7 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t%s = []byte(v)\n", target))
 	case strings.HasPrefix(f.Type, "soroban_sdk::BytesN<"):
-		b.WriteString("\t\t\tv, err := bytes32FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tv, err := scval.Bytes32FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err != nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
@@ -154,7 +151,7 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 func generateVecItemParse(b *strings.Builder, innerType, target string) {
 	switch innerType {
 	case "soroban_sdk::Address":
-		b.WriteString("\t\t\t\tv, err := addressFromScVal(item)\n")
+		b.WriteString("\t\t\t\tv, err := scval.AddressFromScVal(item)\n")
 		b.WriteString("\t\t\t\tif err != nil {\n")
 		b.WriteString("\t\t\t\t\treturn nil, err\n")
 		b.WriteString("\t\t\t\t}\n")
@@ -208,240 +205,6 @@ func generateEventStruct(b *strings.Builder, e Event) {
 	}
 }
 
-func generateHelpers(b *strings.Builder) {
-	b.WriteString(`// Helper functions for ScVal conversions
-
-func uint64ToScVal(v uint64) xdr.ScVal {
-	xdrU64 := xdr.Uint64(v)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvU64,
-		U64:  &xdrU64,
-	}
-}
-
-func uint32ToScVal(v uint32) xdr.ScVal {
-	xdrU32 := xdr.Uint32(v)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvU32,
-		U32:  &xdrU32,
-	}
-}
-
-func boolToScVal(v bool) xdr.ScVal {
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvBool,
-		B:    &v,
-	}
-}
-
-func i128ToScVal(v int64) xdr.ScVal {
-	var hi int64
-	if v < 0 {
-		hi = -1 // Sign extend for negative numbers
-	}
-	lo := uint64(v)
-	parts := xdr.Int128Parts{
-		Hi: xdr.Int64(hi),
-		Lo: xdr.Uint64(lo),
-	}
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvI128,
-		I128: &parts,
-	}
-}
-
-func bytesToScVal(b []byte) xdr.ScVal {
-	bytes := xdr.ScBytes(b)
-	return xdr.ScVal{
-		Type:  xdr.ScValTypeScvBytes,
-		Bytes: &bytes,
-	}
-}
-
-func bytes32ToScVal(b [32]byte) xdr.ScVal {
-	bytes := xdr.ScBytes(b[:])
-	return xdr.ScVal{
-		Type:  xdr.ScValTypeScvBytes,
-		Bytes: &bytes,
-	}
-}
-
-func addressToScVal(addr string) xdr.ScVal {
-	scAddr := parseAddress(addr)
-	return xdr.ScVal{
-		Type:    xdr.ScValTypeScvAddress,
-		Address: scAddr,
-	}
-}
-
-func vecToScVal(items []xdr.ScVal) xdr.ScVal {
-	scVec := xdr.ScVec(items)
-	vecPtr := &scVec
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvVec,
-		Vec:  &vecPtr,
-	}
-}
-
-func symbolToScVal(sym string) xdr.ScVal {
-	scSym := xdr.ScSymbol(sym)
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &scSym,
-	}
-}
-
-func buildStructScVal(fields map[string]xdr.ScVal) (xdr.ScVal, error) {
-	entries := make([]xdr.ScMapEntry, 0, len(fields))
-	for k, v := range fields {
-		sym := xdr.ScSymbol(k)
-		entries = append(entries, xdr.ScMapEntry{
-			Key: xdr.ScVal{
-				Type: xdr.ScValTypeScvSymbol,
-				Sym:  &sym,
-			},
-			Val: v,
-		})
-	}
-	scMap := xdr.ScMap(entries)
-	mapPtr := &scMap
-	return xdr.ScVal{
-		Type: xdr.ScValTypeScvMap,
-		Map:  &mapPtr,
-	}, nil
-}
-
-func parseAddress(addr string) *xdr.ScAddress {
-	if len(addr) == 0 {
-		return nil
-	}
-
-	if addr[0] == 'C' {
-		decoded, err := strkey.Decode(strkey.VersionByteContract, addr)
-		if err != nil {
-			return nil
-		}
-		return buildContractScAddress(decoded)
-	}
-
-	if addr[0] == 'G' {
-		decoded, err := strkey.Decode(strkey.VersionByteAccountID, addr)
-		if err != nil {
-			return nil
-		}
-		var pubKey xdr.Uint256
-		copy(pubKey[:], decoded)
-		accountID := xdr.AccountId{
-			Type:    xdr.PublicKeyTypePublicKeyTypeEd25519,
-			Ed25519: &pubKey,
-		}
-		return &xdr.ScAddress{
-			Type:      xdr.ScAddressTypeScAddressTypeAccount,
-			AccountId: &accountID,
-		}
-	}
-
-	return nil
-}
-
-func buildContractScAddress(contractIDBytes []byte) *xdr.ScAddress {
-	if len(contractIDBytes) != 32 {
-		return nil
-	}
-	xdrBytes := make([]byte, 0, 36)
-	xdrBytes = append(xdrBytes, 0, 0, 0, 1)
-	xdrBytes = append(xdrBytes, contractIDBytes...)
-
-	var addr xdr.ScAddress
-	if err := addr.UnmarshalBinary(xdrBytes); err != nil {
-		return nil
-	}
-	return &addr
-}
-
-func addressFromScVal(val xdr.ScVal) (string, error) {
-	addr, ok := val.GetAddress()
-	if !ok {
-		return "", fmt.Errorf("not an address type: %v", val.Type)
-	}
-
-	switch addr.Type {
-	case xdr.ScAddressTypeScAddressTypeAccount:
-		accountID := addr.MustAccountId()
-		pubKey := accountID.Ed25519
-		if pubKey == nil {
-			return "", fmt.Errorf("account ID has no Ed25519 key")
-		}
-		return strkey.Encode(strkey.VersionByteAccountID, (*pubKey)[:])
-	case xdr.ScAddressTypeScAddressTypeContract:
-		contractID := addr.MustContractId()
-		return strkey.Encode(strkey.VersionByteContract, contractID[:])
-	default:
-		return "", fmt.Errorf("unsupported address type: %s", addr.Type)
-	}
-}
-
-func uint64FromScVal(val xdr.ScVal) (uint64, error) {
-	u64, ok := val.GetU64()
-	if !ok {
-		return 0, fmt.Errorf("not a u64 type: %v", val.Type)
-	}
-	return uint64(u64), nil
-}
-
-func bytes32FromScVal(val xdr.ScVal) ([32]byte, error) {
-	bytes, ok := val.GetBytes()
-	if !ok {
-		return [32]byte{}, fmt.Errorf("not a bytes type: %v", val.Type)
-	}
-	if len(bytes) != 32 {
-		return [32]byte{}, fmt.Errorf("expected 32 bytes, got %d", len(bytes))
-	}
-	var result [32]byte
-	copy(result[:], bytes)
-	return result, nil
-}
-
-func i128FromScVal(val xdr.ScVal) (int64, error) {
-	i128, ok := val.GetI128()
-	if !ok {
-		return 0, fmt.Errorf("not an i128 type: %v", val.Type)
-	}
-	return int64(i128.Lo), nil
-}
-
-// mustToScVal panics if ToScVal returns an error.
-func mustToScVal(val xdr.ScVal, err error) xdr.ScVal {
-	if err != nil {
-		panic(err)
-	}
-	return val
-}
-
-// addressSliceToScVal converts a slice of address strings to xdr.ScVal.
-func addressSliceToScVal(items []string) xdr.ScVal {
-	scVals := make([]xdr.ScVal, len(items))
-	for i, item := range items {
-		scVals[i] = addressToScVal(item)
-	}
-	return vecToScVal(scVals)
-}
-
-// structSliceToScVal converts a slice of structs with ToScVal to xdr.ScVal.
-func structSliceToScVal[T interface{ ToScVal() (xdr.ScVal, error) }](items []T) xdr.ScVal {
-	scVals := make([]xdr.ScVal, len(items))
-	for i := range items {
-		val, err := items[i].ToScVal()
-		if err != nil {
-			panic(err)
-		}
-		scVals[i] = val
-	}
-	return vecToScVal(scVals)
-}
-`)
-}
-
 // Type conversion helpers
 
 func rustTypeToGo(rustType string) string {
@@ -493,33 +256,33 @@ func extractStructName(rustType string) string {
 func getToScValConverter(rustType, expr string) string {
 	switch rustType {
 	case "u64":
-		return fmt.Sprintf("uint64ToScVal(%s)", expr)
+		return fmt.Sprintf("scval.Uint64ToScVal(%s)", expr)
 	case "u32":
-		return fmt.Sprintf("uint32ToScVal(%s)", expr)
+		return fmt.Sprintf("scval.Uint32ToScVal(%s)", expr)
 	case "i128":
-		return fmt.Sprintf("i128ToScVal(%s)", expr)
+		return fmt.Sprintf("scval.I128ToScVal(%s)", expr)
 	case "bool":
-		return fmt.Sprintf("boolToScVal(%s)", expr)
+		return fmt.Sprintf("scval.BoolToScVal(%s)", expr)
 	case "soroban_sdk::Address":
-		return fmt.Sprintf("addressToScVal(%s)", expr)
+		return fmt.Sprintf("scval.AddressToScVal(%s)", expr)
 	case "soroban_sdk::Bytes":
-		return fmt.Sprintf("bytesToScVal(%s)", expr)
+		return fmt.Sprintf("scval.BytesToScVal(%s)", expr)
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
-		return fmt.Sprintf("bytes32ToScVal(%s)", expr)
+		return fmt.Sprintf("scval.Bytes32ToScVal(%s)", expr)
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
 		inner := extractVecInnerType(rustType)
 		if inner == "soroban_sdk::Address" {
-			return fmt.Sprintf("addressSliceToScVal(%s)", expr)
+			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", expr)
 		}
-		return fmt.Sprintf("structSliceToScVal(%s)", expr)
+		return fmt.Sprintf("scval.StructSliceToScVal(%s)", expr)
 	}
 
 	// Struct - call ToScVal
-	return fmt.Sprintf("mustToScVal((%s).ToScVal())", expr)
+	return fmt.Sprintf("scval.MustToScVal((%s).ToScVal())", expr)
 }
 
 func snakeToPascal(s string) string {

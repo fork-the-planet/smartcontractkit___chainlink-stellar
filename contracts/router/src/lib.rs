@@ -8,10 +8,13 @@ use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec,
 };
 
-use common_message::{MessageIdCompute, StellarToAnyMessage};
+use common_authorization::Ownable;
+use common_interfaces::onramp::OnRampClient;
+use common_interfaces::rmn_proxy::RmnProxyClient;
+use common_message::StellarToAnyMessage;
 use error::RouterError;
 use events::{
-    OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent, OwnershipTransferredEvent,
+    CCIPSendRequestedEvent, OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent,
 };
 use types::{OffRampEntry, OnRampEntry, RouterConfig};
 
@@ -19,7 +22,6 @@ use types::{OffRampEntry, OnRampEntry, RouterConfig};
 // Storage Keys
 // ============================================================
 
-const OWNER: Symbol = symbol_short!("OWNER");
 const INITIALIZED: Symbol = symbol_short!("INIT");
 const CONFIG: Symbol = symbol_short!("CONFIG");
 const ONRAMPS: Symbol = symbol_short!("ONRAMPS");
@@ -56,8 +58,8 @@ impl RouterContract {
             return Err(RouterError::AlreadyInitialized);
         }
 
-        // Store owner
-        env.storage().instance().set(&OWNER, &owner);
+        // Initialize owner via shared authorization lib (two-step ownership)
+        Ownable::init(&env, &owner);
 
         // Store config
         let config = RouterConfig { rmn_proxy };
@@ -103,25 +105,26 @@ impl RouterContract {
         // Get OnRamp for destination
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
 
-        // Call OnRamp.get_fee
-        // TODO: Implement cross-contract call to OnRamp
-        // For now, return placeholder
-        let _ = onramp;
-        let _ = message;
-        Ok(0)
+        // Cross-contract call to OnRamp to get fee
+        let onramp_client = OnRampClient::new(&env, &onramp);
+        let fee = onramp_client.get_fee(&dest_chain_selector, &message);
+
+        Ok(fee)
     }
 
     /// Send a cross-chain message via CCIP.
     ///
     /// This is the main entry point for sending CCIP messages. It:
-    /// 1. Checks RMN curse status
-    /// 2. Looks up the OnRamp for the destination chain
-    /// 3. Gets fee quote from OnRamp
-    /// 4. Transfers fee tokens from sender to OnRamp
-    /// 5. Calls forwardFromRouter on OnRamp
-    /// 6. Returns the message ID
+    /// 1. Verifies the sender's authorization
+    /// 2. Checks RMN curse status
+    /// 3. Looks up the OnRamp for the destination chain
+    /// 4. Gets fee quote from OnRamp
+    /// 5. Validates the fee token amount
+    /// 6. Calls forwardFromRouter on OnRamp
+    /// 7. Returns the message ID
     ///
     /// # Arguments
+    /// * `sender` - The original sender of the message (must authorize)
     /// * `dest_chain_selector` - Destination chain identifier
     /// * `message` - The message to send (includes receiver, data, tokens, fee_token, extra_args)
     /// * `fee_token_amount` - Amount of fee tokens to pay
@@ -134,48 +137,50 @@ impl RouterContract {
     /// * `UnsupportedDestinationChain` - If destination is not configured
     /// * `BadRMNSignal` - If the network is cursed
     /// * `InsufficientFeeTokenAmount` - If fee provided is less than required
+    /// * `OnRampError` - If the OnRamp returns an error
     pub fn ccip_send(
         env: Env,
+        sender: Address,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
         fee_token_amount: i128,
     ) -> Result<BytesN<32>, RouterError> {
+        // Verify the sender's identity (Soroban equivalent of EVM's msg.sender)
+        sender.require_auth();
+
         Self::require_initialized(&env)?;
         Self::require_not_cursed(&env)?;
 
         // Get OnRamp for destination
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
 
-        // Get the original sender (caller of this function)
-        let original_sender = env.current_contract_address();
-        // Note: In Soroban, we need to track who called us. The actual sender
-        // would be determined from the authorization context.
+        // Get fee from OnRamp and validate fee_token_amount >= required_fee
+        let onramp_client = OnRampClient::new(&env, &onramp);
+        let required_fee = onramp_client.get_fee(&dest_chain_selector, &message);
+        if fee_token_amount < required_fee {
+            return Err(RouterError::InsufficientFeeTokenAmount);
+        }
 
-        // TODO: Get fee from OnRamp and validate fee_token_amount >= required_fee
-        // let required_fee = Self::get_fee(env.clone(), dest_chain_selector, message.clone())?;
-        // if fee_token_amount < required_fee {
-        //     return Err(RouterError::InsufficientFeeTokenAmount);
-        // }
+        // TODO: Transfer fee tokens from sender to OnRamp.
+        // This requires the sender to have authorized the token transfer as part of
+        // the transaction tree (sub-invocations). Will be implemented when token pool
+        // and fee quoter integration is complete.
 
-        // TODO: Transfer fee tokens from sender to OnRamp
-        // This requires the sender to have authorized the transfer as part of
-        // the transaction tree (sub-invocations).
+        // Call OnRamp.forward_from_router to process the message
+        let message_id = onramp_client.forward_from_router(
+            &dest_chain_selector,
+            &message,
+            &fee_token_amount,
+            &sender,
+        );
 
-        // TODO: Call OnRamp.forward_from_router
-        // let message_id = onramp_client::forward_from_router(
-        //     &env,
-        //     &onramp,
-        //     dest_chain_selector,
-        //     message,
-        //     fee_token_amount,
-        //     original_sender,
-        // );
-
-        // Placeholder: compute message ID from message content
-        let _ = onramp;
-        let _ = fee_token_amount;
-        let _ = original_sender;
-        let message_id = message.compute_message_id(&env);
+        // Emit Router-level event for tracking
+        CCIPSendRequestedEvent {
+            message_id: message_id.clone(),
+            dest_chain_selector,
+            sender,
+        }
+        .publish(&env);
 
         Ok(message_id)
     }
@@ -326,7 +331,7 @@ impl RouterContract {
         onramp: Address,
     ) -> Result<(), RouterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let mut onramps: Map<u64, Address> = env
             .storage()
@@ -358,7 +363,7 @@ impl RouterContract {
         offramp: Address,
     ) -> Result<(), RouterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let mut offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -403,7 +408,7 @@ impl RouterContract {
         offramp: Address,
     ) -> Result<(), RouterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let mut offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -466,7 +471,7 @@ impl RouterContract {
         offramp_adds: Vec<OffRampEntry>,
     ) -> Result<(), RouterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         // Apply OnRamp updates
         let mut onramps: Map<u64, Address> = env
@@ -561,31 +566,28 @@ impl RouterContract {
     }
 
     // ========================================
-    // Owner Management
+    // Owner Management (via common-authorization)
     // ========================================
 
-    /// Transfer ownership to a new address. Only callable by current owner.
+    /// Start ownership transfer to a new address (two-step process).
+    /// The new owner must call `accept_ownership()` to complete the transfer.
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), RouterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::transfer_ownership(&env, &new_owner)?;
+        Ok(())
+    }
 
-        env.storage().instance().set(&OWNER, &new_owner);
-
-        OwnershipTransferredEvent {
-            new_owner: new_owner.clone(),
-        }
-        .publish(&env);
-
+    /// Accept pending ownership transfer. Must be called by the pending new owner.
+    pub fn accept_ownership(env: Env) -> Result<(), RouterError> {
+        Self::require_initialized(&env)?;
+        Ownable::accept_ownership(&env)?;
         Ok(())
     }
 
     /// Get the current owner address.
     pub fn owner(env: Env) -> Result<Address, RouterError> {
         Self::require_initialized(&env)?;
-        env.storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(RouterError::NotInitialized)
+        Ownable::get_owner(&env).ok_or(RouterError::NotInitialized)
     }
 
     // ========================================
@@ -599,16 +601,6 @@ impl RouterContract {
         Ok(())
     }
 
-    fn require_owner(env: &Env) -> Result<(), RouterError> {
-        let owner: Address = env
-            .storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(RouterError::NotInitialized)?;
-        owner.require_auth();
-        Ok(())
-    }
-
     fn require_not_cursed(env: &Env) -> Result<(), RouterError> {
         let config: RouterConfig = env
             .storage()
@@ -616,12 +608,13 @@ impl RouterContract {
             .get(&CONFIG)
             .ok_or(RouterError::NotInitialized)?;
 
-        // TODO: Call RMN proxy to check if cursed
-        // let is_cursed = rmn_client::is_cursed(&env, &config.rmn_proxy);
-        // if is_cursed {
-        //     return Err(RouterError::BadRMNSignal);
-        // }
-        let _ = config;
+        // Cross-contract call to RMN Proxy to check curse status
+        let rmn_proxy_client = RmnProxyClient::new(env, &config.rmn_proxy);
+        let is_cursed = rmn_proxy_client.is_cursed();
+
+        if is_cursed {
+            return Err(RouterError::BadRMNSignal);
+        }
 
         Ok(())
     }

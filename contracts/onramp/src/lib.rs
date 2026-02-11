@@ -1,8 +1,8 @@
 #![no_std]
 
 mod events;
-mod error;
-mod types;
+pub mod error;
+pub mod types;
 
 use soroban_sdk::{
     Address, Bytes, BytesN, Env, Map, Symbol, Vec, contract, contractimpl, symbol_short

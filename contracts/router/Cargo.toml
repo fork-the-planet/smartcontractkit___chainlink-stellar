@@ -11,6 +11,10 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 common-message = { workspace = true }
+common-authorization = { workspace = true }
+common-interfaces = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+onramp = { workspace = true }
+rmn_proxy = { workspace = true }

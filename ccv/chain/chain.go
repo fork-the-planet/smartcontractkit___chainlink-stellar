@@ -32,6 +32,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -80,8 +82,9 @@ type Chain struct {
 	networkPassphrase string
 	sorobanRPCURL     string
 	deployerKeypair   *keypair.Full
-	onRampClient      *OnRampClient // Client for interacting with the OnRamp contract
-	onRampContractID  string        // Contract ID of the deployed OnRamp
+	deployer          *stellardeployment.Deployer
+	onRampClient      *onrampbindings.OnRampClient
+	onRampContractID  string
 }
 
 // New creates a new Stellar Chain instance.
@@ -176,7 +179,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	// 2. Initialize it with proper config
 	// For now, we use the deterministic address and will deploy when WASM is available
 	c.onRampContractID = onRampAddr
-	c.onRampClient = NewOnRampClient(c.rpcClient, c.networkPassphrase, c.deployerKeypair, onRampAddr)
+	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onRampAddr)
 
 	c.logger.Info().
 		Str("onRampAddress", onRampAddr).
@@ -333,6 +336,9 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 		return nil, fmt.Errorf("failed to create deployer keypair: %w", err)
 	}
 	c.deployerKeypair = deployerKP
+
+	// Create the deployer which serves as the common Invoker for contract interactions
+	c.deployer = stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, c.deployerKeypair)
 
 	c.logger.Info().
 		Str("sorobanRPCURL", c.sorobanRPCURL).
@@ -535,41 +541,49 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Msg("Sending CCIP message from Stellar")
 
 	// Build the message
-	message := StellarToAnyMessage{
+	message := onrampbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: make([]TokenAmount, 0),      // No token transfers for basic test
-		FeeToken:     c.deployerKeypair.Address(), // Use deployer as fee token placeholder
+		TokenAmounts: make([]onrampbindings.TokenAmount, 0), // No token transfers for basic test
+		FeeToken:     c.deployerKeypair.Address(),           // Use deployer as fee token placeholder
 		ExtraArgs:    []byte{},
 	}
 
 	// Get the original sender address
 	originalSender := c.deployerKeypair.Address()
 
-	// Call forward_from_router on the OnRamp
-	result, err := c.onRampClient.ForwardFromRouter(ctx, dest, message, 0, originalSender)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message: %w", err)
-	}
+	// TODO: re-enable this to be called via the router instead of directly on the OnRamp
+	// // Call forward_from_router on the OnRamp
+	// result, err := c.onRampClient.ForwardFromRouter(ctx, dest, message, 0, originalSender)
+	// if err != nil {
+	// 	return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message: %w", err)
+	// }
+
+	// c.logger.Info().
+	// 	Str("messageID", hexutil.Encode(result[:])).
+	// 	Msg("CCIP message sent from Stellar")
+
+	// // Build the response
+	// return cciptestinterfaces.MessageSentEvent{
+	// 	MessageID: result,
+	// 	Sender:    protocol.UnknownAddress([]byte(originalSender)),
+	// 	Message: &protocol.Message{
+	// 		Sender:         protocol.UnknownAddress([]byte(originalSender)),
+	// 		SenderLength:   uint8(len(originalSender)),
+	// 		Receiver:       protocol.UnknownAddress(fields.Receiver),
+	// 		ReceiverLength: uint8(len(fields.Receiver)),
+	// 		Data:           protocol.ByteSlice(fields.Data),
+	// 		DataLength:     uint16(len(fields.Data)),
+	// 		Version:        protocol.MessageVersion,
+	// 	},
+	// }, nil
 
 	c.logger.Info().
-		Str("messageID", hexutil.Encode(result.MessageID[:])).
-		Msg("CCIP message sent from Stellar")
+		Str("message", fmt.Sprintf("%+v", message)).
+		Str("originalSender", originalSender).
+		Msg("CCIP message built")
 
-	// Build the response
-	return cciptestinterfaces.MessageSentEvent{
-		MessageID: result.MessageID,
-		Sender:    protocol.UnknownAddress([]byte(originalSender)),
-		Message: &protocol.Message{
-			Sender:         protocol.UnknownAddress([]byte(originalSender)),
-			SenderLength:   uint8(len(originalSender)),
-			Receiver:       protocol.UnknownAddress(fields.Receiver),
-			ReceiverLength: uint8(len(fields.Receiver)),
-			Data:           protocol.ByteSlice(fields.Data),
-			DataLength:     uint16(len(fields.Data)),
-			Version:        protocol.MessageVersion,
-		},
-	}, nil
+	return cciptestinterfaces.MessageSentEvent{}, nil
 }
 
 // SendMessageWithNonce implements cciptestinterfaces.CCIP17.
@@ -607,28 +621,7 @@ func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, tim
 		Dur("timeout", timeout).
 		Msg("Waiting for CCIPMessageSent event from Stellar OnRamp")
 
-	// Wait for the event
-	event, err := c.onRampClient.WaitForMessageSentEvent(ctx, to, seq, timeout)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to wait for event: %w", err)
-	}
+	// TODO: implement - poll for the event
 
-	c.logger.Info().
-		Str("messageID", hexutil.Encode(event.MessageID[:])).
-		Uint64("sequenceNumber", event.SequenceNumber).
-		Msg("Found CCIPMessageSent event")
-
-	// Convert to interface type
-	return cciptestinterfaces.MessageSentEvent{
-		MessageID: event.MessageID,
-		Sender:    protocol.UnknownAddress([]byte(event.Sender)),
-		Message: &protocol.Message{
-			Sender:         protocol.UnknownAddress([]byte(event.Sender)),
-			SenderLength:   uint8(len(event.Sender)),
-			Data:           protocol.ByteSlice(event.EncodedMessage),
-			DataLength:     uint16(len(event.EncodedMessage)),
-			Version:        protocol.MessageVersion,
-			SequenceNumber: protocol.SequenceNumber(event.SequenceNumber),
-		},
-	}, nil
+	return cciptestinterfaces.MessageSentEvent{}, nil
 }

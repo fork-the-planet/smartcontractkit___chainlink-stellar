@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -14,6 +15,9 @@ import (
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
+
+// Compile-time check that Deployer satisfies the common bindings.Invoker interface.
+var _ bindings.Invoker = (*Deployer)(nil)
 
 // Deployer handles Soroban contract deployment and initialization.
 type Deployer struct {
