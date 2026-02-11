@@ -5,74 +5,22 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
-	"github.com/stellar/go-stellar-sdk/keypair"
-	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
+	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// Invoker provides methods to invoke and simulate Soroban contracts.
-type Invoker interface {
-	InvokeContract(ctx context.Context, contractID string, functionName string, args []xdr.ScVal) (*xdr.ScVal, error)
-	SimulateContract(ctx context.Context, contractID string, functionName string, args []xdr.ScVal) (*xdr.ScVal, error)
-	GetEvents(ctx context.Context, contractID string, startLedger uint32, topics []string) ([]protocolrpc.EventInfo, error)
-}
-
-// DefaultInvoker implements Invoker using the Stellar RPC client.
-// Note: You should implement the actual RPC calls in your application.
-type DefaultInvoker struct {
-	rpcClient         *rpcclient.Client
-	networkPassphrase string
-	signer            *keypair.Full
-	accountSequence   int64
-}
-
-// NewDefaultInvoker creates a new DefaultInvoker.
-func NewDefaultInvoker(rpcClient *rpcclient.Client, networkPassphrase string, signer *keypair.Full) *DefaultInvoker {
-	return &DefaultInvoker{
-		rpcClient:         rpcClient,
-		networkPassphrase: networkPassphrase,
-		signer:            signer,
-		accountSequence:   -1,
-	}
-}
-
-// InvokeContract invokes a contract function (placeholder - implement actual RPC call).
-func (d *DefaultInvoker) InvokeContract(ctx context.Context, contractID string, functionName string, args []xdr.ScVal) (*xdr.ScVal, error) {
-	// TODO: Implement actual contract invocation using d.rpcClient
-	return nil, fmt.Errorf("InvokeContract not implemented - use a custom Invoker implementation")
-}
-
-// SimulateContract simulates a contract function (placeholder - implement actual RPC call).
-func (d *DefaultInvoker) SimulateContract(ctx context.Context, contractID string, functionName string, args []xdr.ScVal) (*xdr.ScVal, error) {
-	// TODO: Implement actual contract simulation using d.rpcClient
-	return nil, fmt.Errorf("SimulateContract not implemented - use a custom Invoker implementation")
-}
-
-// GetEvents retrieves contract events (placeholder - implement actual RPC call).
-func (d *DefaultInvoker) GetEvents(ctx context.Context, contractID string, startLedger uint32, topics []string) ([]protocolrpc.EventInfo, error) {
-	// TODO: Implement actual event retrieval using d.rpcClient
-	return nil, fmt.Errorf("GetEvents not implemented - use a custom Invoker implementation")
-}
-
 // OnRampClient provides methods to interact with the OnRamp contract.
 type OnRampClient struct {
-	invoker    Invoker
+	invoker    bindings.Invoker
 	contractID string
 }
 
 // NewOnRampClient creates a new OnRampClient.
-func NewOnRampClient(invoker Invoker, contractID string) *OnRampClient {
+func NewOnRampClient(invoker bindings.Invoker, contractID string) *OnRampClient {
 	return &OnRampClient{
 		invoker:    invoker,
 		contractID: contractID,
 	}
-}
-
-// NewOnRampClientWithRPC creates a new OnRampClient using an RPC client.
-func NewOnRampClientWithRPC(rpcClient *rpcclient.Client, networkPassphrase string, signer *keypair.Full, contractID string) *OnRampClient {
-	invoker := NewDefaultInvoker(rpcClient, networkPassphrase, signer)
-	return NewOnRampClient(invoker, contractID)
 }
 
 // ContractID returns the contract ID.

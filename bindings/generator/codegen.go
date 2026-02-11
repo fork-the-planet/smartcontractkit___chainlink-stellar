@@ -15,7 +15,8 @@ func GenerateTypes(pkg string, contract *Contract) string {
 
 	// Imports
 	b.WriteString("import (\n")
-	b.WriteString("\t\"fmt\"\n\n")
+	b.WriteString("\t\"fmt\"\n")
+	b.WriteString("\t\"sort\"\n\n")
 	b.WriteString("\t\"github.com/stellar/go-stellar-sdk/strkey\"\n")
 	b.WriteString("\t\"github.com/stellar/go-stellar-sdk/xdr\"\n")
 	b.WriteString(")\n\n")
@@ -292,8 +293,16 @@ func symbolToScVal(sym string) xdr.ScVal {
 }
 
 func buildStructScVal(fields map[string]xdr.ScVal) (xdr.ScVal, error) {
+	// Soroban requires ScMap keys to be sorted lexicographically
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	entries := make([]xdr.ScMapEntry, 0, len(fields))
-	for k, v := range fields {
+	for _, k := range keys {
+		v := fields[k]
 		sym := xdr.ScSymbol(k)
 		entries = append(entries, xdr.ScMapEntry{
 			Key: xdr.ScVal{
