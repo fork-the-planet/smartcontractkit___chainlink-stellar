@@ -51,6 +51,5 @@ _gen-interface-%:
 	@echo "──── Generating Rust bindings for $* ────"
 	@mkdir -p $(GENERATED_DIR)/$*
 	stellar contract bindings rust \
-		--wasm $(WASM_DIR)/$*.wasm \
-		--output-dir $(GENERATED_DIR)/$*
+		--wasm $(WASM_DIR)/$*.wasm > $(GENERATED_DIR)/$*/interface.rs
 	@echo "  → $(GENERATED_DIR)/$*/"
