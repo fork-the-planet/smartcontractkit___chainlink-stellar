@@ -15,9 +15,10 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
+	"github.com/rs/zerolog"
+
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
-	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 )
 
 // Compile-time check to ensure we satisfy the chainaccess.SourceReader interface.
@@ -66,7 +67,7 @@ type SourceReader struct {
 	client               RPCClient
 	ccipOnrampAddress    string
 	ccipMessageSentTopic string
-	lggr                 logger.Logger
+	lggr                 *zerolog.Logger
 }
 
 // NewSourceReaderWithClient constructs a Stellar source reader with a RPC client.
@@ -74,7 +75,7 @@ func NewSourceReaderWithClient(
 	client RPCClient,
 	ccipOnrampAddress string,
 	ccipMessageSentTopic string,
-	lggr logger.Logger,
+	lggr *zerolog.Logger,
 ) (*SourceReader, error) {
 	if client == nil {
 		return nil, fmt.Errorf("rpc client is required")
@@ -153,20 +154,21 @@ func (s *SourceReader) FetchMessageSentEvents(ctx context.Context, fromBlock, to
 		// Parse the CCIPMessageSent event
 		msgEvent, err := s.decodeCCIPMessageSentEvent(e)
 		if err != nil {
-			s.lggr.Warnw("Failed to decode CCIPMessageSent event, skipping",
-				"error", err,
-				"ledger", e.Ledger,
-				"txHash", e.TransactionHash,
-			)
+			s.lggr.Warn().
+				Int("ledger", int(e.Ledger)).
+				Str("txHash", e.TransactionHash).
+				Err(err).
+				Msg("Failed to decode CCIPMessageSent event, skipping")
 			continue
 		}
 		results = append(results, *msgEvent)
 	}
 
-	s.lggr.Infow("Fetched CCIPMessageSent events",
-		"fromLedger", fromLedger,
-		"toLedger", toLedger,
-		"count", len(results))
+	s.lggr.Info().
+		Int("fromLedger", int(fromLedger)).
+		Int("toLedger", int(toLedger)).
+		Int("count", len(results)).
+		Msg("Fetched CCIPMessageSent events")
 
 	return results, nil
 }
@@ -231,11 +233,12 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 		}
 	}
 
-	s.lggr.Infow("Decoded CCIPMessageSent event",
-		"destChainSelector", destChainSelector,
-		"sequenceNumber", sequenceNumber,
-		"messageId", hex.EncodeToString(messageID[:]),
-		"ledger", e.Ledger)
+	s.lggr.Info().
+		Uint64("destChainSelector", destChainSelector).
+		Uint64("sequenceNumber", sequenceNumber).
+		Str("messageId", hex.EncodeToString(messageID[:])).
+		Int("ledger", int(e.Ledger)).
+		Msg("Decoded CCIPMessageSent event")
 
 	// Build the Message struct from the encoded message or available data
 	msg := &protocol.Message{
@@ -312,19 +315,19 @@ func (s *SourceReader) FetchTransferEvents(ctx context.Context, fromBlock, toBlo
 		// Decode transfer event: topics=[Symbol, Address(from), Address(to), ...], value=i128
 		transfer, err := decodeTransferEvent(e.TopicXDR, e.ValueXDR)
 		if err != nil {
-			s.lggr.Warnw("Failed to decode transfer event, skipping",
-				"error", err,
-				"ledger", e.Ledger,
-				"txHash", e.TransactionHash,
-			)
+			s.lggr.Warn().
+				Err(err).
+				Int("ledger", int(e.Ledger)).
+				Str("txHash", e.TransactionHash).
+				Msg("Failed to decode transfer event, skipping")
 			continue
 		}
 
 		if e.Ledger < 0 {
-			s.lggr.Warnw("Invalid negative ledger number, skipping",
-				"ledger", e.Ledger,
-				"txHash", e.TransactionHash,
-			)
+			s.lggr.Warn().
+				Int("ledger", int(e.Ledger)).
+				Str("txHash", e.TransactionHash).
+				Msg("Invalid negative ledger number, skipping")
 			continue
 		}
 		transfer.Ledger = uint32(e.Ledger)

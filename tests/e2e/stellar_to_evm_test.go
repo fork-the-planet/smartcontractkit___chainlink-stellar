@@ -3,12 +3,14 @@ package e2e_tests
 import (
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stretchr/testify/require"
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
@@ -21,6 +23,7 @@ import (
 	tests "github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
+	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 )
@@ -155,6 +158,34 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 
 	destChain := chains[evmDetails.ChainSelector]
 	require.NotNil(t, destChain)
+
+	stellarOnRampAddress := configsOutput.Verifier[0].StellarConfigs[fmt.Sprintf("%d", chain_selectors.STELLAR_LOCALNET.Selector)].ReaderConfig.OnRampContractID
+	require.NotEmpty(t, stellarOnRampAddress, "onramp contract address is required")
+
+	// Create Stellar source reader to fetch CCIPMessageSent events
+	// Get the Soroban RPC URL from blockchain output
+	require.NotEmpty(t, stellarChain.Out.Nodes, "stellar chain output must have nodes")
+	stellarRPCURL := stellarChain.Out.Nodes[0].ExternalHTTPUrl
+	require.NotEmpty(t, stellarRPCURL, "stellar RPC URL is required")
+
+	l.Info().
+		Str("stellarOnRampAddress", stellarOnRampAddress).
+		Str("stellarRPCURL", stellarRPCURL).
+		Msg("Found Stellar OnRamp configuration")
+
+	// Create the source reader
+	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
+	t.Cleanup(func() { rpc.Close() })
+
+	stellarSourceReader, err := ccvsourcereader.NewSourceReaderWithClient(
+		rpc,
+		stellarOnRampAddress,
+		"onramp_1_7_CCIPMessageSent", // Event topic from OnRamp contract
+		l,
+	)
+	require.NoError(t, err)
+	l.Info().Msg("Created Stellar source reader")
+	require.NotNil(t, stellarSourceReader)
 
 	t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
 		// Get receiver address on EVM
