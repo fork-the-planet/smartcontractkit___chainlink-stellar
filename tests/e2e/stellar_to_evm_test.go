@@ -1,6 +1,7 @@
 package e2e_tests
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,12 +13,16 @@ import (
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
+	"github.com/smartcontractkit/chainlink-ccv/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/devenv/common"
 	registry "github.com/smartcontractkit/chainlink-ccv/devenv/registry"
+	e2e "github.com/smartcontractkit/chainlink-ccv/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	tests "github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework"
+	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 )
 
 const (
@@ -57,34 +62,6 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	os.Setenv("CTF_CONFIG_OUTPUT", configOutputPath)
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
 	os.Setenv("STELLAR_DEPLOYER_PRIVATE_KEY", "c3636a3c2491503668222f58e783d956703fdcfbaea7e5ac7a384e7f2378969b")
-
-	// // Find Stellar chain
-	// var stellarChain *blockchain.Input
-	// for _, bc := range in.Blockchains {
-	// 	if bc.Type == blockchain.TypeStellar {
-	// 		stellarChain = bc
-	// 		break
-	// 	}
-	// }
-	// require.NotNil(t, stellarChain, "need at least one stellar chain for this test")
-
-	// // Find EVM chain
-	// var evmChain *blockchain.Input
-	// for _, bc := range in.Blockchains {
-	// 	if bc.Type == blockchain.TypeAnvil {
-	// 		evmChain = bc
-	// 		break
-	// 	}
-	// }
-	// require.NotNil(t, evmChain, "need at least one evm chain for this test")
-
-	// stellarDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(stellarChain.ChainID, chain_selectors.FamilyStellar)
-	// require.NoError(t, err)
-	// require.NotNil(t, stellarDetails)
-
-	// evmDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(evmChain.ChainID, chain_selectors.FamilyEVM)
-	// require.NoError(t, err)
-	// require.NotNil(t, evmDetails)
 
 	stellarChainID := "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
 
@@ -144,62 +121,97 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	defaultAggregatorClient := aggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
 	require.NotNil(t, defaultAggregatorClient)
 
-	// t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
-	// 	// Get receiver address on EVM
-	// 	evmReceiver, err := destChain.GetEOAReceiverAddress()
-	// 	require.NoError(t, err)
-	// 	l.Info().Str("evmReceiver", evmReceiver.String()).Msg("Using EVM receiver address")
+	configsOutput, err := ccv.LoadOutput[ccv.Cfg](configOutputPath)
+	require.NoError(t, err)
+	require.NotNil(t, configsOutput)
 
-	// 	// TODO: Once Stellar impl is fully integrated, use the Stellar chain from lib
-	// 	// For now, we'll construct a test message manually similar to Canton test
+	// Find Stellar chain
+	var stellarChain *blockchain.Input
+	for _, bc := range configsOutput.Blockchains {
+		if bc.Type == blockchain.TypeStellar {
+			stellarChain = bc
+			break
+		}
+	}
+	require.NotNil(t, stellarChain, "need at least one stellar chain for this test")
 
-	// 	// Create a test message from Stellar to EVM
-	// 	seqNr := int64(1)
-	// 	msg := newStellarToEVMMessage(
-	// 		t,
-	// 		protocol.ChainSelector(stellarDetails.ChainSelector),
-	// 		protocol.ChainSelector(evmDetails.ChainSelector),
-	// 		seqNr,
-	// 		evmReceiver,
-	// 	)
+	// Find EVM chain
+	var evmChain *blockchain.Input
+	for _, bc := range configsOutput.Blockchains {
+		if bc.Type == blockchain.TypeAnvil {
+			evmChain = bc
+			break
+		}
+	}
+	require.NotNil(t, evmChain, "need at least one evm chain for this test")
 
-	// 	messageID, err := msg.MessageID()
-	// 	require.NoError(t, err)
+	stellarDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(stellarChain.ChainID, chain_selectors.FamilyStellar)
+	require.NoError(t, err)
+	require.NotNil(t, stellarDetails)
 
-	// 	l.Info().
-	// 		Str("messageID", hex.EncodeToString(messageID[:])).
-	// 		Int64("sequenceNumber", seqNr).
-	// 		Msg("Created test message from Stellar to EVM")
+	evmDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(evmChain.ChainID, chain_selectors.FamilyEVM)
+	require.NoError(t, err)
+	require.NotNil(t, evmDetails)
 
-	// 	// Wait for verification through the aggregator
-	// 	testCtx := e2e.NewTestingContext(t, t.Context(), chains, defaultAggregatorClient, indexerMonitor)
-	// 	result, err := testCtx.AssertMessage(msg.MustMessageID(), e2e.AssertMessageOptions{
-	// 		TickInterval:            1 * time.Second,
-	// 		ExpectedVerifierResults: 1, // just committee verifier
-	// 		Timeout:                 tests.WaitTimeout(t),
-	// 		AssertVerifierLogs:      false,
-	// 		AssertExecutorLogs:      false,
-	// 	})
-	// 	require.NoError(t, err)
-	// 	require.NotNil(t, result.AggregatedResult)
-	// 	require.Len(t, result.IndexedVerifications.Results, 1)
+	destChain := chains[evmDetails.ChainSelector]
+	require.NotNil(t, destChain)
 
-	// 	// Wait for execution on EVM
-	// 	ev, err := destChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, uint64(seqNr), tests.WaitTimeout(t))
-	// 	require.NoError(t, err)
-	// 	require.Equalf(
-	// 		t,
-	// 		cciptestinterfaces.ExecutionStateSuccess,
-	// 		ev.State,
-	// 		"message %d should have been successfully executed, return data: %x",
-	// 		seqNr,
-	// 		ev.ReturnData,
-	// 	)
+	t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
+		// Get receiver address on EVM
+		evmReceiver, err := destChain.GetEOAReceiverAddress()
+		require.NoError(t, err)
+		l.Info().Str("evmReceiver", evmReceiver.String()).Msg("Using EVM receiver address")
 
-	// 	l.Info().
-	// 		Str("messageID", hex.EncodeToString(messageID[:])).
-	// 		Msg("Message executed successfully on EVM")
-	// })
+		// TODO: Once Stellar impl is fully integrated, use the Stellar chain from lib
+		// For now, we'll construct a test message manually similar to Canton test
+
+		// Create a test message from Stellar to EVM
+		seqNr := int64(1)
+		msg := newStellarToEVMMessage(
+			t,
+			protocol.ChainSelector(stellarDetails.ChainSelector),
+			protocol.ChainSelector(evmDetails.ChainSelector),
+			seqNr,
+			evmReceiver,
+		)
+
+		messageID, err := msg.MessageID()
+		require.NoError(t, err)
+
+		// l.Info().
+		// 	Str("messageID", hex.EncodeToString(messageID[:])).
+		// 	Int64("sequenceNumber", seqNr).
+		// 	Msg("Created test message from Stellar to EVM")
+
+		// Wait for verification through the aggregator
+		testCtx := e2e.NewTestingContext(t, t.Context(), chains, defaultAggregatorClient, indexerMonitor)
+		result, err := testCtx.AssertMessage(msg.MustMessageID(), e2e.AssertMessageOptions{
+			TickInterval:            1 * time.Second,
+			ExpectedVerifierResults: 1, // just committee verifier
+			Timeout:                 tests.WaitTimeout(t),
+			AssertVerifierLogs:      false,
+			AssertExecutorLogs:      false,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result.AggregatedResult)
+		require.Len(t, result.IndexedVerifications.Results, 1)
+
+		// Wait for execution on EVM
+		ev, err := destChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, uint64(seqNr), tests.WaitTimeout(t))
+		require.NoError(t, err)
+		require.Equalf(
+			t,
+			cciptestinterfaces.ExecutionStateSuccess,
+			ev.State,
+			"message %d should have been successfully executed, return data: %x",
+			seqNr,
+			ev.ReturnData,
+		)
+
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Msg("Message executed successfully on EVM")
+	})
 }
 
 // newStellarToEVMMessage creates a test CCIP message from Stellar to EVM.
