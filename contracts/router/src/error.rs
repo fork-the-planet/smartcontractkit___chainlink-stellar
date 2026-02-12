@@ -33,3 +33,32 @@ pub enum RouterError {
     /// OffRamp already exists for this source chain
     OffRampAlreadyExists = 12,
 }
+
+impl From<common_authorization::AuthError> for RouterError {
+    fn from(e: common_authorization::AuthError) -> Self {
+        match e {
+            common_authorization::AuthError::NotInitialized => RouterError::NotInitialized,
+            _ => RouterError::Unauthorized,
+        }
+    }
+}
+
+// These From impls are gated behind #[cfg(test)] because onramp and rmn_proxy
+// are dev-dependencies only (to avoid WASM export symbol collisions).
+// In production builds, cross-contract errors trap on the callee side.
+#[cfg(test)]
+impl From<onramp::error::OnRampError> for RouterError {
+    fn from(_e: onramp::error::OnRampError) -> Self {
+        RouterError::OnRampError
+    }
+}
+
+#[cfg(test)]
+impl From<rmn_proxy::error::RmnProxyError> for RouterError {
+    fn from(e: rmn_proxy::error::RmnProxyError) -> Self {
+        match e {
+            rmn_proxy::error::RmnProxyError::NotInitialized => RouterError::NotInitialized,
+            _ => RouterError::BadRMNSignal,
+        }
+    }
+}

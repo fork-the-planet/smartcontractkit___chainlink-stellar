@@ -1,4 +1,4 @@
-package stellar_e2e_tests
+package e2e_tests
 
 import (
 	"encoding/hex"
@@ -13,7 +13,6 @@ import (
 	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/devenv/common"
-	"github.com/smartcontractkit/chainlink-ccv/devenv/stellar"
 	"github.com/smartcontractkit/chainlink-ccv/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
@@ -54,6 +53,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	}
 	require.NotNil(t, evmChain, "need at least one evm chain for this test")
 
+	// Use custom helper since chain-selectors doesn't support Stellar lookups yet
 	stellarDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(stellarChain.ChainID, chain_selectors.FamilyStellar)
 	require.NoError(t, err)
 

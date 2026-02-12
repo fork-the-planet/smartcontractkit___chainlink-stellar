@@ -1,22 +1,36 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
+use soroban_sdk::{testutils::Address as _, testutils::Events as _, vec, Address, Bytes, Env, TryIntoVal, Vec};
 
-fn setup_env() -> (Env, Address, Address, Address) {
+// ============================================================
+// Unit Test Helpers
+// ============================================================
+
+fn setup_env() -> (Env, Address, Address, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
 
     let owner = Address::generate(&env);
-    let rmn_proxy = Address::generate(&env);
-    let contract_id = env.register(RouterContract, ());
+    let rmn_proxy_addr = env.register(rmn_proxy::RmnProxyContract, ());
+    let rmn_mock = Address::generate(&env); // Mock RMN Remote address
 
-    (env, contract_id, owner, rmn_proxy)
+    // Initialize the RMN Proxy so it can respond to is_cursed() calls
+    let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_addr);
+    rmn_proxy_client.initialize(&owner, &rmn_mock);
+
+    let router_id = env.register(RouterContract, ());
+
+    (env, router_id, owner, rmn_proxy_addr, rmn_mock)
 }
+
+// ============================================================
+// Unit Tests
+// ============================================================
 
 #[test]
 fn test_initialize() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     // Initialize
@@ -33,7 +47,7 @@ fn test_initialize() {
 #[test]
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_initialize_already_initialized() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     // Initialize twice should fail
@@ -43,7 +57,7 @@ fn test_initialize_already_initialized() {
 
 #[test]
 fn test_set_onramp() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -61,7 +75,7 @@ fn test_set_onramp() {
 
 #[test]
 fn test_add_remove_offramp() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -91,7 +105,7 @@ fn test_add_remove_offramp() {
 #[test]
 #[should_panic(expected = "Error(Contract, #12)")]
 fn test_add_duplicate_offramp() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -107,7 +121,7 @@ fn test_add_duplicate_offramp() {
 #[test]
 #[should_panic(expected = "Error(Contract, #8)")]
 fn test_remove_nonexistent_offramp() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -121,7 +135,7 @@ fn test_remove_nonexistent_offramp() {
 
 #[test]
 fn test_apply_ramp_updates() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -167,24 +181,30 @@ fn test_apply_ramp_updates() {
 }
 
 #[test]
-fn test_transfer_ownership() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+fn test_transfer_ownership_two_step() {
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
 
     let new_owner = Address::generate(&env);
 
-    // Transfer ownership
+    // Step 1: Initiate transfer
     client.transfer_ownership(&new_owner);
 
-    // Verify new owner
+    // Owner should still be the original owner until accepted
+    assert_eq!(client.owner(), owner);
+
+    // Step 2: Accept transfer
+    client.accept_ownership();
+
+    // Now the new owner should be set
     assert_eq!(client.owner(), new_owner);
 }
 
 #[test]
 fn test_get_onramps() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
@@ -201,11 +221,205 @@ fn test_get_onramps() {
 
 #[test]
 fn test_is_chain_supported_false() {
-    let (env, contract_id, owner, rmn_proxy) = setup_env();
+    let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
 
     client.initialize(&owner, &rmn_proxy);
 
     // Non-configured chain should not be supported
     assert!(!client.is_chain_supported(&999));
+}
+
+// ============================================================
+// Integration Test: Full ccip_send flow
+// Router -> RMN Proxy (curse check) -> OnRamp (forward_from_router)
+// ============================================================
+
+#[test]
+fn test_ccip_send_full_flow() {
+    use onramp::types::{DestChainConfigArgs, DynamicConfig, StaticConfig};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let owner = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let rmn_mock = Address::generate(&env);
+
+    // ---- Deploy all three contracts ----
+    let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
+    let router_id = env.register(RouterContract, ());
+    let onramp_id = env.register(onramp::OnRampContract, ());
+
+    // ---- Initialize RMN Proxy ----
+    let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
+    rmn_proxy_client.initialize(&owner, &rmn_mock);
+
+    // ---- Initialize Router ----
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy_id);
+
+    // ---- Initialize OnRamp ----
+    let stellar_chain_selector: u64 = 12345;
+    let evm_chain_selector: u64 = 67890;
+
+    let static_config = StaticConfig {
+        chain_selector: stellar_chain_selector,
+        token_admin_registry: Address::generate(&env),
+        rmn_remote: rmn_mock.clone(),
+        max_usd_cents_per_message: 100_000,
+    };
+
+    let dynamic_config = DynamicConfig {
+        fee_quoter: Address::generate(&env),
+        fee_aggregator: Address::generate(&env),
+    };
+
+    let onramp_client = onramp::OnRampContractClient::new(&env, &onramp_id);
+    onramp_client.initialize(&owner, &static_config, &dynamic_config);
+
+    // ---- Configure OnRamp's dest chain config with Router as the authorized caller ----
+    let dest_chain_config = DestChainConfigArgs {
+        dest_chain_selector: evm_chain_selector,
+        router: router_id.clone(), // Router must be the caller for forward_from_router
+        address_bytes_length: 20,  // EVM-style addresses
+        token_receiver_allowed: true,
+        message_network_fee_usd_cents: 50,
+        token_network_fee_usd_cents: 100,
+        base_execution_gas_cost: 200_000,
+        default_executor: Address::generate(&env),
+        lane_mandated_ccvs: Vec::new(&env),
+        default_ccvs: vec![&env, Address::generate(&env)],
+        off_ramp: Bytes::from_array(&env, &[0u8; 20]),
+    };
+
+    onramp_client.apply_dest_chain_config_updates(&vec![&env, dest_chain_config]);
+
+    // ---- Register OnRamp in Router for the EVM destination chain ----
+    router_client.set_onramp(&evm_chain_selector, &onramp_id);
+
+    // ---- Build a CCIP message ----
+    let message = common_message::StellarToAnyMessage {
+        receiver: Bytes::from_array(&env, &[1u8; 20]),
+        data: Bytes::from_slice(&env, b"hello from stellar"),
+        token_amounts: Vec::new(&env),
+        fee_token: Address::generate(&env),
+        extra_args: Bytes::new(&env),
+    };
+
+    // ---- Send the message via Router ----
+    let message_id = router_client.ccip_send(
+        &sender,
+        &evm_chain_selector,
+        &message,
+        &0i128,
+    );
+
+    // ---- Verify message ID is non-zero (32 bytes) ----
+    let zero_hash = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
+    assert_ne!(message_id, zero_hash, "Message ID should not be all zeros");
+
+    // TODO: Event verification temporarily disabled pending soroban-sdk v25
+    // ContractEvents API migration (iter() removed). Re-enable once the
+    // events iteration API is updated for SDK v25.
+}
+
+#[test]
+fn test_ccip_send_unsupported_chain() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let owner = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let rmn_mock = Address::generate(&env);
+
+    let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
+    let router_id = env.register(RouterContract, ());
+
+    let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
+    rmn_proxy_client.initialize(&owner, &rmn_mock);
+
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy_id);
+
+    // No OnRamp configured for chain 999
+    let message = common_message::StellarToAnyMessage {
+        receiver: Bytes::from_array(&env, &[1u8; 20]),
+        data: Bytes::new(&env),
+        token_amounts: Vec::new(&env),
+        fee_token: Address::generate(&env),
+        extra_args: Bytes::new(&env),
+    };
+
+    // Should panic with UnsupportedDestinationChain (error #4)
+    let result = router_client.try_ccip_send(&sender, &999u64, &message, &0i128);
+    assert!(result.is_err(), "Should fail for unsupported chain");
+}
+
+#[test]
+fn test_get_fee_via_onramp() {
+    use onramp::types::{DestChainConfigArgs, DynamicConfig, StaticConfig};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let owner = Address::generate(&env);
+    let rmn_mock = Address::generate(&env);
+
+    let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
+    let router_id = env.register(RouterContract, ());
+    let onramp_id = env.register(onramp::OnRampContract, ());
+
+    let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
+    rmn_proxy_client.initialize(&owner, &rmn_mock);
+
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy_id);
+
+    let onramp_client = onramp::OnRampContractClient::new(&env, &onramp_id);
+    onramp_client.initialize(
+        &owner,
+        &StaticConfig {
+            chain_selector: 12345,
+            token_admin_registry: Address::generate(&env),
+            rmn_remote: rmn_mock.clone(),
+            max_usd_cents_per_message: 100_000,
+        },
+        &DynamicConfig {
+            fee_quoter: Address::generate(&env),
+            fee_aggregator: Address::generate(&env),
+        },
+    );
+
+    let dest_chain: u64 = 67890;
+    onramp_client.apply_dest_chain_config_updates(&vec![
+        &env,
+        DestChainConfigArgs {
+            dest_chain_selector: dest_chain,
+            router: router_id.clone(),
+            address_bytes_length: 20,
+            token_receiver_allowed: true,
+            message_network_fee_usd_cents: 50,
+            token_network_fee_usd_cents: 100,
+            base_execution_gas_cost: 200_000,
+            default_executor: Address::generate(&env),
+            lane_mandated_ccvs: Vec::new(&env),
+            default_ccvs: vec![&env, Address::generate(&env)],
+            off_ramp: Bytes::from_array(&env, &[0u8; 20]),
+        },
+    ]);
+
+    router_client.set_onramp(&dest_chain, &onramp_id);
+
+    let message = common_message::StellarToAnyMessage {
+        receiver: Bytes::from_array(&env, &[1u8; 20]),
+        data: Bytes::new(&env),
+        token_amounts: Vec::new(&env),
+        fee_token: Address::generate(&env),
+        extra_args: Bytes::new(&env),
+    };
+
+    // get_fee should return 0 (OnRamp's placeholder)
+    let fee = router_client.get_fee(&dest_chain, &message);
+    assert_eq!(fee, 0);
 }

@@ -8,5 +8,8 @@ context/
 .soroban
 .stellar
 
+# Generated reference bindings (from `make generate-interfaces`)
+generated/
+
 # Misc
 .DS_Store
