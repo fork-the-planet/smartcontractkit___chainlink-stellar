@@ -2,32 +2,22 @@ package e2e_tests
 
 import (
 	"encoding/hex"
-	"fmt"
 	"math/big"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
-	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stretchr/testify/require"
 
-	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
-	devenvcommon "github.com/smartcontractkit/chainlink-ccv/devenv/common"
-	registry "github.com/smartcontractkit/chainlink-ccv/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
-	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework"
-	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 )
 
 const (
@@ -77,143 +67,13 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	ctx := ccv.Plog.WithContext(t.Context())
 	l := zerolog.Ctx(ctx)
 
-	// Register the Stellar chain adapter by using the EVM adapter as a base
-	global_family_registry := registry.GetGlobalChainFamilyAdapterRegistry()
-	evm_adapter, ok := global_family_registry.GetChainFamily(chain_selectors.FamilyEVM)
-	require.True(t, ok)
-	require.NotNil(t, evm_adapter)
-
-	stellar_adapter := ccvchain.NewChainFamilyAdapter(evm_adapter)
-	global_family_registry.RegisterChainFamily(chain_selectors.FamilyStellar, stellar_adapter)
-
-	// Register the Stellar chain implementation
-	registry.GetGlobalChainImplRegistry().
-		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout)))
-
-	in, err := ccv.NewEnvironment()
-	require.NoError(t, err)
-
-	// Load EVM chain for destination interactions
-	lib, err := ccv.NewLib(l, configOutputPath, chain_selectors.FamilyEVM)
-	require.NoError(t, err)
-	chains, err := lib.ChainsMap(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, chains)
-
-	// Set up aggregator client
-	var indexerMonitor *ccv.IndexerMonitor
-	indexerClient, err := lib.Indexer()
-	require.NoError(t, err)
-	indexerMonitor, err = ccv.NewIndexerMonitor(
-		zerolog.Ctx(ctx).With().Str("component", "indexer-client").Logger(),
-		indexerClient)
-	require.NoError(t, err)
-	require.NotNil(t, indexerMonitor)
-
-	aggregatorClients := make(map[string]*ccv.AggregatorClient)
-	for qualifier := range in.AggregatorEndpoints {
-		client, err := in.NewAggregatorClientForCommittee(
-			zerolog.Ctx(ctx).With().Str("component", fmt.Sprintf("aggregator-client-%s", qualifier)).Logger(),
-			qualifier)
-		require.NoError(t, err)
-		require.NotNil(t, client)
-		aggregatorClients[qualifier] = client
-		t.Cleanup(func() {
-			client.Close()
-		})
-	}
-	defaultAggregatorClient := aggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
-	require.NotNil(t, defaultAggregatorClient)
-
-	configsOutput, err := ccv.LoadOutput[ccv.Cfg](configOutputPath)
-	require.NoError(t, err)
-	require.NotNil(t, configsOutput)
-
-	// Find Stellar chain
-	var stellarChain *blockchain.Input
-	for _, bc := range configsOutput.Blockchains {
-		if bc.Type == blockchain.TypeStellar {
-			stellarChain = bc
-			break
-		}
-	}
-	require.NotNil(t, stellarChain, "need at least one stellar chain for this test")
-
-	// Find EVM chain
-	var evmChain *blockchain.Input
-	for _, bc := range configsOutput.Blockchains {
-		if bc.Type == blockchain.TypeAnvil {
-			evmChain = bc
-			break
-		}
-	}
-	require.NotNil(t, evmChain, "need at least one evm chain for this test")
-
-	stellarDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(stellarChain.ChainID, chain_selectors.FamilyStellar)
-	require.NoError(t, err)
-	require.NotNil(t, stellarDetails)
-
-	evmDetails, err := chain_selectors.GetChainDetailsByChainIDAndFamily(evmChain.ChainID, chain_selectors.FamilyEVM)
-	require.NoError(t, err)
-	require.NotNil(t, evmDetails)
-
-	destChain := chains[evmDetails.ChainSelector]
-	require.NotNil(t, destChain)
-
-	// =========================================================================
-	// Deploy and initialize a real OnRamp contract on the Stellar local network
-	// =========================================================================
-
-	// Get Stellar network configuration from the environment output
-	require.NotEmpty(t, stellarChain.Out.Nodes, "stellar chain output must have nodes")
-	stellarRPCURL := stellarChain.Out.Nodes[0].ExternalHTTPUrl
-	require.NotEmpty(t, stellarRPCURL, "stellar RPC URL is required")
-	networkPassphrase := stellarChain.Out.NetworkSpecificData.StellarNetwork.NetworkPassphrase
-	require.NotEmpty(t, networkPassphrase, "network passphrase is required")
-	friendbotURL := stellarChain.Out.NetworkSpecificData.StellarNetwork.FriendbotURL
-	require.NotEmpty(t, friendbotURL, "friendbot URL is required")
-
-	l.Info().
-		Str("stellarRPCURL", stellarRPCURL).
-		Str("networkPassphrase", networkPassphrase).
-		Str("friendbotURL", friendbotURL).
-		Msg("Stellar network configuration")
-
-	// Create deployer keypair from the environment variable
-	deployerPrivKeyHex := os.Getenv("STELLAR_DEPLOYER_PRIVATE_KEY")
-	require.NotEmpty(t, deployerPrivKeyHex, "STELLAR_DEPLOYER_PRIVATE_KEY env var is required")
-	seedBytes, err := hex.DecodeString(deployerPrivKeyHex)
-	require.NoError(t, err)
-	var seed [32]byte
-	copy(seed[:], seedBytes)
-	deployerKP, err := keypair.FromRawSeed(seed)
-	require.NoError(t, err)
-	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Created deployer keypair")
-
-	// Create Soroban RPC client
-	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
-	t.Cleanup(func() { rpc.Close() })
-
-	// Fund deployer account via Friendbot
-	l.Info().Msg("Funding deployer via Friendbot...")
-	faucetURL := fmt.Sprintf("%s?addr=%s", friendbotURL, deployerKP.Address())
-	require.Eventually(t, func() bool {
-		resp, httpErr := http.Get(faucetURL)
-		if httpErr != nil {
-			l.Debug().Err(httpErr).Msg("Friendbot request failed, retrying...")
-			return false
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			l.Debug().Int("status", resp.StatusCode).Msg("Friendbot not ready, retrying...")
-			return false
-		}
-		return true
-	}, 3*time.Minute, 5*time.Second, "failed to fund deployer via Friendbot")
-	l.Info().Msg("Deployer funded successfully")
-
-	// Create the Deployer (implements bindings.Invoker) for contract interactions
-	deployer := stellardeployment.NewDeployer(rpc, networkPassphrase, deployerKP)
+	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID)
+	deployer := env.Deployer
+	deployerKP := env.DeployerKP
+	rpc := env.RPCClient
+	stellarDetails := env.SourceChainDetails
+	evmDetails := env.DestChainDetails
+	destChain := env.DestChain
 
 	// Locate the compiled OnRamp WASM
 	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../.."))
