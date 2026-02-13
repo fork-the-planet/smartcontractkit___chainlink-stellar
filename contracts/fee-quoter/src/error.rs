@@ -46,8 +46,64 @@ pub enum FeeQuoterError {
     InvalidDestBytesOverhead = 18,
     /// Caller is not an authorized price updater
     CallerNotAuthorized = 19,
-    /// Price updater already exists
+    /// Authorized caller already exists
     AuthorizedCallerAlreadyExists = 20,
-    /// Price updater not found
+    /// Authorized caller not found
     AuthorizedCallerNotFound = 21,
+    /// No pending ownership transfer
+    NoPendingOwner = 22,
+    /// Reentrancy guard triggered
+    ReentrancyGuardReentrantCall = 23,
+    /// Authorization feature not enabled
+    AuthFeatureNotEnabled = 24,
+    /// Invalid token amount in message
+    InvalidTokenAmount = 25,
+    /// Invalid receiver address in message
+    InvalidReceiverAddress = 26,
+}
+
+// ============================================================
+// Error conversions from common libraries
+// ============================================================
+
+impl From<common_authorization::AuthError> for FeeQuoterError {
+    fn from(error: common_authorization::AuthError) -> Self {
+        match error {
+            common_authorization::AuthError::NotInitialized => FeeQuoterError::NotInitialized,
+            common_authorization::AuthError::Unauthorized => FeeQuoterError::Unauthorized,
+            common_authorization::AuthError::NotOwner => FeeQuoterError::Unauthorized,
+            common_authorization::AuthError::NoPendingOwner => FeeQuoterError::NoPendingOwner,
+            common_authorization::AuthError::CallerNotAuthorized => {
+                FeeQuoterError::CallerNotAuthorized
+            }
+            common_authorization::AuthError::CallerAlreadyAuthorized => {
+                FeeQuoterError::AuthorizedCallerAlreadyExists
+            }
+            common_authorization::AuthError::CallerNotFound => {
+                FeeQuoterError::AuthorizedCallerNotFound
+            }
+            common_authorization::AuthError::FeatureNotEnabled => {
+                FeeQuoterError::AuthFeatureNotEnabled
+            }
+            // Role-based errors are not used by FeeQuoter, map to generic Unauthorized
+            _ => FeeQuoterError::Unauthorized,
+        }
+    }
+}
+
+impl From<common_guard::GuardError> for FeeQuoterError {
+    fn from(error: common_guard::GuardError) -> Self {
+        match error {
+            common_guard::GuardError::ReentrantCall => FeeQuoterError::ReentrancyGuardReentrantCall,
+        }
+    }
+}
+
+impl From<common_message::Error> for FeeQuoterError {
+    fn from(error: common_message::Error) -> Self {
+        match error {
+            common_message::Error::InvalidTokenAmount => FeeQuoterError::InvalidTokenAmount,
+            common_message::Error::InvalidReceiverAddress => FeeQuoterError::InvalidReceiverAddress,
+        }
+    }
 }

@@ -93,27 +93,3 @@ pub struct DestChainConfigUpdatedEvent {
     /// Max data bytes.
     pub max_data_bytes: u32,
 }
-
-/// Emitted when an authorized caller is added.
-#[contractevent(topics = ["fq_AuthCallerAdded"])]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AuthorizedCallerAddedEvent {
-    /// Caller address.
-    pub caller: Address,
-}
-
-/// Emitted when an authorized caller is removed.
-#[contractevent(topics = ["fq_AuthCallerRemoved"])]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AuthorizedCallerRemovedEvent {
-    /// Caller address.
-    pub caller: Address,
-}
-
-/// Emitted when ownership is transferred.
-#[contractevent(topics = ["fq_OwnershipTransferred"])]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OwnershipTransferredEvent {
-    /// New owner address.
-    pub new_owner: Address,
-}

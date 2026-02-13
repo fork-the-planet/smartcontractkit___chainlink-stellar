@@ -130,6 +130,104 @@
     ],
     [
       [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+              "function_name": "update_prices",
+              "args": [
+                {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "gas_price_updates"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "dest_chain_selector"
+                                },
+                                "val": {
+                                  "u64": "1"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "usd_per_unit_gas"
+                                },
+                                "val": {
+                                  "u128": "100000000000000"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "token_price_updates"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "token"
+                                },
+                                "val": {
+                                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "usd_per_token"
+                                },
+                                "val": {
+                                  "u128": "15000000000000000000"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "token"
+                                },
+                                "val": {
+                                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "usd_per_token"
+                                },
+                                "val": {
+                                  "u128": "1000000000000000000"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
         {
           "function": {
@@ -168,7 +266,7 @@
                                   "symbol": "fee_usd_cents"
                                 },
                                 "val": {
-                                  "u32": 100
+                                  "u32": 5000
                                 }
                               },
                               {
@@ -212,49 +310,7 @@
         }
       ]
     ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
-              "function_name": "apply_token_fee_configs",
-              "args": [
-                {
-                  "vec": []
-                },
-                {
-                  "vec": [
-                    {
-                      "map": [
-                        {
-                          "key": {
-                            "symbol": "dest_chain_selector"
-                          },
-                          "val": {
-                            "u64": "1"
-                          }
-                        },
-                        {
-                          "key": {
-                            "symbol": "token"
-                          },
-                          "val": {
-                            "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
+    [],
     []
   ],
   "ledger": {
@@ -313,7 +369,7 @@
           "data": {
             "contract_data": {
               "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
               "key": {
                 "ledger_key_nonce": {
                   "nonce": "5541220902715666415"
@@ -455,7 +511,14 @@
               },
               "durability": "persistent",
               "val": {
-                "vec": []
+                "vec": [
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  },
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                  }
+                ]
               }
             }
           },
@@ -475,7 +538,33 @@
               },
               "durability": "persistent",
               "val": {
-                "map": []
+                "map": [
+                  {
+                    "key": {
+                      "u64": "1"
+                    },
+                    "val": {
+                      "map": [
+                        {
+                          "key": {
+                            "symbol": "timestamp"
+                          },
+                          "val": {
+                            "u64": "1000"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "value"
+                          },
+                          "val": {
+                            "u128": "100000000000000"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
               }
             }
           },
@@ -495,7 +584,54 @@
               },
               "durability": "persistent",
               "val": {
-                "vec": []
+                "vec": [
+                  {
+                    "vec": [
+                      {
+                        "u64": "1"
+                      },
+                      {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                      },
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "dest_bytes_overhead"
+                            },
+                            "val": {
+                              "u32": 64
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "dest_gas_overhead"
+                            },
+                            "val": {
+                              "u32": 75000
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "fee_usd_cents"
+                            },
+                            "val": {
+                              "u32": 5000
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "is_enabled"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           },
@@ -515,7 +651,58 @@
               },
               "durability": "persistent",
               "val": {
-                "map": []
+                "map": [
+                  {
+                    "key": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    "val": {
+                      "map": [
+                        {
+                          "key": {
+                            "symbol": "timestamp"
+                          },
+                          "val": {
+                            "u64": "1000"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "value"
+                          },
+                          "val": {
+                            "u128": "15000000000000000000"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "key": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                    },
+                    "val": {
+                      "map": [
+                        {
+                          "key": {
+                            "symbol": "timestamp"
+                          },
+                          "val": {
+                            "u64": "1000"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "value"
+                          },
+                          "val": {
+                            "u128": "1000000000000000000"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
               }
             }
           },
