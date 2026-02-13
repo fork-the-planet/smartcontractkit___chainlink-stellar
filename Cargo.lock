@@ -297,7 +297,6 @@ name = "common-interfaces"
 version = "0.0.0"
 dependencies = [
  "common-message",
- "fee-quoter",
  "soroban-sdk",
 ]
 

@@ -11,4 +11,3 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 common-message = { workspace = true }
-fee-quoter = { workspace = true }
