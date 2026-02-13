@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	stellar_devenv "github.com/smartcontractkit/chainlink-ccv/devenv/stellar"
+	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
 )
@@ -41,7 +41,7 @@ func FindProjectRoot(t *testing.T) string {
 // generateMockContractID generates a deterministic mock contract ID for testing.
 func GenerateMockContractID(t *testing.T, deployerAddress, contractName string) string {
 	// Generate a deterministic salt
-	salt := stellar_devenv.GenerateDeterministicSalt(deployerAddress, contractName)
+	salt := deployment.GenerateDeterministicSalt(deployerAddress, contractName)
 
 	// Encode as a Stellar contract address
 	encoded, err := strkey.Encode(strkey.VersionByteContract, salt[:])

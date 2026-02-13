@@ -1,0 +1,693 @@
+token_verifier = []
+nodesets = []
+cl_nodes_funding_eth = 50.0
+cl_nodes_funding_link = 50.0
+indexer_endpoint = 'http://localhost:8104'
+indexer_internal_endpoint = 'http://indexer:8104'
+
+[cldf]
+addresses = ['[{"address":"0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"CREATE2Factory","version":"1.7.0"},{"address":"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"WETH9","version":"1.0.0"},{"address":"0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"LinkToken","version":"1.0.0"},{"address":"0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"RMNRemote","version":"1.6.0"},{"address":"0x5FC8d32690cc91D4c39d9d3abcBD16989F875707","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"ARMProxy","version":"1.0.0"},{"address":"0xa513E6E4b8f2a923D98304ec87F64353C4D5C853","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"Router","version":"1.2.0"},{"address":"0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"TokenAdminRegistry","version":"1.5.0"},{"address":"0x8A791620dd6260079BF849Dc5567aDC3F2FdC318","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"RegistryModuleOwnerCustom","version":"1.6.0"},{"address":"0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"FeeQuoter","version":"1.7.0"},{"address":"0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"OffRamp","version":"1.7.0"},{"address":"0x9A676e781A523b5d0C0e43731313A708CB607508","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"OnRamp","version":"1.7.0"},{"address":"0x0B306BF915C4d645ff596e518fAf3F9669b97016","chainSelector":3379446385462418246,"labels":[],"qualifier":"default","type":"CommitteeVerifier","version":"1.7.0"},{"address":"0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA","chainSelector":3379446385462418246,"labels":[],"qualifier":"default","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x68B1D87F95878fE05B998F19b66F4baba5De1aed","chainSelector":3379446385462418246,"labels":[],"qualifier":"default","type":"Executor","version":"1.7.0"},{"address":"0x3Aa5ebB10DC797CAC828524e59A333d0A371443c","chainSelector":3379446385462418246,"labels":[],"qualifier":"default","type":"ExecutorProxy","version":"1.7.0"},{"address":"0xc6e7DF5E7b4f2A278906862b61205850344D4e7d","chainSelector":3379446385462418246,"labels":[],"qualifier":"custom","type":"Executor","version":"1.7.0"},{"address":"0x59b670e9fA9D0A427751Af201D676719a970857b","chainSelector":3379446385462418246,"labels":[],"qualifier":"custom","type":"ExecutorProxy","version":"1.7.0"},{"address":"0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1","chainSelector":3379446385462418246,"labels":[],"qualifier":"default","type":"MockReceiver","version":"1.7.0"},{"address":"0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0xf5059a5D33d5853360D16C683c16e67980206f36","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x998abeb3E57409262aE5b751f60747921B33613E","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x95401dc811bb5740090279Ba06cfA8fcF6113778","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0x9d4454B023096f34B160D6B654540c56A1F81688","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x36C02dA8a0983159322a80FFE9F24b1acfF8B570","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0xCD8a1C3ba11CF5ECfa6267617243239504a98d90","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x2bdCC0de6bE1f7D2ee689a0342D76F52E8EFABa3","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x82e01223d51Eb87e16A03E24687EDF0F294da6f1","chainSelector":3379446385462418246,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0x1429859428C0aBc9C2C47C8Ee9FBaf82cFA0F20f","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"MockE2EUSDCTransmitter","version":"1.0.0"},{"address":"0x162A433068F51e18b7d13932F27e66a3f99E6890","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"MockE2EUSDCTokenMessenger","version":"1.0.0"},{"address":"0x04C89607413713Ec9775E14b954286519d836FEf","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"CCTPMessageTransmitterProxy","version":"1.7.0"},{"address":"0x4C4a2f8c81640e47606d3fd77B353E87Ba015584","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"CCTPVerifier","version":"1.7.0"},{"address":"0x8aD838baa6bb943E893730eB1d7cC5589F17BD01","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"CCTPVerifierResolver","version":"1.7.0"},{"address":"0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"CCTPThroughCCVTokenPool","version":"1.7.0"},{"address":"0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD","chainSelector":3379446385462418246,"labels":[],"qualifier":"","type":"USDCTokenPoolCCTPV2","version":"1.6.4"},{"address":"0x51A1ceB83B83F1985a81C295d1fF28Afef186E02","chainSelector":3379446385462418246,"labels":[],"qualifier":"CCTP","type":"USDCTokenPoolProxy","version":"1.7.0"},{"address":"0xC9a43158891282A2B1475592D5719c001986Aaec","chainSelector":3379446385462418246,"labels":[],"qualifier":"cctp-primary","type":"MockReceiver","version":"1.7.0"},{"address":"0x1c85638e118b37167e9298c2268758e058DdfDA0","chainSelector":3379446385462418246,"labels":[],"qualifier":"cctp-secondary","type":"MockReceiver","version":"1.7.0"},{"address":"0x367761085BF3C12e5DA2Df99AC6E1a824612b8fb","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x4C2F7092C2aE51D986bEFEe378e50BD4dB99C901","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard","type":"MockLombardBridge","version":"1.7.0"},{"address":"0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard","type":"LombardVerifier","version":"1.7.0"},{"address":"0x6D55bc42e172778F3077C58735c83D3C7dB9099a","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard","type":"LombardVerifierResolver","version":"1.7.0"},{"address":"0x720472c8ce72c2A2D711333e064ABD3E6BbEAdd3","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard_LBTC","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0xe8D2A1E88c91DCd5433208d4152Cc4F399a7e91d","chainSelector":3379446385462418246,"labels":[],"qualifier":"Lombard_LBTC","type":"LombardTokenPool","version":"1.7.0"},{"address":"0x34B40BA116d5Dec75548a9e9A8f15411461E8c70","chainSelector":3379446385462418246,"labels":[],"qualifier":"lombard-primary","type":"MockReceiver","version":"1.7.0"}]', '[{"address":"0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"CREATE2Factory","version":"1.7.0"},{"address":"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"WETH9","version":"1.0.0"},{"address":"0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"LinkToken","version":"1.0.0"},{"address":"0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"RMNRemote","version":"1.6.0"},{"address":"0x5FC8d32690cc91D4c39d9d3abcBD16989F875707","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"ARMProxy","version":"1.0.0"},{"address":"0xa513E6E4b8f2a923D98304ec87F64353C4D5C853","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"Router","version":"1.2.0"},{"address":"0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"TokenAdminRegistry","version":"1.5.0"},{"address":"0x8A791620dd6260079BF849Dc5567aDC3F2FdC318","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"RegistryModuleOwnerCustom","version":"1.6.0"},{"address":"0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"FeeQuoter","version":"1.7.0"},{"address":"0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"OffRamp","version":"1.7.0"},{"address":"0x9A676e781A523b5d0C0e43731313A708CB607508","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"OnRamp","version":"1.7.0"},{"address":"0x0B306BF915C4d645ff596e518fAf3F9669b97016","chainSelector":12922642891491394802,"labels":[],"qualifier":"default","type":"CommitteeVerifier","version":"1.7.0"},{"address":"0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA","chainSelector":12922642891491394802,"labels":[],"qualifier":"default","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x68B1D87F95878fE05B998F19b66F4baba5De1aed","chainSelector":12922642891491394802,"labels":[],"qualifier":"default","type":"Executor","version":"1.7.0"},{"address":"0x3Aa5ebB10DC797CAC828524e59A333d0A371443c","chainSelector":12922642891491394802,"labels":[],"qualifier":"default","type":"ExecutorProxy","version":"1.7.0"},{"address":"0xc6e7DF5E7b4f2A278906862b61205850344D4e7d","chainSelector":12922642891491394802,"labels":[],"qualifier":"custom","type":"Executor","version":"1.7.0"},{"address":"0x59b670e9fA9D0A427751Af201D676719a970857b","chainSelector":12922642891491394802,"labels":[],"qualifier":"custom","type":"ExecutorProxy","version":"1.7.0"},{"address":"0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1","chainSelector":12922642891491394802,"labels":[],"qualifier":"default","type":"MockReceiver","version":"1.7.0"},{"address":"0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0xf5059a5D33d5853360D16C683c16e67980206f36","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x998abeb3E57409262aE5b751f60747921B33613E","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x95401dc811bb5740090279Ba06cfA8fcF6113778","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0x9d4454B023096f34B160D6B654540c56A1F81688","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x36C02dA8a0983159322a80FFE9F24b1acfF8B570","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0xCD8a1C3ba11CF5ECfa6267617243239504a98d90","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x2bdCC0de6bE1f7D2ee689a0342D76F52E8EFABa3","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x82e01223d51Eb87e16A03E24687EDF0F294da6f1","chainSelector":12922642891491394802,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0x1429859428C0aBc9C2C47C8Ee9FBaf82cFA0F20f","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"MockE2EUSDCTransmitter","version":"1.0.0"},{"address":"0x162A433068F51e18b7d13932F27e66a3f99E6890","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"MockE2EUSDCTokenMessenger","version":"1.0.0"},{"address":"0x04C89607413713Ec9775E14b954286519d836FEf","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"CCTPMessageTransmitterProxy","version":"1.7.0"},{"address":"0x4C4a2f8c81640e47606d3fd77B353E87Ba015584","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"CCTPVerifier","version":"1.7.0"},{"address":"0x8aD838baa6bb943E893730eB1d7cC5589F17BD01","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"CCTPVerifierResolver","version":"1.7.0"},{"address":"0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"CCTPThroughCCVTokenPool","version":"1.7.0"},{"address":"0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD","chainSelector":12922642891491394802,"labels":[],"qualifier":"","type":"USDCTokenPoolCCTPV2","version":"1.6.4"},{"address":"0x51A1ceB83B83F1985a81C295d1fF28Afef186E02","chainSelector":12922642891491394802,"labels":[],"qualifier":"CCTP","type":"USDCTokenPoolProxy","version":"1.7.0"},{"address":"0xC9a43158891282A2B1475592D5719c001986Aaec","chainSelector":12922642891491394802,"labels":[],"qualifier":"cctp-primary","type":"MockReceiver","version":"1.7.0"},{"address":"0x1c85638e118b37167e9298c2268758e058DdfDA0","chainSelector":12922642891491394802,"labels":[],"qualifier":"cctp-secondary","type":"MockReceiver","version":"1.7.0"},{"address":"0x367761085BF3C12e5DA2Df99AC6E1a824612b8fb","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard","type":"BurnMintERC20WithDrip","version":"1.5.0"},{"address":"0x4C2F7092C2aE51D986bEFEe378e50BD4dB99C901","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard","type":"MockLombardBridge","version":"1.7.0"},{"address":"0x86A2EE8FAf9A840F7a2c64CA3d51209F9A02081D","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard","type":"LombardVerifier","version":"1.7.0"},{"address":"0x6D55bc42e172778F3077C58735c83D3C7dB9099a","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard","type":"LombardVerifierResolver","version":"1.7.0"},{"address":"0x720472c8ce72c2A2D711333e064ABD3E6BbEAdd3","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard_LBTC","type":"AdvancedPoolHooks","version":"1.7.0"},{"address":"0xe8D2A1E88c91DCd5433208d4152Cc4F399a7e91d","chainSelector":12922642891491394802,"labels":[],"qualifier":"Lombard_LBTC","type":"LombardTokenPool","version":"1.7.0"},{"address":"0x34B40BA116d5Dec75548a9e9A8f15411461E8c70","chainSelector":12922642891491394802,"labels":[],"qualifier":"lombard-primary","type":"MockReceiver","version":"1.7.0"}]', '[{"address":"0xfee2fef7c200a247ea683deebb2ece46c9542ebd039cadca078fcabd9f46a845","chainSelector":17301180955411967724,"labels":[],"qualifier":"","type":"OnRamp","version":"1.7.0"},{"address":"0xeb1b605e78bc38c4f069a8d7688e0d095d4b2459bd53c49ee73d9d0a79cbc448","chainSelector":17301180955411967724,"labels":[],"qualifier":"","type":"OffRamp","version":"1.7.0"},{"address":"0x0393ede887cb4c19fc2efc8f758aadc865d0c21a5af6f91594c80584fa165b74","chainSelector":17301180955411967724,"labels":[],"qualifier":"","type":"Router","version":"1.2.0"},{"address":"0x24d7b5f44e8f40b58073072af116c2ddb05de2fd8b40a5b2396802599e7b4675","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0xc66928abd7ad394555167c8b611d8d79315f661477966cb93fa9a71d620d5ef4","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.6.1 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0xa58a688672586b05643f49c1b153bebe8f7c71f3c8ed2271353393e6afe6af21","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.6.1 [] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.6.1"},{"address":"0x51289bcbeca1eeaf58db000c53454f71282e01b20517423422627846f2115f34","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default] to BurnMintTokenPool 1.7.0 [default])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x8e03aac07a2f5cc44940ebc061972716b5cbbe913b758689a8cd48df96d85686","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [default secondary] to BurnMintTokenPool 1.7.0 [default secondary])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0xf55d10163ded4629e735e311f2b7fa24db9c87d02f80b020f55cc5e17568b8e6","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [] to BurnMintTokenPool 1.7.0 [])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0xd82082c7a1e1cfadd748d6f608b5e6e1143e1b7cee49f9fc638f970683d8cf03","chainSelector":17301180955411967724,"labels":[],"qualifier":"TEST (BurnMintTokenPool 1.7.0 [secondary] to BurnMintTokenPool 1.7.0 [secondary])","type":"BurnMintTokenPool","version":"1.7.0"},{"address":"0x812cfe6f06f84ec54eaa30da23405cf65db0fe9484546bcd05f0d998e4a595ba","chainSelector":17301180955411967724,"labels":[],"qualifier":"default","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x662573314c441ca02322a4dda40b4c7e50a891d6386bfb5905737df9973fe5d0","chainSelector":17301180955411967724,"labels":[],"qualifier":"secondary","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x9977249a7edee114b2747679e20113ef4e7e96fd77e41ac6c5f0c7a158ad1b19","chainSelector":17301180955411967724,"labels":[],"qualifier":"tertiary","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x1d10ad478a8be782e4870dcf2c7ae7d8fa3482132a8a080694a7685d3dd92802","chainSelector":17301180955411967724,"labels":[],"qualifier":"quaternary","type":"CommitteeVerifierResolver","version":"1.7.0"},{"address":"0x341908e3376850aaeef346e845d3b9914cc70cca2bb5a48555778be00977fef7","chainSelector":17301180955411967724,"labels":[],"qualifier":"default","type":"Executor","version":"1.7.0"},{"address":"0x41ba87da3414338b0f295907ff0c9ebfe63e0e1719b3e7e88e074fa747084282","chainSelector":17301180955411967724,"labels":[],"qualifier":"default","type":"ExecutorProxy","version":"1.7.0"},{"address":"0x18b40c4b4284d05bb0f391e789126e0ce5fe68b9ab70925ff50fb6d36c7065f7","chainSelector":17301180955411967724,"labels":[],"qualifier":"","type":"RMNRemote","version":"1.6.0"}]']
+
+[pricer]
+image = 'pricer:dev'
+source_code_path = '../pricer'
+root_path = '../../'
+container_name = 'pricer'
+use_cache = false
+
+[pricer.keystore]
+address = '0x9221E2E83903C731C2927CCd84e5fa02B22Bb1E2'
+file_path = '../pricer/keystore.json'
+password = 'keystore_test_password'
+
+[pricer.out]
+container_name = 'pricer'
+
+[fake]
+image = 'ccv-fakes:dev'
+port = 9111
+source_code_path = '../build/devenv/fakes'
+root_path = '../../'
+container_name = 'fake'
+use_cache = false
+
+[fake.out]
+use_cache = false
+container_name = 'fake'
+http_url = 'http://localhost:9111'
+internal_http_url = 'http://fake:9111'
+
+[[verifier]]
+mode = 'standalone'
+image = 'verifier:dev'
+source_code_path = '../verifier'
+root_path = '../../'
+container_name = 'default-verifier-1'
+nop_alias = 'default-verifier-1'
+port = 8100
+use_cache = false
+committee_name = 'default'
+node_index = 0
+disable_finality_checkers = ['17301180955411967724']
+signing_key = 'e58c5c0410856ba56d442a02bbf67884b26ac8976e171f1c78c753f2df4b6855'
+signing_key_public = '0x2c127e1eea67c6ec6945652183d4f043141705b2'
+insecure_aggregator_connection = false
+
+[verifier.db]
+image = 'postgres:16-alpine'
+name = 'default-verifier-1-db'
+port = 8432
+
+[verifier.out]
+verifier_id = 'default-default-verifier'
+container_name = 'default-verifier-1'
+http_url = 'http://localhost:8100'
+internal_http_url = 'http://default-verifier-1:8100'
+db_url = ''
+db_connection_string = 'postgresql://default-verifier-1:default-verifier-1@localhost:8432/default-verifier-1?sslmode=disable'
+use_cache = false
+
+[verifier.stellar_configs]
+[verifier.stellar_configs.17301180955411967724]
+[verifier.stellar_configs.17301180955411967724.reader_config]
+network_passphrase = 'Standalone Network ; February 2017'
+friendbot_url = ''
+soroban_rpc_url = 'http://blockchain-stellar:8010/rpc'
+onramp_contract_id = 'baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a'
+
+[[verifier]]
+mode = 'standalone'
+image = 'verifier:dev'
+source_code_path = '../verifier'
+root_path = '../../'
+container_name = 'default-verifier-2'
+nop_alias = 'default-verifier-2'
+port = 8200
+use_cache = false
+committee_name = 'default'
+node_index = 1
+disable_finality_checkers = ['17301180955411967724']
+signing_key = '920b1281637be8980c6f70d640ea1807801a492ae1823d14e815c4415276f42b'
+signing_key_public = '0x2a3e6b4676d01c5afdd710f01d2b8870bdef182d'
+insecure_aggregator_connection = false
+
+[verifier.db]
+image = 'postgres:16-alpine'
+name = 'default-verifier-2-db'
+port = 8433
+
+[verifier.out]
+verifier_id = 'default-default-verifier'
+container_name = 'default-verifier-2'
+http_url = 'http://localhost:8200'
+internal_http_url = 'http://default-verifier-2:8200'
+db_url = ''
+db_connection_string = 'postgresql://default-verifier-2:default-verifier-2@localhost:8433/default-verifier-2?sslmode=disable'
+use_cache = false
+
+[verifier.stellar_configs]
+[verifier.stellar_configs.17301180955411967724]
+[verifier.stellar_configs.17301180955411967724.reader_config]
+network_passphrase = 'Standalone Network ; February 2017'
+friendbot_url = ''
+soroban_rpc_url = 'http://blockchain-stellar:8010/rpc'
+onramp_contract_id = 'baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a'
+
+[[executor]]
+mode = 'standalone'
+image = 'executor:dev'
+source_code_path = '../executor'
+root_path = '../../'
+container_name = 'default-executor-1'
+nop_alias = 'default-executor-1'
+port = 8101
+use_cache = false
+executor_qualifier = 'default'
+transmitter_private_key = '370a65e72e76b6132739541a62738fdc09b56618a24389d80e68779295507b0b'
+
+[executor.out]
+container_name = 'default-executor-1'
+http_url = 'http://localhost:8101'
+internal_http_url = 'http://default-executor-1:8101'
+use_cache = false
+
+[[executor]]
+mode = 'standalone'
+image = 'executor:dev'
+source_code_path = '../executor'
+root_path = '../../'
+container_name = 'default-executor-2'
+nop_alias = 'default-executor-2'
+port = 8102
+use_cache = false
+executor_qualifier = 'default'
+transmitter_private_key = 'ee6d8f5644d376efef978f1d80820b1a18f4f65ef319428be0c5a50e77c803af'
+
+[executor.out]
+container_name = 'default-executor-2'
+http_url = 'http://localhost:8102'
+internal_http_url = 'http://default-executor-2:8102'
+use_cache = false
+
+[indexer]
+image = 'indexer:dev'
+port = 8104
+source_code_path = '../indexer'
+root_path = '../../'
+container_name = 'indexer'
+use_cache = false
+
+[indexer.db]
+image = 'postgres:16-alpine'
+
+[indexer.out]
+use_cache = false
+container_name = 'indexer'
+http_url = 'http://localhost:8104'
+internal_http_url = 'http://indexer:8104'
+db_url = ''
+db_connection_string = 'postgresql://indexer:indexer@localhost:6432/indexer?sslmode=disable'
+
+[indexer.indexer_config]
+GeneratedConfigPath = 'generated.toml'
+LogLevel = 'info'
+
+[indexer.indexer_config.Monitoring]
+Enabled = true
+Type = 'beholder'
+
+[indexer.indexer_config.Monitoring.Beholder]
+InsecureConnection = true
+CACertFile = ''
+OtelExporterGRPCEndpoint = ''
+OtelExporterHTTPEndpoint = 'otel-collector:4318'
+LogStreamingEnabled = true
+MetricReaderInterval = 5
+TraceSampleRatio = 1.0
+TraceBatchTimeout = 10
+
+[indexer.indexer_config.Discovery]
+Address = 'default-aggregator-nginx:443'
+Since = 0
+APIKey = ''
+Secret = ''
+InsecureConnection = false
+PollInterval = 500
+Timeout = 5000
+NtpServer = 'time.google.com'
+
+[indexer.indexer_config.Scheduler]
+TickerInterval = 50
+VerificationVisibilityWindow = 28800
+BaseDelay = 100
+MaxDelay = 30000
+
+[indexer.indexer_config.Pool]
+ConcurrentWorkers = 1000
+WorkerTimeout = 300
+
+[[indexer.indexer_config.Verifier]]
+Type = 'aggregator'
+IssuerAddresses = []
+Name = 'CommiteeVerifier (Primary)'
+BatchSize = 100
+MaxBatchWaitTime = 50
+Address = 'default-aggregator:50051'
+Since = 0
+APIKey = ''
+Secret = ''
+InsecureConnection = true
+BaseURL = ''
+RequestTimeout = 0
+
+[indexer.indexer_config.Storage]
+Strategy = 'sink'
+
+[indexer.indexer_config.Storage.Sink]
+[[indexer.indexer_config.Storage.Sink.Storages]]
+Type = 'memory'
+
+[indexer.indexer_config.Storage.Sink.Storages.Memory]
+TTL = 3600
+MaxSize = 10000
+CleanupInterval = 300
+
+[[indexer.indexer_config.Storage.Sink.Storages]]
+Type = 'postgres'
+
+[indexer.indexer_config.Storage.Sink.Storages.Postgres]
+URI = ''
+MaxOpenConnections = 20
+MaxIdleConnections = 5
+IdleInTxSessionTimeout = 60
+LockTimeout = 30
+
+[indexer.indexer_config.API]
+TrustedProxies = []
+
+[indexer.indexer_config.API.RateLimit]
+Enabled = false
+
+[indexer.secrets]
+[indexer.secrets.Discovery]
+APIKey = '85aaf0af-8c7f-4833-b78d-2d76f1b4df02'
+Secret = '09c9a6048fa32e1578854d43a5975e07080adbdb3e9859e56ed1c4901eb97540'
+
+[indexer.secrets.Verifier]
+[indexer.secrets.Verifier.0]
+APIKey = '85aaf0af-8c7f-4833-b78d-2d76f1b4df02'
+Secret = '09c9a6048fa32e1578854d43a5975e07080adbdb3e9859e56ed1c4901eb97540'
+
+[indexer.secrets.Storage]
+[indexer.secrets.Storage.Single]
+[indexer.secrets.Storage.Single.Postgres]
+URI = ''
+
+[indexer.secrets.Storage.Sink]
+[indexer.secrets.Storage.Sink.Storages]
+[indexer.secrets.Storage.Sink.Storages.1]
+[indexer.secrets.Storage.Sink.Storages.1.Postgres]
+URI = 'postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable'
+
+[indexer.generated_config]
+[[indexer.generated_config.Verifier]]
+Name = 'CommiteeVerifier (Primary)'
+IssuerAddresses = ['0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA', '0x812cfe6f06f84ec54eaa30da23405cf65db0fe9484546bcd05f0d998e4a595ba']
+
+[indexer.committee_verifier_name_to_qualifier]
+'CommiteeVerifier (Primary)' = 'default'
+
+[[aggregator]]
+image = 'aggregator:dev'
+host_port = 50051
+grpc_host_port = 0
+source_code_path = '../aggregator'
+root_path = '../../'
+committee_name = 'default'
+monitoring_otel_exporter_http_endpoint = ''
+aggregation_channel_buffer_size = 0
+background_worker_count = 0
+
+[aggregator.db]
+image = 'postgres:16-alpine'
+host_port = 7432
+
+[aggregator.redis]
+image = 'redis:7-alpine'
+host_port = 6379
+
+[aggregator.out]
+use_cache = false
+container_name = 'default-aggregator-nginx'
+address = 'default-aggregator-nginx:443'
+external_http_url = 'default-aggregator:50051'
+external_https_url = 'localhost:50051'
+db_url = ''
+db_connection_string = ''
+tls_ca_cert_file = '/Users/faisal/Library/Preferences/ccv/tls-shared/ca.crt'
+
+[aggregator.out.generated_committee]
+[aggregator.out.generated_committee.quorumConfigs]
+[aggregator.out.generated_committee.quorumConfigs.12922642891491394802]
+sourceVerifierAddress = '0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA'
+threshold = 2
+
+[[aggregator.out.generated_committee.quorumConfigs.12922642891491394802.signers]]
+address = '0x2C127E1eea67C6EC6945652183d4f043141705B2'
+
+[[aggregator.out.generated_committee.quorumConfigs.12922642891491394802.signers]]
+address = '0x2a3e6B4676D01c5aFdD710F01D2b8870BdeF182d'
+
+[aggregator.out.generated_committee.quorumConfigs.17301180955411967724]
+sourceVerifierAddress = '0x812cfe6f06f84ec54eaa30da23405cf65db0fe9484546bcd05f0d998e4a595ba'
+threshold = 2
+
+[[aggregator.out.generated_committee.quorumConfigs.17301180955411967724.signers]]
+address = '0x2C127E1eea67C6EC6945652183d4f043141705B2'
+
+[[aggregator.out.generated_committee.quorumConfigs.17301180955411967724.signers]]
+address = '0x2a3e6B4676D01c5aFdD710F01D2b8870BdeF182d'
+
+[aggregator.out.generated_committee.quorumConfigs.3379446385462418246]
+sourceVerifierAddress = '0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA'
+threshold = 2
+
+[[aggregator.out.generated_committee.quorumConfigs.3379446385462418246.signers]]
+address = '0x2C127E1eea67C6EC6945652183d4f043141705B2'
+
+[[aggregator.out.generated_committee.quorumConfigs.3379446385462418246.signers]]
+address = '0x2a3e6B4676D01c5aFdD710F01D2b8870BdeF182d'
+
+[aggregator.out.generated_committee.destinationVerifiers]
+12922642891491394802 = '0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA'
+17301180955411967724 = '0x812cfe6f06f84ec54eaa30da23405cf65db0fe9484546bcd05f0d998e4a595ba'
+3379446385462418246 = '0x36f69Ba883b3e9d5374C1cE9c6114842773D1daA'
+
+[aggregator.env]
+storage_connection_url = 'postgresql://aggregator:aggregator@default-aggregator-db:5432/aggregator?sslmode=disable'
+redis_address = 'default-aggregator-redis:6379'
+redis_password = ''
+redis_db = '0'
+
+[[aggregator.api_clients]]
+client_id = 'default-verifier-1'
+description = 'Development default verifier 1'
+enabled = true
+groups = ['verifiers']
+
+[[aggregator.api_clients.api_key_pairs]]
+api_key = 'd117e71b-f83d-4167-a8c1-73c8e6093d84'
+secret = '6a72e8745f3f983bcde74d84f71d53be9ea518fecacc49c9bb53495028e1e7c5'
+
+[[aggregator.api_clients]]
+client_id = 'default-verifier-2'
+description = 'Development default verifier 2'
+enabled = true
+groups = ['verifiers']
+
+[[aggregator.api_clients.api_key_pairs]]
+api_key = '70caa078-ed67-43a7-9f24-210abcc236ea'
+secret = 'd13a60404f15f851680985ecc3e35a208b2c59bf40a1b952ac8a3a8ed228d18a'
+
+[[aggregator.api_clients]]
+client_id = 'monitoring'
+description = 'Monitoring and infrastructure client'
+enabled = true
+groups = ['monitoring']
+
+[[aggregator.api_clients.api_key_pairs]]
+api_key = 'abff7ce8-36f8-4c83-b78d-2682ead0c1ef'
+secret = '7459b42c36950fb4e93068c48257da8d97bfc279e69cdeb30e2a35b76e6ae47e'
+
+[[aggregator.api_clients]]
+client_id = 'indexer'
+description = 'Development Indexer'
+enabled = true
+groups = ['indexer']
+
+[[aggregator.api_clients.api_key_pairs]]
+api_key = '85aaf0af-8c7f-4833-b78d-2d76f1b4df02'
+secret = '09c9a6048fa32e1578854d43a5975e07080adbdb3e9859e56ed1c4901eb97540'
+
+[jd]
+image = 'job-distributor:local'
+grpc_port = '14231'
+wsrpc_port = '8080'
+csa_encryption_key = 'd1093c0060d50a3c89c189b2e485da5a3ce57f3dcb38ab7e2c0d5f0bb2314a44'
+docker_file = ''
+docker_ctx = ''
+jd_sql_dump_path = ''
+
+[jd.db]
+# PostgreSQL Docker image in format: $registry:$tag
+image = 'postgres:16'
+# PostgreSQL connection port
+port = 14000
+# PostgreSQL container name
+name = 'jd-db'
+# PostgreSQL docker volume name
+volume_name = 'jd'
+# Number of pre-created databases for Chainlink nodes
+databases = 0
+# Whether to create JobDistributor database or not
+jd_database = true
+# JobDistributor database dump path to load
+jd_sql_dump_path = ''
+# Whether to pull PostgreSQL image or not
+pull_image = false
+
+[jd.out]
+use_cache = true
+container_name = 'jd-48337'
+db_container_name = 'jd-db'
+grpc_url = '127.0.0.1:14231'
+internal_grpc_url = 'jd-48337:14231'
+wsrpc_url = '127.0.0.1:8080'
+internal_wsrpc_url = 'jd-48337:8080'
+
+[[blockchains]]
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'anvil'
+# Blockchain node image in format: $registry:$image, ex.: ghcr.io/foundry-rs/foundry:stable
+image = 'ghcr.io/foundry-rs/foundry:latest'
+# Whether to pull image or not when creating Docker container
+pull_image = false
+# The port Docker container will expose
+port = '8545'
+# Docker container name
+container_name = 'blockchain-src'
+# WebSocket port container will expose
+port_ws = ''
+# Blockchain chain ID
+chain_id = '1337'
+# Docker command parameters override, ex. for Anvil: ["-b", "1", "--mixed-mining"]
+docker_cmd_params = ['-b', '1', '--mixed-mining', '--slots-in-an-epoch', '1']
+# Public key to mint when solana-test-validator starts
+public_key = ''
+# Solana's contracts directory
+contracts_dir = ''
+# Custom ports pairs in format $host_port_number:$docker_port_number
+custom_ports = []
+# Sui blockchain network faucet port
+faucet_port = ''
+# Number of Canton network validators
+number_of_canton_validators = 0
+# GAPv2 specific parameter: host netowork mode, if 'true' will run environment in host network mode
+host_network_mode = false
+# GAPv2 specific parameter: path to default Ubuntu's certificates
+certificates_path = ''
+
+# blockchain deployment output
+[blockchains.out]
+# Whether to respect caching or not, if cache = true component won't be deployed again
+use_cache = true
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'anvil'
+# Blockchain family, can be one of: evm solana aptos sui tron ton canton stellar
+family = 'evm'
+# Blockchain Docker container name
+container_name = 'blockchain-src'
+# Chain ID
+chain_id = '1337'
+
+# Blockchain nodes info
+[[blockchains.out.nodes]]
+# External blockchain node WebSocket URL
+ws_url = 'ws://127.0.0.1:8545'
+# External blockchain node HTTP URL
+http_url = 'http://127.0.0.1:8545'
+# Internal blockchain node WebSocket URL
+internal_ws_url = 'ws://blockchain-src:8545'
+# Internal blockchain node HTTP URL
+internal_http_url = 'http://blockchain-src:8545'
+
+[[blockchains]]
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'anvil'
+# Blockchain node image in format: $registry:$image, ex.: ghcr.io/foundry-rs/foundry:stable
+image = 'ghcr.io/foundry-rs/foundry:latest'
+# Whether to pull image or not when creating Docker container
+pull_image = false
+# The port Docker container will expose
+port = '8555'
+# Docker container name
+container_name = 'blockchain-dst'
+# WebSocket port container will expose
+port_ws = ''
+# Blockchain chain ID
+chain_id = '2337'
+# Docker command parameters override, ex. for Anvil: ["-b", "1", "--mixed-mining"]
+docker_cmd_params = ['-b', '1', '--mixed-mining', '--slots-in-an-epoch', '1']
+# Public key to mint when solana-test-validator starts
+public_key = ''
+# Solana's contracts directory
+contracts_dir = ''
+# Custom ports pairs in format $host_port_number:$docker_port_number
+custom_ports = []
+# Sui blockchain network faucet port
+faucet_port = ''
+# Number of Canton network validators
+number_of_canton_validators = 0
+# GAPv2 specific parameter: host netowork mode, if 'true' will run environment in host network mode
+host_network_mode = false
+# GAPv2 specific parameter: path to default Ubuntu's certificates
+certificates_path = ''
+
+# blockchain deployment output
+[blockchains.out]
+# Whether to respect caching or not, if cache = true component won't be deployed again
+use_cache = true
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'anvil'
+# Blockchain family, can be one of: evm solana aptos sui tron ton canton stellar
+family = 'evm'
+# Blockchain Docker container name
+container_name = 'blockchain-dst'
+# Chain ID
+chain_id = '2337'
+
+# Blockchain nodes info
+[[blockchains.out.nodes]]
+# External blockchain node WebSocket URL
+ws_url = 'ws://127.0.0.1:8555'
+# External blockchain node HTTP URL
+http_url = 'http://127.0.0.1:8555'
+# Internal blockchain node WebSocket URL
+internal_ws_url = 'ws://blockchain-dst:8555'
+# Internal blockchain node HTTP URL
+internal_http_url = 'http://blockchain-dst:8555'
+
+[[blockchains]]
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'stellar'
+# Blockchain node image in format: $registry:$image, ex.: ghcr.io/foundry-rs/foundry:stable
+image = 'stellar/quickstart:latest'
+# Whether to pull image or not when creating Docker container
+pull_image = false
+# The port Docker container will expose
+port = '8010'
+# Docker container name
+container_name = 'blockchain-stellar'
+# WebSocket port container will expose
+port_ws = ''
+# Blockchain chain ID
+chain_id = 'baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a'
+# Docker command parameters override, ex. for Anvil: ["-b", "1", "--mixed-mining"]
+docker_cmd_params = []
+# Public key to mint when solana-test-validator starts
+public_key = ''
+# Solana's contracts directory
+contracts_dir = ''
+# Custom ports pairs in format $host_port_number:$docker_port_number
+custom_ports = []
+# Sui blockchain network faucet port
+faucet_port = ''
+# Number of Canton network validators
+number_of_canton_validators = 0
+# GAPv2 specific parameter: host netowork mode, if 'true' will run environment in host network mode
+host_network_mode = false
+# GAPv2 specific parameter: path to default Ubuntu's certificates
+certificates_path = ''
+
+# blockchain deployment output
+[blockchains.out]
+# Whether to respect caching or not, if cache = true component won't be deployed again
+use_cache = true
+# Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
+type = 'stellar'
+# Blockchain family, can be one of: evm solana aptos sui tron ton canton stellar
+family = 'stellar'
+# Blockchain Docker container name
+container_name = 'stellar-node-df6ac'
+# Chain ID
+chain_id = 'baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a'
+
+# Blockchain network-specific data
+[blockchains.out.network_specific_data]
+# Stellar network info
+[blockchains.out.network_specific_data.stellar_network]
+# Stellar network passphrase
+network_passphrase = 'Standalone Network ; February 2017'
+# Friendbot faucet URL for funding accounts
+friendbot_url = 'http://127.0.0.1:8010/friendbot'
+
+# Blockchain nodes info
+[[blockchains.out.nodes]]
+# External blockchain node WebSocket URL
+ws_url = ''
+# External blockchain node HTTP URL
+http_url = 'http://127.0.0.1:8010/rpc'
+# Internal blockchain node WebSocket URL
+internal_ws_url = ''
+# Internal blockchain node HTTP URL
+internal_http_url = 'http://stellar-node-df6ac:8000/rpc'
+
+[aggregator_endpoints]
+default = 'localhost:50051'
+
+[aggregator_ca_cert_files]
+default = '/Users/faisal/Library/Preferences/ccv/tls-shared/ca.crt'
+
+[environment_topology]
+indexer_address = 'http://indexer:8100'
+pyroscope_url = 'http://host.docker.internal:4040'
+
+[environment_topology.monitoring]
+Enabled = true
+Type = 'beholder'
+
+[environment_topology.monitoring.Beholder]
+InsecureConnection = true
+CACertFile = ''
+OtelExporterGRPCEndpoint = ''
+OtelExporterHTTPEndpoint = 'host.docker.internal:4318'
+LogStreamingEnabled = false
+MetricReaderInterval = 5
+TraceSampleRatio = 1.0
+TraceBatchTimeout = 10
+
+[environment_topology.nop_topology]
+[[environment_topology.nop_topology.nops]]
+alias = 'default-verifier-1'
+name = 'default-verifier-1'
+mode = 'standalone'
+
+[environment_topology.nop_topology.nops.signer_address_by_family]
+canton = '0x2c127e1eea67c6ec6945652183d4f043141705b2'
+evm = '0x2c127e1eea67c6ec6945652183d4f043141705b2'
+stellar = '0x2c127e1eea67c6ec6945652183d4f043141705b2'
+
+[[environment_topology.nop_topology.nops]]
+alias = 'default-verifier-2'
+name = 'default-verifier-2'
+mode = 'standalone'
+
+[environment_topology.nop_topology.nops.signer_address_by_family]
+canton = '0x2a3e6b4676d01c5afdd710f01d2b8870bdef182d'
+evm = '0x2a3e6b4676d01c5afdd710f01d2b8870bdef182d'
+stellar = '0x2a3e6b4676d01c5afdd710f01d2b8870bdef182d'
+
+[[environment_topology.nop_topology.nops]]
+alias = 'default-executor-1'
+name = 'default-executor-1'
+mode = 'standalone'
+
+[[environment_topology.nop_topology.nops]]
+alias = 'default-executor-2'
+name = 'default-executor-2'
+mode = 'standalone'
+
+[environment_topology.nop_topology.committees]
+[environment_topology.nop_topology.committees.default]
+qualifier = 'default'
+verifier_version = '1.7.0'
+
+[environment_topology.nop_topology.committees.default.chain_configs]
+[environment_topology.nop_topology.committees.default.chain_configs.12922642891491394802]
+nop_aliases = ['default-verifier-1', 'default-verifier-2']
+threshold = 2
+
+[environment_topology.nop_topology.committees.default.chain_configs.17301180955411967724]
+nop_aliases = ['default-verifier-1', 'default-verifier-2']
+threshold = 2
+
+[environment_topology.nop_topology.committees.default.chain_configs.3379446385462418246]
+nop_aliases = ['default-verifier-1', 'default-verifier-2']
+threshold = 2
+
+[[environment_topology.nop_topology.committees.default.aggregators]]
+name = 'default'
+address = 'default-aggregator:50051'
+insecure_connection = true
+
+[environment_topology.executor_pools]
+[environment_topology.executor_pools.default]
+nop_aliases = ['default-executor-1', 'default-executor-2']
+execution_interval = 15000000000
+indexer_query_limit = 0
+backoff_duration = 0
+lookback_window = 0
+reader_cache_expiry = 0
+max_retry_duration = 0
+worker_count = 0
+ntp_server = ''
