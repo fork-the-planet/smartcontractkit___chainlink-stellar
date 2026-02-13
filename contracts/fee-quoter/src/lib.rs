@@ -1,17 +1,20 @@
 #![no_std]
 
-mod error;
+pub mod error;
 mod events;
 pub mod types;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbol, Vec};
 
+use common_authorization::{AuthorizedCallers, Ownable};
+use common_guard::ReentrancyGuard;
+use common_message::StellarToAnyMessage;
+
 use error::FeeQuoterError;
 use events::{
-    AuthorizedCallerAddedEvent, AuthorizedCallerRemovedEvent, DestChainAddedEvent,
-    DestChainConfigUpdatedEvent, FeeTokenAddedEvent, FeeTokenRemovedEvent,
-    OwnershipTransferredEvent, TokenFeeConfigDeletedEvent, TokenFeeConfigUpdatedEvent,
-    UsdPerTokenUpdatedEvent, UsdPerUnitGasUpdatedEvent,
+    DestChainAddedEvent, DestChainConfigUpdatedEvent, FeeTokenAddedEvent, FeeTokenRemovedEvent,
+    TokenFeeConfigDeletedEvent, TokenFeeConfigUpdatedEvent, UsdPerTokenUpdatedEvent,
+    UsdPerUnitGasUpdatedEvent,
 };
 use types::{
     DestChainConfig, DestChainConfigArgs, GasQuoteResult, PriceUpdates, StaticConfig,
@@ -23,10 +26,8 @@ use types::{
 // Storage Keys
 // ============================================================
 
-const OWNER: Symbol = symbol_short!("OWNER");
 const INITIALIZED: Symbol = symbol_short!("INIT");
 const STATIC_CFG: Symbol = symbol_short!("STATIC");
-const AUTH_CALL: Symbol = symbol_short!("AUTHCALL");
 const TOKEN_PRC: Symbol = symbol_short!("TOKENPRC");
 const GAS_PRC: Symbol = symbol_short!("GASPRC");
 const FEE_TKNS: Symbol = symbol_short!("FEETKNS");
@@ -75,14 +76,14 @@ impl FeeQuoterContract {
             return Err(FeeQuoterError::InvalidStaticConfig);
         }
 
-        // Store owner
-        env.storage().instance().set(&OWNER, &owner);
+        // Initialize ownership (common-authorization)
+        Ownable::init(&env, &owner);
+
+        // Initialize authorized callers (common-authorization)
+        AuthorizedCallers::init(&env, authorized_callers);
 
         // Store static config
         env.storage().instance().set(&STATIC_CFG, &static_config);
-
-        // Store authorized callers
-        env.storage().instance().set(&AUTH_CALL, &authorized_callers);
 
         // Initialize empty maps
         let token_prices: Map<Address, TimestampedPrice> = Map::new(&env);
@@ -250,7 +251,7 @@ impl FeeQuoterContract {
     /// * `tokens` - Tokens to remove from fee tokens
     pub fn remove_fee_tokens(env: Env, tokens: Vec<Address>) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let mut fee_tokens: Vec<Address> = env
             .storage()
@@ -294,12 +295,16 @@ impl FeeQuoterContract {
     // ========================================
 
     /// Update token and gas prices. Only callable by authorized callers.
+    /// Protected by reentrancy guard.
     ///
     /// # Arguments
     /// * `price_updates` - Token and gas price updates
     pub fn update_prices(env: Env, price_updates: PriceUpdates) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Self::require_authorized_caller(&env)?;
+        AuthorizedCallers::require_authorized(&env)?;
+
+        // Reentrancy protection for price updates
+        ReentrancyGuard::enter(&env)?;
 
         let timestamp = env.ledger().timestamp();
 
@@ -373,6 +378,9 @@ impl FeeQuoterContract {
         }
 
         env.storage().persistent().set(&GAS_PRC, &gas_prices);
+
+        // Exit reentrancy guard
+        ReentrancyGuard::exit(&env);
 
         Ok(())
     }
@@ -504,6 +512,94 @@ impl FeeQuoterContract {
         })
     }
 
+    /// Get the fee for sending a CCIP message.
+    ///
+    /// This validates the message and calculates the fee based on gas costs,
+    /// token transfer fees, and network fees.
+    ///
+    /// # Arguments
+    /// * `dest_chain_selector` - Destination chain selector
+    /// * `message` - The CCIP message to price
+    ///
+    /// # Returns
+    /// Fee amount in the message's fee token denomination
+    ///
+    /// # Errors
+    /// * `UnsupportedNumberOfTokens` - If more than 1 token transfer
+    /// * `DestinationChainNotEnabled` - If destination chain is not enabled
+    pub fn get_message_fee(
+        env: Env,
+        dest_chain_selector: u64,
+        message: StellarToAnyMessage,
+    ) -> Result<i128, FeeQuoterError> {
+        Self::require_initialized(&env)?;
+
+        // Validate the message using common-message validation
+        message.validate()?;
+
+        // Only 1 token per message in CCIP v1.7
+        if message.token_amounts.len() > 1 {
+            return Err(FeeQuoterError::UnsupportedNumberOfTokens);
+        }
+
+        let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
+
+        if !dest_config.is_enabled {
+            return Err(FeeQuoterError::DestinationChainNotEnabled);
+        }
+
+        // Calculate gas cost for the message payload
+        let calldata_size = message.data.len() as u32;
+        let gas_quote = Self::quote_gas_for_exec(
+            env.clone(),
+            dest_chain_selector,
+            dest_config.dest_gas_overhead,
+            calldata_size,
+            message.fee_token.clone(),
+        )?;
+
+        // Start with gas cost in USD cents
+        let mut total_usd_cents: u128 = gas_quote.gas_cost_usd_cents;
+
+        // Add network fee
+        total_usd_cents += dest_config.network_fee_usd_cents as u128;
+
+        // Add token transfer fees if tokens are being sent
+        for token_amount in message.token_amounts.iter() {
+            let token_fee = Self::get_token_transfer_fee(
+                env.clone(),
+                dest_chain_selector,
+                token_amount.token.clone(),
+            )?;
+            total_usd_cents += token_fee.fee_usd_cents as u128;
+        }
+
+        // Apply premium multiplier (percentage)
+        total_usd_cents = total_usd_cents * gas_quote.premium_multiplier as u128 / 100;
+
+        // Convert from USD cents to fee token amount
+        // total_usd_cents is in 1e2 (cents), fee_token_price is in 1e18 USD
+        // fee_amount = total_usd_cents * 1e16 / fee_token_price (1e18 / 1e2 = 1e16)
+        let fee_amount = if gas_quote.fee_token_price > 0 {
+            (total_usd_cents * 10_u128.pow(16) / gas_quote.fee_token_price) as i128
+        } else {
+            return Err(FeeQuoterError::FeeTokenNotSupported);
+        };
+
+        // Check against max fee
+        let static_config: StaticConfig = env
+            .storage()
+            .instance()
+            .get(&STATIC_CFG)
+            .ok_or(FeeQuoterError::NotInitialized)?;
+
+        if fee_amount > static_config.max_fee_juels_per_msg {
+            return Err(FeeQuoterError::MessageFeeTooHigh);
+        }
+
+        Ok(fee_amount)
+    }
+
     /// Convert a token amount to another token.
     ///
     /// # Arguments
@@ -525,28 +621,15 @@ impl FeeQuoterContract {
         let to_price = Self::get_validated_token_price(env, to_token)?;
 
         // (fromTokenAmount * fromTokenPrice) / toTokenPrice
-        // To avoid overflow, we use a scaled calculation:
-        // result = (amount / scale) * (from_price / to_price) * scale + 
-        //          (amount % scale) * (from_price / to_price)
-        // Or more simply: divide first, then multiply
-        // price_ratio = from_price / to_price (loses some precision)
-        // For better precision with large numbers, we scale down first
         let amount = from_token_amount as u128;
-        
-        // Use a safe approach: divide amount by to_price first, then multiply by from_price
-        // This loses less precision when from_price > to_price
+
         if from_price >= to_price {
-            // from_price / to_price won't overflow when multiplied by amount
             let price_ratio = from_price / to_price;
             let remainder = from_price % to_price;
-            // result = amount * price_ratio + (amount * remainder) / to_price
             let base = amount.saturating_mul(price_ratio);
             let extra = (amount / to_price).saturating_mul(remainder);
             Ok((base.saturating_add(extra)) as i128)
         } else {
-            // to_price > from_price, compute ratio in other direction
-            // result = amount * from_price / to_price
-            // = (amount / to_price) * from_price + (amount % to_price) * from_price / to_price
             let quotient = amount / to_price;
             let remainder = amount % to_price;
             let base = quotient.saturating_mul(from_price);
@@ -589,7 +672,7 @@ impl FeeQuoterContract {
         config_args: Vec<DestChainConfigArgs>,
     ) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let (mut selectors, mut configs): (Vec<u64>, Vec<DestChainConfig>) = env
             .storage()
@@ -687,7 +770,7 @@ impl FeeQuoterContract {
         remove_args: Vec<TokenFeeConfigRemoveArgs>,
     ) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        Ownable::require_owner(&env)?;
 
         let mut token_fees: Vec<(u64, Address, TokenTransferFeeConfig)> = env
             .storage()
@@ -785,107 +868,6 @@ impl FeeQuoterContract {
     }
 
     // ========================================
-    // Authorized Caller Management
-    // ========================================
-
-    /// Add an authorized caller (owner only).
-    pub fn add_authorized_caller(env: Env, caller: Address) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        let mut authorized: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&AUTH_CALL)
-            .unwrap_or(Vec::new(&env));
-
-        // Check if already exists
-        for ac in authorized.iter() {
-            if ac == caller {
-                return Err(FeeQuoterError::AuthorizedCallerAlreadyExists);
-            }
-        }
-
-        authorized.push_back(caller.clone());
-        env.storage().instance().set(&AUTH_CALL, &authorized);
-
-        AuthorizedCallerAddedEvent { caller }.publish(&env);
-
-        Ok(())
-    }
-
-    /// Remove an authorized caller (owner only).
-    pub fn remove_authorized_caller(env: Env, caller: Address) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        let authorized: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&AUTH_CALL)
-            .unwrap_or(Vec::new(&env));
-
-        let mut new_authorized: Vec<Address> = Vec::new(&env);
-        let mut found = false;
-
-        for ac in authorized.iter() {
-            if ac == caller {
-                found = true;
-            } else {
-                new_authorized.push_back(ac);
-            }
-        }
-
-        if !found {
-            return Err(FeeQuoterError::AuthorizedCallerNotFound);
-        }
-
-        env.storage().instance().set(&AUTH_CALL, &new_authorized);
-
-        AuthorizedCallerRemovedEvent { caller }.publish(&env);
-
-        Ok(())
-    }
-
-    /// Get all authorized callers.
-    pub fn get_authorized_callers(env: Env) -> Result<Vec<Address>, FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Ok(env
-            .storage()
-            .instance()
-            .get(&AUTH_CALL)
-            .unwrap_or(Vec::new(&env)))
-    }
-
-    // ========================================
-    // Owner Management
-    // ========================================
-
-    /// Transfer ownership to a new address.
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        env.storage().instance().set(&OWNER, &new_owner);
-
-        OwnershipTransferredEvent {
-            new_owner: new_owner.clone(),
-        }
-        .publish(&env);
-
-        Ok(())
-    }
-
-    /// Get the current owner.
-    pub fn owner(env: Env) -> Result<Address, FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        env.storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(FeeQuoterError::NotInitialized)
-    }
-
-    // ========================================
     // Internal Helper Functions
     // ========================================
 
@@ -894,34 +876,6 @@ impl FeeQuoterContract {
             return Err(FeeQuoterError::NotInitialized);
         }
         Ok(())
-    }
-
-    fn require_owner(env: &Env) -> Result<(), FeeQuoterError> {
-        let owner: Address = env
-            .storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(FeeQuoterError::NotInitialized)?;
-        owner.require_auth();
-        Ok(())
-    }
-
-    fn require_authorized_caller(env: &Env) -> Result<(), FeeQuoterError> {
-        let authorized: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&AUTH_CALL)
-            .unwrap_or(Vec::new(env));
-
-        // Check if any authorized caller has signed
-        for caller in authorized.iter() {
-            // Try to require auth - if it succeeds, caller is authorized
-            // Note: In Soroban, we check if the caller provided auth
-            caller.require_auth();
-            return Ok(());
-        }
-
-        Err(FeeQuoterError::CallerNotAuthorized)
     }
 
     fn get_dest_chain_config_internal(

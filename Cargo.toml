@@ -18,6 +18,7 @@ common-message = { path = "contracts/common/message" }
 common-guard = { path = "contracts/common/guard" }
 common-authorization = { path = "contracts/common/authorization" }
 common-interfaces = { path = "contracts/common/interfaces" }
+fee-quoter = { path = "contracts/fee-quoter" }
 onramp = { path = "contracts/onramp" }
 rmn_proxy = { path = "contracts/rmn_proxy" }
 router = { path = "contracts/router" }

@@ -17,3 +17,4 @@
 
 pub mod onramp;
 pub mod rmn_proxy;
+pub mod fee_quoter;
