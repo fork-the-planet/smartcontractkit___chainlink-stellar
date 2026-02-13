@@ -157,18 +157,18 @@
                     },
                     {
                       "key": {
-                        "symbol": "INIT"
+                        "symbol": "AUTHOWN"
                       },
                       "val": {
-                        "bool": true
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                       }
                     },
                     {
                       "key": {
-                        "symbol": "OWNER"
+                        "symbol": "INIT"
                       },
                       "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        "bool": true
                       }
                     },
                     {
