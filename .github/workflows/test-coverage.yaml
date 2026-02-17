@@ -1,0 +1,69 @@
+name: Go Test Coverage
+
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      GOPRIVATE: github.com/smartcontractkit/*
+    steps:
+      - name: Setup GitHub Token
+        id: setup-github-token
+        uses: smartcontractkit/.github/actions/setup-github-token@ef78fa97bf3c77de6563db1175422703e9e6674f # setup-github-token@0.2.1
+        with:
+          aws-role-arn: ${{ secrets.GATI_AWS_ROLE_ARN_CHAINLINK_READ_ONLY }}
+          aws-lambda-url: ${{ secrets.GATI_LAMBDA_URL_RELENG }}
+          aws-region: ${{ secrets.GATI_AWS_REGION }}
+          set-git-config: true
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          cache: true
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Run unit tests (root module)
+        # Integration tests are excluded by default via //go:build integration
+        run: go test -v -race -fullpath -shuffle on -coverprofile=coverage.out ./...
+
+      - name: Display root module coverage
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out
+          else
+            echo "No coverage file produced (no test files?)"
+          fi
+
+      - name: Run unit tests (bindings module)
+        working-directory: bindings
+        run: go test -v -race -fullpath -shuffle on -coverprofile=coverage-bindings.out ./...
+
+      - name: Display bindings module coverage
+        if: always()
+        working-directory: bindings
+        run: |
+          if [ -f coverage-bindings.out ]; then
+            go tool cover -func=coverage-bindings.out
+          else
+            echo "No coverage file produced (no test files?)"
+          fi
