@@ -10,15 +10,15 @@ import (
 
 // InboundImplementationUpdate represents the InboundImplementationUpdate struct from the contract.
 type InboundImplementationUpdate struct {
-	Verifier Address>
-	Version [4]byte
+	Verifier string
+	Version  [4]byte
 }
 
 // ToScVal converts InboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s InboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"verifier": scval.MustToScVal((s.Verifier).ToScVal()),
-		"version": scval.Bytes32ToScVal(s.Version),
+		"verifier": scval.AddressToScVal(s.Verifier),
+		"version":  scval.Bytes4ToScVal(s.Version),
 	})
 }
 
@@ -38,13 +38,13 @@ func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementation
 
 		switch string(key) {
 		case "verifier":
-			v, err := Address>FromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}
-			result.Verifier = *v
+			result.Verifier = v
 		case "version":
-			v, err := scval.Bytes32FromScVal(entry.Val)
+			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("version: %w", err)
 			}
@@ -58,14 +58,14 @@ func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementation
 // InboundImplementationArgs represents the InboundImplementationArgs struct from the contract.
 type InboundImplementationArgs struct {
 	Verifier string
-	Version [4]byte
+	Version  [4]byte
 }
 
 // ToScVal converts InboundImplementationArgs to an xdr.ScVal for contract calls.
 func (s InboundImplementationArgs) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"verifier": scval.AddressToScVal(s.Verifier),
-		"version": scval.Bytes32ToScVal(s.Version),
+		"version":  scval.Bytes4ToScVal(s.Version),
 	})
 }
 
@@ -91,7 +91,7 @@ func InboundImplementationArgsFromScVal(val xdr.ScVal) (*InboundImplementationAr
 			}
 			result.Verifier = v
 		case "version":
-			v, err := scval.Bytes32FromScVal(entry.Val)
+			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("version: %w", err)
 			}
@@ -105,14 +105,14 @@ func InboundImplementationArgsFromScVal(val xdr.ScVal) (*InboundImplementationAr
 // OutboundImplementationUpdate represents the OutboundImplementationUpdate struct from the contract.
 type OutboundImplementationUpdate struct {
 	DestChainSelector uint64
-	Verifier Address>
+	Verifier          string
 }
 
 // ToScVal converts OutboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s OutboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"verifier": scval.MustToScVal((s.Verifier).ToScVal()),
+		"verifier":            scval.AddressToScVal(s.Verifier),
 	})
 }
 
@@ -138,11 +138,11 @@ func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementati
 			}
 			result.DestChainSelector = v
 		case "verifier":
-			v, err := Address>FromScVal(entry.Val)
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}
-			result.Verifier = *v
+			result.Verifier = v
 		}
 	}
 
@@ -152,14 +152,14 @@ func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementati
 // OutboundImplementationArgs represents the OutboundImplementationArgs struct from the contract.
 type OutboundImplementationArgs struct {
 	DestChainSelector uint64
-	Verifier string
+	Verifier          string
 }
 
 // ToScVal converts OutboundImplementationArgs to an xdr.ScVal for contract calls.
 func (s OutboundImplementationArgs) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"verifier": scval.AddressToScVal(s.Verifier),
+		"verifier":            scval.AddressToScVal(s.Verifier),
 	})
 }
 
@@ -198,15 +198,15 @@ func OutboundImplementationArgsFromScVal(val xdr.ScVal) (*OutboundImplementation
 
 // VerifierResolverError represents the contract error codes.
 const (
-	VerifierResolverErrorAlreadyInitialized = 1
-	VerifierResolverErrorNotInitialized = 2
-	VerifierResolverErrorUnauthorized = 3
-	VerifierResolverErrorInvalidVerifierResultsLength = 4
-	VerifierResolverErrorInboundImplementationNotFound = 5
+	VerifierResolverErrorAlreadyInitialized             = 1
+	VerifierResolverErrorNotInitialized                 = 2
+	VerifierResolverErrorUnauthorized                   = 3
+	VerifierResolverErrorInvalidVerifierResultsLength   = 4
+	VerifierResolverErrorInboundImplementationNotFound  = 5
 	VerifierResolverErrorOutboundImplementationNotFound = 6
-	VerifierResolverErrorInvalidAddress = 7
-	VerifierResolverErrorInvalidChainSelector = 8
-	VerifierResolverErrorInvalidVersion = 9
+	VerifierResolverErrorInvalidAddress                 = 7
+	VerifierResolverErrorInvalidChainSelector           = 8
+	VerifierResolverErrorInvalidVersion                 = 9
 )
 
 // VerifierResolverErrorMessage returns a human-readable message for error codes.
@@ -224,30 +224,30 @@ var VerifierResolverErrorMessage = map[int]string{
 
 // AuthError represents the contract error codes.
 const (
-	AuthErrorNotInitialized = 1
-	AuthErrorUnauthorized = 2
-	AuthErrorNotOwner = 3
-	AuthErrorNoPendingOwner = 4
-	AuthErrorCallerNotAuthorized = 5
+	AuthErrorNotInitialized          = 1
+	AuthErrorUnauthorized            = 2
+	AuthErrorNotOwner                = 3
+	AuthErrorNoPendingOwner          = 4
+	AuthErrorCallerNotAuthorized     = 5
 	AuthErrorCallerAlreadyAuthorized = 6
-	AuthErrorCallerNotFound = 7
-	AuthErrorRoleNotGranted = 8
-	AuthErrorFeatureNotEnabled = 9
-	AuthErrorRoleAlreadyGranted = 10
-	AuthErrorCannotRenounceRole = 11
+	AuthErrorCallerNotFound          = 7
+	AuthErrorRoleNotGranted          = 8
+	AuthErrorFeatureNotEnabled       = 9
+	AuthErrorRoleAlreadyGranted      = 10
+	AuthErrorCannotRenounceRole      = 11
 )
 
 // AuthErrorMessage returns a human-readable message for error codes.
 var AuthErrorMessage = map[int]string{
-	1: "not initialized",
-	2: "unauthorized",
-	3: "not owner",
-	4: "no pending owner",
-	5: "caller not authorized",
-	6: "caller already authorized",
-	7: "caller not found",
-	8: "role not granted",
-	9: "feature not enabled",
+	1:  "not initialized",
+	2:  "unauthorized",
+	3:  "not owner",
+	4:  "no pending owner",
+	5:  "caller not authorized",
+	6:  "caller already authorized",
+	7:  "caller not found",
+	8:  "role not granted",
+	9:  "feature not enabled",
 	10: "role already granted",
 	11: "cannot renounce role",
 }
@@ -255,7 +255,7 @@ var AuthErrorMessage = map[int]string{
 // InboundImplSetEvent represents the InboundImplSetEvent event.
 // Topics: [vvr_InboundImplSet]
 type InboundImplSetEvent struct {
-	Version [4]byte
+	Version  [4]byte
 	Verifier string
 	// Event metadata
 	Ledger uint32
@@ -281,7 +281,7 @@ const InboundImplRemovedEventTopic = "vvr_InboundImplRemoved"
 // Topics: [vvr_OutboundImplSet]
 type OutboundImplSetEvent struct {
 	DestChainSelector uint64
-	Verifier string
+	Verifier          string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -330,7 +330,7 @@ const OwnershipTransferredEventTopic = "vvr_OwnerTransferred"
 // Topics: [auth_OwnerTransferStart]
 type OwnershipTransferStartedEvent struct {
 	PreviousOwner string
-	NewOwner string
+	NewOwner      string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -338,69 +338,3 @@ type OwnershipTransferStartedEvent struct {
 
 // OwnershipTransferStartedEventTopic is the event topic identifier.
 const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
-
-// OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
-// Topics: [auth_OwnerTransferred]
-type OwnershipTransferredEvent struct {
-	PreviousOwner string
-	NewOwner string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OwnershipTransferredEventTopic is the event topic identifier.
-const OwnershipTransferredEventTopic = "auth_OwnerTransferred"
-
-// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
-// Topics: [auth_CallerAdded]
-type AuthorizedCallerAddedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerAddedEventTopic is the event topic identifier.
-const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
-
-// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
-// Topics: [auth_CallerRemoved]
-type AuthorizedCallerRemovedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerRemovedEventTopic is the event topic identifier.
-const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
-
-// RoleGrantedEvent represents the RoleGrantedEvent event.
-// Topics: [auth_RoleGranted]
-type RoleGrantedEvent struct {
-	Role Symbol
-	Account string
-	Sender string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// RoleGrantedEventTopic is the event topic identifier.
-const RoleGrantedEventTopic = "auth_RoleGranted"
-
-// RoleRevokedEvent represents the RoleRevokedEvent event.
-// Topics: [auth_RoleRevoked]
-type RoleRevokedEvent struct {
-	Role Symbol
-	Account string
-	Sender string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// RoleRevokedEventTopic is the event topic identifier.
-const RoleRevokedEventTopic = "auth_RoleRevoked"
-
