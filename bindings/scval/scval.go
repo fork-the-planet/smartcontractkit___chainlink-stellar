@@ -63,6 +63,15 @@ func BytesToScVal(b []byte) xdr.ScVal {
 	}
 }
 
+// Bytes4ToScVal converts a [4]byte to an xdr.ScVal (for BytesN<4>).
+func Bytes4ToScVal(b [4]byte) xdr.ScVal {
+	bytes := xdr.ScBytes(b[:])
+	return xdr.ScVal{
+		Type:  xdr.ScValTypeScvBytes,
+		Bytes: &bytes,
+	}
+}
+
 // Bytes32ToScVal converts a [32]byte to an xdr.ScVal.
 func Bytes32ToScVal(b [32]byte) xdr.ScVal {
 	bytes := xdr.ScBytes(b[:])
@@ -79,6 +88,35 @@ func AddressToScVal(addr string) xdr.ScVal {
 		Type:    xdr.ScValTypeScvAddress,
 		Address: scAddr,
 	}
+}
+
+// VoidScVal returns an ScVal representing Soroban's void/None value.
+func VoidScVal() xdr.ScVal {
+	return xdr.ScVal{
+		Type: xdr.ScValTypeScvVoid,
+	}
+}
+
+// OptionalAddressToScVal converts a *string to an ScVal.
+// nil maps to ScvVoid (Soroban Option::None), non-nil maps to ScvAddress (Option::Some).
+func OptionalAddressToScVal(addr *string) xdr.ScVal {
+	if addr == nil {
+		return VoidScVal()
+	}
+	return AddressToScVal(*addr)
+}
+
+// OptionalAddressFromScVal extracts a *string from an ScVal.
+// ScvVoid returns nil (Option::None), ScvAddress returns a pointer to the address string (Option::Some).
+func OptionalAddressFromScVal(val xdr.ScVal) (*string, error) {
+	if val.Type == xdr.ScValTypeScvVoid {
+		return nil, nil
+	}
+	addr, err := AddressFromScVal(val)
+	if err != nil {
+		return nil, err
+	}
+	return &addr, nil
 }
 
 // VecToScVal converts a slice of xdr.ScVal into a vector xdr.ScVal.
@@ -209,6 +247,20 @@ func Uint64FromScVal(val xdr.ScVal) (uint64, error) {
 		return 0, fmt.Errorf("not a u64 type: %v", val.Type)
 	}
 	return uint64(u64), nil
+}
+
+// Bytes4FromScVal extracts a [4]byte from an xdr.ScVal containing BytesN<4>.
+func Bytes4FromScVal(val xdr.ScVal) ([4]byte, error) {
+	bytes, ok := val.GetBytes()
+	if !ok {
+		return [4]byte{}, fmt.Errorf("not a bytes type: %v", val.Type)
+	}
+	if len(bytes) != 4 {
+		return [4]byte{}, fmt.Errorf("expected 4 bytes, got %d", len(bytes))
+	}
+	var result [4]byte
+	copy(result[:], bytes)
+	return result, nil
 }
 
 // Bytes32FromScVal extracts a [32]byte from an xdr.ScVal containing BytesN<32>.

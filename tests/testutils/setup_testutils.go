@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"testing"
@@ -32,17 +33,34 @@ import (
 // Sha256 hash of the network passphrase
 const STELLAR_LOCALNET_PASSPHRASE = "Standalone Network ; February 2017"
 
+// getFreePort asks the OS for an available TCP port.
+func getFreePort(t *testing.T) string {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to find free port: %v", err)
+	}
+	defer l.Close()
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	if err != nil {
+		t.Fatalf("Failed to parse free port: %v", err)
+	}
+	return port
+}
+
 func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
 	// Deploy local Stellar network using devenv
 	chain := chain.New(zerolog.New(os.Stdout))
 
 	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
 
+	port := getFreePort(t)
+	containerName := fmt.Sprintf("blockchain-stellar-%s", t.Name())
+
 	input := &blockchain.Input{
 		Type:          "stellar",
 		ChainID:       string(chainID[:]),
-		ContainerName: "blockchain-stellar",
-		Port:          "8055",
+		ContainerName: containerName,
+		Port:          port,
 		DockerCmdParamsOverrides: []string{
 			"--enable-soroban-rpc",
 			"--local",

@@ -243,9 +243,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ccvs-proxy"
+name = "ccvs-versioned-verifier-resolver"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
  "soroban-sdk",
 ]
 
@@ -296,6 +297,7 @@ dependencies = [
 name = "common-interfaces"
 version = "0.0.0"
 dependencies = [
+ "ccvs-versioned-verifier-resolver",
  "common-message",
  "soroban-sdk",
 ]
