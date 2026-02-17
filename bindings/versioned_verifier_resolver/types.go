@@ -9,15 +9,16 @@ import (
 )
 
 // InboundImplementationUpdate represents the InboundImplementationUpdate struct from the contract.
+// Verifier is a pointer: nil = Option::None (remove), non-nil = Option::Some(Address) (set).
 type InboundImplementationUpdate struct {
-	Verifier string
+	Verifier *string
 	Version  [4]byte
 }
 
 // ToScVal converts InboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s InboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"verifier": scval.AddressToScVal(s.Verifier),
+		"verifier": scval.OptionalAddressToScVal(s.Verifier),
 		"version":  scval.Bytes4ToScVal(s.Version),
 	})
 }
@@ -38,7 +39,7 @@ func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementation
 
 		switch string(key) {
 		case "verifier":
-			v, err := scval.AddressFromScVal(entry.Val)
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}
@@ -103,16 +104,17 @@ func InboundImplementationArgsFromScVal(val xdr.ScVal) (*InboundImplementationAr
 }
 
 // OutboundImplementationUpdate represents the OutboundImplementationUpdate struct from the contract.
+// Verifier is a pointer: nil = Option::None (remove), non-nil = Option::Some(Address) (set).
 type OutboundImplementationUpdate struct {
 	DestChainSelector uint64
-	Verifier          string
+	Verifier          *string
 }
 
 // ToScVal converts OutboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s OutboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"verifier":            scval.AddressToScVal(s.Verifier),
+		"verifier":            scval.OptionalAddressToScVal(s.Verifier),
 	})
 }
 
@@ -138,7 +140,7 @@ func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementati
 			}
 			result.DestChainSelector = v
 		case "verifier":
-			v, err := scval.AddressFromScVal(entry.Val)
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}

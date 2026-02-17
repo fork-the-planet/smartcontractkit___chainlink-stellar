@@ -90,6 +90,35 @@ func AddressToScVal(addr string) xdr.ScVal {
 	}
 }
 
+// VoidScVal returns an ScVal representing Soroban's void/None value.
+func VoidScVal() xdr.ScVal {
+	return xdr.ScVal{
+		Type: xdr.ScValTypeScvVoid,
+	}
+}
+
+// OptionalAddressToScVal converts a *string to an ScVal.
+// nil maps to ScvVoid (Soroban Option::None), non-nil maps to ScvAddress (Option::Some).
+func OptionalAddressToScVal(addr *string) xdr.ScVal {
+	if addr == nil {
+		return VoidScVal()
+	}
+	return AddressToScVal(*addr)
+}
+
+// OptionalAddressFromScVal extracts a *string from an ScVal.
+// ScvVoid returns nil (Option::None), ScvAddress returns a pointer to the address string (Option::Some).
+func OptionalAddressFromScVal(val xdr.ScVal) (*string, error) {
+	if val.Type == xdr.ScValTypeScvVoid {
+		return nil, nil
+	}
+	addr, err := AddressFromScVal(val)
+	if err != nil {
+		return nil, err
+	}
+	return &addr, nil
+}
+
 // VecToScVal converts a slice of xdr.ScVal into a vector xdr.ScVal.
 func VecToScVal(items []xdr.ScVal) xdr.ScVal {
 	scVec := xdr.ScVec(items)

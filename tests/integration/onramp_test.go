@@ -1,4 +1,5 @@
-// tags: integration
+//go:build integration
+
 package integration
 
 import (
