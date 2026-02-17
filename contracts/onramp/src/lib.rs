@@ -1,18 +1,20 @@
 #![no_std]
 
-mod events;
 pub mod error;
+mod events;
 pub mod types;
 
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, Map, Symbol, Vec, contract, contractimpl, symbol_short
+    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
-use events::{ConfigSetEvent, DestChainConfigSetEvent, CCIPMessageSentEvent, OwnershipTransferredEvent};
-use error::OnRampError;
-use types::{StaticConfig, DynamicConfig, DestChainConfig, DestChainConfigArgs, Receipt};
-use common_message::{MessageIdCompute, StellarToAnyMessage};
 use common_guard::ReentrancyGuard;
+use common_message::{MessageIdCompute, StellarToAnyMessage};
+use error::OnRampError;
+use events::{
+    CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent, OwnershipTransferredEvent,
+};
+use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
 
 // ============================================================
 // Storage Keys
@@ -73,7 +75,9 @@ impl OnRampContract {
         env.storage().instance().set(&STATIC_CONFIG, &static_config);
 
         // Store dynamic config
-        env.storage().instance().set(&DYNAMIC_CONFIG, &dynamic_config);
+        env.storage()
+            .instance()
+            .set(&DYNAMIC_CONFIG, &dynamic_config);
 
         // Initialize empty destination chains map
         let dest_chains: Map<u64, DestChainConfig> = Map::new(&env);
@@ -86,7 +90,8 @@ impl OnRampContract {
         ConfigSetEvent {
             static_config,
             dynamic_config,
-        }.publish(&env);
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -229,14 +234,16 @@ impl OnRampContract {
             sender: original_sender,
             message_id: message_id.clone(),
             fee_token: message.fee_token.clone(),
-            token_amount_before_fees: message.token_amounts
+            token_amount_before_fees: message
+                .token_amounts
                 .get(0)
                 .map(|token_amount| token_amount.amount)
                 .unwrap_or(0),
             encoded_message: Bytes::new(&env),
             receipts: Vec::new(&env),
             verifier_blobs: Vec::new(&env),
-        }.publish(&env);
+        }
+        .publish(&env);
 
         // Exit reentrancy guard
         ReentrancyGuard::exit(&env);
@@ -326,10 +333,7 @@ impl OnRampContract {
     /// # Errors
     /// * `Unauthorized` - If caller is not owner
     /// * `InvalidConfig` - If configuration is invalid
-    pub fn set_dynamic_config(
-        env: Env,
-        dynamic_config: DynamicConfig,
-    ) -> Result<(), OnRampError> {
+    pub fn set_dynamic_config(env: Env, dynamic_config: DynamicConfig) -> Result<(), OnRampError> {
         Self::require_initialized(&env)?;
         Self::require_owner(&env)?;
 
@@ -347,7 +351,8 @@ impl OnRampContract {
         ConfigSetEvent {
             static_config,
             dynamic_config,
-        }.publish(&env);
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -460,7 +465,8 @@ impl OnRampContract {
                 dest_chain_selector: args.dest_chain_selector,
                 message_number: existing_message_number,
                 config: new_config,
-            }.publish(&env);
+            }
+            .publish(&env);
         }
 
         env.storage().persistent().set(&DEST_CHAINS, &dest_chains);
@@ -509,7 +515,8 @@ impl OnRampContract {
 
         OwnershipTransferredEvent {
             new_owner: new_owner.clone(),
-        }.publish(&env);
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -548,11 +555,11 @@ impl OnRampContract {
         env: &Env,
         dest_chain_selector: u64,
     ) -> Result<DestChainConfig, OnRampError> {
-        let dest_chains: Map<u64, DestChainConfig> = env
-            .storage()
-            .persistent()
-            .get(&DEST_CHAINS)
-            .ok_or(OnRampError::DestinationChainNotSupported)?;
+        let dest_chains: Map<u64, DestChainConfig> =
+            env.storage()
+                .persistent()
+                .get(&DEST_CHAINS)
+                .ok_or(OnRampError::DestinationChainNotSupported)?;
 
         dest_chains
             .get(dest_chain_selector)

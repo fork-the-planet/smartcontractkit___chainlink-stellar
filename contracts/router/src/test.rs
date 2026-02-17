@@ -1,7 +1,9 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, testutils::Events as _, vec, Address, Bytes, Env, TryIntoVal, Vec};
+use soroban_sdk::{
+    testutils::Address as _, testutils::Events as _, vec, Address, Bytes, Env, TryIntoVal, Vec,
+};
 
 // ============================================================
 // Unit Test Helpers
@@ -91,7 +93,10 @@ fn test_add_remove_offramp() {
 
     let offramps = client.get_offramps();
     assert_eq!(offramps.len(), 1);
-    assert_eq!(offramps.get(0).unwrap().source_chain_selector, source_chain_selector);
+    assert_eq!(
+        offramps.get(0).unwrap().source_chain_selector,
+        source_chain_selector
+    );
     assert_eq!(offramps.get(0).unwrap().offramp, offramp);
 
     // Remove OffRamp
@@ -308,12 +313,7 @@ fn test_ccip_send_full_flow() {
     };
 
     // ---- Send the message via Router ----
-    let message_id = router_client.ccip_send(
-        &sender,
-        &evm_chain_selector,
-        &message,
-        &0i128,
-    );
+    let message_id = router_client.ccip_send(&sender, &evm_chain_selector, &message, &0i128);
 
     // ---- Verify message ID is non-zero (32 bytes) ----
     let zero_hash = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);

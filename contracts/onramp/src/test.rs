@@ -252,8 +252,7 @@ fn test_invalid_dest_chain_config_same_as_local() {
     client.initialize(&owner, &static_config, &dynamic_config);
 
     // Try to add config with same selector as local chain
-    let dest_config =
-        create_test_dest_chain_config_args(&env, static_config.chain_selector);
+    let dest_config = create_test_dest_chain_config_args(&env, static_config.chain_selector);
 
     client.apply_dest_chain_config_updates(&vec![&env, dest_config]);
 }

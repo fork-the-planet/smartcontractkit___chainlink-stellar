@@ -890,7 +890,9 @@ impl FeeQuoterContract {
 
         for i in 0..selectors.len() {
             if selectors.get(i).unwrap() == dest_chain_selector {
-                return configs.get(i).ok_or(FeeQuoterError::DestinationChainNotEnabled);
+                return configs
+                    .get(i)
+                    .ok_or(FeeQuoterError::DestinationChainNotEnabled);
             }
         }
 

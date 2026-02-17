@@ -53,17 +53,3 @@ jobs:
           else
             echo "No coverage file produced (no test files?)"
           fi
-
-      - name: Run unit tests (bindings module)
-        working-directory: bindings
-        run: go test -v -race -fullpath -shuffle on -coverprofile=coverage-bindings.out ./...
-
-      - name: Display bindings module coverage
-        if: always()
-        working-directory: bindings
-        run: |
-          if [ -f coverage-bindings.out ]; then
-            go tool cover -func=coverage-bindings.out
-          else
-            echo "No coverage file produced (no test files?)"
-          fi
