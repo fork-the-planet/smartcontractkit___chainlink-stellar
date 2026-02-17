@@ -1,9 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{
-    contract, contractimpl, testutils::Address as _, Address, Env, Symbol, Vec,
-};
+use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, Symbol, Vec};
 
 // ============================================================
 // Test Contract

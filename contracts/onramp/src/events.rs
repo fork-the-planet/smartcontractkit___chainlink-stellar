@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Bytes, BytesN, Vec, contractevent};
+use soroban_sdk::{contractevent, Address, Bytes, BytesN, Vec};
 
 use crate::{DestChainConfig, DynamicConfig, Receipt, StaticConfig};
 

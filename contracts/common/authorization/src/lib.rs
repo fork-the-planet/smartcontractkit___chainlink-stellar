@@ -188,7 +188,9 @@ impl AuthorizedCallers {
     /// * `env` - The environment
     /// * `initial_callers` - Initial list of authorized addresses
     pub fn init(env: &Env, initial_callers: Vec<Address>) {
-        env.storage().instance().set(&AUTH_CALLERS, &initial_callers);
+        env.storage()
+            .instance()
+            .set(&AUTH_CALLERS, &initial_callers);
 
         // Emit events for each initial caller
         for caller in initial_callers.iter() {

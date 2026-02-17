@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{Address, Bytes, BytesN, Env, Vec, contracttype, xdr::ToXdr};
+use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 pub enum Error {
     InvalidTokenAmount,
@@ -90,7 +90,7 @@ impl StellarToAnyMessage {
             token_amount.validate()?;
         }
 
-        // TODO: add other validations 
+        // TODO: add other validations
         // if self.receiver.len() != 32 {
         //     return Err(OnRampError::InvalidReceiverAddress);
         // }

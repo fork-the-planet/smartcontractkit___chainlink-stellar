@@ -8,7 +8,11 @@ use crate::{
     VersionedVerifierResolverContractClient,
 };
 
-fn setup() -> (Env, VersionedVerifierResolverContractClient<'static>, Address) {
+fn setup() -> (
+    Env,
+    VersionedVerifierResolverContractClient<'static>,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 

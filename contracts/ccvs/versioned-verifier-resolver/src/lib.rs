@@ -28,8 +28,8 @@ use soroban_sdk::{
 use common_authorization::Ownable;
 use error::VerifierResolverError;
 use events::{
-    FeeAggregatorSetEvent, InboundImplRemovedEvent, InboundImplSetEvent,
-    OutboundImplRemovedEvent, OutboundImplSetEvent,
+    FeeAggregatorSetEvent, InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent,
+    OutboundImplSetEvent,
 };
 
 // ============================================================
@@ -479,10 +479,7 @@ impl VersionedVerifierResolverContract {
     ///
     /// # Arguments
     /// * `new_owner` - The proposed new owner
-    pub fn transfer_ownership(
-        env: Env,
-        new_owner: Address,
-    ) -> Result<(), VerifierResolverError> {
+    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError> {
         Self::require_initialized(&env)?;
         Ownable::transfer_ownership(&env, &new_owner)
             .map_err(|_| VerifierResolverError::Unauthorized)?;

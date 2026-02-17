@@ -15,6 +15,6 @@
 //! ```
 #![no_std]
 
+pub mod fee_quoter;
 pub mod onramp;
 pub mod rmn_proxy;
-pub mod fee_quoter;

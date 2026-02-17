@@ -46,10 +46,7 @@ pub trait FeeQuoterInterface {
     ) -> Result<i128, FeeQuoterError>;
     fn get_all_dest_configs(
         env: soroban_sdk::Env,
-    ) -> Result<
-        (soroban_sdk::Vec<u64>, soroban_sdk::Vec<DestChainConfig>),
-        FeeQuoterError,
-    >;
+    ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<DestChainConfig>), FeeQuoterError>;
     fn get_token_fee_config(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,

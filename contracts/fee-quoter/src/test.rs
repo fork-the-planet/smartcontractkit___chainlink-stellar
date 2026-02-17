@@ -1,11 +1,11 @@
 #![cfg(test)]
 
 use super::*;
+use common_message::{StellarToAnyMessage, TokenAmount};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Bytes, Env, Vec,
 };
-use common_message::{StellarToAnyMessage, TokenAmount};
 use types::{
     DestChainConfig, DestChainConfigArgs, GasPriceUpdate, PriceUpdates, StaticConfig,
     TokenFeeConfigArgs, TokenFeeConfigRemoveArgs, TokenPriceUpdate, TokenTransferFeeConfig,
@@ -467,8 +467,12 @@ fn test_get_message_fee() {
 
     // Build a CCIP message
     let message = StellarToAnyMessage {
-        receiver: Bytes::from_slice(&env, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                                             11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+        receiver: Bytes::from_slice(
+            &env,
+            &[
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+            ],
+        ),
         data: Bytes::from_slice(&env, &[0u8; 100]), // 100 bytes of data
         token_amounts: Vec::new(&env),
         fee_token: link_token.clone(),

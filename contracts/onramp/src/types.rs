@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Bytes, Vec, contracttype};
+use soroban_sdk::{contracttype, Address, Bytes, Vec};
 
 // ============================================================
 // Types & Structs
