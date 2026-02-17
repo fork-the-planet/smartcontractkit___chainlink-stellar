@@ -22,6 +22,7 @@ fee-quoter = { path = "contracts/fee-quoter" }
 onramp = { path = "contracts/onramp" }
 rmn_proxy = { path = "contracts/rmn_proxy" }
 router = { path = "contracts/router" }
+ccvs-versioned-verifier-resolver = { path = "contracts/ccvs/versioned-verifier-resolver" }
 
 [profile.release]
 opt-level = "z"

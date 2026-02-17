@@ -17,8 +17,8 @@
 //! - `SUPPORTED_DEST_CHAINS` (Vec<u64>): Set of supported destination chain selectors.
 //! - `FEE_AGGREGATOR` (Address): The fee aggregator address.
 
-mod error;
-mod events;
+pub mod error;
+pub mod events;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
