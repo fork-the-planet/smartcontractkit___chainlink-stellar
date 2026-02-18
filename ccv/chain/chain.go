@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -171,23 +173,50 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Generate deterministic OnRamp address
 	// In a real deployment, this would be obtained from DeployOnRamp
-	onRampAddr := contractAddr("stellar-onramp")
+	// onRampAddr := contractAddr("stellar-onramp")
+
+	// Locate the compiled OnRamp WASM
+	origDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working directory: %w", err)
+	}
+	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../../../chainlink-stellar"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stellar root: %w", err)
+	}
+
+	c.logger.Info().Str("stellarRoot", stellarRoot).Msg("Stellar root")
+
+	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
+	if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", onrampWasmPath)
+	}
+
+	// Deploy the OnRamp contract
+	c.logger.Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
+
+	onrampSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "onramp")
+	onrampContractID, err := c.deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy OnRamp contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
 	// Initialize the OnRamp client with the contract ID
 	// Note: For actual deployment, we would:
 	// 1. Deploy the WASM: DeployOnRamp(ctx, c.rpcClient, c.networkPassphrase, c.deployerKeypair, wasmPath)
 	// 2. Initialize it with proper config
 	// For now, we use the deterministic address and will deploy when WASM is available
-	c.onRampContractID = onRampAddr
-	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onRampAddr)
+	c.onRampContractID = onrampContractID
+	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onrampContractID)
 
 	c.logger.Info().
-		Str("onRampAddress", onRampAddr).
+		Str("onRampContractID", onrampContractID).
 		Msg("OnRamp client initialized")
 
 	// Add OnRamp to datastore
 	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       onRampAddr,
+		Address:       onrampContractID,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(onrampoperations.ContractType),
 		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
