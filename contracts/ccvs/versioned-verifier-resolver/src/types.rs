@@ -1,7 +1,7 @@
 use soroban_sdk::{Address, BytesN, Env, Map, Vec, contracttype};
 use common_helpers::map_updater::{MapUpdate, MapUpdater};
 
-use crate::{DEST_OUTBND, SUP_DESTS, SUP_VERS, VER_INBOUND, error::VerifierResolverError};
+use crate::{DEST_OUTBND, SUP_DESTS, SUP_VERS, VER_INBOUND, error::VerifierResolverError, events::{InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent, OutboundImplSetEvent}};
 
 /// Arguments for updating an inbound implementation.
 /// Maps a 4-byte verifier version prefix to a verifier contract address.
@@ -59,7 +59,30 @@ impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap 
     }
 
     fn save_changes(&self, env: &Env, key_set: &Vec<BytesN<4>>, map: &Map<BytesN<4>, Address>) -> Result<(), Self::Error> {
+        env.storage().instance().set(&SUP_VERS, &key_set);
+        env.storage().instance().set(&VER_INBOUND, &map);
+        Ok(())
+    }
 
+    fn validate_update(&self, _update: &InboundImplementationUpdate) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn emit_set_event(&self, env: &Env, update: &InboundImplementationUpdate) {
+        if let Some(verifier) = &update.verifier {
+            InboundImplSetEvent {
+                version: update.version.clone(),
+                verifier: verifier.clone(),
+            }
+            .publish(env);
+        }
+    }
+
+    fn emit_remove_event(&self, env: &Env, update: &InboundImplementationUpdate) {
+        InboundImplRemovedEvent {
+            version: update.version.clone(),
+        }
+        .publish(env);
     }
 }
 
@@ -118,7 +141,30 @@ impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
             .ok_or(VerifierResolverError::NotInitialized)
     }
 
-    fn save_changes(&self, env: &Env, key_set: &Vec<BytesN<4>>, map: &Map<BytesN<4>, Address>) -> Result<(), Self::Error> {
-        
+    fn save_changes(&self, env: &Env, key_set: &Vec<u64>, map: &Map<u64, Address>) -> Result<(), Self::Error> {
+        env.storage().instance().set(&SUP_DESTS, &key_set);
+        env.storage().instance().set(&DEST_OUTBND, &map);
+        Ok(())
+    }
+
+    fn validate_update(&self, _update: &OutboundImplementationUpdate) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn emit_set_event(&self, env: &Env, update: &OutboundImplementationUpdate) {
+        if let Some(verifier) = &update.verifier {
+            OutboundImplSetEvent {
+                dest_chain_selector: update.dest_chain_selector,
+                verifier: verifier.clone(),
+            }
+            .publish(env);
+        }
+    }
+
+    fn emit_remove_event(&self, env: &Env, update: &OutboundImplementationUpdate) {
+        OutboundImplRemovedEvent {
+            dest_chain_selector: update.dest_chain_selector,
+        }
+        .publish(env);
     }
 }

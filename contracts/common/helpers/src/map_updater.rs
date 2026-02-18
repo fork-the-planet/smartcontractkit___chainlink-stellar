@@ -18,6 +18,14 @@ pub trait MapUpdater<T, K, V>
 
     fn get_map(&self, env: &Env) -> Result<Map<K, V>, Self::Error>;
     fn get_key_set(&self, env: &Env) -> Result<Vec<K>, Self::Error>;
+    
+    fn validate_update(&self, _update: &T) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    
+    fn emit_set_event(&self, _env: &Env, _update: &T) {}
+    
+    fn emit_remove_event(&self, _env: &Env, _update: &T) {}
 
     fn apply_updates(&self, env: &Env, updates: &Vec<T>) -> Result<(), Self::Error> {
         let mut map = self.get_map(env)?;
@@ -31,6 +39,7 @@ pub trait MapUpdater<T, K, V>
                         Some(idx) => key_set.remove(idx),
                         None => None,
                     };
+                    self.emit_remove_event(env, &update);
                 },
                 (key, Some(value)) => {
                     if !key_set.contains(key.clone()) {
@@ -38,10 +47,15 @@ pub trait MapUpdater<T, K, V>
                     }
 
                     map.set(key, value);
+                    self.emit_set_event(env, &update);
                 },
             };
         });
 
+        self.save_changes(env, &key_set, &map)?;
+
         Ok(())
     }
+
+    fn save_changes(&self, env: &Env, key_set: &Vec<K>, map: &Map<K, V>) -> Result<(), Self::Error>;
 }

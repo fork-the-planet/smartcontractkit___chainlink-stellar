@@ -355,57 +355,15 @@ impl VersionedVerifierResolverContract {
         Self::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
-        let mut outbound_map: Map<u64, Address> = env
+        let outbound_map: Map<u64, Address> = env
             .storage()
             .instance()
             .get(&DEST_OUTBND)
             .unwrap_or(Map::new(&env));
 
-        let mut supported_dests: Vec<u64> = env
-            .storage()
-            .instance()
-            .get(&SUP_DESTS)
-            .unwrap_or(Vec::new(&env));
-
+        // Note: this also stores the updates to storage based on the MapUpdater implementation
+        // See `types.rs` in crate for the implementation details.
         outbound_map.apply_updates(&env, &implementations)?;
-
-        // for update in implementations.iter() {
-        //     match update.verifier {
-        //         None => {
-        //             outbound_map.remove(update.dest_chain_selector);
-        //             match supported_dests.first_index_of(&update.dest_chain_selector) {
-        //                 Some(idx) => supported_dests.remove(idx),
-        //                 None => None,
-        //             };
-
-        //             OutboundImplRemovedEvent {
-        //                 dest_chain_selector: update.dest_chain_selector,
-        //             }
-        //             .publish(&env);
-        //         }
-        //         Some(verifier) => {
-        //             if update.dest_chain_selector == 0 {
-        //                 return Err(VerifierResolverError::InvalidChainSelector);
-        //             }
-
-        //             // Add to supported dest chains if not already present
-        //             if !supported_dests.contains(update.dest_chain_selector) {
-        //                 supported_dests.push_back(update.dest_chain_selector);
-        //             }
-
-        //             outbound_map.set(update.dest_chain_selector, verifier.clone());
-
-        //             OutboundImplSetEvent {
-        //                 dest_chain_selector: update.dest_chain_selector,
-        //                 verifier,
-        //             }
-        //             .publish(&env);
-        //         }
-        //     }
-        // }
-
-        // env.storage().instance().set(&DEST_OUTBND, &outbound_map);
-        // env.storage().instance().set(&SUP_DESTS, &supported_dests);
 
         Ok(())
     }
