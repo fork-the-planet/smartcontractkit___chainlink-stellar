@@ -229,16 +229,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ccvs-base-verifier"
-version = "0.0.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "ccvs-committee-verifier"
 version = "0.0.0"
 dependencies = [
+ "common-verifier",
  "soroban-sdk",
 ]
 
@@ -247,6 +241,7 @@ name = "ccvs-versioned-verifier-resolver"
 version = "0.0.0"
 dependencies = [
  "common-authorization",
+ "common-helpers",
  "soroban-sdk",
 ]
 
@@ -294,6 +289,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-helpers"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "common-interfaces"
 version = "0.0.0"
 dependencies = [
@@ -304,6 +306,13 @@ dependencies = [
 
 [[package]]
 name = "common-message"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "common-verifier"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
