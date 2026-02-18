@@ -1,4 +1,4 @@
-use soroban_sdk::{Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec, xdr::Error};
+use soroban_sdk::{xdr::Error, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
 pub trait MapUpdate {
     type Key: TryFromVal<Env, Val> + IntoVal<Env, Val>;
@@ -10,7 +10,7 @@ pub trait MapUpdate {
 
 /// A trait to define abstract behavior for applying updates to a state map using
 /// a key-value pair.
-/// 
+///
 /// # Generic Parameters
 /// * `T` - The type of the update, must implement `MapUpdate<Key = K, Value = V>`
 /// * `K` - The type of the key
@@ -23,7 +23,7 @@ pub trait MapUpdate {
 /// * `Ok(())` - If the updates are applied successfully
 /// * `Err(Error)` - If the updates are not applied successfully
 pub trait MapUpdater<T, K, V>
- where
+where
     T: MapUpdate<Key = K, Value = V> + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
     K: TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
     V: TryFromVal<Env, Val> + IntoVal<Env, Val>,
@@ -35,15 +35,15 @@ pub trait MapUpdater<T, K, V>
     fn get_map(&self, env: &Env) -> Option<Map<K, V>> {
         env.storage().instance().get(&Self::MAP_NAME)
     }
-    
+
     fn get_key_set(&self, env: &Env) -> Option<Vec<K>> {
         env.storage().instance().get(&Self::KEY_SET_NAME)
     }
-    
+
     fn validate_update(&self, _update: &T) -> Result<(), Self::Error> {
         Ok(())
     }
-    
+
     fn emit_set_event(&self, _env: &Env, _update: &T) {}
     fn emit_remove_event(&self, _env: &Env, _update: &T) {}
 
@@ -61,7 +61,7 @@ pub trait MapUpdater<T, K, V>
                         None => None,
                     };
                     self.emit_remove_event(env, &update);
-                },
+                }
                 (key, Some(value)) => {
                     if !key_set.contains(key.clone()) {
                         key_set.push_back(key.clone());
@@ -69,7 +69,7 @@ pub trait MapUpdater<T, K, V>
 
                     map.set(key, value);
                     self.emit_set_event(env, &update);
-                },
+                }
             };
         });
 
@@ -78,5 +78,6 @@ pub trait MapUpdater<T, K, V>
         Ok(())
     }
 
-    fn save_changes(&self, env: &Env, key_set: &Vec<K>, map: &Map<K, V>) -> Result<(), Self::Error>;
+    fn save_changes(&self, env: &Env, key_set: &Vec<K>, map: &Map<K, V>)
+        -> Result<(), Self::Error>;
 }
