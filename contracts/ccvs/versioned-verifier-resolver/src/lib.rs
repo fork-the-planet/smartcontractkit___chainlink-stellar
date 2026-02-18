@@ -276,59 +276,13 @@ impl VersionedVerifierResolverContract {
         Self::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
-        let mut inbound_map: Map<BytesN<4>, Address> = env
+        let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
             .instance()
             .get(&VER_INBOUND)
             .unwrap_or(Map::new(&env));
 
-        let mut supported_versions: Vec<BytesN<4>> = env
-            .storage()
-            .instance()
-            .get(&SUP_VERS)
-            .unwrap_or(Vec::new(&env));
-
-        let zero_version = BytesN::from_array(&env, &[0u8; 4]);
-
-        for update in implementations.iter() {
-            match update.verifier {
-                None => {
-                    // Remove: verifier is None (equivalent to address(0) in Solidity)
-                    inbound_map.remove(update.version.clone());
-                    match supported_versions.first_index_of(&update.version) {
-                        Some(idx) => supported_versions.remove(idx),
-                        None => None,
-                    };
-
-                    InboundImplRemovedEvent {
-                        version: update.version,
-                    }
-                    .publish(&env);
-                }
-                Some(verifier) => {
-                    // Set/Update: verifier is provided
-                    if update.version == zero_version {
-                        return Err(VerifierResolverError::InvalidVersion);
-                    }
-
-                    // Add to supported versions set if not already present
-                    if !supported_versions.contains(&update.version) {
-                        supported_versions.push_back(update.version.clone());
-                    }
-
-                    inbound_map.set(update.version.clone(), verifier.clone());
-
-                    InboundImplSetEvent {
-                        version: update.version,
-                        verifier,
-                    }
-                    .publish(&env);
-                }
-            }
-        }
-
-        env.storage().instance().set(&VER_INBOUND, &inbound_map);
-        env.storage().instance().set(&SUP_VERS, &supported_versions);
+       inbound_map.apply_updates(&env, &implementations)?;
 
         Ok(())
     }

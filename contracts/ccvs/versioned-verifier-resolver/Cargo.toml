@@ -10,7 +10,6 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-thiserror = { workspace = true }
 common-authorization = { workspace = true }
 common-helpers = { workspace = true }
 

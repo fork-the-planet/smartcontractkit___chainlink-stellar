@@ -44,23 +44,13 @@ pub struct InboundImplementationArgs {
 
 type InboundMap = Map<BytesN<4>, Address>;
 impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap {
+    const MAP_NAME: Symbol = VER_INBOUND;
+    const KEY_SET_NAME: Symbol = SUP_VERS;
     type Error = VerifierResolverError;
 
-    fn get_map(&self, env: &Env) -> Result<InboundMap, Self::Error> {
-        env.storage().instance()
-            .get(&VER_INBOUND)
-            .ok_or(VerifierResolverError::NotInitialized)
-    }
-
-    fn get_key_set(&self, env: &Env) -> Result<Vec<BytesN<4>>, Self::Error> {
-        env.storage().instance()
-            .get(&SUP_VERS)
-            .ok_or(VerifierResolverError::NotInitialized)
-    }
-
     fn save_changes(&self, env: &Env, key_set: &Vec<BytesN<4>>, map: &Map<BytesN<4>, Address>) -> Result<(), Self::Error> {
-        env.storage().instance().set(&SUP_VERS, &key_set);
-        env.storage().instance().set(&VER_INBOUND, &map);
+        env.storage().instance().set(&SUP_VERS, key_set);
+        env.storage().instance().set(&VER_INBOUND, map);
         Ok(())
     }
 
@@ -127,23 +117,13 @@ type OutboundMap = Map<u64, Address>;
 type SupportedDestinations = Vec<u64>;
 
 impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
+    const MAP_NAME: Symbol = DEST_OUTBND;
+    const KEY_SET_NAME: Symbol = SUP_DESTS;
     type Error = VerifierResolverError;
 
-    fn get_map(&self, env: &Env) -> Result<OutboundMap, Self::Error> {
-        env.storage().instance()
-            .get(&DEST_OUTBND)
-            .ok_or(VerifierResolverError::NotInitialized)
-    }
-
-    fn get_key_set(&self, env: &Env) -> Result<SupportedDestinations, Self::Error> {
-        env.storage().instance()
-            .get(&SUP_DESTS)
-            .ok_or(VerifierResolverError::NotInitialized)
-    }
-
     fn save_changes(&self, env: &Env, key_set: &Vec<u64>, map: &Map<u64, Address>) -> Result<(), Self::Error> {
-        env.storage().instance().set(&SUP_DESTS, &key_set);
-        env.storage().instance().set(&DEST_OUTBND, &map);
+        env.storage().instance().set(&SUP_DESTS, key_set);
+        env.storage().instance().set(&DEST_OUTBND, map);
         Ok(())
     }
 
