@@ -23,3 +23,9 @@ pub enum VerifierResolverError {
     /// Invalid version: zero version (bytes4(0)) not allowed when setting
     InvalidVersion = 9,
 }
+
+impl From<VerifierResolverError> for soroban_sdk::xdr::Error {
+    fn from(error: VerifierResolverError) -> Self {
+        error.into()
+    }
+}

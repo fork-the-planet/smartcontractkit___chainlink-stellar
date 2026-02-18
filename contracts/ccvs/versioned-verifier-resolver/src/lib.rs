@@ -19,10 +19,11 @@
 
 pub mod error;
 pub mod events;
+pub mod types;
 
+use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
-    Vec,
+    Address, Bytes, BytesN, Env, Map, Symbol, Vec, contract, contractimpl, symbol_short, xdr::FromXdr
 };
 
 use common_authorization::Ownable;
@@ -31,71 +32,21 @@ use events::{
     FeeAggregatorSetEvent, InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent,
     OutboundImplSetEvent,
 };
+pub use types::{
+    InboundImplementationArgs, InboundImplementationUpdate,
+    OutboundImplementationArgs, OutboundImplementationUpdate,
+};
 
 // ============================================================
 // Storage Keys
 // ============================================================
 
-const INITIALIZED: Symbol = symbol_short!("INIT");
-const VER_INBOUND: Symbol = symbol_short!("VERINB");
-const DEST_OUTBND: Symbol = symbol_short!("DESTOUT");
-const SUP_VERS: Symbol = symbol_short!("SUPVERS");
-const SUP_DESTS: Symbol = symbol_short!("SUPDEST");
-const FEE_AGG: Symbol = symbol_short!("FEEAGG");
-
-// ============================================================
-// Types
-// ============================================================
-
-/// Arguments for updating an inbound implementation.
-/// Maps a 4-byte verifier version prefix to a verifier contract address.
-///
-/// - If `verifier` is `None`, the implementation for this version is removed.
-/// - If `verifier` is `Some(address)`, the implementation is set/updated.
-///
-/// This mirrors the EVM pattern where `address(0)` signals deletion.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InboundImplementationUpdate {
-    /// 4-byte verifier version prefix (equivalent to Solidity bytes4)
-    pub version: BytesN<4>,
-    /// Address of the verifier contract, or None to remove
-    pub verifier: Option<Address>,
-}
-
-/// Return type for querying inbound implementations (always has an address).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InboundImplementationArgs {
-    /// 4-byte verifier version prefix
-    pub version: BytesN<4>,
-    /// Address of the verifier contract
-    pub verifier: Address,
-}
-
-/// Arguments for updating an outbound implementation.
-/// Maps a destination chain selector to a verifier contract address.
-///
-/// - If `verifier` is `None`, the implementation for this chain is removed.
-/// - If `verifier` is `Some(address)`, the implementation is set/updated.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OutboundImplementationUpdate {
-    /// Destination chain selector
-    pub dest_chain_selector: u64,
-    /// Address of the verifier contract, or None to remove
-    pub verifier: Option<Address>,
-}
-
-/// Return type for querying outbound implementations (always has an address).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OutboundImplementationArgs {
-    /// Destination chain selector
-    pub dest_chain_selector: u64,
-    /// Address of the verifier contract
-    pub verifier: Address,
-}
+pub(crate) const INITIALIZED: Symbol = symbol_short!("INIT");
+pub(crate) const VER_INBOUND: Symbol = symbol_short!("VERINB");
+pub(crate) const DEST_OUTBND: Symbol = symbol_short!("DESTOUT");
+pub(crate) const SUP_VERS: Symbol = symbol_short!("SUPVERS");
+pub(crate) const SUP_DESTS: Symbol = symbol_short!("SUPDEST");
+pub(crate) const FEE_AGG: Symbol = symbol_short!("FEEAGG");
 
 // ============================================================
 // Contract
@@ -178,7 +129,9 @@ impl VersionedVerifierResolverContract {
         }
 
         // Extract first 4 bytes as version
-        let version = Self::extract_version(&env, &verifier_results);
+        let version = verifier_results.slice(0..4);
+        let version = BytesN::from_xdr(&env, &version)
+            .expect("Failed to convert verifier results to BytesN<4>");
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
@@ -342,8 +295,10 @@ impl VersionedVerifierResolverContract {
                 None => {
                     // Remove: verifier is None (equivalent to address(0) in Solidity)
                     inbound_map.remove(update.version.clone());
-                    supported_versions =
-                        Self::vec_remove_version(&env, &supported_versions, &update.version);
+                    match supported_versions.first_index_of(&update.version) {
+                        Some(idx) => supported_versions.remove(idx),
+                        None => None,
+                    };
 
                     InboundImplRemovedEvent {
                         version: update.version,
@@ -357,7 +312,7 @@ impl VersionedVerifierResolverContract {
                     }
 
                     // Add to supported versions set if not already present
-                    if !Self::vec_contains_version(&supported_versions, &update.version) {
+                    if !supported_versions.contains(&update.version) {
                         supported_versions.push_back(update.version.clone());
                     }
 
@@ -412,43 +367,45 @@ impl VersionedVerifierResolverContract {
             .get(&SUP_DESTS)
             .unwrap_or(Vec::new(&env));
 
-        for update in implementations.iter() {
-            match update.verifier {
-                None => {
-                    // Remove: verifier is None
-                    outbound_map.remove(update.dest_chain_selector);
-                    supported_dests =
-                        Self::vec_remove_u64(&env, &supported_dests, update.dest_chain_selector);
+        outbound_map.apply_updates(&env, &implementations)?;
 
-                    OutboundImplRemovedEvent {
-                        dest_chain_selector: update.dest_chain_selector,
-                    }
-                    .publish(&env);
-                }
-                Some(verifier) => {
-                    // Set/Update: verifier is provided
-                    if update.dest_chain_selector == 0 {
-                        return Err(VerifierResolverError::InvalidChainSelector);
-                    }
+        // for update in implementations.iter() {
+        //     match update.verifier {
+        //         None => {
+        //             outbound_map.remove(update.dest_chain_selector);
+        //             match supported_dests.first_index_of(&update.dest_chain_selector) {
+        //                 Some(idx) => supported_dests.remove(idx),
+        //                 None => None,
+        //             };
 
-                    // Add to supported dest chains if not already present
-                    if !Self::vec_contains_u64(&supported_dests, update.dest_chain_selector) {
-                        supported_dests.push_back(update.dest_chain_selector);
-                    }
+        //             OutboundImplRemovedEvent {
+        //                 dest_chain_selector: update.dest_chain_selector,
+        //             }
+        //             .publish(&env);
+        //         }
+        //         Some(verifier) => {
+        //             if update.dest_chain_selector == 0 {
+        //                 return Err(VerifierResolverError::InvalidChainSelector);
+        //             }
 
-                    outbound_map.set(update.dest_chain_selector, verifier.clone());
+        //             // Add to supported dest chains if not already present
+        //             if !supported_dests.contains(update.dest_chain_selector) {
+        //                 supported_dests.push_back(update.dest_chain_selector);
+        //             }
 
-                    OutboundImplSetEvent {
-                        dest_chain_selector: update.dest_chain_selector,
-                        verifier,
-                    }
-                    .publish(&env);
-                }
-            }
-        }
+        //             outbound_map.set(update.dest_chain_selector, verifier.clone());
 
-        env.storage().instance().set(&DEST_OUTBND, &outbound_map);
-        env.storage().instance().set(&SUP_DESTS, &supported_dests);
+        //             OutboundImplSetEvent {
+        //                 dest_chain_selector: update.dest_chain_selector,
+        //                 verifier,
+        //             }
+        //             .publish(&env);
+        //         }
+        //     }
+        // }
+
+        // env.storage().instance().set(&DEST_OUTBND, &outbound_map);
+        // env.storage().instance().set(&SUP_DESTS, &supported_dests);
 
         Ok(())
     }
@@ -501,57 +458,6 @@ impl VersionedVerifierResolverContract {
             return Err(VerifierResolverError::NotInitialized);
         }
         Ok(())
-    }
-
-    /// Extract the first 4 bytes from a Bytes value as BytesN<4>.
-    fn extract_version(env: &Env, data: &Bytes) -> BytesN<4> {
-        let mut version_bytes = [0u8; 4];
-        for i in 0..4 {
-            version_bytes[i as usize] = data.get(i).unwrap();
-        }
-        BytesN::from_array(env, &version_bytes)
-    }
-
-    /// Check if a Vec<BytesN<4>> contains a specific value.
-    fn vec_contains_version(vec: &Vec<BytesN<4>>, value: &BytesN<4>) -> bool {
-        for item in vec.iter() {
-            if item == *value {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Remove a specific BytesN<4> value from a Vec, returning a new Vec.
-    fn vec_remove_version(env: &Env, vec: &Vec<BytesN<4>>, value: &BytesN<4>) -> Vec<BytesN<4>> {
-        let mut result: Vec<BytesN<4>> = Vec::new(env);
-        for item in vec.iter() {
-            if item != *value {
-                result.push_back(item);
-            }
-        }
-        result
-    }
-
-    /// Check if a Vec<u64> contains a specific value.
-    fn vec_contains_u64(vec: &Vec<u64>, value: u64) -> bool {
-        for item in vec.iter() {
-            if item == value {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Remove a specific u64 value from a Vec, returning a new Vec.
-    fn vec_remove_u64(env: &Env, vec: &Vec<u64>, value: u64) -> Vec<u64> {
-        let mut result: Vec<u64> = Vec::new(env);
-        for item in vec.iter() {
-            if item != value {
-                result.push_back(item);
-            }
-        }
-        result
     }
 }
 
