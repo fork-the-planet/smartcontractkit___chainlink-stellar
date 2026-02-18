@@ -241,6 +241,7 @@ name = "ccvs-versioned-verifier-resolver"
 version = "0.0.0"
 dependencies = [
  "common-authorization",
+ "common-error",
  "common-helpers",
  "soroban-sdk",
 ]
@@ -279,6 +280,22 @@ name = "common-authorization"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
+]
+
+[[package]]
+name = "common-error"
+version = "0.0.0"
+dependencies = [
+ "common-error-derive",
+]
+
+[[package]]
+name = "common-error-derive"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]
