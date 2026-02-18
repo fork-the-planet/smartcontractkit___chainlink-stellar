@@ -23,18 +23,16 @@ pub mod types;
 
 use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, Map, Symbol, Vec, contract, contractimpl, symbol_short, xdr::FromXdr
+    contract, contractimpl, symbol_short, xdr::FromXdr, Address, Bytes, BytesN, Env, Map, Symbol,
+    Vec,
 };
 
 use common_authorization::Ownable;
 use error::VerifierResolverError;
-use events::{
-    FeeAggregatorSetEvent, InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent,
-    OutboundImplSetEvent,
-};
+use events::FeeAggregatorSetEvent;
 pub use types::{
-    InboundImplementationArgs, InboundImplementationUpdate,
-    OutboundImplementationArgs, OutboundImplementationUpdate,
+    InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
+    OutboundImplementationUpdate,
 };
 
 // ============================================================
@@ -221,18 +219,16 @@ impl VersionedVerifierResolverContract {
             .get(&DEST_OUTBND)
             .unwrap_or(Map::new(&env));
 
-        let mut result: Vec<OutboundImplementationArgs> = Vec::new(&env);
-
-        for selector in supported_dests.iter() {
-            if let Some(verifier) = outbound_map.get(selector) {
-                result.push_back(OutboundImplementationArgs {
+        let result = supported_dests.iter().filter_map(|selector| {
+            outbound_map
+                .get(selector)
+                .map(|verifier| OutboundImplementationArgs {
                     dest_chain_selector: selector,
                     verifier,
-                });
-            }
-        }
+                })
+        });
 
-        result
+        Vec::from_iter(&env, result.into_iter())
     }
 
     /// Returns the fee aggregator address.
@@ -282,7 +278,7 @@ impl VersionedVerifierResolverContract {
             .get(&VER_INBOUND)
             .unwrap_or(Map::new(&env));
 
-       inbound_map.apply_updates(&env, &implementations)?;
+        inbound_map.apply_updates(&env, &implementations)?;
 
         Ok(())
     }
@@ -335,7 +331,7 @@ impl VersionedVerifierResolverContract {
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
         Self::require_initialized(&env)?;
-        Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        Ownable::require_owner(&env)?;
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
 

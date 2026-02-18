@@ -1,7 +1,14 @@
-use soroban_sdk::{Address, BytesN, Env, Map, Vec, contracttype};
 use common_helpers::map_updater::{MapUpdate, MapUpdater};
+use soroban_sdk::{contracttype, Address, BytesN, Env, IntoVal, Map, Symbol, Vec};
 
-use crate::{DEST_OUTBND, SUP_DESTS, SUP_VERS, VER_INBOUND, error::VerifierResolverError, events::{InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent, OutboundImplSetEvent}};
+use crate::{
+    error::VerifierResolverError,
+    events::{
+        InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent,
+        OutboundImplSetEvent,
+    },
+    DEST_OUTBND, SUP_DESTS, SUP_VERS, VER_INBOUND,
+};
 
 /// Arguments for updating an inbound implementation.
 /// Maps a 4-byte verifier version prefix to a verifier contract address.
@@ -48,7 +55,12 @@ impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap 
     const KEY_SET_NAME: Symbol = SUP_VERS;
     type Error = VerifierResolverError;
 
-    fn save_changes(&self, env: &Env, key_set: &Vec<BytesN<4>>, map: &Map<BytesN<4>, Address>) -> Result<(), Self::Error> {
+    fn save_changes(
+        &self,
+        env: &Env,
+        key_set: &Vec<BytesN<4>>,
+        map: &Map<BytesN<4>, Address>,
+    ) -> Result<(), Self::Error> {
         env.storage().instance().set(&SUP_VERS, key_set);
         env.storage().instance().set(&VER_INBOUND, map);
         Ok(())
@@ -114,14 +126,17 @@ pub struct OutboundImplementationArgs {
 }
 
 type OutboundMap = Map<u64, Address>;
-type SupportedDestinations = Vec<u64>;
-
 impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
     const MAP_NAME: Symbol = DEST_OUTBND;
     const KEY_SET_NAME: Symbol = SUP_DESTS;
     type Error = VerifierResolverError;
 
-    fn save_changes(&self, env: &Env, key_set: &Vec<u64>, map: &Map<u64, Address>) -> Result<(), Self::Error> {
+    fn save_changes(
+        &self,
+        env: &Env,
+        key_set: &Vec<u64>,
+        map: &Map<u64, Address>,
+    ) -> Result<(), Self::Error> {
         env.storage().instance().set(&SUP_DESTS, key_set);
         env.storage().instance().set(&DEST_OUTBND, map);
         Ok(())

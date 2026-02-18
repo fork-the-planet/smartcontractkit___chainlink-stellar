@@ -1,7 +1,9 @@
+use common_authorization::AuthError;
+use common_error::ErrorConversions;
 use soroban_sdk::contracterror;
 
 #[contracterror]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ErrorConversions)]
 #[repr(u32)]
 pub enum VerifierResolverError {
     /// Contract already initialized
@@ -9,6 +11,7 @@ pub enum VerifierResolverError {
     /// Contract not initialized
     NotInitialized = 2,
     /// Caller is not authorized (not the owner)
+    #[from(AuthError)]
     Unauthorized = 3,
     /// Verifier results data is too short (must be at least 4 bytes for version prefix)
     InvalidVerifierResultsLength = 4,
