@@ -327,6 +327,12 @@ impl CommitteeVerifierContract {
         Ownable::set_new_owner(&env, &new_owner)?;
         Ok(())
     }
+
+    pub fn accept_ownership(env: Env) -> Result<(), CommitteeVerifierError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::accept_ownership(&env)?;
+        Ok(())
+    }
 }
 
 mod test;

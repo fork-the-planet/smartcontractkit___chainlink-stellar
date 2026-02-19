@@ -345,14 +345,13 @@ impl VersionedVerifierResolverContract {
     /// * `new_owner` - The proposed new owner
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError> {
         Self::require_initialized(&env)?;
-        Ownable::transfer_ownership(&env, &new_owner)
-            .map_err(|_| VerifierResolverError::Unauthorized)?;
+        Ownable::transfer_ownership(&env, &new_owner)?;
         Ok(())
     }
 
     /// Accept pending ownership transfer.
     pub fn accept_ownership(env: Env) -> Result<(), VerifierResolverError> {
-        Ownable::accept_ownership(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        Ownable::accept_ownership(&env)?;
         Ok(())
     }
 
