@@ -3,6 +3,7 @@
 mod events;
 pub mod types;
 
+use common_authorization::allowlist::AllowListable;
 use common_authorization::{AuthorizedCallers, Ownable};
 use common_error::CCIPError as CommitteeVerifierError;
 use common_guard::initializable::Initializable;
@@ -11,7 +12,7 @@ use common_verifier::base_verifier::BaseVerifier;
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use types::{AllowlistConfig, DynamicConfig, RemoteChainConfig};
+use types::{AllowListUpdate, DynamicConfig, RemoteChainConfig};
 
 // ============================================================
 // Storage Keys
@@ -45,7 +46,6 @@ pub struct CommitteeVerifierContract;
 
 impl BaseVerifier for CommitteeVerifierContract {
     type RemoteChainConfig = RemoteChainConfig;
-    type AllowlistConfig = AllowlistConfig;
 
     const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
     const RMN_PROXY: Symbol = RMN_PROXY;
@@ -59,14 +59,6 @@ impl BaseVerifier for CommitteeVerifierContract {
             allowlist_enabled: remote_chain_config.allowlist_enabled,
         }.publish(env);
     }
-
-    fn emit_allowlist_config_set_event(env: &Env, allowlist_config: &Self::AllowlistConfig) {
-        // TODO: verify if this is the correct event to emit
-        events::AllowListStateChangedEvent {
-            dest_chain_selector: allowlist_config.dest_chain_selector,
-            allowlist_enabled: allowlist_config.allowlist_enabled,
-        }.publish(env);
-    }
 }
 
 impl Initializable for CommitteeVerifierContract {
@@ -74,6 +66,21 @@ impl Initializable for CommitteeVerifierContract {
 }
 
 impl SignatureQuorum for CommitteeVerifierContract {}
+
+impl AllowListable for CommitteeVerifierContract {
+    const ALLOW_LIST: Symbol = ALLOWLIST;
+
+    type AllowListUpdate = AllowListUpdate;
+
+    fn emit_allowlist_updated_event(env: &Env, key: u64, _added_addresses: &Vec<Address>, _removed_addresses: &Vec<Address>) {
+        // TODO: implement this
+        
+        events::AllowListStateChangedEvent {
+            dest_chain_selector: key,
+            allowlist_enabled: true,
+        }.publish(env);
+    }
+}
 
 #[contractimpl]
 impl CommitteeVerifierContract {
@@ -225,18 +232,6 @@ impl CommitteeVerifierContract {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector)
             .map_err(Into::into)
-    }
-
-    pub fn apply_allowlist_updates(
-        env: Env,
-        allowlist_config_args_items: Vec<AllowlistConfig>,
-    ) -> Result<(), CommitteeVerifierError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        // Admin or authorized caller
-        Ownable::require_owner(&env).or_else(|_| AuthorizedCallers::require_authorized(&env))?;
-
-        <Self as BaseVerifier>::apply_allowlist_updates(&env, &allowlist_config_args_items)?;
-        Ok(())
     }
 
     /// EVM-equivalent fee quote shape.

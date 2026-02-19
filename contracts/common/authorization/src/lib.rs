@@ -24,6 +24,7 @@
 //! ```
 
 pub mod events;
+pub mod allowlist;
 
 pub use events::*;
 

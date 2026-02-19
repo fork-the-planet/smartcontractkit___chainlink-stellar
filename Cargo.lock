@@ -284,6 +284,7 @@ name = "common-authorization"
 version = "0.0.0"
 dependencies = [
  "common-error",
+ "common-helpers",
  "soroban-sdk",
 ]
 

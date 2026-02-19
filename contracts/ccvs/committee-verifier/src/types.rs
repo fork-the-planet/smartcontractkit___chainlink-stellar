@@ -1,4 +1,5 @@
-use common_verifier::base_verifier::{AllowlistConfigInterface, RemoteChainConfigInterface};
+use common_authorization::allowlist::AllowListUpdateInterface;
+use common_verifier::base_verifier::RemoteChainConfigInterface;
 use soroban_sdk::{contracttype, Address, Vec};
 use common_helpers::validation::Validatable;
 use common_error::CCIPError as BaseVerifierError;
@@ -34,7 +35,7 @@ impl RemoteChainConfigInterface for RemoteChainConfig {
     }
 }
 
-impl Validatable for RemoteChainConfig {    
+impl Validatable for RemoteChainConfig {
     fn validate(&self) -> Result<(), BaseVerifierError> {
         if self.remote_chain_selector == 0 || self.gas_for_verification == 0 {
             return Err(BaseVerifierError::InvalidConfig);
@@ -52,31 +53,30 @@ impl Validatable for RemoteChainConfig {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AllowlistConfig {
+pub struct AllowListUpdate {
     pub dest_chain_selector: u64,
-    pub allowlist_enabled: bool,
+    // pub allowlist_enabled: bool,
     pub added_allowlisted_senders: Vec<Address>,
     pub removed_allowlisted_senders: Vec<Address>,
 }
 
-impl AllowlistConfigInterface for AllowlistConfig {
-    fn get_allowlist_data(&self) -> (bool, Vec<Address>, Vec<Address>) {
-        (self.allowlist_enabled, self.added_allowlisted_senders.clone(), self.removed_allowlisted_senders.clone())
+impl Validatable for AllowListUpdate {
+    fn validate(&self) -> Result<(), BaseVerifierError> {
+        // TODO: add validation rules here
+        Ok(())
     }
 }
 
-impl Validatable for AllowlistConfig {
-    fn validate(&self) -> Result<(), BaseVerifierError> {
-        if self.dest_chain_selector == 0 {
-            return Err(BaseVerifierError::InvalidConfig);
-        }
+impl AllowListUpdateInterface for AllowListUpdate {
+    fn key(&self) -> u64 {
+        self.dest_chain_selector
+    }
 
-        if self.added_allowlisted_senders.is_empty() && self.removed_allowlisted_senders.is_empty() {
-            return Err(BaseVerifierError::InvalidConfig);
-        }
-        
-        // TODO: add other validation rules here
+    fn get_allowlist_addresses_to_add(&self) -> Vec<Address> {
+        self.added_allowlisted_senders.clone()
+    }
 
-        Ok(())
+    fn get_allowlist_addresses_to_remove(&self) -> Vec<Address> {
+        self.removed_allowlisted_senders.clone()
     }
 }

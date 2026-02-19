@@ -3,14 +3,7 @@ use common_guard::initializable::Initializable;
 use common_helpers::validation::Validatable;
 use soroban_sdk::{Address, Bytes, Env, Map, Symbol, TryFromVal, Val, Vec, IntoVal};
 
-pub trait AllowlistConfigInterface: Validatable {
-    /// Returns the allowlist data for the destination chain.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing the allowlist enabled, the added allowlisted senders, and the removed allowlisted senders.
-    fn get_allowlist_data(&self) -> (bool, Vec<Address>, Vec<Address>);
-}
+use common_authorization::allowlist::AllowListable;
 
 pub trait RemoteChainConfigInterface: Validatable {
     /// Returns the fee data for the remote chain.
@@ -23,15 +16,13 @@ pub trait RemoteChainConfigInterface: Validatable {
     fn remote_chain_selector(&self) -> u64;
 }
 
-pub trait BaseVerifier: Initializable {
+pub trait BaseVerifier: Initializable + AllowListable {
     const STORAGE_LOCATIONS: Symbol;
     const RMN_PROXY: Symbol;
     const REMOTE_CHAINS: Symbol;
     const ALLOWLIST: Symbol;
 
     type RemoteChainConfig: RemoteChainConfigInterface + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone;
-    type AllowlistConfig: AllowlistConfigInterface + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone;
-
 
     fn init(
         env: &Env,
@@ -59,8 +50,6 @@ pub trait BaseVerifier: Initializable {
     // ========================================
 
     fn emit_remote_chain_config_set_event(env: &Env, remote_chain_config: &Self::RemoteChainConfig);
-
-    fn emit_allowlist_config_set_event(env: &Env, allowlist_config_args: &Self::AllowlistConfig);
 
     // ========================================
     // ... method with default implementations
@@ -106,16 +95,6 @@ pub trait BaseVerifier: Initializable {
         remote_chains
             .get(remote_chain_selector)
             .ok_or(BaseVerifierError::RemoteChainNotSupported)
-    }
-
-    fn apply_allowlist_updates(
-        env: &Env,
-        allowlist_updates: &Vec<Self::AllowlistConfig>,
-    ) -> Result<(), BaseVerifierError> {
-        <Self as Initializable>::require_initialized(env)?;
-        // TODO: check if the caller is owner or authorized
-
-        unimplemented!();
     }
 
     fn get_fee(env: &Env, dest_chain_selector: u64) -> Result<(u32, u32, u32), BaseVerifierError> {
