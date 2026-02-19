@@ -1,6 +1,5 @@
 #![no_std]
 
-pub mod error;
 mod events;
 pub mod types;
 
@@ -9,8 +8,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbo
 use common_authorization::{AuthorizedCallers, Ownable};
 use common_guard::ReentrancyGuard;
 use common_message::StellarToAnyMessage;
-
-use error::FeeQuoterError;
+use common_error::CCIPError as FeeQuoterError;
 use events::{
     DestChainAddedEvent, DestChainConfigUpdatedEvent, FeeTokenAddedEvent, FeeTokenRemovedEvent,
     TokenFeeConfigDeletedEvent, TokenFeeConfigUpdatedEvent, UsdPerTokenUpdatedEvent,

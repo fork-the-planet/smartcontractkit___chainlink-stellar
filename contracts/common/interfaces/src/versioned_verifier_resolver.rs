@@ -4,10 +4,10 @@
 //! (primarily the Router). The generated `VersionedVerifierResolverClient` makes typed
 //! cross-contract calls without importing the full Versioned Verifier Resolver implementation.
 
-use soroban_sdk::{contractclient, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contractclient, Address, Bytes, Env, Vec};
 
 // Re-export types and error from the resolver crate so consumers only need this interface.
-pub use ccvs_versioned_verifier_resolver::error::VerifierResolverError;
+pub use common_error::CCIPError as VerifierResolverError;
 pub use ccvs_versioned_verifier_resolver::{
     InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
     OutboundImplementationUpdate,

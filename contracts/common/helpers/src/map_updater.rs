@@ -1,4 +1,5 @@
-use soroban_sdk::{xdr::Error, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
+use soroban_sdk::{Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
+use common_error::CCIPError;
 
 pub trait MapUpdate {
     type Key: TryFromVal<Env, Val> + IntoVal<Env, Val>;
@@ -30,7 +31,7 @@ where
 {
     const MAP_NAME: Symbol;
     const KEY_SET_NAME: Symbol;
-    type Error: Into<Error>;
+    type Error: From<CCIPError>;
 
     fn get_map(&self, env: &Env) -> Option<Map<K, V>> {
         env.storage().instance().get(&Self::MAP_NAME)

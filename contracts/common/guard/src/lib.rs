@@ -1,19 +1,13 @@
 #![no_std]
 
+pub mod initializable;
+
 use soroban_sdk::{contracterror, symbol_short, Env, Symbol};
+use common_error::CCIPError as GuardError;
 
 /// Storage key for the reentrancy guard flag.
 /// Uses temporary storage which is cleared after each transaction.
 const REENTRANCY_GUARD: Symbol = symbol_short!("RE_GUARD");
-
-/// Error types for the guard module.
-#[contracterror]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum GuardError {
-    /// Reentrancy detected - function was called while already executing
-    ReentrantCall = 1,
-}
 
 /// A reentrancy guard that prevents recursive calls into protected functions.
 ///

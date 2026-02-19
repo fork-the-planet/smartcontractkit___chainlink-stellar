@@ -17,7 +17,6 @@
 //! - `SUPPORTED_DEST_CHAINS` (Vec<u64>): Set of supported destination chain selectors.
 //! - `FEE_AGGREGATOR` (Address): The fee aggregator address.
 
-pub mod error;
 pub mod events;
 pub mod types;
 
@@ -28,7 +27,7 @@ use soroban_sdk::{
 };
 
 use common_authorization::Ownable;
-use error::VerifierResolverError;
+use common_error::CCIPError as VerifierResolverError;
 use events::FeeAggregatorSetEvent;
 pub use types::{
     InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,

@@ -1,6 +1,5 @@
 #![no_std]
 
-pub mod error;
 mod events;
 pub mod types;
 
@@ -10,7 +9,7 @@ use soroban_sdk::{
 
 use common_guard::ReentrancyGuard;
 use common_message::{MessageIdCompute, StellarToAnyMessage};
-use error::OnRampError;
+use common_error::CCIPError as OnRampError;
 use events::{
     CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent, OwnershipTransferredEvent,
 };

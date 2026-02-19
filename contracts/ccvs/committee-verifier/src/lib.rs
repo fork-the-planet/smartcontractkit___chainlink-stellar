@@ -1,17 +1,19 @@
 #![no_std]
 
-pub mod error;
 mod events;
 pub mod types;
 
 use common_verifier::{
     AllowlistConfigArgs, BaseVerifier, RemoteChainConfig, RemoteChainConfigArgs,
+    signatures::{SignatureQuorum, SignatureQuorumConfig},
 };
-use error::CommitteeVerifierError;
+use common_authorization::{AuthorizedCallers, Ownable};
+use common_error::CCIPError as CommitteeVerifierError;
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use types::{DynamicConfig, SignatureConfig, SignatureConfigState};
+use types::DynamicConfig;
+use common_guard::initializable::Initializable;
 
 // ============================================================
 // Storage Keys
@@ -23,7 +25,10 @@ const DYNAMIC_CONFIG: Symbol = symbol_short!("DYNCFG");
 const SIGNATURE_CONFIGS: Symbol = symbol_short!("SIGCFGS");
 const STORAGE_LOC_ADMIN: Symbol = symbol_short!("STORADM");
 const PENDING_STORAGE_LOC_ADMIN: Symbol = symbol_short!("PSTORADM");
-
+const STORAGE_LOCATIONS: Symbol = symbol_short!("STORLOC");
+const RMN_PROXY: Symbol = symbol_short!("RMNPROXY");
+const REMOTE_CHAINS: Symbol = symbol_short!("RCHAINS");
+const ALLOWLIST: Symbol = symbol_short!("ALLOWLST");
 
 // ============================================================
 // Constants
@@ -40,6 +45,19 @@ const SIGNATURE_LENGTH_BYTES: u32 = 2;
 #[contract]
 pub struct CommitteeVerifierContract;
 
+impl BaseVerifier for CommitteeVerifierContract {
+    const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
+    const RMN_PROXY: Symbol = RMN_PROXY;
+    const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
+    const ALLOWLIST: Symbol = ALLOWLIST;
+}
+
+impl Initializable for CommitteeVerifierContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
+impl SignatureQuorum for CommitteeVerifierContract {}
+
 #[contractimpl]
 impl CommitteeVerifierContract {
     /// Initializes CommitteeVerifier with owner/dynamic config/storage locations/RMN proxy.
@@ -52,19 +70,20 @@ impl CommitteeVerifierContract {
         storage_locations: Vec<Bytes>,
         rmn_proxy: Address,
     ) -> Result<(), CommitteeVerifierError> {
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(CommitteeVerifierError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
+        
+        <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
+        <Self as Initializable>::init(&env)?;
 
-        env.storage().instance().set(&OWNER, &owner);
+        Ownable::init(&env, &owner);
+        AuthorizedCallers::init(&env, Vec::new(&env));
+
         env.storage()
             .instance()
             .set(&DYNAMIC_CONFIG, &dynamic_config);
         env.storage().instance().set(&STORAGE_LOC_ADMIN, &owner);
-        env.storage().instance().set(&INITIALIZED, &true);
-        BaseVerifier::init(&env, &storage_locations, &rmn_proxy);
 
-        let sig_cfgs: Map<u64, SignatureConfigState> = Map::new(&env);
+        let sig_cfgs: Map<u64, SignatureQuorumConfig> = Map::new(&env);
         env.storage()
             .persistent()
             .set(&SIGNATURE_CONFIGS, &sig_cfgs);
@@ -78,22 +97,16 @@ impl CommitteeVerifierContract {
     // ========================================
 
     /// Source-side hook that checks sender permissions and returns version tag.
-    ///
-    /// TODO: replace current args with canonical MessageV1 once shared message types are finalized.
-    pub fn forward_to_verifier(
-        env: Env,
-        dest_chain_selector: u64,
-        sender: Address,
+    pub fn forward_to_resolver(
+        _env: Env,
+        _dest_chain_selector: u64,
+        _sender: Address,
         _message_hash: BytesN<32>,
         _fee_token: Address,
         _fee_token_amount: i128,
         _verifier_args: Bytes,
     ) -> Result<Bytes, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        BaseVerifier::assert_not_cursed_by_rmn(&env, dest_chain_selector)?;
-        BaseVerifier::assert_sender_is_allowed(&env, dest_chain_selector, &sender)?;
-
-        Ok(Bytes::from_array(&env, &VERSION_TAG_V1_7_0))
+        unimplemented!();
     }
 
     /// Destination-side hook that parses verifier result payload and validates signatures.
@@ -105,8 +118,10 @@ impl CommitteeVerifierContract {
         message_hash: BytesN<32>,
         verifier_results: Bytes,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        BaseVerifier::assert_not_cursed_by_rmn(&env, source_chain_selector)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        
+        // TODO: check if cursed by RMNProxy
+        // Self::assert_not_cursed_by_rmn(&env, source_chain_selector)?;
 
         if verifier_results.len() < VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES {
             return Err(CommitteeVerifierError::InvalidVerifierResults);
@@ -124,7 +139,6 @@ impl CommitteeVerifierContract {
         }
 
         // TODO: finalize exact signed payload format with offchain signer pipeline.
-        // EVM signs keccak256(versionTag || messageHash). We mirror that shape here.
         let mut signed_payload = Bytes::new(&env);
         signed_payload.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
         signed_payload.append(&Bytes::from_array(&env, &message_hash.to_array()));
@@ -145,7 +159,7 @@ impl CommitteeVerifierContract {
     // ========================================
 
     pub fn get_dynamic_config(env: Env) -> Result<DynamicConfig, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&DYNAMIC_CONFIG)
@@ -156,8 +170,8 @@ impl CommitteeVerifierContract {
         env: Env,
         dynamic_config: DynamicConfig,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::require_owner(&env)?;
         env.storage()
             .instance()
             .set(&DYNAMIC_CONFIG, &dynamic_config);
@@ -170,18 +184,17 @@ impl CommitteeVerifierContract {
     // ========================================
 
     pub fn get_storage_locations(env: Env) -> Result<Vec<Bytes>, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Ok(BaseVerifier::get_storage_locations(&env))
+        <Self as Initializable>::require_initialized(&env)?;
+        env.storage().instance().get(&STORAGE_LOCATIONS).ok_or(CommitteeVerifierError::NotInitialized)
     }
 
     pub fn apply_remote_chain_cfg_updates(
         env: Env,
         remote_chain_config_args: Vec<RemoteChainConfigArgs>,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        BaseVerifier::apply_remote_chain_config_updates(&env, &remote_chain_config_args)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::require_owner(&env)?;
+        <Self as BaseVerifier>::apply_remote_chain_config_updates(&env, &remote_chain_config_args)?;
         Ok(())
     }
 
@@ -189,18 +202,20 @@ impl CommitteeVerifierContract {
         env: Env,
         remote_chain_selector: u64,
     ) -> Result<RemoteChainConfig, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        BaseVerifier::get_remote_chain_config(&env, remote_chain_selector).map_err(Into::into)
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector).map_err(Into::into)
     }
 
     pub fn apply_allowlist_updates(
         env: Env,
         allowlist_config_args_items: Vec<AllowlistConfigArgs>,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner_or_allowlist_admin(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        // Admin or authorized caller
+        Ownable::require_owner(&env)
+            .or_else(|_| AuthorizedCallers::require_authorized(&env))?;
 
-        BaseVerifier::apply_allowlist_updates(&env, &allowlist_config_args_items)?;
+        <Self as BaseVerifier>::apply_allowlist_updates(&env, &allowlist_config_args_items)?;
         Ok(())
     }
 
@@ -212,87 +227,8 @@ impl CommitteeVerifierContract {
         _extra_args: Bytes,
         _block_confirmations: u32,
     ) -> Result<(u32, u32, u32), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        BaseVerifier::get_fee(&env, dest_chain_selector).map_err(Into::into)
-    }
-
-    // ========================================
-    // Signature config
-    // ========================================
-
-    pub fn get_signature_config(
-        env: Env,
-        source_chain_selector: u64,
-    ) -> Result<SignatureConfigState, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        let sig_cfgs: Map<u64, SignatureConfigState> = env
-            .storage()
-            .persistent()
-            .get(&SIGNATURE_CONFIGS)
-            .unwrap_or(Map::new(&env));
-        sig_cfgs
-            .get(source_chain_selector)
-            .ok_or(CommitteeVerifierError::SourceNotConfigured)
-    }
-
-    pub fn get_all_signature_configs(
-        env: Env,
-    ) -> Result<Vec<SignatureConfig>, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        let sig_cfgs: Map<u64, SignatureConfigState> = env
-            .storage()
-            .persistent()
-            .get(&SIGNATURE_CONFIGS)
-            .unwrap_or(Map::new(&env));
-
-        let mut out = Vec::new(&env);
-        for (source_chain_selector, cfg) in sig_cfgs.iter() {
-            out.push_back(SignatureConfig {
-                source_chain_selector,
-                threshold: cfg.threshold,
-                signers: cfg.signers,
-            });
-        }
-        Ok(out)
-    }
-
-    pub fn apply_signature_configs(
-        env: Env,
-        source_chains_to_remove: Vec<u64>,
-        signature_configs: Vec<SignatureConfig>,
-    ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        let mut sig_cfgs: Map<u64, SignatureConfigState> = env
-            .storage()
-            .persistent()
-            .get(&SIGNATURE_CONFIGS)
-            .unwrap_or(Map::new(&env));
-
-        for source_chain_selector in source_chains_to_remove.iter() {
-            sig_cfgs.remove(source_chain_selector);
-            // TODO: publish SignatureConfigSet(source_chain_selector, [], 0).
-        }
-
-        for update in signature_configs.iter() {
-            if update.threshold == 0 || update.threshold > update.signers.len() {
-                return Err(CommitteeVerifierError::InvalidSignatureConfig);
-            }
-            sig_cfgs.set(
-                update.source_chain_selector,
-                SignatureConfigState {
-                    threshold: update.threshold,
-                    signers: update.signers,
-                },
-            );
-            // TODO: publish SignatureConfigSet.
-        }
-
-        env.storage()
-            .persistent()
-            .set(&SIGNATURE_CONFIGS, &sig_cfgs);
-        Ok(())
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseVerifier>::get_fee(&env, dest_chain_selector).map_err(Into::into)
     }
 
     // ========================================
@@ -300,7 +236,7 @@ impl CommitteeVerifierContract {
     // ========================================
 
     pub fn get_storage_locations_admin(env: Env) -> Result<Address, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STORAGE_LOC_ADMIN)
@@ -310,7 +246,7 @@ impl CommitteeVerifierContract {
     pub fn get_pending_storage_loc_admin(
         env: Env,
     ) -> Result<Option<Address>, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ok(env.storage().instance().get(&PENDING_STORAGE_LOC_ADMIN))
     }
 
@@ -318,7 +254,7 @@ impl CommitteeVerifierContract {
         env: Env,
         to: Address,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         let current_admin = Self::get_storage_locations_admin(env.clone())?;
         current_admin.require_auth();
 
@@ -330,33 +266,20 @@ impl CommitteeVerifierContract {
         Ok(())
     }
 
-    pub fn accept_storage_locations_admin(env: Env) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&PENDING_STORAGE_LOC_ADMIN)
-            .ok_or(CommitteeVerifierError::InvalidStorageLocationsAdmin)?;
-        pending.require_auth();
-
-        let old_admin = Self::get_storage_locations_admin(env.clone())?;
-        env.storage().instance().set(&STORAGE_LOC_ADMIN, &pending);
-        env.storage().instance().remove(&PENDING_STORAGE_LOC_ADMIN);
-
-        let _ = old_admin;
-        // TODO: publish StorageLocationsAdminTransferred.
-        Ok(())
+    pub fn accept_storage_locations_admin(_env: Env) -> Result<(), CommitteeVerifierError> {
+        // TODO: implement
+        unimplemented!();
     }
 
     pub fn update_storage_locations(
         env: Env,
         new_locations: Vec<Bytes>,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
 
-        BaseVerifier::set_storage_locations(&env, &new_locations);
+        env.storage().instance().set(&STORAGE_LOCATIONS, &new_locations);
 
         // TODO: publish StorageLocationsUpdated(old_locations, new_locations).
         Ok(())
@@ -370,7 +293,7 @@ impl CommitteeVerifierContract {
         env: Env,
         fee_tokens: Vec<Address>,
     ) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         let dynamic = Self::get_dynamic_config(env.clone())?;
 
         // TODO: integrate token transfer / fee token handler logic.
@@ -384,7 +307,7 @@ impl CommitteeVerifierContract {
     // ========================================
 
     pub fn owner(env: Env) -> Result<Address, CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&OWNER)
@@ -392,106 +315,11 @@ impl CommitteeVerifierContract {
     }
 
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), CommitteeVerifierError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::require_owner(&env)?;
+
         // TODO: use common-authorization two-step ownership transfer once this crate is wired.
-        env.storage().instance().set(&OWNER, &new_owner);
-        Ok(())
-    }
-
-    // ========================================
-    // Internal helpers
-    // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), CommitteeVerifierError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(CommitteeVerifierError::NotInitialized);
-        }
-        Ok(())
-    }
-
-    fn require_owner(env: &Env) -> Result<(), CommitteeVerifierError> {
-        let owner: Address = env
-            .storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(CommitteeVerifierError::NotInitialized)?;
-        owner.require_auth();
-        Ok(())
-    }
-
-    fn require_owner_or_allowlist_admin(env: &Env) -> Result<(), CommitteeVerifierError> {
-        let dynamic: DynamicConfig = env
-            .storage()
-            .instance()
-            .get(&DYNAMIC_CONFIG)
-            .ok_or(CommitteeVerifierError::NotInitialized)?;
-
-        // TODO: Soroban auth is capability-based; implement explicit owner-or-admin policy
-        // matching EVM msg.sender checks without requiring both parties in auth entries.
-        // Current scaffold requires owner auth and records allowlist admin for future wiring.
-        Self::require_owner(env)?;
-        if dynamic.allowlist_admin.is_some() {
-            return Ok(());
-        }
-        Ok(())
-    }
-
-    fn extract_version_tag(
-        env: &Env,
-        verifier_results: &Bytes,
-    ) -> Result<BytesN<4>, CommitteeVerifierError> {
-        if verifier_results.len() < VERIFIER_VERSION_BYTES {
-            return Err(CommitteeVerifierError::InvalidVerifierResults);
-        }
-        let mut out = [0u8; 4];
-        let mut i = 0u32;
-        while i < VERIFIER_VERSION_BYTES {
-            out[i as usize] = verifier_results
-                .get(i)
-                .ok_or(CommitteeVerifierError::InvalidVerifierResults)?;
-            i += 1;
-        }
-        Ok(BytesN::from_array(env, &out))
-    }
-
-    fn extract_signature_len(verifier_results: &Bytes) -> Result<u32, CommitteeVerifierError> {
-        if verifier_results.len() < VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES {
-            return Err(CommitteeVerifierError::InvalidVerifierResults);
-        }
-        let b0 = verifier_results
-            .get(VERIFIER_VERSION_BYTES)
-            .ok_or(CommitteeVerifierError::InvalidVerifierResults)?;
-        let b1 = verifier_results
-            .get(VERIFIER_VERSION_BYTES + 1)
-            .ok_or(CommitteeVerifierError::InvalidVerifierResults)?;
-        Ok(((b0 as u32) << 8) | (b1 as u32))
-    }
-
-    fn validate_signatures(
-        env: &Env,
-        source_chain_selector: u64,
-        signed_hash: BytesN<32>,
-        signatures: Bytes,
-    ) -> Result<(), CommitteeVerifierError> {
-        let sig_cfgs: Map<u64, SignatureConfigState> = env
-            .storage()
-            .persistent()
-            .get(&SIGNATURE_CONFIGS)
-            .unwrap_or(Map::new(env));
-        let cfg = sig_cfgs
-            .get(source_chain_selector)
-            .ok_or(CommitteeVerifierError::SourceNotConfigured)?;
-        if cfg.threshold == 0 {
-            return Err(CommitteeVerifierError::SourceNotConfigured);
-        }
-
-        // TODO: implement native Soroban Ed25519 quorum validation:
-        // 1) Define signature serialization format in verifier_results.
-        // 2) Recover/parse per-signature public keys and signature bytes.
-        // 3) Enforce ordering/uniqueness semantics to match EVM invariants.
-        // 4) Call env.crypto().ed25519_verify(pubkey, signed_hash, signature).
-        let _ = (cfg, signatures, signed_hash);
+        Ownable::set_new_owner(&env, &new_owner)?;
         Ok(())
     }
 }
