@@ -34,6 +34,7 @@ const DEST_CHAINS: Symbol = symbol_short!("DESTCHNS");
 #[contract]
 pub struct OnRampContract;
 
+#[contractimpl]
 impl Initializable for OnRampContract {
     const INITIALIZED: Symbol = INITIALIZED;
 }
