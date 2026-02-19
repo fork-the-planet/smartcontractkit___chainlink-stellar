@@ -2,6 +2,8 @@ package helpers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +19,7 @@ import (
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -121,6 +124,7 @@ type E2ETestEnv struct {
 	RPCClient          *rpcclient.Client
 	NetworkPassphrase  string
 	StellarRoot        string
+	DataStore          datastore.DataStore
 	SourceChain        cciptestinterfaces.CCIP17
 	DestChain          cciptestinterfaces.CCIP17
 	SourceChainDetails *chain_selectors.ChainDetails
@@ -144,6 +148,19 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	in, err := ccv.NewEnvironment()
 	require.NoError(t, err)
+
+	// Reconstruct the DataStore from CLDF addresses.
+	// in.CLDF.DataStore is empty (Init() creates an empty sealed store);
+	// the real addresses are JSON-serialized in in.CLDF.Addresses.
+	ds := datastore.NewMemoryDataStore()
+	for _, addrJSON := range in.CLDF.Addresses {
+		var refs []datastore.AddressRef
+		err := json.Unmarshal([]byte(addrJSON), &refs)
+		require.NoError(t, err)
+		for _, ref := range refs {
+			ds.AddressRefStore.Add(ref)
+		}
+	}
 
 	// Load EVM chain for destination interactions
 	lib, err := ccv.NewLib(l, configOutputPath, chain_selectors.FamilyEVM)
@@ -230,34 +247,19 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		Str("friendbotURL", friendbotURL).
 		Msg("Stellar network configuration")
 
-	// Create deployer keypair from the environment variable
-	deployerPrivKeyHex := os.Getenv("STELLAR_DEPLOYER_PRIVATE_KEY")
-	require.NotEmpty(t, deployerPrivKeyHex, "STELLAR_DEPLOYER_PRIVATE_KEY env var is required")
-
-	deployerKP := KeypairFromPrivateKeyHex(t, deployerPrivKeyHex)
-	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Created deployer keypair")
+	// Derive the same deployer keypair that chain.go uses in DeployLocalNetwork.
+	// This must match the deterministic derivation: sha256("deployer-" + networkPassphrase).
+	deployerSeed := sha256.Sum256([]byte(fmt.Sprintf("deployer-%s", networkPassphrase)))
+	deployerKP, err := keypair.FromRawSeed(deployerSeed)
+	require.NoError(t, err)
+	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Derived deployer keypair (matches chain.go)")
 
 	// Create Soroban RPC client
 	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
 	t.Cleanup(func() { rpc.Close() })
 
-	// Fund deployer account via Friendbot
-	l.Info().Msg("Funding deployer via Friendbot...")
-	faucetURL := fmt.Sprintf("%s?addr=%s", friendbotURL, deployerKP.Address())
-	require.Eventually(t, func() bool {
-		resp, httpErr := http.Get(faucetURL)
-		if httpErr != nil {
-			l.Debug().Err(httpErr).Msg("Friendbot request failed, retrying...")
-			return false
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			l.Debug().Int("status", resp.StatusCode).Msg("Friendbot not ready, retrying...")
-			return false
-		}
-		return true
-	}, 3*time.Minute, 5*time.Second, "failed to fund deployer via Friendbot")
-	l.Info().Msg("Deployer funded successfully")
+	// No Friendbot funding needed here -- this deployer was already funded
+	// by chain.go DeployLocalNetwork during ccv.NewEnvironment().
 
 	// Create the Deployer (implements bindings.Invoker) for contract interactions
 	deployer := stellardeployment.NewDeployer(rpc, networkPassphrase, deployerKP)
@@ -267,6 +269,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		Deployer:           deployer,
 		RPCClient:          rpc,
 		NetworkPassphrase:  networkPassphrase,
+		DataStore:          ds.Seal(),
 		Chains:             chains,
 		SourceChain:        sourceChain,
 		DestChain:          destChain,

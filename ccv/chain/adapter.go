@@ -3,7 +3,7 @@ package ccvchain
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/stellar/go-stellar-sdk/strkey"
 
 	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	adapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
@@ -30,13 +30,16 @@ func NewChainFamilyAdapter(base adapters.ChainFamily) *StellarAdapter {
 }
 
 // AddressRefToBytes implements adapters.ChainFamily.
-// Stellar contract addresses are stored as hex-encoded strings in the DataStore.
+// Decodes a strkey-encoded Stellar address (C... for contracts, G... for accounts)
+// into its raw 32-byte key.
 func (s *StellarAdapter) AddressRefToBytes(ref datastore.AddressRef) ([]byte, error) {
-	decoded, err := hexutil.Decode(ref.Address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode Stellar address %q: %w", ref.Address, err)
+	if decoded, err := strkey.Decode(strkey.VersionByteContract, ref.Address); err == nil {
+		return decoded, nil
 	}
-	return decoded, nil
+	if decoded, err := strkey.Decode(strkey.VersionByteAccountID, ref.Address); err == nil {
+		return decoded, nil
+	}
+	return nil, fmt.Errorf("failed to decode Stellar address %q: not a valid contract (C...) or account (G...) address", ref.Address)
 }
 
 // ConfigureChainForLanes implements adapters.ChainFamily.

@@ -11,11 +11,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework"
 )
@@ -60,7 +61,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	os.Setenv("CTF_CONFIGS", configRelPath)
 	os.Setenv("CTF_CONFIG_OUTPUT", configOutputPath)
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
-	os.Setenv("STELLAR_DEPLOYER_PRIVATE_KEY", "c3636a3c2491503668222f58e783d956703fdcfbaea7e5ac7a384e7f2378969b")
+	// os.Setenv("STELLAR_DEPLOYER_PRIVATE_KEY", "c3636a3c2491503668222f58e783d956703fdcfbaea7e5ac7a384e7f2378969b")
 
 	stellarChainID := "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
 
@@ -75,63 +76,82 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	evmDetails := env.DestChainDetails
 	destChain := env.DestChain
 
-	// Locate the compiled OnRamp WASM
-	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../.."))
-	require.NoError(t, err)
-	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
-	if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
-		t.Skipf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", onrampWasmPath)
-	}
+	// // Locate the compiled OnRamp WASM
+	// stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../.."))
+	// require.NoError(t, err)
+	// onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
+	// if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
+	// 	t.Skipf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", onrampWasmPath)
+	// }
 
-	// Deploy the OnRamp contract
-	l.Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
-	onrampSalt := stellardeployment.GenerateDeterministicSalt(deployerKP.Address(), "onramp")
-	onrampContractID, err := deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
-	require.NoError(t, err)
-	l.Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
+	// // Deploy the OnRamp contract
+	// l.Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
+	// onrampSalt := stellardeployment.GenerateDeterministicSalt(deployerKP.Address(), "onramp")
+	// onrampContractID, err := deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
+	// require.NoError(t, err)
+	// l.Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
-	// Create the OnRamp client
+	// // Create the OnRamp client
+	// onRampClient := onrampbindings.NewOnRampClient(deployer, onrampContractID)
+
+	// // Initialize the OnRamp with mock dependency contracts
+	// mockFeeQuoter := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-quoter")
+	// mockFeeAggregator := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-aggregator")
+	// mockRMNRemote := helpers.GenerateMockContractID(t, deployerKP.Address(), "rmn-remote")
+	// mockTokenAdminRegistry := helpers.GenerateMockContractID(t, deployerKP.Address(), "token-admin-registry")
+
+	// err = onRampClient.Initialize(ctx, deployerKP.Address(), onrampbindings.StaticConfig{
+	// 	ChainSelector:         stellarDetails.ChainSelector,
+	// 	TokenAdminRegistry:    mockTokenAdminRegistry,
+	// 	RmnRemote:             mockRMNRemote,
+	// 	MaxUsdCentsPerMessage: 10000, // $100
+	// }, onrampbindings.DynamicConfig{
+	// 	FeeQuoter:     mockFeeQuoter,
+	// 	FeeAggregator: mockFeeAggregator,
+	// })
+	// require.NoError(t, err)
+	// l.Info().Msg("OnRamp initialized")
+
+	// // Configure the destination chain (EVM) on the OnRamp
+	// mockCCV := helpers.GenerateMockContractID(t, deployerKP.Address(), "ccv-default")
+	// mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "executor-default")
+
+	// err = onRampClient.ApplyDestChainConfigUpdates(ctx, []onrampbindings.DestChainConfigArgs{
+	// 	{
+	// 		DestChainSelector:         evmDetails.ChainSelector,
+	// 		Router:                    deployerKP.Address(), // deployer acts as router
+	// 		AddressBytesLength:        20,                   // EVM addresses are 20 bytes
+	// 		DefaultCcvs:               []string{mockCCV},
+	// 		DefaultExecutor:           mockExecutor,
+	// 		LaneMandatedCcvs:          []string{},
+	// 		OffRamp:                   make([]byte, 20), // placeholder
+	// 		BaseExecutionGasCost:      200_000,
+	// 		MessageNetworkFeeUsdCents: 0,
+	// 		TokenNetworkFeeUsdCents:   0,
+	// 		TokenReceiverAllowed:      false,
+	// 	},
+	// })
+	// require.NoError(t, err)
+	// l.Info().Uint64("destChainSelector", evmDetails.ChainSelector).Msg("Dest chain config applied")
+
+	// Look up the OnRamp contract address from the CCV datastore.
+	// It was deployed and configured during NewE2ETestEnv → ccv.NewEnvironment()
+	// via chain.go DeployContractsForSelector.
+	onrampKey := datastore.NewAddressRefKey(
+		stellarDetails.ChainSelector,
+		datastore.ContractType(onrampoperations.ContractType),
+		onrampoperations.Version,
+		"",
+	)
+	onrampRef, err := env.DataStore.Addresses().Get(onrampKey)
+	require.NoError(t, err)
+	onrampContractID := onrampRef.Address
+	require.NotEmpty(t, onrampContractID)
+	l.Info().Str("onrampContractID", onrampContractID).Msg("Found OnRamp in CCV datastore")
+
 	onRampClient := onrampbindings.NewOnRampClient(deployer, onrampContractID)
 
-	// Initialize the OnRamp with mock dependency contracts
-	mockFeeQuoter := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-quoter")
-	mockFeeAggregator := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-aggregator")
-	mockRMNRemote := helpers.GenerateMockContractID(t, deployerKP.Address(), "rmn-remote")
-	mockTokenAdminRegistry := helpers.GenerateMockContractID(t, deployerKP.Address(), "token-admin-registry")
-
-	err = onRampClient.Initialize(ctx, deployerKP.Address(), onrampbindings.StaticConfig{
-		ChainSelector:         stellarDetails.ChainSelector,
-		TokenAdminRegistry:    mockTokenAdminRegistry,
-		RmnRemote:             mockRMNRemote,
-		MaxUsdCentsPerMessage: 10000, // $100
-	}, onrampbindings.DynamicConfig{
-		FeeQuoter:     mockFeeQuoter,
-		FeeAggregator: mockFeeAggregator,
-	})
-	require.NoError(t, err)
-	l.Info().Msg("OnRamp initialized")
-
-	// Configure the destination chain (EVM) on the OnRamp
-	mockCCV := helpers.GenerateMockContractID(t, deployerKP.Address(), "ccv-default")
-	mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "executor-default")
-
-	err = onRampClient.ApplyDestChainConfigUpdates(ctx, []onrampbindings.DestChainConfigArgs{
-		{
-			DestChainSelector:         evmDetails.ChainSelector,
-			Router:                    deployerKP.Address(), // deployer acts as router
-			AddressBytesLength:        20,                   // EVM addresses are 20 bytes
-			DefaultCcvs:               []string{mockCCV},
-			DefaultExecutor:           mockExecutor,
-			LaneMandatedCcvs:          []string{},
-			OffRamp:                   make([]byte, 20), // placeholder
-			BaseExecutionGasCost:      200_000,
-			MessageNetworkFeeUsdCents: 0,
-			TokenNetworkFeeUsdCents:   0,
-			TokenReceiverAllowed:      false,
-		},
-	})
-	require.NoError(t, err)
-	l.Info().Uint64("destChainSelector", evmDetails.ChainSelector).Msg("Dest chain config applied")
+	// onRampClient.GetAllDestChainConfigs(ctx)
 
 	// Create the Stellar source reader with the DEPLOYED OnRamp contract ID
 	stellarSourceReader, err := ccvsourcereader.NewSourceReaderWithClient(
@@ -168,7 +188,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		// Send the message via the OnRamp's forward_from_router.
 		// The deployer is configured as the "router" in the dest chain config,
 		// so its transaction signature satisfies the router auth check.
-		l.Info().Msg("Sending CCIP message via OnRamp forward_from_router...")
+		l.Info().Str("original sender address", deployerKP.Address()).Msg("Sending CCIP message via OnRamp forward_from_router...")
 		messageID, err := onRampClient.ForwardFromRouter(
 			ctx,
 			evmDetails.ChainSelector,
