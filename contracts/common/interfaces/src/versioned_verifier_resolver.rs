@@ -15,15 +15,8 @@ pub use common_error::CCIPError;
 
 #[contractclient(name = "VersionedVerifierResolverClient")]
 pub trait VersionedVerifierResolverInterface {
-    fn initialize(
-        env: Env,
-        owner: Address,
-        fee_aggregator: Address,
-    ) -> Result<(), CCIPError>;
-    fn get_inbound_implementation(
-        env: Env,
-        verifier_results: Bytes,
-    ) -> Result<Address, CCIPError>;
+    fn initialize(env: Env, owner: Address, fee_aggregator: Address) -> Result<(), CCIPError>;
+    fn get_inbound_implementation(env: Env, verifier_results: Bytes) -> Result<Address, CCIPError>;
     fn get_all_inbound_implementations(env: Env) -> Vec<InboundImplementationArgs>;
     fn get_outbound_implementation(
         env: Env,

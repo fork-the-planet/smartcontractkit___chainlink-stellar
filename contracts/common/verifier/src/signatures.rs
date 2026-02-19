@@ -43,10 +43,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
         unimplemented!()
     }
 
-    fn extract_version_tag(
-        env: &Env,
-        verifier_results: &Bytes,
-    ) -> Result<BytesN<4>, CCIPError> {
+    fn extract_version_tag(env: &Env, verifier_results: &Bytes) -> Result<BytesN<4>, CCIPError> {
         if verifier_results.len() < Self::VERIFIER_VERSION_BYTES {
             return Err(CCIPError::InvalidVerifierResults);
         }
