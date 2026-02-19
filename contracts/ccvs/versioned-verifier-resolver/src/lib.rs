@@ -27,6 +27,7 @@ use soroban_sdk::{
 
 use common_authorization::Ownable;
 use common_error::CCIPError as VerifierResolverError;
+use common_guard::initializable::Initializable;
 use events::FeeAggregatorSetEvent;
 pub use types::{
     InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
@@ -51,6 +52,10 @@ pub(crate) const FEE_AGG: Symbol = symbol_short!("FEEAGG");
 #[contract]
 pub struct VersionedVerifierResolverContract;
 
+impl Initializable for VersionedVerifierResolverContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
 #[contractimpl]
 impl VersionedVerifierResolverContract {
     // ========================================
@@ -70,11 +75,10 @@ impl VersionedVerifierResolverContract {
         owner: Address,
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(VerifierResolverError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         Ownable::init(&env, &owner);
+        <Self as Initializable>::init(&env)?;
 
         // Initialize empty mappings
         let inbound_map: Map<BytesN<4>, Address> = Map::new(&env);
@@ -90,8 +94,6 @@ impl VersionedVerifierResolverContract {
         env.storage().instance().set(&SUP_DESTS, &supported_dests);
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
-
-        env.storage().instance().set(&INITIALIZED, &true);
 
         Ok(())
     }
@@ -118,7 +120,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         verifier_results: Bytes,
     ) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         if verifier_results.len() < 4 {
             return Err(VerifierResolverError::InvalidVerifierResultsLength);
@@ -188,7 +190,7 @@ impl VersionedVerifierResolverContract {
         dest_chain_selector: u64,
         _extra_args: Bytes,
     ) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let outbound_map: Map<u64, Address> = env
             .storage()
@@ -232,7 +234,7 @@ impl VersionedVerifierResolverContract {
 
     /// Returns the fee aggregator address.
     pub fn get_fee_aggregator(env: Env) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         env.storage()
             .instance()
@@ -268,7 +270,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         implementations: Vec<InboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
         let inbound_map: Map<BytesN<4>, Address> = env
@@ -301,7 +303,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         implementations: Vec<OutboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
         let outbound_map: Map<u64, Address> = env
@@ -329,7 +331,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env)?;
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
@@ -344,7 +346,7 @@ impl VersionedVerifierResolverContract {
     /// # Arguments
     /// * `new_owner` - The proposed new owner
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::transfer_ownership(&env, &new_owner)?;
         Ok(())
     }
@@ -352,17 +354,6 @@ impl VersionedVerifierResolverContract {
     /// Accept pending ownership transfer.
     pub fn accept_ownership(env: Env) -> Result<(), VerifierResolverError> {
         Ownable::accept_ownership(&env)?;
-        Ok(())
-    }
-
-    // ========================================
-    // Internal Helpers
-    // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), VerifierResolverError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(VerifierResolverError::NotInitialized);
-        }
         Ok(())
     }
 }
