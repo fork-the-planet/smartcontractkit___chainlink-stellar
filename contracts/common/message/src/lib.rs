@@ -1,11 +1,7 @@
 #![no_std]
 
+use common_error::CCIPError as Error;
 use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
-
-pub enum Error {
-    InvalidTokenAmount,
-    InvalidReceiverAddress,
-}
 
 // ============================================================
 // MessageIdCompute Trait

@@ -1,12 +1,11 @@
 #![no_std]
 
-pub mod error;
 mod events;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 use common_authorization::Ownable;
-use error::RmnProxyError;
+use common_error::CCIPError as RmnProxyError;
 use events::RmnSetEvent;
 
 // ============================================================

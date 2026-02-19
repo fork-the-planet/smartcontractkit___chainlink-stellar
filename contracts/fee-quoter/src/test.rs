@@ -80,7 +80,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_initialize_already_initialized() {
     let (env, contract_id, owner, link_token, price_updater) = setup_env();
     let client = FeeQuoterContractClient::new(&env, &contract_id);
@@ -412,7 +412,7 @@ fn test_remove_fee_tokens() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
+#[should_panic(expected = "Error(Contract, #22)")]
 fn test_get_validated_token_price_not_set() {
     let (env, contract_id, owner, link_token, price_updater) = setup_env();
     let client = FeeQuoterContractClient::new(&env, &contract_id);

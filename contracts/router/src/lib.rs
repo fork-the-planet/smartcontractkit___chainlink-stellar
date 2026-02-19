@@ -1,16 +1,15 @@
 #![no_std]
 
-mod error;
 mod events;
 mod types;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec};
 
 use common_authorization::Ownable;
+use common_error::CCIPError as RouterError;
 use common_interfaces::onramp::OnRampClient;
 use common_interfaces::rmn_proxy::RmnProxyClient;
 use common_message::StellarToAnyMessage;
-use error::RouterError;
 use events::{CCIPSendRequestedEvent, OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent};
 use types::{OffRampEntry, OnRampEntry, RouterConfig};
 

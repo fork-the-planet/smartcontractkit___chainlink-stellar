@@ -17,85 +17,33 @@
 //! - `SUPPORTED_DEST_CHAINS` (Vec<u64>): Set of supported destination chain selectors.
 //! - `FEE_AGGREGATOR` (Address): The fee aggregator address.
 
-pub mod error;
 pub mod events;
+pub mod types;
 
+use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
-    Vec,
+    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
 use common_authorization::Ownable;
-use error::VerifierResolverError;
-use events::{
-    FeeAggregatorSetEvent, InboundImplRemovedEvent, InboundImplSetEvent, OutboundImplRemovedEvent,
-    OutboundImplSetEvent,
+use common_error::CCIPError as VerifierResolverError;
+use common_guard::initializable::Initializable;
+use events::FeeAggregatorSetEvent;
+pub use types::{
+    InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
+    OutboundImplementationUpdate,
 };
 
 // ============================================================
 // Storage Keys
 // ============================================================
 
-const INITIALIZED: Symbol = symbol_short!("INIT");
-const VER_INBOUND: Symbol = symbol_short!("VERINB");
-const DEST_OUTBND: Symbol = symbol_short!("DESTOUT");
-const SUP_VERS: Symbol = symbol_short!("SUPVERS");
-const SUP_DESTS: Symbol = symbol_short!("SUPDEST");
-const FEE_AGG: Symbol = symbol_short!("FEEAGG");
-
-// ============================================================
-// Types
-// ============================================================
-
-/// Arguments for updating an inbound implementation.
-/// Maps a 4-byte verifier version prefix to a verifier contract address.
-///
-/// - If `verifier` is `None`, the implementation for this version is removed.
-/// - If `verifier` is `Some(address)`, the implementation is set/updated.
-///
-/// This mirrors the EVM pattern where `address(0)` signals deletion.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InboundImplementationUpdate {
-    /// 4-byte verifier version prefix (equivalent to Solidity bytes4)
-    pub version: BytesN<4>,
-    /// Address of the verifier contract, or None to remove
-    pub verifier: Option<Address>,
-}
-
-/// Return type for querying inbound implementations (always has an address).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InboundImplementationArgs {
-    /// 4-byte verifier version prefix
-    pub version: BytesN<4>,
-    /// Address of the verifier contract
-    pub verifier: Address,
-}
-
-/// Arguments for updating an outbound implementation.
-/// Maps a destination chain selector to a verifier contract address.
-///
-/// - If `verifier` is `None`, the implementation for this chain is removed.
-/// - If `verifier` is `Some(address)`, the implementation is set/updated.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OutboundImplementationUpdate {
-    /// Destination chain selector
-    pub dest_chain_selector: u64,
-    /// Address of the verifier contract, or None to remove
-    pub verifier: Option<Address>,
-}
-
-/// Return type for querying outbound implementations (always has an address).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OutboundImplementationArgs {
-    /// Destination chain selector
-    pub dest_chain_selector: u64,
-    /// Address of the verifier contract
-    pub verifier: Address,
-}
+pub(crate) const INITIALIZED: Symbol = symbol_short!("INIT");
+pub(crate) const VER_INBOUND: Symbol = symbol_short!("VERINB");
+pub(crate) const DEST_OUTBND: Symbol = symbol_short!("DESTOUT");
+pub(crate) const SUP_VERS: Symbol = symbol_short!("SUPVERS");
+pub(crate) const SUP_DESTS: Symbol = symbol_short!("SUPDEST");
+pub(crate) const FEE_AGG: Symbol = symbol_short!("FEEAGG");
 
 // ============================================================
 // Contract
@@ -103,6 +51,10 @@ pub struct OutboundImplementationArgs {
 
 #[contract]
 pub struct VersionedVerifierResolverContract;
+
+impl Initializable for VersionedVerifierResolverContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
 
 #[contractimpl]
 impl VersionedVerifierResolverContract {
@@ -123,11 +75,10 @@ impl VersionedVerifierResolverContract {
         owner: Address,
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(VerifierResolverError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         Ownable::init(&env, &owner);
+        <Self as Initializable>::init(&env)?;
 
         // Initialize empty mappings
         let inbound_map: Map<BytesN<4>, Address> = Map::new(&env);
@@ -143,8 +94,6 @@ impl VersionedVerifierResolverContract {
         env.storage().instance().set(&SUP_DESTS, &supported_dests);
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
-
-        env.storage().instance().set(&INITIALIZED, &true);
 
         Ok(())
     }
@@ -171,14 +120,17 @@ impl VersionedVerifierResolverContract {
         env: Env,
         verifier_results: Bytes,
     ) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         if verifier_results.len() < 4 {
             return Err(VerifierResolverError::InvalidVerifierResultsLength);
         }
 
         // Extract first 4 bytes as version
-        let version = Self::extract_version(&env, &verifier_results);
+        let version: BytesN<4> = verifier_results
+            .slice(0..4)
+            .try_into()
+            .expect("slice is 4 bytes");
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
@@ -238,7 +190,7 @@ impl VersionedVerifierResolverContract {
         dest_chain_selector: u64,
         _extra_args: Bytes,
     ) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let outbound_map: Map<u64, Address> = env
             .storage()
@@ -268,23 +220,21 @@ impl VersionedVerifierResolverContract {
             .get(&DEST_OUTBND)
             .unwrap_or(Map::new(&env));
 
-        let mut result: Vec<OutboundImplementationArgs> = Vec::new(&env);
-
-        for selector in supported_dests.iter() {
-            if let Some(verifier) = outbound_map.get(selector) {
-                result.push_back(OutboundImplementationArgs {
+        let result = supported_dests.iter().filter_map(|selector| {
+            outbound_map
+                .get(selector)
+                .map(|verifier| OutboundImplementationArgs {
                     dest_chain_selector: selector,
                     verifier,
-                });
-            }
-        }
+                })
+        });
 
-        result
+        Vec::from_iter(&env, result.into_iter())
     }
 
     /// Returns the fee aggregator address.
     pub fn get_fee_aggregator(env: Env) -> Result<Address, VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         env.storage()
             .instance()
@@ -320,60 +270,16 @@ impl VersionedVerifierResolverContract {
         env: Env,
         implementations: Vec<InboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
-        let mut inbound_map: Map<BytesN<4>, Address> = env
+        let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
             .instance()
             .get(&VER_INBOUND)
             .unwrap_or(Map::new(&env));
 
-        let mut supported_versions: Vec<BytesN<4>> = env
-            .storage()
-            .instance()
-            .get(&SUP_VERS)
-            .unwrap_or(Vec::new(&env));
-
-        let zero_version = BytesN::from_array(&env, &[0u8; 4]);
-
-        for update in implementations.iter() {
-            match update.verifier {
-                None => {
-                    // Remove: verifier is None (equivalent to address(0) in Solidity)
-                    inbound_map.remove(update.version.clone());
-                    supported_versions =
-                        Self::vec_remove_version(&env, &supported_versions, &update.version);
-
-                    InboundImplRemovedEvent {
-                        version: update.version,
-                    }
-                    .publish(&env);
-                }
-                Some(verifier) => {
-                    // Set/Update: verifier is provided
-                    if update.version == zero_version {
-                        return Err(VerifierResolverError::InvalidVersion);
-                    }
-
-                    // Add to supported versions set if not already present
-                    if !Self::vec_contains_version(&supported_versions, &update.version) {
-                        supported_versions.push_back(update.version.clone());
-                    }
-
-                    inbound_map.set(update.version.clone(), verifier.clone());
-
-                    InboundImplSetEvent {
-                        version: update.version,
-                        verifier,
-                    }
-                    .publish(&env);
-                }
-            }
-        }
-
-        env.storage().instance().set(&VER_INBOUND, &inbound_map);
-        env.storage().instance().set(&SUP_VERS, &supported_versions);
+        inbound_map.apply_updates(&env, &implementations)?;
 
         Ok(())
     }
@@ -397,58 +303,18 @@ impl VersionedVerifierResolverContract {
         env: Env,
         implementations: Vec<OutboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
-        let mut outbound_map: Map<u64, Address> = env
+        let outbound_map: Map<u64, Address> = env
             .storage()
             .instance()
             .get(&DEST_OUTBND)
             .unwrap_or(Map::new(&env));
 
-        let mut supported_dests: Vec<u64> = env
-            .storage()
-            .instance()
-            .get(&SUP_DESTS)
-            .unwrap_or(Vec::new(&env));
-
-        for update in implementations.iter() {
-            match update.verifier {
-                None => {
-                    // Remove: verifier is None
-                    outbound_map.remove(update.dest_chain_selector);
-                    supported_dests =
-                        Self::vec_remove_u64(&env, &supported_dests, update.dest_chain_selector);
-
-                    OutboundImplRemovedEvent {
-                        dest_chain_selector: update.dest_chain_selector,
-                    }
-                    .publish(&env);
-                }
-                Some(verifier) => {
-                    // Set/Update: verifier is provided
-                    if update.dest_chain_selector == 0 {
-                        return Err(VerifierResolverError::InvalidChainSelector);
-                    }
-
-                    // Add to supported dest chains if not already present
-                    if !Self::vec_contains_u64(&supported_dests, update.dest_chain_selector) {
-                        supported_dests.push_back(update.dest_chain_selector);
-                    }
-
-                    outbound_map.set(update.dest_chain_selector, verifier.clone());
-
-                    OutboundImplSetEvent {
-                        dest_chain_selector: update.dest_chain_selector,
-                        verifier,
-                    }
-                    .publish(&env);
-                }
-            }
-        }
-
-        env.storage().instance().set(&DEST_OUTBND, &outbound_map);
-        env.storage().instance().set(&SUP_DESTS, &supported_dests);
+        // Note: this also stores the updates to storage based on the MapUpdater implementation
+        // See `types.rs` in crate for the implementation details.
+        outbound_map.apply_updates(&env, &implementations)?;
 
         Ok(())
     }
@@ -465,8 +331,8 @@ impl VersionedVerifierResolverContract {
         env: Env,
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::require_owner(&env)?;
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
 
@@ -480,78 +346,15 @@ impl VersionedVerifierResolverContract {
     /// # Arguments
     /// * `new_owner` - The proposed new owner
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError> {
-        Self::require_initialized(&env)?;
-        Ownable::transfer_ownership(&env, &new_owner)
-            .map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        Ownable::transfer_ownership(&env, &new_owner)?;
         Ok(())
     }
 
     /// Accept pending ownership transfer.
     pub fn accept_ownership(env: Env) -> Result<(), VerifierResolverError> {
-        Ownable::accept_ownership(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        Ownable::accept_ownership(&env)?;
         Ok(())
-    }
-
-    // ========================================
-    // Internal Helpers
-    // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), VerifierResolverError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(VerifierResolverError::NotInitialized);
-        }
-        Ok(())
-    }
-
-    /// Extract the first 4 bytes from a Bytes value as BytesN<4>.
-    fn extract_version(env: &Env, data: &Bytes) -> BytesN<4> {
-        let mut version_bytes = [0u8; 4];
-        for i in 0..4 {
-            version_bytes[i as usize] = data.get(i).unwrap();
-        }
-        BytesN::from_array(env, &version_bytes)
-    }
-
-    /// Check if a Vec<BytesN<4>> contains a specific value.
-    fn vec_contains_version(vec: &Vec<BytesN<4>>, value: &BytesN<4>) -> bool {
-        for item in vec.iter() {
-            if item == *value {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Remove a specific BytesN<4> value from a Vec, returning a new Vec.
-    fn vec_remove_version(env: &Env, vec: &Vec<BytesN<4>>, value: &BytesN<4>) -> Vec<BytesN<4>> {
-        let mut result: Vec<BytesN<4>> = Vec::new(env);
-        for item in vec.iter() {
-            if item != *value {
-                result.push_back(item);
-            }
-        }
-        result
-    }
-
-    /// Check if a Vec<u64> contains a specific value.
-    fn vec_contains_u64(vec: &Vec<u64>, value: u64) -> bool {
-        for item in vec.iter() {
-            if item == value {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Remove a specific u64 value from a Vec, returning a new Vec.
-    fn vec_remove_u64(env: &Env, vec: &Vec<u64>, value: u64) -> Vec<u64> {
-        let mut result: Vec<u64> = Vec::new(env);
-        for item in vec.iter() {
-            if item != value {
-                result.push_back(item);
-            }
-        }
-        result
     }
 }
 

@@ -23,12 +23,12 @@
 //! AccessControl::require_role(&env, symbol_short!("MINTER"))?;
 //! ```
 
-pub mod error;
+pub mod allowlist;
 pub mod events;
 
-pub use error::AuthError;
 pub use events::*;
 
+use common_error::CCIPError as AuthError;
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
 // ============================================================
@@ -166,6 +166,13 @@ impl Ownable {
     pub fn cancel_ownership_transfer(env: &Env) -> Result<(), AuthError> {
         Self::require_owner(env)?;
         env.storage().instance().remove(&AUTH_PENDING);
+        Ok(())
+    }
+
+    /// A method to transfer ownership without waiting for the new owner to accept.
+    pub fn set_new_owner(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
+        Self::require_owner(env)?;
+        env.storage().instance().set(&AUTH_OWNER, new_owner);
         Ok(())
     }
 }

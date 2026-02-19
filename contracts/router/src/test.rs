@@ -47,7 +47,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_initialize_already_initialized() {
     let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
@@ -108,7 +108,7 @@ fn test_add_remove_offramp() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #12)")]
+#[should_panic(expected = "Error(Contract, #60)")]
 fn test_add_duplicate_offramp() {
     let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);
@@ -124,7 +124,7 @@ fn test_add_duplicate_offramp() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #8)")]
+#[should_panic(expected = "Error(Contract, #61)")]
 fn test_remove_nonexistent_offramp() {
     let (env, contract_id, owner, rmn_proxy, _) = setup_env();
     let client = RouterContractClient::new(&env, &contract_id);

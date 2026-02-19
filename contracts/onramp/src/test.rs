@@ -63,7 +63,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")] // AlreadyInitialized
+#[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_double_initialize_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -215,7 +215,7 @@ fn test_get_all_dest_chain_configs() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")] // InvalidConfig - invalid chain selector
+#[should_panic(expected = "Error(Contract, #52)")] // InvalidConfig - invalid chain selector
 fn test_invalid_dest_chain_config_zero_selector() {
     let env = Env::default();
     env.mock_all_auths();
@@ -237,7 +237,7 @@ fn test_invalid_dest_chain_config_zero_selector() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")] // InvalidConfig - same as local chain
+#[should_panic(expected = "Error(Contract, #52)")] // InvalidConfig - same as local chain
 fn test_invalid_dest_chain_config_same_as_local() {
     let env = Env::default();
     env.mock_all_auths();
