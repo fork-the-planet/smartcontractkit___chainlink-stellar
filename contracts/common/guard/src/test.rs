@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test {
-    use crate::{GuardError, ReentrancyGuard};
+    use crate::ReentrancyGuard;
+    use common_error::CCIPError;
     use soroban_sdk::{contract, contractimpl, Env};
 
     // A minimal test contract to provide contract context for testing
@@ -16,7 +17,7 @@ mod test {
             assert!(ReentrancyGuard::is_entered(&env));
 
             // Should fail to enter again
-            assert_eq!(ReentrancyGuard::enter(&env), Err(GuardError::ReentrantCall));
+            assert_eq!(ReentrancyGuard::enter(&env), Err(CCIPError::ReentrantCall));
 
             // Should be able to exit
             ReentrancyGuard::exit(&env);
@@ -30,7 +31,7 @@ mod test {
         }
 
         pub fn test_with_guard_success(env: Env) -> i32 {
-            let result: Result<i32, GuardError> = ReentrancyGuard::with_guard(&env, || {
+            let result: Result<i32, CCIPError> = ReentrancyGuard::with_guard(&env, || {
                 assert!(ReentrancyGuard::is_entered(&env));
                 Ok(42)
             });
@@ -42,8 +43,8 @@ mod test {
         }
 
         pub fn test_with_guard_error(env: Env) -> bool {
-            let result: Result<i32, GuardError> =
-                ReentrancyGuard::with_guard(&env, || Err(GuardError::ReentrantCall));
+            let result: Result<i32, CCIPError> =
+                ReentrancyGuard::with_guard(&env, || Err(CCIPError::ReentrantCall));
 
             assert!(result.is_err());
             // Guard should still be released even on error

@@ -10,7 +10,7 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use common_authorization::{Ownable, DefaultOwnable, AuthorizedCallers, AccessControl, AuthError};
+//! use common_authorization::{Ownable, DefaultOwnable, AuthorizedCallers, AccessControl, CCIPError};
 //!
 //! // In your contract's initialize function (implement Ownable for your contract):
 //! impl Ownable for MyContract {}
@@ -31,7 +31,7 @@ pub mod ownable;
 pub use events::*;
 pub use ownable::{DefaultOwnable, Ownable};
 
-use common_error::CCIPError as AuthError;
+use common_error::CCIPError;
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
 // ============================================================
@@ -97,9 +97,9 @@ impl AuthorizedCallers {
     /// # Errors
     /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
     /// * `NotInitialized` - Owner not set
-    pub fn add_callers(env: &Env, callers: Vec<Address>) -> Result<(), AuthError> {
+    pub fn add_callers(env: &Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
         DefaultOwnable::require_owner(env)?;
 
@@ -142,9 +142,9 @@ impl AuthorizedCallers {
     /// # Errors
     /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
     /// * `NotInitialized` - Owner not set
-    pub fn remove_callers(env: &Env, callers: Vec<Address>) -> Result<(), AuthError> {
+    pub fn remove_callers(env: &Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
         DefaultOwnable::require_owner(env)?;
 
@@ -202,9 +202,9 @@ impl AuthorizedCallers {
     /// # Errors
     /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
     /// * `CallerNotAuthorized` - No authorized caller provided auth
-    pub fn require_authorized(env: &Env) -> Result<Address, AuthError> {
+    pub fn require_authorized(env: &Env) -> Result<Address, CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         let callers = Self::get_callers(env);
@@ -215,7 +215,7 @@ impl AuthorizedCallers {
             return Ok(caller);
         }
 
-        Err(AuthError::CallerNotAuthorized)
+        Err(CCIPError::CallerNotAuthorized)
     }
 }
 
@@ -257,9 +257,9 @@ impl AccessControl {
     /// # Errors
     /// * `FeatureNotEnabled` - AccessControl not initialized
     /// * `NotInitialized` - Owner not set (if not using ADMIN)
-    pub fn grant_role(env: &Env, role: Symbol, account: &Address) -> Result<(), AuthError> {
+    pub fn grant_role(env: &Env, role: Symbol, account: &Address) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         // Require owner or ADMIN role
@@ -331,9 +331,9 @@ impl AccessControl {
     /// # Errors
     /// * `FeatureNotEnabled` - AccessControl not initialized
     /// * `NotInitialized` - Owner not set (if not using ADMIN)
-    pub fn revoke_role(env: &Env, role: Symbol, account: &Address) -> Result<(), AuthError> {
+    pub fn revoke_role(env: &Env, role: Symbol, account: &Address) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         // Require owner or ADMIN role
@@ -391,16 +391,16 @@ impl AccessControl {
     /// # Errors
     /// * `FeatureNotEnabled` - AccessControl not initialized
     /// * `CannotRenounceRole` - Account doesn't have the role
-    pub fn renounce_role(env: &Env, role: Symbol, account: &Address) -> Result<(), AuthError> {
+    pub fn renounce_role(env: &Env, role: Symbol, account: &Address) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         // Account must authorize their own renouncement
         account.require_auth();
 
         if !Self::has_role(env, role.clone(), account) {
-            return Err(AuthError::CannotRenounceRole);
+            return Err(CCIPError::CannotRenounceRole);
         }
 
         // Get current roles
@@ -474,9 +474,9 @@ impl AccessControl {
     /// # Errors
     /// * `FeatureNotEnabled` - AccessControl not initialized
     /// * `RoleNotGranted` - Caller doesn't have the required role
-    pub fn require_role(env: &Env, role: Symbol) -> Result<Address, AuthError> {
+    pub fn require_role(env: &Env, role: Symbol) -> Result<Address, CCIPError> {
         if !Self::is_enabled(env) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         let members = Self::get_role_members(env, role.clone());
@@ -487,7 +487,7 @@ impl AccessControl {
             return Ok(member);
         }
 
-        Err(AuthError::RoleNotGranted)
+        Err(CCIPError::RoleNotGranted)
     }
 
     /// Get all addresses that have a specific role.
@@ -512,7 +512,7 @@ impl AccessControl {
     }
 
     /// Internal: Require owner or ADMIN role.
-    fn require_admin_or_owner(env: &Env) -> Result<Address, AuthError> {
+    fn require_admin_or_owner(env: &Env) -> Result<Address, CCIPError> {
         // First try ADMIN role
         let admin_members = Self::get_role_members(env, ROLE_ADMIN);
         for admin in admin_members.iter() {

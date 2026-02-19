@@ -26,15 +26,15 @@ impl TestAuthContract {
         DefaultOwnable::is_owner(&env, &addr)
     }
 
-    pub fn require_owner(env: Env) -> Result<Address, AuthError> {
+    pub fn require_owner(env: Env) -> Result<Address, CCIPError> {
         DefaultOwnable::require_owner(&env)
     }
 
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), AuthError> {
+    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), CCIPError> {
         DefaultOwnable::transfer_ownership(&env, &new_owner)
     }
 
-    pub fn accept_ownership(env: Env) -> Result<(), AuthError> {
+    pub fn accept_ownership(env: Env) -> Result<(), CCIPError> {
         DefaultOwnable::accept_ownership(&env)
     }
 
@@ -42,7 +42,7 @@ impl TestAuthContract {
         DefaultOwnable::get_pending_owner(&env)
     }
 
-    pub fn cancel_transfer(env: Env) -> Result<(), AuthError> {
+    pub fn cancel_transfer(env: Env) -> Result<(), CCIPError> {
         DefaultOwnable::cancel_ownership_transfer(&env)
     }
 
@@ -55,11 +55,11 @@ impl TestAuthContract {
         AuthorizedCallers::is_enabled(&env)
     }
 
-    pub fn add_callers(env: Env, callers: Vec<Address>) -> Result<(), AuthError> {
+    pub fn add_callers(env: Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         AuthorizedCallers::add_callers(&env, callers)
     }
 
-    pub fn remove_callers(env: Env, callers: Vec<Address>) -> Result<(), AuthError> {
+    pub fn remove_callers(env: Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         AuthorizedCallers::remove_callers(&env, callers)
     }
 
@@ -71,7 +71,7 @@ impl TestAuthContract {
         AuthorizedCallers::is_authorized(&env, &addr)
     }
 
-    pub fn require_authorized(env: Env) -> Result<Address, AuthError> {
+    pub fn require_authorized(env: Env) -> Result<Address, CCIPError> {
         AuthorizedCallers::require_authorized(&env)
     }
 
@@ -84,15 +84,15 @@ impl TestAuthContract {
         AccessControl::is_enabled(&env)
     }
 
-    pub fn grant_role(env: Env, role: Symbol, account: Address) -> Result<(), AuthError> {
+    pub fn grant_role(env: Env, role: Symbol, account: Address) -> Result<(), CCIPError> {
         AccessControl::grant_role(&env, role, &account)
     }
 
-    pub fn revoke_role(env: Env, role: Symbol, account: Address) -> Result<(), AuthError> {
+    pub fn revoke_role(env: Env, role: Symbol, account: Address) -> Result<(), CCIPError> {
         AccessControl::revoke_role(&env, role, &account)
     }
 
-    pub fn renounce_role(env: Env, role: Symbol, account: Address) -> Result<(), AuthError> {
+    pub fn renounce_role(env: Env, role: Symbol, account: Address) -> Result<(), CCIPError> {
         AccessControl::renounce_role(&env, role, &account)
     }
 
@@ -100,7 +100,7 @@ impl TestAuthContract {
         AccessControl::has_role(&env, role, &account)
     }
 
-    pub fn require_role(env: Env, role: Symbol) -> Result<Address, AuthError> {
+    pub fn require_role(env: Env, role: Symbol) -> Result<Address, CCIPError> {
         AccessControl::require_role(&env, role)
     }
 

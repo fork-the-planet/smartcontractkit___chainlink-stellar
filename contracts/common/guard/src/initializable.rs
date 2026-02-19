@@ -1,12 +1,12 @@
-use common_error::CCIPError as InitializableError;
+use common_error::CCIPError;
 use soroban_sdk::{symbol_short, Env, Symbol};
 
 pub trait Initializable {
     const INITIALIZED: Symbol = symbol_short!("INIT");
 
-    fn init(env: &Env) -> Result<(), InitializableError> {
+    fn init(env: &Env) -> Result<(), CCIPError> {
         if env.storage().instance().has(&Self::INITIALIZED) {
-            return Err(InitializableError::AlreadyInitialized);
+            return Err(CCIPError::AlreadyInitialized);
         }
         env.storage().instance().set(&Self::INITIALIZED, &true);
         Ok(())
@@ -16,16 +16,16 @@ pub trait Initializable {
         env.storage().instance().has(&Self::INITIALIZED)
     }
 
-    fn require_initialized(env: &Env) -> Result<(), InitializableError> {
+    fn require_initialized(env: &Env) -> Result<(), CCIPError> {
         if !Self::is_initialized(env) {
-            return Err(InitializableError::NotInitialized);
+            return Err(CCIPError::NotInitialized);
         }
         Ok(())
     }
 
-    fn require_not_initialized(env: &Env) -> Result<(), InitializableError> {
+    fn require_not_initialized(env: &Env) -> Result<(), CCIPError> {
         if Self::is_initialized(env) {
-            return Err(InitializableError::AlreadyInitialized);
+            return Err(CCIPError::AlreadyInitialized);
         }
         Ok(())
     }

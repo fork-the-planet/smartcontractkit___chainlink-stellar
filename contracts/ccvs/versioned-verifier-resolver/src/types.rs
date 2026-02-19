@@ -1,4 +1,4 @@
-use common_error::CCIPError as VerifierResolverError;
+use common_error::CCIPError;
 use common_helpers::map_updater::{MapUpdate, MapUpdater};
 use soroban_sdk::{contracttype, Address, BytesN, Env, Map, Symbol, Vec};
 
@@ -53,7 +53,7 @@ type InboundMap = Map<BytesN<4>, Address>;
 impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap {
     const MAP_NAME: Symbol = VER_INBOUND;
     const KEY_SET_NAME: Symbol = SUP_VERS;
-    type Error = VerifierResolverError;
+    type Error = CCIPError;
 
     fn save_changes(
         &self,
@@ -72,7 +72,7 @@ impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap 
             // Check if version is all zeros
             let zero_version: [u8; 4] = [0, 0, 0, 0];
             if update.version.to_array() == zero_version {
-                return Err(VerifierResolverError::InvalidVersion);
+                return Err(CCIPError::InvalidVersion);
             }
         }
         Ok(())
@@ -137,7 +137,7 @@ type OutboundMap = Map<u64, Address>;
 impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
     const MAP_NAME: Symbol = DEST_OUTBND;
     const KEY_SET_NAME: Symbol = SUP_DESTS;
-    type Error = VerifierResolverError;
+    type Error = CCIPError;
 
     fn save_changes(
         &self,
@@ -155,7 +155,7 @@ impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
         if update.verifier.is_some() {
             // Check if dest_chain_selector is zero
             if update.dest_chain_selector == 0 {
-                return Err(VerifierResolverError::InvalidChainSelector);
+                return Err(CCIPError::InvalidChainSelector);
             }
         }
         Ok(())
