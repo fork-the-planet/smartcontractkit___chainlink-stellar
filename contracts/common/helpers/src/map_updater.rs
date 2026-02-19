@@ -27,11 +27,11 @@ pub trait MapUpdater<T, K, V>
 where
     T: MapUpdate<Key = K, Value = V> + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
     K: TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
-    V: TryFromVal<Env, Val> + IntoVal<Env, Val>,
+    V: TryFromVal<Env, Val> + IntoVal<Env, Val>
 {
     const MAP_NAME: Symbol;
     const KEY_SET_NAME: Symbol;
-    type Error: From<CCIPError>;
+    type Error: From<CCIPError> + From<Self::Error>;
 
     fn get_map(&self, env: &Env) -> Option<Map<K, V>> {
         env.storage().instance().get(&Self::MAP_NAME)
@@ -53,7 +53,9 @@ where
         let mut map = self.get_map(env).unwrap_or(Map::new(env));
         let mut key_set = self.get_key_set(env).unwrap_or(Vec::new(env));
 
-        updates.iter().for_each(|update| {
+        updates.iter().try_for_each(|update| {
+            self.validate_update(&update)?;
+            
             let _ = match (update.key(), update.value()) {
                 (_, None) => {
                     map.remove(update.key());
@@ -72,7 +74,9 @@ where
                     self.emit_set_event(env, &update);
                 }
             };
-        });
+
+            Ok(()) as Result<(), Self::Error>
+        })?;
 
         self.save_changes(env, &key_set, &map)?;
 

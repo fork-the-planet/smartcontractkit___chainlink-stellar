@@ -40,7 +40,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")] // AlreadyInitialized
+#[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_double_initialize_fails() {
     let (env, client, _owner) = setup();
     let owner2 = Address::generate(&env);
@@ -238,7 +238,7 @@ fn test_apply_inbound_update_existing() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #9)")] // InvalidVersion
+#[should_panic(expected = "Error(Contract, #58)")] // InvalidVersion
 fn test_apply_inbound_zero_version_fails() {
     let (env, client, _owner) = setup();
 
@@ -255,7 +255,7 @@ fn test_apply_inbound_zero_version_fails() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")] // InvalidVerifierResultsLength
+#[should_panic(expected = "Error(Contract, #53)")] // InvalidVerifierResultsLength
 fn test_get_inbound_implementation_too_short() {
     let (env, client, _owner) = setup();
 
@@ -429,7 +429,7 @@ fn test_apply_outbound_update_existing() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #8)")] // InvalidChainSelector
+#[should_panic(expected = "Error(Contract, #57)")] // InvalidChainSelector
 fn test_apply_outbound_zero_chain_selector_fails() {
     let (env, client, _owner) = setup();
     let verifier = Address::generate(&env);

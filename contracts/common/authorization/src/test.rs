@@ -206,7 +206,7 @@ fn test_ownable_cancel_transfer() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn test_ownable_accept_no_pending() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -229,7 +229,7 @@ fn test_authorized_callers_not_enabled() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #9)")]
+#[should_panic(expected = "Error(Contract, #10)")]
 fn test_authorized_callers_require_not_enabled() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -350,7 +350,7 @@ fn test_authorized_callers_require_authorized() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #5)")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_authorized_callers_require_empty_list() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -363,7 +363,7 @@ fn test_authorized_callers_require_empty_list() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #9)")]
+#[should_panic(expected = "Error(Contract, #10)")]
 fn test_authorized_callers_add_not_enabled() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -391,7 +391,7 @@ fn test_access_control_not_enabled() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #9)")]
+#[should_panic(expected = "Error(Contract, #10)")]
 fn test_access_control_require_not_enabled() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -460,7 +460,7 @@ fn test_access_control_renounce_role() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #11)")]
+#[should_panic(expected = "Error(Contract, #12)")]
 fn test_access_control_renounce_role_not_granted() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
@@ -490,7 +490,7 @@ fn test_access_control_require_role() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #8)")]
+#[should_panic(expected = "Error(Contract, #9)")]
 fn test_access_control_require_role_not_granted() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);

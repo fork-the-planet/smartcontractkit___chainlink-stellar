@@ -26,7 +26,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")] // AlreadyInitialized
+#[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_double_initialize_fails() {
     let (env, contract_id, owner, rmn) = setup_env();
     let client = RmnProxyContractClient::new(&env, &contract_id);

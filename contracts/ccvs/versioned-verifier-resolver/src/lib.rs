@@ -22,8 +22,7 @@ pub mod types;
 
 use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::FromXdr, Address, Bytes, BytesN, Env, Map, Symbol,
-    Vec,
+    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
 use common_authorization::Ownable;
@@ -126,9 +125,7 @@ impl VersionedVerifierResolverContract {
         }
 
         // Extract first 4 bytes as version
-        let version = verifier_results.slice(0..4);
-        let version = BytesN::from_xdr(&env, &version)
-            .expect("Failed to convert verifier results to BytesN<4>");
+        let version: BytesN<4> = verifier_results.slice(0..4).try_into().expect("slice is 4 bytes");
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()

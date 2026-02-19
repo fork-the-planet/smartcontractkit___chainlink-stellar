@@ -66,7 +66,15 @@ impl MapUpdater<InboundImplementationUpdate, BytesN<4>, Address> for InboundMap 
         Ok(())
     }
 
-    fn validate_update(&self, _update: &InboundImplementationUpdate) -> Result<(), Self::Error> {
+    fn validate_update(&self, update: &InboundImplementationUpdate) -> Result<(), Self::Error> {
+        // Only validate when setting (not removing)
+        if update.verifier.is_some() {
+            // Check if version is all zeros
+            let zero_version: [u8; 4] = [0, 0, 0, 0];
+            if update.version.to_array() == zero_version {
+                return Err(VerifierResolverError::InvalidVersion);
+            }
+        }
         Ok(())
     }
 
@@ -142,7 +150,14 @@ impl MapUpdater<OutboundImplementationUpdate, u64, Address> for OutboundMap {
         Ok(())
     }
 
-    fn validate_update(&self, _update: &OutboundImplementationUpdate) -> Result<(), Self::Error> {
+    fn validate_update(&self, update: &OutboundImplementationUpdate) -> Result<(), Self::Error> {
+        // Only validate when setting (not removing)
+        if update.verifier.is_some() {
+            // Check if dest_chain_selector is zero
+            if update.dest_chain_selector == 0 {
+                return Err(VerifierResolverError::InvalidChainSelector);
+            }
+        }
         Ok(())
     }
 
