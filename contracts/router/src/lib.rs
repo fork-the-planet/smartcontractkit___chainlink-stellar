@@ -7,12 +7,12 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Ma
 
 use common_authorization::Ownable;
 use common_error::CCIPError as RouterError;
+use common_guard::initializable::Initializable;
 use common_interfaces::onramp::OnRampClient;
 use common_interfaces::rmn_proxy::RmnProxyClient;
 use common_message::StellarToAnyMessage;
 use events::{CCIPSendRequestedEvent, OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent};
 use types::{OffRampEntry, OnRampEntry, RouterConfig};
-use common_guard::initializable::Initializable;
 
 // ============================================================
 // Storage Keys

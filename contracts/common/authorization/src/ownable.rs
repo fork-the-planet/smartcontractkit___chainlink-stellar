@@ -75,7 +75,9 @@ pub trait Ownable: Initializable {
     fn transfer_ownership(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
         let current_owner = Self::require_owner(env)?;
 
-        env.storage().instance().set(&Self::PENDING_OWNER, new_owner);
+        env.storage()
+            .instance()
+            .set(&Self::PENDING_OWNER, new_owner);
 
         OwnershipTransferStartedEvent {
             previous_owner: current_owner,

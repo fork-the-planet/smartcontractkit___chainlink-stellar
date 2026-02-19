@@ -36,7 +36,10 @@ fn test_initialize() {
     let (env, client, owner) = setup();
 
     env.as_contract(&client.address, || {
-        assert_eq!(VersionedVerifierResolverContract::owner(&env).unwrap(), owner);
+        assert_eq!(
+            VersionedVerifierResolverContract::owner(&env).unwrap(),
+            owner
+        );
     });
 
     assert_eq!(client.get_all_inbound_implementations().len(), 0);
