@@ -333,10 +333,7 @@ impl CommitteeVerifierContract {
 
     pub fn owner(env: Env) -> Result<Address, CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        env.storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(CommitteeVerifierError::NotInitialized)
+        Ownable::get_owner(&env).ok_or(CommitteeVerifierError::NotInitialized)
     }
 
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), CommitteeVerifierError> {
