@@ -661,9 +661,7 @@ impl FeeQuoterContract {
     }
 
     /// Get all destination chain configurations.
-    pub fn get_all_dest_configs(
-        env: Env,
-    ) -> Result<(Vec<u64>, Vec<DestChainConfig>), CCIPError> {
+    pub fn get_all_dest_configs(env: Env) -> Result<(Vec<u64>, Vec<DestChainConfig>), CCIPError> {
         Self::require_initialized(&env)?;
 
         let (selectors, configs): (Vec<u64>, Vec<DestChainConfig>) = env
@@ -892,9 +890,7 @@ impl FeeQuoterContract {
 
         for i in 0..selectors.len() {
             if selectors.get(i).unwrap() == dest_chain_selector {
-                return configs
-                    .get(i)
-                    .ok_or(CCIPError::DestinationChainNotEnabled);
+                return configs.get(i).ok_or(CCIPError::DestinationChainNotEnabled);
             }
         }
 

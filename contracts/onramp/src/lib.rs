@@ -4,16 +4,14 @@ mod events;
 pub mod types;
 
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, Map, Symbol, Vec, contract, contractimpl, symbol_short
+    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
-use common_error::CCIPError;
 use common_authorization::Ownable;
+use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_message::{MessageIdCompute, StellarToAnyMessage};
-use events::{
-    CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent,
-};
+use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
 
 // ============================================================
@@ -290,10 +288,7 @@ impl OnRampContract {
     ///
     /// # Returns
     /// The pool address that handles this token
-    pub fn get_pool_by_source_token(
-        env: Env,
-        source_token: Address,
-    ) -> Result<Address, CCIPError> {
+    pub fn get_pool_by_source_token(env: Env, source_token: Address) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let static_config: StaticConfig = env

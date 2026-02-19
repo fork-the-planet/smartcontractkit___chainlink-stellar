@@ -223,10 +223,7 @@ impl CommitteeVerifierContract {
             .ok_or(CCIPError::NotInitialized)
     }
 
-    pub fn set_dynamic_config(
-        env: Env,
-        dynamic_config: DynamicConfig,
-    ) -> Result<(), CCIPError> {
+    pub fn set_dynamic_config(env: Env, dynamic_config: DynamicConfig) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         env.storage()
@@ -291,17 +288,12 @@ impl CommitteeVerifierContract {
             .ok_or(CCIPError::NotInitialized)
     }
 
-    pub fn get_pending_storage_loc_admin(
-        env: Env,
-    ) -> Result<Option<Address>, CCIPError> {
+    pub fn get_pending_storage_loc_admin(env: Env) -> Result<Option<Address>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         Ok(env.storage().instance().get(&PENDING_STORAGE_LOC_ADMIN))
     }
 
-    pub fn transfer_storage_locations_admin(
-        env: Env,
-        to: Address,
-    ) -> Result<(), CCIPError> {
+    pub fn transfer_storage_locations_admin(env: Env, to: Address) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let current_admin = Self::get_storage_locations_admin(env.clone())?;
         current_admin.require_auth();
@@ -319,10 +311,7 @@ impl CommitteeVerifierContract {
         unimplemented!();
     }
 
-    pub fn update_storage_locations(
-        env: Env,
-        new_locations: Vec<Bytes>,
-    ) -> Result<(), CCIPError> {
+    pub fn update_storage_locations(env: Env, new_locations: Vec<Bytes>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
@@ -339,10 +328,7 @@ impl CommitteeVerifierContract {
     // Fees
     // ========================================
 
-    pub fn withdraw_fee_tokens(
-        env: Env,
-        fee_tokens: Vec<Address>,
-    ) -> Result<(), CCIPError> {
+    pub fn withdraw_fee_tokens(env: Env, fee_tokens: Vec<Address>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let dynamic = Self::get_dynamic_config(env.clone())?;
 

@@ -9,7 +9,7 @@
 //! This prevents accidental transfers to wrong addresses.
 
 use common_error::CCIPError;
-use soroban_sdk::{Address, Env, Symbol, contracttrait, symbol_short};
+use soroban_sdk::{contracttrait, symbol_short, Address, Env, Symbol};
 
 use super::events::{OwnershipTransferStartedEvent, OwnershipTransferredEvent};
 use common_guard::initializable::Initializable;
@@ -21,7 +21,7 @@ use common_guard::initializable::Initializable;
 /// ```ignore
 /// impl Ownable for MyContract {}
 /// ```
-/// 
+///
 /// The `contracttrait` macro is required to export the methods in the concrete contract
 /// implementing the trait. Otherwise, it's optional.
 #[contracttrait]
