@@ -230,8 +230,3 @@ pub enum AuthError {
     RoleAlreadyGranted = 10,
     CannotRenounceRole = 11,
 }
-#[soroban_sdk::contracterror(export = false)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum GuardError {
-    ReentrantCall = 1,
-}

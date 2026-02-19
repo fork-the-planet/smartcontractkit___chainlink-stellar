@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
-use common_error::CCIPError as AuthError;
+use common_error::CCIPError;
 use common_helpers::validation::Validatable;
 
 pub trait AllowListUpdateInterface: Validatable {
@@ -69,7 +69,7 @@ pub trait AllowListable {
     fn apply_allowlist_updates(
         env: &Env,
         updates: &Vec<Self::AllowListUpdate>,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), CCIPError> {
         for update in updates.iter() {
             update.validate()?;
 
@@ -78,7 +78,7 @@ pub trait AllowListable {
             let to_remove = update.get_allowlist_addresses_to_remove();
 
             if !Self::is_allowlist_enabled(env, key) {
-                return Err(AuthError::FeatureNotEnabled);
+                return Err(CCIPError::FeatureNotEnabled);
             }
 
             let mut data: Map<u64, Vec<Address>> = env
@@ -131,14 +131,14 @@ pub trait AllowListable {
     /// # Errors
     /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
     /// * `CallerNotAuthorized` - No authorized caller provided auth
-    fn require_in_allowlist(env: &Env, key: u64, address: &Address) -> Result<(), AuthError> {
+    fn require_in_allowlist(env: &Env, key: u64, address: &Address) -> Result<(), CCIPError> {
         if !Self::is_allowlist_enabled(env, key) {
-            return Err(AuthError::FeatureNotEnabled);
+            return Err(CCIPError::FeatureNotEnabled);
         }
 
         let allowlist = Self::get_allowlist_entry(env, key);
         if !allowlist.contains(address) {
-            return Err(AuthError::CallerNotAuthorized);
+            return Err(CCIPError::CallerNotAuthorized);
         }
 
         Ok(())

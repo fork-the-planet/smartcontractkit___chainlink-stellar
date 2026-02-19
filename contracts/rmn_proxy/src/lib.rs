@@ -5,7 +5,7 @@ mod events;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 use common_authorization::Ownable;
-use common_error::CCIPError as RmnProxyError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use events::RmnSetEvent;
 
@@ -56,7 +56,7 @@ impl RmnProxyContract {
     ///
     /// # Errors
     /// * `AlreadyInitialized` - If contract is already initialized
-    pub fn initialize(env: Env, owner: Address, rmn: Address) -> Result<(), RmnProxyError> {
+    pub fn initialize(env: Env, owner: Address, rmn: Address) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
         // Initialize owner via shared authorization lib
@@ -83,7 +83,7 @@ impl RmnProxyContract {
     /// # Errors
     /// * `NotInitialized` - If contract is not initialized
     /// * `Unauthorized` - If caller is not the owner
-    pub fn set_rmn(env: Env, rmn: Address) -> Result<(), RmnProxyError> {
+    pub fn set_rmn(env: Env, rmn: Address) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -100,12 +100,12 @@ impl RmnProxyContract {
     ///
     /// # Returns
     /// The current RMN implementation address
-    pub fn get_rmn(env: Env) -> Result<Address, RmnProxyError> {
+    pub fn get_rmn(env: Env) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&RMN)
-            .ok_or(RmnProxyError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     /// Check if the network is globally cursed.
@@ -123,7 +123,7 @@ impl RmnProxyContract {
     ///
     /// # Returns
     /// `true` if the network is cursed and operations should be halted
-    pub fn is_cursed(env: Env) -> Result<bool, RmnProxyError> {
+    pub fn is_cursed(env: Env) -> Result<bool, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         // TODO: Delegate to RMN Remote when it exists.
@@ -133,7 +133,7 @@ impl RmnProxyContract {
             .storage()
             .instance()
             .get(&RMN)
-            .ok_or(RmnProxyError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         Ok(false)
     }

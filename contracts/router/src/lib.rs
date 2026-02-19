@@ -6,7 +6,7 @@ mod types;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec};
 
 use common_authorization::Ownable;
-use common_error::CCIPError as RouterError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_interfaces::onramp::OnRampClient;
 use common_interfaces::rmn_proxy::RmnProxyClient;
@@ -57,7 +57,7 @@ impl RouterContract {
     ///
     /// # Errors
     /// * `AlreadyInitialized` - If contract is already initialized
-    pub fn initialize(env: Env, owner: Address, rmn_proxy: Address) -> Result<(), RouterError> {
+    pub fn initialize(env: Env, owner: Address, rmn_proxy: Address) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
         // Initialize owner via shared authorization lib (two-step ownership)
@@ -102,7 +102,7 @@ impl RouterContract {
         env: Env,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
-    ) -> Result<i128, RouterError> {
+    ) -> Result<i128, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         // Get OnRamp for destination
@@ -147,7 +147,7 @@ impl RouterContract {
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
         fee_token_amount: i128,
-    ) -> Result<BytesN<32>, RouterError> {
+    ) -> Result<BytesN<32>, CCIPError> {
         // Verify the sender's identity (Soroban equivalent of EVM's msg.sender)
         sender.require_auth();
 
@@ -161,7 +161,7 @@ impl RouterContract {
         let onramp_client = OnRampClient::new(&env, &onramp);
         let required_fee = onramp_client.get_fee(&dest_chain_selector, &message);
         if fee_token_amount < required_fee {
-            return Err(RouterError::InsufficientFeeTokenAmount);
+            return Err(CCIPError::InsufficientFeeTokenAmount);
         }
 
         // TODO: Transfer fee tokens from sender to OnRamp.
@@ -199,7 +199,7 @@ impl RouterContract {
     ///
     /// # Returns
     /// True if an OnRamp is configured for this destination
-    pub fn is_chain_supported(env: Env, dest_chain_selector: u64) -> Result<bool, RouterError> {
+    pub fn is_chain_supported(env: Env, dest_chain_selector: u64) -> Result<bool, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let onramps: Map<u64, Address> = env
@@ -218,7 +218,7 @@ impl RouterContract {
     ///
     /// # Returns
     /// The OnRamp contract address
-    pub fn get_onramp(env: Env, dest_chain_selector: u64) -> Result<Address, RouterError> {
+    pub fn get_onramp(env: Env, dest_chain_selector: u64) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         Self::get_onramp_internal(&env, dest_chain_selector)
     }
@@ -235,7 +235,7 @@ impl RouterContract {
         env: Env,
         source_chain_selector: u64,
         offramp: Address,
-    ) -> Result<bool, RouterError> {
+    ) -> Result<bool, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let offramps: Map<u64, Vec<Address>> = env
@@ -260,7 +260,7 @@ impl RouterContract {
     ///
     /// # Returns
     /// Vector of OffRampEntry structs
-    pub fn get_offramps(env: Env) -> Result<Vec<OffRampEntry>, RouterError> {
+    pub fn get_offramps(env: Env) -> Result<Vec<OffRampEntry>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let offramps: Map<u64, Vec<Address>> = env
@@ -289,7 +289,7 @@ impl RouterContract {
     ///
     /// # Returns
     /// Vector of OnRampEntry structs
-    pub fn get_onramps(env: Env) -> Result<Vec<OnRampEntry>, RouterError> {
+    pub fn get_onramps(env: Env) -> Result<Vec<OnRampEntry>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let onramps: Map<u64, Address> = env
@@ -311,12 +311,12 @@ impl RouterContract {
     }
 
     /// Get the Router configuration.
-    pub fn get_config(env: Env) -> Result<RouterConfig, RouterError> {
+    pub fn get_config(env: Env) -> Result<RouterConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&CONFIG)
-            .ok_or(RouterError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     // ========================================
@@ -332,7 +332,7 @@ impl RouterContract {
         env: Env,
         dest_chain_selector: u64,
         onramp: Address,
-    ) -> Result<(), RouterError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -364,7 +364,7 @@ impl RouterContract {
         env: Env,
         source_chain_selector: u64,
         offramp: Address,
-    ) -> Result<(), RouterError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -381,7 +381,7 @@ impl RouterContract {
         // Check if already exists
         for i in 0..chain_offramps.len() {
             if chain_offramps.get(i) == Some(offramp.clone()) {
-                return Err(RouterError::OffRampAlreadyExists);
+                return Err(CCIPError::OffRampAlreadyExists);
             }
         }
 
@@ -409,7 +409,7 @@ impl RouterContract {
         env: Env,
         source_chain_selector: u64,
         offramp: Address,
-    ) -> Result<(), RouterError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -421,7 +421,7 @@ impl RouterContract {
 
         let chain_offramps = offramps
             .get(source_chain_selector)
-            .ok_or(RouterError::OffRampMismatch)?;
+            .ok_or(CCIPError::OffRampMismatch)?;
 
         // Find and remove the OffRamp
         let mut found = false;
@@ -439,7 +439,7 @@ impl RouterContract {
         }
 
         if !found {
-            return Err(RouterError::OffRampMismatch);
+            return Err(CCIPError::OffRampMismatch);
         }
 
         // Update storage
@@ -472,7 +472,7 @@ impl RouterContract {
         onramp_updates: Vec<OnRampEntry>,
         offramp_removes: Vec<OffRampEntry>,
         offramp_adds: Vec<OffRampEntry>,
-    ) -> Result<(), RouterError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -504,7 +504,7 @@ impl RouterContract {
         for entry in offramp_removes.iter() {
             let chain_offramps = offramps
                 .get(entry.source_chain_selector)
-                .ok_or(RouterError::OffRampMismatch)?;
+                .ok_or(CCIPError::OffRampMismatch)?;
 
             let mut found = false;
             let mut new_chain_offramps: Vec<Address> = Vec::new(&env);
@@ -520,7 +520,7 @@ impl RouterContract {
             }
 
             if !found {
-                return Err(RouterError::OffRampMismatch);
+                return Err(CCIPError::OffRampMismatch);
             }
 
             if new_chain_offramps.is_empty() {
@@ -572,34 +572,34 @@ impl RouterContract {
     // Internal Helper Functions
     // ========================================
 
-    fn require_not_cursed(env: &Env) -> Result<(), RouterError> {
+    fn require_not_cursed(env: &Env) -> Result<(), CCIPError> {
         let config: RouterConfig = env
             .storage()
             .instance()
             .get(&CONFIG)
-            .ok_or(RouterError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         // Cross-contract call to RMN Proxy to check curse status
         let rmn_proxy_client = RmnProxyClient::new(env, &config.rmn_proxy);
         let is_cursed = rmn_proxy_client.is_cursed();
 
         if is_cursed {
-            return Err(RouterError::BadRMNSignal);
+            return Err(CCIPError::BadRMNSignal);
         }
 
         Ok(())
     }
 
-    fn get_onramp_internal(env: &Env, dest_chain_selector: u64) -> Result<Address, RouterError> {
+    fn get_onramp_internal(env: &Env, dest_chain_selector: u64) -> Result<Address, CCIPError> {
         let onramps: Map<u64, Address> = env
             .storage()
             .persistent()
             .get(&ONRAMPS)
-            .ok_or(RouterError::UnsupportedDestinationChain)?;
+            .ok_or(CCIPError::UnsupportedDestinationChain)?;
 
         onramps
             .get(dest_chain_selector)
-            .ok_or(RouterError::UnsupportedDestinationChain)
+            .ok_or(CCIPError::UnsupportedDestinationChain)
     }
 }
 

@@ -1,5 +1,5 @@
 use common_authorization::Ownable;
-use common_error::CCIPError as SignaturesError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use soroban_sdk::{contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec};
 
@@ -27,50 +27,50 @@ pub trait SignatureQuorum: Initializable + Ownable {
     const SIGNATURE_LENGTH_BYTES: u32 = 2;
     const SIGNATURE_THRESHOLD_BYTES: u32 = 2;
 
-    fn extract_signature_length(signatures: &Bytes) -> Result<u16, SignaturesError> {
+    fn extract_signature_length(signatures: &Bytes) -> Result<u16, CCIPError> {
         unimplemented!()
     }
 
-    fn extract_signatures(signatures: &Bytes) -> Result<Vec<BytesN<32>>, SignaturesError> {
+    fn extract_signatures(signatures: &Bytes) -> Result<Vec<BytesN<32>>, CCIPError> {
         unimplemented!()
     }
 
-    fn extract_signature_threshold(signatures: &Bytes) -> Result<u16, SignaturesError> {
+    fn extract_signature_threshold(signatures: &Bytes) -> Result<u16, CCIPError> {
         unimplemented!()
     }
 
-    fn extract_signature_pubkey(signatures: &Bytes) -> Result<BytesN<32>, SignaturesError> {
+    fn extract_signature_pubkey(signatures: &Bytes) -> Result<BytesN<32>, CCIPError> {
         unimplemented!()
     }
 
     fn extract_version_tag(
         env: &Env,
         verifier_results: &Bytes,
-    ) -> Result<BytesN<4>, SignaturesError> {
+    ) -> Result<BytesN<4>, CCIPError> {
         if verifier_results.len() < Self::VERIFIER_VERSION_BYTES {
-            return Err(SignaturesError::InvalidVerifierResults);
+            return Err(CCIPError::InvalidVerifierResults);
         }
         let mut out = [0u8; 4];
         let mut i = 0u32;
         while i < Self::VERIFIER_VERSION_BYTES {
             out[i as usize] = verifier_results
                 .get(i)
-                .ok_or(SignaturesError::InvalidVerifierResults)?;
+                .ok_or(CCIPError::InvalidVerifierResults)?;
             i += 1;
         }
         Ok(BytesN::from_array(env, &out))
     }
 
-    fn extract_signature_len(verifier_results: &Bytes) -> Result<u32, SignaturesError> {
+    fn extract_signature_len(verifier_results: &Bytes) -> Result<u32, CCIPError> {
         if verifier_results.len() < Self::VERIFIER_VERSION_BYTES + Self::SIGNATURE_LENGTH_BYTES {
-            return Err(SignaturesError::InvalidVerifierResults);
+            return Err(CCIPError::InvalidVerifierResults);
         }
         let b0 = verifier_results
             .get(Self::VERIFIER_VERSION_BYTES)
-            .ok_or(SignaturesError::InvalidVerifierResults)?;
+            .ok_or(CCIPError::InvalidVerifierResults)?;
         let b1 = verifier_results
             .get(Self::VERIFIER_VERSION_BYTES + 1)
-            .ok_or(SignaturesError::InvalidVerifierResults)?;
+            .ok_or(CCIPError::InvalidVerifierResults)?;
         Ok(((b0 as u32) << 8) | (b1 as u32))
     }
 
@@ -79,7 +79,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
         source_chain_selector: u64,
         signed_hash: BytesN<32>,
         signatures: Bytes,
-    ) -> Result<(), SignaturesError> {
+    ) -> Result<(), CCIPError> {
         let sig_cfgs: Map<u64, SignatureQuorumConfig> = env
             .storage()
             .persistent()
@@ -88,10 +88,10 @@ pub trait SignatureQuorum: Initializable + Ownable {
 
         let cfg = sig_cfgs
             .get(source_chain_selector)
-            .ok_or(SignaturesError::SourceNotConfigured)?;
+            .ok_or(CCIPError::SourceNotConfigured)?;
 
         if cfg.threshold == 0 {
-            return Err(SignaturesError::SourceNotConfigured);
+            return Err(CCIPError::SourceNotConfigured);
         }
 
         // TODO: implement native Soroban Ed25519 quorum validation:
@@ -106,7 +106,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
     fn get_signature_config(
         env: Env,
         source_chain_selector: u64,
-    ) -> Result<SignatureQuorumConfig, SignaturesError> {
+    ) -> Result<SignatureQuorumConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         // TODO: auth guard?
 
@@ -117,10 +117,10 @@ pub trait SignatureQuorum: Initializable + Ownable {
             .unwrap_or(Map::new(&env));
         sig_cfgs
             .get(source_chain_selector)
-            .ok_or(SignaturesError::SourceNotConfigured)
+            .ok_or(CCIPError::SourceNotConfigured)
     }
 
-    fn get_all_signature_configs(env: Env) -> Result<Vec<SignatureQuorumConfig>, SignaturesError> {
+    fn get_all_signature_configs(env: Env) -> Result<Vec<SignatureQuorumConfig>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let sig_cfgs: Map<u64, SignatureQuorumConfig> = env
@@ -144,7 +144,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
         env: Env,
         source_chains_to_remove: Vec<u64>,
         signature_configs: Vec<SignatureQuorumConfig>,
-    ) -> Result<(), SignaturesError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -161,7 +161,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
 
         for update in signature_configs.iter() {
             if update.threshold == 0 || update.threshold > update.signers.len() {
-                return Err(SignaturesError::InvalidSignatureThreshold);
+                return Err(CCIPError::InvalidSignatureThreshold);
             }
 
             sig_cfgs.set(

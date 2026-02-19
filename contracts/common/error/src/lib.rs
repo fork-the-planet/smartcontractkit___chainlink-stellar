@@ -51,7 +51,7 @@ pub enum CCIPError {
     InvalidSignaturePubkey = 18,
     SourceNotConfigured = 19,
     InvalidVerifierResults = 20,
-    ReentrantCall = 21, // First "guard" error, but moved for increasing order
+    ReentrantCall = 21,
 
     // ============================================================
     // Fee quoter errors

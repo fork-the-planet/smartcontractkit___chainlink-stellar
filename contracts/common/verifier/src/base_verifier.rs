@@ -1,4 +1,4 @@
-use common_error::CCIPError as BaseVerifierError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_helpers::validation::Validatable;
 use soroban_sdk::{Address, Bytes, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
@@ -30,7 +30,7 @@ pub trait BaseVerifier: Initializable + AllowListable {
         env: &Env,
         storage_locations: &Vec<Bytes>,
         rmn_proxy: &Address,
-    ) -> Result<(), BaseVerifierError> {
+    ) -> Result<(), CCIPError> {
         env.storage()
             .instance()
             .set(&Self::STORAGE_LOCATIONS, storage_locations);
@@ -57,7 +57,7 @@ pub trait BaseVerifier: Initializable + AllowListable {
     fn apply_remote_chain_config_updates(
         env: &Env,
         remote_chain_updates: &Vec<Self::RemoteChainConfig>,
-    ) -> Result<(), BaseVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(env)?;
         // TODO: check if the caller is owner or authorized
 
@@ -84,7 +84,7 @@ pub trait BaseVerifier: Initializable + AllowListable {
     fn get_remote_chain_config(
         env: &Env,
         remote_chain_selector: u64,
-    ) -> Result<Self::RemoteChainConfig, BaseVerifierError> {
+    ) -> Result<Self::RemoteChainConfig, CCIPError> {
         let remote_chains: Map<u64, Self::RemoteChainConfig> = env
             .storage()
             .instance()
@@ -93,10 +93,10 @@ pub trait BaseVerifier: Initializable + AllowListable {
 
         remote_chains
             .get(remote_chain_selector)
-            .ok_or(BaseVerifierError::RemoteChainNotSupported)
+            .ok_or(CCIPError::RemoteChainNotSupported)
     }
 
-    fn get_fee(env: &Env, dest_chain_selector: u64) -> Result<(u32, u32, u32), BaseVerifierError> {
+    fn get_fee(env: &Env, dest_chain_selector: u64) -> Result<(u32, u32, u32), CCIPError> {
         let cfg = Self::get_remote_chain_config(env, dest_chain_selector)?;
         Ok(cfg.get_fee_data())
     }

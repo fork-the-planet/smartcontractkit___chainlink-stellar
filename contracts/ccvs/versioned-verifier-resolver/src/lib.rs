@@ -26,7 +26,7 @@ use soroban_sdk::{
 };
 
 use common_authorization::Ownable;
-use common_error::CCIPError as VerifierResolverError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use events::FeeAggregatorSetEvent;
 pub use types::{
@@ -83,7 +83,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         owner: Address,
         fee_aggregator: Address,
-    ) -> Result<(), VerifierResolverError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
         <Self as Ownable>::init_owner(&env, &owner)?;
@@ -128,11 +128,11 @@ impl VersionedVerifierResolverContract {
     pub fn get_inbound_implementation(
         env: Env,
         verifier_results: Bytes,
-    ) -> Result<Address, VerifierResolverError> {
+    ) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         if verifier_results.len() < 4 {
-            return Err(VerifierResolverError::InvalidVerifierResultsLength);
+            return Err(CCIPError::InvalidVerifierResultsLength);
         }
 
         // Extract first 4 bytes as version
@@ -149,7 +149,7 @@ impl VersionedVerifierResolverContract {
 
         inbound_map
             .get(version)
-            .ok_or(VerifierResolverError::InboundImplementationNotFound)
+            .ok_or(CCIPError::InboundImplementationNotFound)
     }
 
     /// Returns all registered inbound implementations.
@@ -198,7 +198,7 @@ impl VersionedVerifierResolverContract {
         env: Env,
         dest_chain_selector: u64,
         _extra_args: Bytes,
-    ) -> Result<Address, VerifierResolverError> {
+    ) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let outbound_map: Map<u64, Address> = env
@@ -209,7 +209,7 @@ impl VersionedVerifierResolverContract {
 
         outbound_map
             .get(dest_chain_selector)
-            .ok_or(VerifierResolverError::OutboundImplementationNotFound)
+            .ok_or(CCIPError::OutboundImplementationNotFound)
     }
 
     /// Returns all registered outbound implementations.
@@ -242,13 +242,13 @@ impl VersionedVerifierResolverContract {
     }
 
     /// Returns the fee aggregator address.
-    pub fn get_fee_aggregator(env: Env) -> Result<Address, VerifierResolverError> {
+    pub fn get_fee_aggregator(env: Env) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         env.storage()
             .instance()
             .get(&FEE_AGG)
-            .ok_or(VerifierResolverError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     // ========================================
@@ -273,9 +273,9 @@ impl VersionedVerifierResolverContract {
     pub fn apply_inbound_impl_updates(
         env: Env,
         implementations: Vec<InboundImplementationUpdate>,
-    ) -> Result<(), VerifierResolverError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Ownable>::require_owner(&env).map_err(|_| CCIPError::Unauthorized)?;
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
@@ -306,9 +306,9 @@ impl VersionedVerifierResolverContract {
     pub fn apply_outbound_impl_updates(
         env: Env,
         implementations: Vec<OutboundImplementationUpdate>,
-    ) -> Result<(), VerifierResolverError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Ownable>::require_owner(&env).map_err(|_| CCIPError::Unauthorized)?;
 
         let outbound_map: Map<u64, Address> = env
             .storage()
@@ -334,7 +334,7 @@ impl VersionedVerifierResolverContract {
     pub fn set_fee_aggregator(
         env: Env,
         fee_aggregator: Address,
-    ) -> Result<(), VerifierResolverError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 

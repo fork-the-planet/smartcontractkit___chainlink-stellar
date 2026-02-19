@@ -1,6 +1,6 @@
 #![no_std]
 
-use common_error::CCIPError as Error;
+use common_error::CCIPError;
 use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 // ============================================================
@@ -40,9 +40,9 @@ pub struct TokenAmount {
 }
 
 impl TokenAmount {
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self) -> Result<(), CCIPError> {
         if self.amount < 0 {
-            return Err(Error::InvalidTokenAmount);
+            return Err(CCIPError::InvalidTokenAmount);
         }
         Ok(())
     }
@@ -81,14 +81,14 @@ pub struct StellarToAnyMessage {
 }
 
 impl StellarToAnyMessage {
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self) -> Result<(), CCIPError> {
         for token_amount in self.token_amounts.iter() {
             token_amount.validate()?;
         }
 
         // TODO: add other validations
         // if self.receiver.len() != 32 {
-        //     return Err(OnRampError::InvalidReceiverAddress);
+        //     return Err(CCIPError::InvalidReceiverAddress);
         // }
 
         Ok(())
@@ -123,7 +123,7 @@ pub struct AnyToStellarMessage {
 }
 
 impl AnyToStellarMessage {
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self) -> Result<(), CCIPError> {
         // TODO: add validations
         Ok(())
     }

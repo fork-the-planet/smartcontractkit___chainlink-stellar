@@ -2,8 +2,8 @@
 
 pub mod initializable;
 
-use common_error::CCIPError as GuardError;
-use soroban_sdk::{contracterror, symbol_short, Env, Symbol};
+use common_error::CCIPError;
+use soroban_sdk::{symbol_short, Env, Symbol};
 
 /// Storage key for the reentrancy guard flag.
 /// Uses temporary storage which is cleared after each transaction.
@@ -22,7 +22,7 @@ const REENTRANCY_GUARD: Symbol = symbol_short!("RE_GUARD");
 /// since temporary storage is cleared automatically after the transaction:
 ///
 /// ```ignore
-/// pub fn protected_function(env: Env) -> Result<(), GuardError> {
+/// pub fn protected_function(env: Env) -> Result<(), CCIPError> {
 ///     ReentrancyGuard::enter(&env)?;
 ///     // ... protected logic (may call external contracts) ...
 ///     Ok(())
@@ -35,7 +35,7 @@ const REENTRANCY_GUARD: Symbol = symbol_short!("RE_GUARD");
 /// use `exit()` or `with_guard()` so each can acquire the lock:
 ///
 /// ```ignore
-/// pub fn function_a(env: Env) -> Result<(), GuardError> {
+/// pub fn function_a(env: Env) -> Result<(), CCIPError> {
 ///     ReentrancyGuard::enter(&env)?;
 ///     // ... logic ...
 ///     ReentrancyGuard::exit(&env);  // Allow function_b to be called next
@@ -53,9 +53,9 @@ impl ReentrancyGuard {
     /// # Note
     /// For single-guarded-function contracts, you don't need to call `exit()`
     /// since temporary storage is cleared automatically after the transaction.
-    pub fn enter(env: &Env) -> Result<(), GuardError> {
+    pub fn enter(env: &Env) -> Result<(), CCIPError> {
         if env.storage().temporary().has(&REENTRANCY_GUARD) {
-            return Err(GuardError::ReentrantCall);
+            return Err(CCIPError::ReentrantCall);
         }
         env.storage().temporary().set(&REENTRANCY_GUARD, &true);
         Ok(())
@@ -77,7 +77,7 @@ impl ReentrancyGuard {
     pub fn with_guard<F, T, E>(env: &Env, f: F) -> Result<T, E>
     where
         F: FnOnce() -> Result<T, E>,
-        E: From<GuardError>,
+        E: From<CCIPError>,
     {
         Self::enter(env)?;
         let result = f();

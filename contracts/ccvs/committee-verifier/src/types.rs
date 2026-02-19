@@ -1,5 +1,5 @@
 use common_authorization::allowlist::AllowListUpdateInterface;
-use common_error::CCIPError as BaseVerifierError;
+use common_error::CCIPError;
 use common_helpers::validation::Validatable;
 use common_verifier::base_verifier::RemoteChainConfigInterface;
 use soroban_sdk::{contracttype, Address, Vec};
@@ -40,13 +40,13 @@ impl RemoteChainConfigInterface for RemoteChainConfig {
 }
 
 impl Validatable for RemoteChainConfig {
-    fn validate(&self) -> Result<(), BaseVerifierError> {
+    fn validate(&self) -> Result<(), CCIPError> {
         if self.remote_chain_selector == 0 || self.gas_for_verification == 0 {
-            return Err(BaseVerifierError::InvalidConfig);
+            return Err(CCIPError::InvalidConfig);
         }
 
         if self.router.is_none() && self.allowlist_enabled {
-            return Err(BaseVerifierError::InvalidConfig);
+            return Err(CCIPError::InvalidConfig);
         }
 
         // TODO: add other validation rules here
@@ -65,7 +65,7 @@ pub struct AllowListUpdate {
 }
 
 impl Validatable for AllowListUpdate {
-    fn validate(&self) -> Result<(), BaseVerifierError> {
+    fn validate(&self) -> Result<(), CCIPError> {
         // TODO: add validation rules here
         Ok(())
     }
