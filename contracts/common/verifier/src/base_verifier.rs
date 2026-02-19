@@ -37,8 +37,6 @@ pub trait BaseVerifier: Initializable + AllowListable {
         env.storage()
             .instance()
             .set(&Self::REMOTE_CHAINS, &remote_chains);
-        
-        <Self as AllowListable>::init_allowlist(env, Map::new(env));
 
         Ok(())
     }

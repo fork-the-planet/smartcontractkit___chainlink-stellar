@@ -4,7 +4,7 @@ mod events;
 pub mod types;
 
 use common_authorization::allowlist::AllowListable;
-use common_authorization::{AuthorizedCallers, Ownable};
+use common_authorization::Ownable;
 use common_error::CCIPError as CommitteeVerifierError;
 use common_guard::initializable::Initializable;
 use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
@@ -84,8 +84,6 @@ impl AllowListable for CommitteeVerifierContract {
 #[contractimpl]
 impl CommitteeVerifierContract {
     /// Initializes CommitteeVerifier with owner/dynamic config/storage locations/RMN proxy.
-    ///
-    /// Mirrors EVM constructor + dynamic config initialization.
     pub fn initialize(
         env: Env,
         owner: Address,
@@ -95,11 +93,11 @@ impl CommitteeVerifierContract {
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
-        <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
         <Self as Initializable>::init(&env)?;
+        <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
+        <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
 
         Ownable::init(&env, &owner);
-        AuthorizedCallers::init(&env, Vec::new(&env));
 
         env.storage()
             .instance()
@@ -121,15 +119,26 @@ impl CommitteeVerifierContract {
 
     /// Source-side hook that checks sender permissions and returns version tag.
     pub fn forward_to_resolver(
-        _env: Env,
-        _dest_chain_selector: u64,
-        _sender: Address,
-        _message_hash: BytesN<32>,
+        env: Env,
+        dest_chain_selector: u64,
+        sender: Address,
+        _message_id: BytesN<32>,
         _fee_token: Address,
         _fee_token_amount: i128,
         _verifier_args: Bytes,
     ) -> Result<Bytes, CommitteeVerifierError> {
-        unimplemented!();
+        <Self as Initializable>::require_initialized(&env)?;
+        
+        let mut verification_blob = Bytes::new(&env);
+        
+        // TODO: 
+        // 1. check that sender is allowed
+        // 2. check curse status
+
+        <Self as AllowListable>::require_in_allowlist(&env, dest_chain_selector, &sender)?;
+
+        verification_blob.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
+        Ok(verification_blob)
     }
 
     /// Destination-side hook that parses verifier result payload and validates signatures.
@@ -150,12 +159,12 @@ impl CommitteeVerifierContract {
             return Err(CommitteeVerifierError::InvalidVerifierResults);
         }
 
-        let version = Self::extract_version_tag(&env, &verifier_results)?;
+        let version = <Self as SignatureQuorum>::extract_version_tag(&env, &verifier_results)?;
         if version != BytesN::from_array(&env, &VERSION_TAG_V1_7_0) {
             return Err(CommitteeVerifierError::InvalidCCVVersion);
         }
 
-        let signature_len = Self::extract_signature_len(&verifier_results)?;
+        let signature_len = <Self as SignatureQuorum>::extract_signature_len(&verifier_results)?;
         let expected = VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES + signature_len;
         if verifier_results.len() < expected {
             return Err(CommitteeVerifierError::InvalidVerifierResults);
@@ -169,7 +178,7 @@ impl CommitteeVerifierContract {
 
         let signatures =
             verifier_results.slice(VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES..expected);
-        Self::validate_signatures(&env, source_chain_selector, signed_hash, signatures)
+        <Self as SignatureQuorum>::validate_signatures(&env, source_chain_selector, signed_hash, signatures)
     }
 
     /// Returns static version tag used in outbound verifier responses.

@@ -1,6 +1,6 @@
 use common_error::CCIPError as VerifierResolverError;
 use common_helpers::map_updater::{MapUpdate, MapUpdater};
-use soroban_sdk::{contracttype, Address, BytesN, Env, IntoVal, Map, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, BytesN, Env, Map, Symbol, Vec};
 
 use crate::{
     events::{
