@@ -15,7 +15,7 @@ pub struct TestAuthContract;
 impl TestAuthContract {
     // ---- Ownable (using DefaultOwnable for testing) ----
     pub fn init_owner(env: Env, owner: Address) {
-        DefaultOwnable::init(&env, &owner);
+        DefaultOwnable::init_owner(&env, &owner);
     }
 
     pub fn get_owner(env: Env) -> Option<Address> {
@@ -159,7 +159,7 @@ fn test_ownable_require_owner() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn test_ownable_require_owner_not_initialized() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);

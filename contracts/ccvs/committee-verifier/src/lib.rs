@@ -5,7 +5,7 @@ pub mod types;
 
 use common_authorization::allowlist::AllowListable;
 use common_authorization::Ownable;
-use common_error::CCIPError as CommitteeVerifierError;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_verifier::base_verifier::BaseVerifier;
 use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
@@ -50,7 +50,7 @@ impl Initializable for CommitteeVerifierContract {
     const INITIALIZED: Symbol = INITIALIZED;
 }
 
-#[contractimpl]
+#[contractimpl(contracttrait)]
 impl Ownable for CommitteeVerifierContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
@@ -111,13 +111,13 @@ impl CommitteeVerifierContract {
         dynamic_config: DynamicConfig,
         storage_locations: Vec<Bytes>,
         rmn_proxy: Address,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
         <Self as Initializable>::init(&env)?;
+        <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
         <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
-        <Self as Ownable>::init(&env, &owner);
 
         env.storage()
             .instance()
@@ -146,7 +146,7 @@ impl CommitteeVerifierContract {
         _fee_token: Address,
         _fee_token_amount: i128,
         _verifier_args: Bytes,
-    ) -> Result<Bytes, CommitteeVerifierError> {
+    ) -> Result<Bytes, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let mut verification_blob = Bytes::new(&env);
@@ -169,25 +169,25 @@ impl CommitteeVerifierContract {
         source_chain_selector: u64,
         message_hash: BytesN<32>,
         verifier_results: Bytes,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         // TODO: check if cursed by RMNProxy
         // Self::assert_not_cursed_by_rmn(&env, source_chain_selector)?;
 
         if verifier_results.len() < VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES {
-            return Err(CommitteeVerifierError::InvalidVerifierResults);
+            return Err(CCIPError::InvalidVerifierResults);
         }
 
         let version = <Self as SignatureQuorum>::extract_version_tag(&env, &verifier_results)?;
         if version != BytesN::from_array(&env, &VERSION_TAG_V1_7_0) {
-            return Err(CommitteeVerifierError::InvalidCCVVersion);
+            return Err(CCIPError::InvalidCCVVersion);
         }
 
         let signature_len = <Self as SignatureQuorum>::extract_signature_len(&verifier_results)?;
         let expected = VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES + signature_len;
         if verifier_results.len() < expected {
-            return Err(CommitteeVerifierError::InvalidVerifierResults);
+            return Err(CCIPError::InvalidVerifierResults);
         }
 
         // TODO: finalize exact signed payload format with offchain signer pipeline.
@@ -215,18 +215,18 @@ impl CommitteeVerifierContract {
     // Dynamic config
     // ========================================
 
-    pub fn get_dynamic_config(env: Env) -> Result<DynamicConfig, CommitteeVerifierError> {
+    pub fn get_dynamic_config(env: Env) -> Result<DynamicConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&DYNAMIC_CONFIG)
-            .ok_or(CommitteeVerifierError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     pub fn set_dynamic_config(
         env: Env,
         dynamic_config: DynamicConfig,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         env.storage()
@@ -240,18 +240,18 @@ impl CommitteeVerifierContract {
     // Base verifier config
     // ========================================
 
-    pub fn get_storage_locations(env: Env) -> Result<Vec<Bytes>, CommitteeVerifierError> {
+    pub fn get_storage_locations(env: Env) -> Result<Vec<Bytes>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STORAGE_LOCATIONS)
-            .ok_or(CommitteeVerifierError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     pub fn apply_remote_chain_cfg_updates(
         env: Env,
         remote_chain_config_args: Vec<RemoteChainConfig>,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         <Self as BaseVerifier>::apply_remote_chain_config_updates(&env, &remote_chain_config_args)?;
@@ -261,7 +261,7 @@ impl CommitteeVerifierContract {
     pub fn get_remote_chain_config(
         env: Env,
         remote_chain_selector: u64,
-    ) -> Result<RemoteChainConfig, CommitteeVerifierError> {
+    ) -> Result<RemoteChainConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector)
             .map_err(Into::into)
@@ -274,7 +274,7 @@ impl CommitteeVerifierContract {
         _message: Bytes,
         _extra_args: Bytes,
         _block_confirmations: u32,
-    ) -> Result<(u32, u32, u32), CommitteeVerifierError> {
+    ) -> Result<(u32, u32, u32), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as BaseVerifier>::get_fee(&env, dest_chain_selector).map_err(Into::into)
     }
@@ -283,17 +283,17 @@ impl CommitteeVerifierContract {
     // Storage locations
     // ========================================
 
-    pub fn get_storage_locations_admin(env: Env) -> Result<Address, CommitteeVerifierError> {
+    pub fn get_storage_locations_admin(env: Env) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STORAGE_LOC_ADMIN)
-            .ok_or(CommitteeVerifierError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     pub fn get_pending_storage_loc_admin(
         env: Env,
-    ) -> Result<Option<Address>, CommitteeVerifierError> {
+    ) -> Result<Option<Address>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         Ok(env.storage().instance().get(&PENDING_STORAGE_LOC_ADMIN))
     }
@@ -301,7 +301,7 @@ impl CommitteeVerifierContract {
     pub fn transfer_storage_locations_admin(
         env: Env,
         to: Address,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let current_admin = Self::get_storage_locations_admin(env.clone())?;
         current_admin.require_auth();
@@ -314,7 +314,7 @@ impl CommitteeVerifierContract {
         Ok(())
     }
 
-    pub fn accept_storage_locations_admin(_env: Env) -> Result<(), CommitteeVerifierError> {
+    pub fn accept_storage_locations_admin(_env: Env) -> Result<(), CCIPError> {
         // TODO: implement
         unimplemented!();
     }
@@ -322,7 +322,7 @@ impl CommitteeVerifierContract {
     pub fn update_storage_locations(
         env: Env,
         new_locations: Vec<Bytes>,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
@@ -342,7 +342,7 @@ impl CommitteeVerifierContract {
     pub fn withdraw_fee_tokens(
         env: Env,
         fee_tokens: Vec<Address>,
-    ) -> Result<(), CommitteeVerifierError> {
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let dynamic = Self::get_dynamic_config(env.clone())?;
 

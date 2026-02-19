@@ -83,7 +83,7 @@ impl FeeQuoterContract {
         }
 
         <Self as Initializable>::init(&env)?;
-        <Self as Ownable>::init(&env, &owner);
+        <Self as Ownable>::init_owner(&env, &owner)?;
 
         // Initialize authorized callers (common-authorization)
         // TODO: remove this in favor of using the AllowListable trait.

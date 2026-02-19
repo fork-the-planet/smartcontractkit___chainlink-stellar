@@ -63,11 +63,8 @@ fn setup_uninitialized() -> (Env, CommitteeVerifierContractClient<'static>) {
 
 #[test]
 fn test_initialize() {
-    let (env, client, owner, _rmn_proxy, _storage_locations) = setup();
-
-    env.as_contract(&client.address, || {
-        assert_eq!(CommitteeVerifierContract::owner(&env).unwrap(), owner);
-    })
+    let (_env, client, owner, _rmn_proxy, _storage_locations) = setup();
+    assert_eq!(client.owner(), Some(owner));
 }
 
 #[test]

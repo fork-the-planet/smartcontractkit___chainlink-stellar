@@ -8,8 +8,8 @@
 //!
 //! This prevents accidental transfers to wrong addresses.
 
-use common_error::CCIPError as AuthError;
-use soroban_sdk::{symbol_short, Address, Env, Symbol};
+use common_error::CCIPError;
+use soroban_sdk::{Address, Env, Symbol, contracttrait, symbol_short};
 
 use super::events::{OwnershipTransferStartedEvent, OwnershipTransferredEvent};
 use common_guard::initializable::Initializable;
@@ -21,6 +21,10 @@ use common_guard::initializable::Initializable;
 /// ```ignore
 /// impl Ownable for MyContract {}
 /// ```
+/// 
+/// The `contracttrait` macro is required to export the methods in the concrete contract
+/// implementing the trait. Otherwise, it's optional.
+#[contracttrait]
 pub trait Ownable: Initializable {
     /// Storage key for the owner address.
     const OWNER: Symbol;
@@ -32,8 +36,13 @@ pub trait Ownable: Initializable {
     /// # Arguments
     /// * `env` - The environment
     /// * `owner` - The initial owner address
-    fn init(env: &Env, owner: &Address) {
+    fn init_owner(env: &Env, owner: &Address) -> Result<(), CCIPError> {
+        if env.storage().instance().has(&Self::OWNER) {
+            return Err(CCIPError::AlreadyInitialized);
+        }
+
         env.storage().instance().set(&Self::OWNER, owner);
+        Ok(())
     }
 
     /// Get the current owner.
@@ -57,8 +66,8 @@ pub trait Ownable: Initializable {
     ///
     /// # Errors
     /// * `NotInitialized` - Owner has not been set
-    fn require_owner(env: &Env) -> Result<Address, AuthError> {
-        let owner = Self::owner(env).ok_or(AuthError::NotInitialized)?;
+    fn require_owner(env: &Env) -> Result<Address, CCIPError> {
+        let owner = Self::owner(env).ok_or(CCIPError::NotOwner)?;
         owner.require_auth();
         Ok(owner)
     }
@@ -72,7 +81,7 @@ pub trait Ownable: Initializable {
     ///
     /// # Errors
     /// * `NotInitialized` - Owner has not been set
-    fn transfer_ownership(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
+    fn transfer_ownership(env: &Env, new_owner: &Address) -> Result<(), CCIPError> {
         let current_owner = Self::require_owner(env)?;
 
         env.storage()
@@ -93,12 +102,12 @@ pub trait Ownable: Initializable {
     ///
     /// # Errors
     /// * `NoPendingOwner` - No ownership transfer is pending
-    fn accept_ownership(env: &Env) -> Result<(), AuthError> {
+    fn accept_ownership(env: &Env) -> Result<(), CCIPError> {
         let pending: Address = env
             .storage()
             .instance()
             .get(&Self::PENDING_OWNER)
-            .ok_or(AuthError::NoPendingOwner)?;
+            .ok_or(CCIPError::NoPendingOwner)?;
 
         // Require the pending owner to authorize
         pending.require_auth();
@@ -125,14 +134,14 @@ pub trait Ownable: Initializable {
 
     /// Cancel a pending ownership transfer.
     /// Can only be called by the current owner.
-    fn cancel_ownership_transfer(env: &Env) -> Result<(), AuthError> {
+    fn cancel_ownership_transfer(env: &Env) -> Result<(), CCIPError> {
         Self::require_owner(env)?;
         env.storage().instance().remove(&Self::PENDING_OWNER);
         Ok(())
     }
 
     /// A method to transfer ownership without waiting for the new owner to accept.
-    fn set_new_owner(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
+    fn set_new_owner(env: &Env, new_owner: &Address) -> Result<(), CCIPError> {
         Self::require_owner(env)?;
         env.storage().instance().set(&Self::OWNER, new_owner);
         Ok(())

@@ -86,7 +86,7 @@ impl VersionedVerifierResolverContract {
     ) -> Result<(), VerifierResolverError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
-        <Self as Ownable>::init(&env, &owner);
+        <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as Initializable>::init(&env)?;
 
         // Initialize empty mappings

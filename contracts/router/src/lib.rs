@@ -61,7 +61,7 @@ impl RouterContract {
         <Self as Initializable>::require_not_initialized(&env)?;
 
         // Initialize owner via shared authorization lib (two-step ownership)
-        <Self as Ownable>::init(&env, &owner);
+        <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as Initializable>::init(&env)?;
 
         // Store config
