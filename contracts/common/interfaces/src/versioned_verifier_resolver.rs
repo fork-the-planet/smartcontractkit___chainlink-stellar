@@ -7,11 +7,11 @@
 use soroban_sdk::{contractclient, Address, Bytes, Env, Vec};
 
 // Re-export types and error from the resolver crate so consumers only need this interface.
-pub use common_error::CCIPError as VerifierResolverError;
 pub use ccvs_versioned_verifier_resolver::{
     InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
     OutboundImplementationUpdate,
 };
+pub use common_error::CCIPError as VerifierResolverError;
 
 #[contractclient(name = "VersionedVerifierResolverClient")]
 pub trait VersionedVerifierResolverInterface {
@@ -41,10 +41,7 @@ pub trait VersionedVerifierResolverInterface {
         env: Env,
         implementations: Vec<OutboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError>;
-    fn set_fee_aggregator(
-        env: Env,
-        fee_aggregator: Address,
-    ) -> Result<(), VerifierResolverError>;
+    fn set_fee_aggregator(env: Env, fee_aggregator: Address) -> Result<(), VerifierResolverError>;
     fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError>;
     fn accept_ownership(env: Env) -> Result<(), VerifierResolverError>;
 }

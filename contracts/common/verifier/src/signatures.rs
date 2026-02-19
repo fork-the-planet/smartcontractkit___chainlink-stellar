@@ -1,7 +1,7 @@
-use common_guard::initializable::Initializable;
 use common_authorization::Ownable;
 use common_error::CCIPError as SignaturesError;
-use soroban_sdk::{Env, BytesN, Bytes, Vec, Symbol, symbol_short, Map, contracttype};
+use common_guard::initializable::Initializable;
+use soroban_sdk::{contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,32 +22,24 @@ pub struct SignatureQuorumConfig {
 
 pub trait SignatureQuorum: Initializable {
     const SIGNATURE_CONFIGS: Symbol = symbol_short!("SIGCFGS");
-    
+
     const VERIFIER_VERSION_BYTES: u32 = 4;
     const SIGNATURE_LENGTH_BYTES: u32 = 2;
     const SIGNATURE_THRESHOLD_BYTES: u32 = 2;
 
-    fn extract_signature_length(
-        signatures: &Bytes,
-    ) -> Result<u16, SignaturesError> {
+    fn extract_signature_length(signatures: &Bytes) -> Result<u16, SignaturesError> {
         unimplemented!()
     }
 
-    fn extract_signatures(
-        signatures: &Bytes,
-    ) -> Result<Vec<BytesN<32>>, SignaturesError> {
+    fn extract_signatures(signatures: &Bytes) -> Result<Vec<BytesN<32>>, SignaturesError> {
         unimplemented!()
     }
 
-    fn extract_signature_threshold(
-        signatures: &Bytes,
-    ) -> Result<u16, SignaturesError> {
+    fn extract_signature_threshold(signatures: &Bytes) -> Result<u16, SignaturesError> {
         unimplemented!()
     }
 
-    fn extract_signature_pubkey(
-        signatures: &Bytes,
-    ) -> Result<BytesN<32>, SignaturesError> {
+    fn extract_signature_pubkey(signatures: &Bytes) -> Result<BytesN<32>, SignaturesError> {
         unimplemented!()
     }
 
@@ -93,11 +85,11 @@ pub trait SignatureQuorum: Initializable {
             .persistent()
             .get(&Self::SIGNATURE_CONFIGS)
             .unwrap_or(Map::new(env));
-        
+
         let cfg = sig_cfgs
             .get(source_chain_selector)
             .ok_or(SignaturesError::SourceNotConfigured)?;
-        
+
         if cfg.threshold == 0 {
             return Err(SignaturesError::SourceNotConfigured);
         }
@@ -128,9 +120,7 @@ pub trait SignatureQuorum: Initializable {
             .ok_or(SignaturesError::SourceNotConfigured)
     }
 
-    fn get_all_signature_configs(
-        env: Env,
-    ) -> Result<Vec<SignatureQuorumConfig>, SignaturesError> {
+    fn get_all_signature_configs(env: Env) -> Result<Vec<SignatureQuorumConfig>, SignaturesError> {
         <Self as Initializable>::require_initialized(&env)?;
 
         let sig_cfgs: Map<u64, SignatureQuorumConfig> = env
@@ -182,7 +172,7 @@ pub trait SignatureQuorum: Initializable {
                     signers: update.signers,
                 },
             );
-            
+
             // TODO: publish SignatureConfigSet.
         }
 

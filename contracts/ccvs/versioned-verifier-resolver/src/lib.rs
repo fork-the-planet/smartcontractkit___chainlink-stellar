@@ -125,7 +125,10 @@ impl VersionedVerifierResolverContract {
         }
 
         // Extract first 4 bytes as version
-        let version: BytesN<4> = verifier_results.slice(0..4).try_into().expect("slice is 4 bytes");
+        let version: BytesN<4> = verifier_results
+            .slice(0..4)
+            .try_into()
+            .expect("slice is 4 bytes");
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()

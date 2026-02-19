@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Symbol, symbol_short};
 use common_error::CCIPError as InitializableError;
+use soroban_sdk::{symbol_short, Env, Symbol};
 
 pub trait Initializable {
     const INITIALIZED: Symbol = symbol_short!("INIT");

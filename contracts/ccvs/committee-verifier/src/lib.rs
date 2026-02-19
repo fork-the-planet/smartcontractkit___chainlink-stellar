@@ -3,17 +3,17 @@
 mod events;
 pub mod types;
 
-use common_verifier::{
-    AllowlistConfigArgs, BaseVerifier, RemoteChainConfig, RemoteChainConfigArgs,
-    signatures::{SignatureQuorum, SignatureQuorumConfig},
-};
 use common_authorization::{AuthorizedCallers, Ownable};
 use common_error::CCIPError as CommitteeVerifierError;
+use common_guard::initializable::Initializable;
+use common_verifier::{
+    signatures::{SignatureQuorum, SignatureQuorumConfig},
+    AllowlistConfigArgs, BaseVerifier, RemoteChainConfig, RemoteChainConfigArgs,
+};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 use types::DynamicConfig;
-use common_guard::initializable::Initializable;
 
 // ============================================================
 // Storage Keys
@@ -71,7 +71,7 @@ impl CommitteeVerifierContract {
         rmn_proxy: Address,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_not_initialized(&env)?;
-        
+
         <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
         <Self as Initializable>::init(&env)?;
 
@@ -119,7 +119,7 @@ impl CommitteeVerifierContract {
         verifier_results: Bytes,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        
+
         // TODO: check if cursed by RMNProxy
         // Self::assert_not_cursed_by_rmn(&env, source_chain_selector)?;
 
@@ -185,7 +185,10 @@ impl CommitteeVerifierContract {
 
     pub fn get_storage_locations(env: Env) -> Result<Vec<Bytes>, CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        env.storage().instance().get(&STORAGE_LOCATIONS).ok_or(CommitteeVerifierError::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&STORAGE_LOCATIONS)
+            .ok_or(CommitteeVerifierError::NotInitialized)
     }
 
     pub fn apply_remote_chain_cfg_updates(
@@ -203,7 +206,8 @@ impl CommitteeVerifierContract {
         remote_chain_selector: u64,
     ) -> Result<RemoteChainConfig, CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector).map_err(Into::into)
+        <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector)
+            .map_err(Into::into)
     }
 
     pub fn apply_allowlist_updates(
@@ -212,8 +216,7 @@ impl CommitteeVerifierContract {
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
         // Admin or authorized caller
-        Ownable::require_owner(&env)
-            .or_else(|_| AuthorizedCallers::require_authorized(&env))?;
+        Ownable::require_owner(&env).or_else(|_| AuthorizedCallers::require_authorized(&env))?;
 
         <Self as BaseVerifier>::apply_allowlist_updates(&env, &allowlist_config_args_items)?;
         Ok(())
@@ -279,7 +282,9 @@ impl CommitteeVerifierContract {
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
 
-        env.storage().instance().set(&STORAGE_LOCATIONS, &new_locations);
+        env.storage()
+            .instance()
+            .set(&STORAGE_LOCATIONS, &new_locations);
 
         // TODO: publish StorageLocationsUpdated(old_locations, new_locations).
         Ok(())

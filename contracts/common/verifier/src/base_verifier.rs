@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Address, Bytes, Env, Map, Symbol, Vec};
 use common_error::CCIPError as BaseVerifierError;
+use soroban_sdk::{contracttype, Address, Bytes, Env, Map, Symbol, Vec};
 
 // const REMOTE_CHAINS: Symbol = symbol_short!("RCHAINS");
 // const ALLOWLIST: Symbol = symbol_short!("ALLOWLST");
@@ -52,18 +52,22 @@ pub trait BaseVerifier {
         storage_locations: &Vec<Bytes>,
         rmn_proxy: &Address,
     ) -> Result<(), BaseVerifierError> {
-        env.storage().instance().set(&Self::STORAGE_LOCATIONS, storage_locations);
+        env.storage()
+            .instance()
+            .set(&Self::STORAGE_LOCATIONS, storage_locations);
         env.storage().instance().set(&Self::RMN_PROXY, rmn_proxy);
 
         let remote_chains: Map<u64, RemoteChainConfig> = Map::new(env);
-        env.storage().persistent().set(&Self::REMOTE_CHAINS, &remote_chains);
+        env.storage()
+            .persistent()
+            .set(&Self::REMOTE_CHAINS, &remote_chains);
 
         let allowlist: Map<u64, Vec<Address>> = Map::new(env);
         env.storage().persistent().set(&Self::ALLOWLIST, &allowlist);
 
         Ok(())
     }
-    
+
     fn apply_remote_chain_config_updates(
         env: &Env,
         remote_chain_config_args: &Vec<RemoteChainConfigArgs>,
@@ -94,10 +98,12 @@ pub trait BaseVerifier {
             // TODO: publish RemoteChainConfigSet event from caller contract.
         }
 
-        env.storage().persistent().set(&Self::REMOTE_CHAINS, &remote_chains);
+        env.storage()
+            .persistent()
+            .set(&Self::REMOTE_CHAINS, &remote_chains);
         Ok(())
     }
-    
+
     fn get_remote_chain_config(
         env: &Env,
         remote_chain_selector: u64,
@@ -112,7 +118,7 @@ pub trait BaseVerifier {
             .get(remote_chain_selector)
             .ok_or(BaseVerifierError::RemoteChainNotSupported)
     }
-    
+
     fn apply_allowlist_updates(
         env: &Env,
         allowlist_config_args_items: &Vec<AllowlistConfigArgs>,
@@ -123,7 +129,7 @@ pub trait BaseVerifier {
         //     .persistent()
         //     .get(&Self::REMOTE_CHAINS)
         //     .unwrap_or(Map::new(env));
-        
+
         // let mut allowlist: Map<u64, Vec<Address>> = env
         //     .storage()
         //     .persistent()
@@ -181,12 +187,13 @@ pub trait BaseVerifier {
 
     fn get_fee(env: &Env, dest_chain_selector: u64) -> Result<(u32, u32, u32), BaseVerifierError> {
         let cfg = Self::get_remote_chain_config(env, dest_chain_selector)?;
-        Ok((cfg.fee_usd_cents, cfg.gas_for_verification, cfg.payload_size_bytes))
+        Ok((
+            cfg.fee_usd_cents,
+            cfg.gas_for_verification,
+            cfg.payload_size_bytes,
+        ))
     }
 }
-
-
-
 
 //     pub fn get_fee(
 //         env: &Env,

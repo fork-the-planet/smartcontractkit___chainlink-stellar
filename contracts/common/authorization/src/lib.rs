@@ -27,8 +27,8 @@ pub mod events;
 
 pub use events::*;
 
-use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 use common_error::CCIPError as AuthError;
+use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
 // ============================================================
 // Storage Keys

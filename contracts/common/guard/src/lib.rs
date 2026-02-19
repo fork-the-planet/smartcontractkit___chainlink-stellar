@@ -2,8 +2,8 @@
 
 pub mod initializable;
 
-use soroban_sdk::{contracterror, symbol_short, Env, Symbol};
 use common_error::CCIPError as GuardError;
+use soroban_sdk::{contracterror, symbol_short, Env, Symbol};
 
 /// Storage key for the reentrancy guard flag.
 /// Uses temporary storage which is cleared after each transaction.

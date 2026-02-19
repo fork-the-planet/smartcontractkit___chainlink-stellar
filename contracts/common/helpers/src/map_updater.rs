@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 use common_error::CCIPError;
+use soroban_sdk::{Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
 pub trait MapUpdate {
     type Key: TryFromVal<Env, Val> + IntoVal<Env, Val>;
@@ -27,7 +27,7 @@ pub trait MapUpdater<T, K, V>
 where
     T: MapUpdate<Key = K, Value = V> + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
     K: TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone,
-    V: TryFromVal<Env, Val> + IntoVal<Env, Val>
+    V: TryFromVal<Env, Val> + IntoVal<Env, Val>,
 {
     const MAP_NAME: Symbol;
     const KEY_SET_NAME: Symbol;
@@ -55,7 +55,7 @@ where
 
         updates.iter().try_for_each(|update| {
             self.validate_update(&update)?;
-            
+
             let _ = match (update.key(), update.value()) {
                 (_, None) => {
                     map.remove(update.key());
