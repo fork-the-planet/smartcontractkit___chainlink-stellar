@@ -50,7 +50,6 @@ impl BaseVerifier for CommitteeVerifierContract {
     const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
     const RMN_PROXY: Symbol = RMN_PROXY;
     const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
-    const ALLOWLIST: Symbol = ALLOWLIST;
 
     fn emit_remote_chain_config_set_event(env: &Env, remote_chain_config: &Self::RemoteChainConfig) {
         events::RemoteChainConfigSetEvent {

@@ -20,7 +20,6 @@ pub trait BaseVerifier: Initializable + AllowListable {
     const STORAGE_LOCATIONS: Symbol;
     const RMN_PROXY: Symbol;
     const REMOTE_CHAINS: Symbol;
-    const ALLOWLIST: Symbol;
 
     type RemoteChainConfig: RemoteChainConfigInterface + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone;
 
@@ -39,8 +38,7 @@ pub trait BaseVerifier: Initializable + AllowListable {
             .instance()
             .set(&Self::REMOTE_CHAINS, &remote_chains);
         
-        let allowlist: Map<u64, Vec<Address>> = Map::new(env);
-        env.storage().instance().set(&Self::ALLOWLIST, &allowlist);
+        <Self as AllowListable>::init_allowlist(env, Map::new(env));
 
         Ok(())
     }
