@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+use common_authorization::Ownable;
 use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env};
 
 use crate::{
@@ -32,9 +33,15 @@ fn setup() -> (
 
 #[test]
 fn test_initialize() {
-    let (_env, client, owner) = setup();
+    let (env, client, owner) = setup();
 
-    assert_eq!(client.owner(), owner);
+    env.as_contract(&client.address, || {
+        assert_eq!(
+            VersionedVerifierResolverContract::owner(&env).unwrap(),
+            owner
+        );
+    });
+
     assert_eq!(client.get_all_inbound_implementations().len(), 0);
     assert_eq!(client.get_all_outbound_implementations().len(), 0);
 }

@@ -10,23 +10,26 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use common_authorization::{Ownable, AuthorizedCallers, AccessControl, AuthError};
+//! use common_authorization::{Ownable, DefaultOwnable, AuthorizedCallers, AccessControl, AuthError};
 //!
-//! // In your contract's initialize function:
-//! Ownable::init(&env, &owner);
+//! // In your contract's initialize function (implement Ownable for your contract):
+//! impl Ownable for MyContract {}
+//! <MyContract as Ownable>::init(&env, &owner);
 //! AuthorizedCallers::init(&env, authorized_callers); // Optional
 //! AccessControl::init(&env); // Optional
 //!
 //! // In protected functions:
-//! Ownable::require_owner(&env)?;
+//! <MyContract as Ownable>::require_owner(&env)?;
 //! AuthorizedCallers::require_authorized(&env)?;
 //! AccessControl::require_role(&env, symbol_short!("MINTER"))?;
 //! ```
 
 pub mod allowlist;
 pub mod events;
+pub mod ownable;
 
 pub use events::*;
+pub use ownable::{DefaultOwnable, Ownable};
 
 use common_error::CCIPError as AuthError;
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
@@ -35,8 +38,6 @@ use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 // Storage Keys
 // ============================================================
 
-const AUTH_OWNER: Symbol = symbol_short!("AUTHOWN");
-const AUTH_PENDING: Symbol = symbol_short!("AUTHPEND");
 const AUTH_CALLERS: Symbol = symbol_short!("AUTHCALL");
 const AUTH_ROLES: Symbol = symbol_short!("AUTHROLE");
 
@@ -52,130 +53,6 @@ pub const ROLE_MINTER: Symbol = symbol_short!("MINTER");
 
 /// Burner role - typically used for token burning permissions.
 pub const ROLE_BURNER: Symbol = symbol_short!("BURNER");
-
-// ============================================================
-// Ownable
-// ============================================================
-
-/// Ownership management with two-step transfer pattern.
-///
-/// Two-step transfer process:
-/// 1. Current owner calls `transfer_ownership(new_owner)`
-/// 2. New owner calls `accept_ownership()`
-///
-/// This prevents accidental transfers to wrong addresses.
-pub struct Ownable;
-
-impl Ownable {
-    /// Initialize the owner. Should be called during contract initialization.
-    ///
-    /// # Arguments
-    /// * `env` - The environment
-    /// * `owner` - The initial owner address
-    pub fn init(env: &Env, owner: &Address) {
-        env.storage().instance().set(&AUTH_OWNER, owner);
-    }
-
-    /// Get the current owner.
-    ///
-    /// # Returns
-    /// The owner address, or None if not initialized.
-    pub fn get_owner(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&AUTH_OWNER)
-    }
-
-    /// Check if an address is the owner.
-    pub fn is_owner(env: &Env, addr: &Address) -> bool {
-        match Self::get_owner(env) {
-            Some(owner) => owner == *addr,
-            None => false,
-        }
-    }
-
-    /// Require that the caller is the owner.
-    /// This calls `require_auth()` on the owner address.
-    ///
-    /// # Errors
-    /// * `NotInitialized` - Owner has not been set
-    pub fn require_owner(env: &Env) -> Result<Address, AuthError> {
-        let owner = Self::get_owner(env).ok_or(AuthError::NotInitialized)?;
-        owner.require_auth();
-        Ok(owner)
-    }
-
-    /// Start ownership transfer to a new address (two-step process).
-    /// The new owner must call `accept_ownership()` to complete the transfer.
-    ///
-    /// # Arguments
-    /// * `env` - The environment
-    /// * `new_owner` - The proposed new owner
-    ///
-    /// # Errors
-    /// * `NotInitialized` - Owner has not been set
-    pub fn transfer_ownership(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
-        let current_owner = Self::require_owner(env)?;
-
-        env.storage().instance().set(&AUTH_PENDING, new_owner);
-
-        OwnershipTransferStartedEvent {
-            previous_owner: current_owner,
-            new_owner: new_owner.clone(),
-        }
-        .publish(env);
-
-        Ok(())
-    }
-
-    /// Accept pending ownership transfer.
-    /// Must be called by the pending new owner.
-    ///
-    /// # Errors
-    /// * `NoPendingOwner` - No ownership transfer is pending
-    pub fn accept_ownership(env: &Env) -> Result<(), AuthError> {
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&AUTH_PENDING)
-            .ok_or(AuthError::NoPendingOwner)?;
-
-        // Require the pending owner to authorize
-        pending.require_auth();
-
-        let previous_owner = Self::get_owner(env);
-
-        // Set new owner and clear pending
-        env.storage().instance().set(&AUTH_OWNER, &pending);
-        env.storage().instance().remove(&AUTH_PENDING);
-
-        OwnershipTransferredEvent {
-            previous_owner: previous_owner.unwrap_or(pending.clone()),
-            new_owner: pending,
-        }
-        .publish(env);
-
-        Ok(())
-    }
-
-    /// Get the pending owner (if any).
-    pub fn get_pending_owner(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&AUTH_PENDING)
-    }
-
-    /// Cancel a pending ownership transfer.
-    /// Can only be called by the current owner.
-    pub fn cancel_ownership_transfer(env: &Env) -> Result<(), AuthError> {
-        Self::require_owner(env)?;
-        env.storage().instance().remove(&AUTH_PENDING);
-        Ok(())
-    }
-
-    /// A method to transfer ownership without waiting for the new owner to accept.
-    pub fn set_new_owner(env: &Env, new_owner: &Address) -> Result<(), AuthError> {
-        Self::require_owner(env)?;
-        env.storage().instance().set(&AUTH_OWNER, new_owner);
-        Ok(())
-    }
-}
 
 // ============================================================
 // AuthorizedCallers
@@ -224,7 +101,7 @@ impl AuthorizedCallers {
         if !Self::is_enabled(env) {
             return Err(AuthError::FeatureNotEnabled);
         }
-        Ownable::require_owner(env)?;
+        DefaultOwnable::require_owner(env)?;
 
         let mut authorized: Vec<Address> = env
             .storage()
@@ -269,7 +146,7 @@ impl AuthorizedCallers {
         if !Self::is_enabled(env) {
             return Err(AuthError::FeatureNotEnabled);
         }
-        Ownable::require_owner(env)?;
+        DefaultOwnable::require_owner(env)?;
 
         let authorized: Vec<Address> = env
             .storage()
@@ -645,7 +522,7 @@ impl AccessControl {
         }
 
         // Fall back to owner
-        Ownable::require_owner(env)
+        DefaultOwnable::require_owner(env)
     }
 }
 

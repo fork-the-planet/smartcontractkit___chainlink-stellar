@@ -63,9 +63,8 @@ fn setup_uninitialized() -> (Env, CommitteeVerifierContractClient<'static>) {
 
 #[test]
 fn test_initialize() {
-    let (env, client, owner, _rmn_proxy, storage_locations) = setup();
-
-    assert_eq!(client.owner(), owner);
+    let (_env, client, owner, _rmn_proxy, _storage_locations) = setup();
+    assert_eq!(client.owner(), Some(owner));
 }
 
 #[test]
@@ -81,14 +80,6 @@ fn test_double_initialize_fails() {
         &storage_locations,
         &Address::generate(&env),
     );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #1)")] // NotInitialized
-fn test_methods_fail_when_not_initialized() {
-    let (_env, client) = setup_uninitialized();
-
-    let _ = client.owner();
 }
 
 // ============================================================
@@ -194,11 +185,16 @@ fn test_transfer_ownership() {
     let (env, client, owner, ..) = setup();
 
     let new_owner = Address::generate(&env);
-    client.transfer_ownership(&new_owner);
+    let _ = <CommitteeVerifierContract as common_authorization::Ownable>::transfer_ownership(
+        &env, &new_owner,
+    );
 
-    assert_eq!(client.owner(), owner); // Pending, not yet accepted
-    client.accept_ownership();
-    assert_eq!(client.owner(), new_owner);
+    env.as_contract(&client.address, || {
+        assert_eq!(CommitteeVerifierContract::owner(&env).unwrap(), owner); // Pending, not yet accepted
+        let _ =
+            <CommitteeVerifierContract as common_authorization::Ownable>::accept_ownership(&env);
+        assert_eq!(CommitteeVerifierContract::owner(&env).unwrap(), new_owner);
+    });
 }
 
 // ============================================================

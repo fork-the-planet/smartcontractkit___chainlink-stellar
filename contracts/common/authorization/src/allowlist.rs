@@ -9,7 +9,7 @@ pub trait AllowListUpdateInterface: Validatable {
     fn get_allowlist_addresses_to_add(&self) -> Vec<Address>;
 }
 
-// TODO: add a trait guard for Ownable once it is converted to a trait
+// Ownable is now a trait; use DefaultOwnable for generic owner checks in apply_allowlist_updates.
 
 /// A trait to maintain a set of allowed addresses for a any purpose.
 /// It can be used for authorization as well as guarding access to certain functions.

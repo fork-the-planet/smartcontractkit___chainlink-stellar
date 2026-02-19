@@ -39,7 +39,9 @@ fn test_initialize() {
     client.initialize(&owner, &rmn_proxy);
 
     // Verify owner
-    assert_eq!(client.owner(), owner);
+    env.as_contract(&client.address, || {
+        assert_eq!(RouterContract::owner(&env).unwrap(), owner);
+    });
 
     // Verify config
     let config = client.get_config();
@@ -194,17 +196,16 @@ fn test_transfer_ownership_two_step() {
 
     let new_owner = Address::generate(&env);
 
-    // Step 1: Initiate transfer
-    client.transfer_ownership(&new_owner);
-
-    // Owner should still be the original owner until accepted
-    assert_eq!(client.owner(), owner);
-
-    // Step 2: Accept transfer
-    client.accept_ownership();
-
-    // Now the new owner should be set
-    assert_eq!(client.owner(), new_owner);
+    env.as_contract(&client.address, || {
+        // Step 1: Initiate transfer
+        let _ = RouterContract::transfer_ownership(&env, &new_owner);
+        // Owner should still be the original owner until accepted
+        assert_eq!(RouterContract::owner(&env).unwrap(), owner);
+        // Step 2: Accept transfer
+        let _ = RouterContract::accept_ownership(&env);
+        // Now the new owner should be set
+        assert_eq!(RouterContract::owner(&env).unwrap(), new_owner);
+    });
 }
 
 #[test]

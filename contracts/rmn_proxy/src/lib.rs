@@ -6,6 +6,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 use common_authorization::Ownable;
 use common_error::CCIPError as RmnProxyError;
+use common_guard::initializable::Initializable;
 use events::RmnSetEvent;
 
 // ============================================================
@@ -13,6 +14,8 @@ use events::RmnSetEvent;
 // ============================================================
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const RMN: Symbol = symbol_short!("RMN");
 
 // ============================================================
@@ -30,6 +33,15 @@ const RMN: Symbol = symbol_short!("RMN");
 #[contract]
 pub struct RmnProxyContract;
 
+impl Ownable for RmnProxyContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
+
+impl Initializable for RmnProxyContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
 #[contractimpl]
 impl RmnProxyContract {
     // ========================================
@@ -45,18 +57,14 @@ impl RmnProxyContract {
     /// # Errors
     /// * `AlreadyInitialized` - If contract is already initialized
     pub fn initialize(env: Env, owner: Address, rmn: Address) -> Result<(), RmnProxyError> {
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(RmnProxyError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         // Initialize owner via shared authorization lib
-        Ownable::init(&env, &owner);
+        <Self as Ownable>::init_owner(&env, &owner)?;
+        <Self as Initializable>::init(&env)?;
 
         // Store the RMN implementation address
         env.storage().instance().set(&RMN, &rmn);
-
-        // Mark as initialized
-        env.storage().instance().set(&INITIALIZED, &true);
 
         Ok(())
     }
@@ -76,8 +84,8 @@ impl RmnProxyContract {
     /// * `NotInitialized` - If contract is not initialized
     /// * `Unauthorized` - If caller is not the owner
     pub fn set_rmn(env: Env, rmn: Address) -> Result<(), RmnProxyError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         env.storage().instance().set(&RMN, &rmn);
 
@@ -93,7 +101,7 @@ impl RmnProxyContract {
     /// # Returns
     /// The current RMN implementation address
     pub fn get_rmn(env: Env) -> Result<Address, RmnProxyError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&RMN)
@@ -116,7 +124,7 @@ impl RmnProxyContract {
     /// # Returns
     /// `true` if the network is cursed and operations should be halted
     pub fn is_cursed(env: Env) -> Result<bool, RmnProxyError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         // TODO: Delegate to RMN Remote when it exists.
         // For now, return false (not cursed) to allow the system to operate.
@@ -128,42 +136,6 @@ impl RmnProxyContract {
             .ok_or(RmnProxyError::NotInitialized)?;
 
         Ok(false)
-    }
-
-    // ========================================
-    // Owner Management (via common-authorization)
-    // ========================================
-
-    /// Get the current owner address.
-    pub fn owner(env: Env) -> Result<Address, RmnProxyError> {
-        Self::require_initialized(&env)?;
-        Ownable::get_owner(&env).ok_or(RmnProxyError::NotInitialized)
-    }
-
-    /// Start ownership transfer to a new address (two-step process).
-    /// The new owner must call `accept_ownership()` to complete the transfer.
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), RmnProxyError> {
-        Self::require_initialized(&env)?;
-        Ownable::transfer_ownership(&env, &new_owner)?;
-        Ok(())
-    }
-
-    /// Accept pending ownership transfer. Must be called by the pending new owner.
-    pub fn accept_ownership(env: Env) -> Result<(), RmnProxyError> {
-        Self::require_initialized(&env)?;
-        Ownable::accept_ownership(&env)?;
-        Ok(())
-    }
-
-    // ========================================
-    // Internal Helper Functions
-    // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), RmnProxyError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(RmnProxyError::NotInitialized);
-        }
-        Ok(())
     }
 }
 

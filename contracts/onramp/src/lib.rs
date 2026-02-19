@@ -7,20 +7,20 @@ use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
-use common_error::CCIPError as OnRampError;
-use common_guard::ReentrancyGuard;
+use common_authorization::Ownable;
+use common_error::CCIPError;
+use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_message::{MessageIdCompute, StellarToAnyMessage};
-use events::{
-    CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent, OwnershipTransferredEvent,
-};
+use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
 
 // ============================================================
 // Storage Keys
 // ============================================================
 
-const OWNER: Symbol = symbol_short!("OWNER");
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const STATIC_CONFIG: Symbol = symbol_short!("STATIC");
 const DYNAMIC_CONFIG: Symbol = symbol_short!("DYNAMIC");
 const DEST_CHAINS: Symbol = symbol_short!("DESTCHNS");
@@ -31,6 +31,17 @@ const DEST_CHAINS: Symbol = symbol_short!("DESTCHNS");
 
 #[contract]
 pub struct OnRampContract;
+
+#[contractimpl]
+impl Initializable for OnRampContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
+#[contractimpl(contracttrait)]
+impl Ownable for OnRampContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
 
 #[contractimpl]
 impl OnRampContract {
@@ -53,22 +64,20 @@ impl OnRampContract {
         owner: Address,
         static_config: StaticConfig,
         dynamic_config: DynamicConfig,
-    ) -> Result<(), OnRampError> {
-        // Check not already initialized
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(OnRampError::AlreadyInitialized);
-        }
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_not_initialized(&env)?;
+
+        // Store owner
+        <Self as Ownable>::init_owner(&env, &owner)?;
+        <Self as Initializable>::init(&env)?;
 
         // Validate static config
         if static_config.chain_selector == 0 || static_config.max_usd_cents_per_message == 0 {
-            return Err(OnRampError::InvalidConfig);
+            return Err(CCIPError::InvalidConfig);
         }
 
         // Validate dynamic config (fee_quoter cannot be zero address equivalent check)
         // Note: In Soroban, we check for valid address by ensuring it's set
-
-        // Store owner
-        env.storage().instance().set(&OWNER, &owner);
 
         // Store static config (immutable after init)
         env.storage().instance().set(&STATIC_CONFIG, &static_config);
@@ -81,9 +90,6 @@ impl OnRampContract {
         // Initialize empty destination chains map
         let dest_chains: Map<u64, DestChainConfig> = Map::new(&env);
         env.storage().persistent().set(&DEST_CHAINS, &dest_chains);
-
-        // Mark as initialized
-        env.storage().instance().set(&INITIALIZED, &true);
 
         // Emit config set event
         ConfigSetEvent {
@@ -122,7 +128,7 @@ impl OnRampContract {
         env: Env,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
-    ) -> Result<i128, OnRampError> {
+    ) -> Result<i128, CCIPError> {
         Self::require_initialized(&env)?;
 
         // Get destination chain config
@@ -130,7 +136,7 @@ impl OnRampContract {
 
         // Validate message
         if message.token_amounts.len() > 1 {
-            return Err(OnRampError::CanOnlySendOneTokenPerMessage);
+            return Err(CCIPError::CanOnlySendOneTokenPerMessage);
         }
 
         // TODO: Implement full fee calculation logic
@@ -179,8 +185,8 @@ impl OnRampContract {
         message: StellarToAnyMessage,
         fee_token_amount: i128,
         original_sender: Address,
-    ) -> Result<BytesN<32>, OnRampError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<BytesN<32>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         message.validate()?;
 
         // Enter reentrancy guard (uses temporary storage)
@@ -201,7 +207,7 @@ impl OnRampContract {
         if message.token_amounts.len() > 1 {
             // Exit reentrancy guard before returning
             ReentrancyGuard::exit(&env);
-            return Err(OnRampError::CanOnlySendOneTokenPerMessage);
+            return Err(CCIPError::CanOnlySendOneTokenPerMessage);
         }
 
         // TODO: Implement full message processing logic:
@@ -265,8 +271,8 @@ impl OnRampContract {
     pub fn get_expected_next_message_number(
         env: Env,
         dest_chain_selector: u64,
-    ) -> Result<u64, OnRampError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<u64, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
         Ok(dest_config.message_number + 1)
     }
@@ -282,24 +288,21 @@ impl OnRampContract {
     ///
     /// # Returns
     /// The pool address that handles this token
-    pub fn get_pool_by_source_token(
-        env: Env,
-        source_token: Address,
-    ) -> Result<Address, OnRampError> {
-        Self::require_initialized(&env)?;
+    pub fn get_pool_by_source_token(env: Env, source_token: Address) -> Result<Address, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let static_config: StaticConfig = env
             .storage()
             .instance()
             .get(&STATIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         // TODO: Call TokenAdminRegistry.getPool(sourceToken)
         // For now, return placeholder
         let _ = static_config.token_admin_registry;
         let _ = source_token;
 
-        Err(OnRampError::UnsupportedToken)
+        Err(CCIPError::UnsupportedToken)
     }
 
     // ========================================
@@ -307,21 +310,21 @@ impl OnRampContract {
     // ========================================
 
     /// Get the static configuration.
-    pub fn get_static_config(env: Env) -> Result<StaticConfig, OnRampError> {
-        Self::require_initialized(&env)?;
+    pub fn get_static_config(env: Env) -> Result<StaticConfig, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STATIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     /// Get the dynamic configuration.
-    pub fn get_dynamic_config(env: Env) -> Result<DynamicConfig, OnRampError> {
-        Self::require_initialized(&env)?;
+    pub fn get_dynamic_config(env: Env) -> Result<DynamicConfig, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&DYNAMIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     /// Set the dynamic configuration. Only callable by owner.
@@ -332,9 +335,9 @@ impl OnRampContract {
     /// # Errors
     /// * `Unauthorized` - If caller is not owner
     /// * `InvalidConfig` - If configuration is invalid
-    pub fn set_dynamic_config(env: Env, dynamic_config: DynamicConfig) -> Result<(), OnRampError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+    pub fn set_dynamic_config(env: Env, dynamic_config: DynamicConfig) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         env.storage()
             .instance()
@@ -345,7 +348,7 @@ impl OnRampContract {
             .storage()
             .instance()
             .get(&STATIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         ConfigSetEvent {
             static_config,
@@ -363,8 +366,8 @@ impl OnRampContract {
     pub fn get_dest_chain_config(
         env: Env,
         dest_chain_selector: u64,
-    ) -> Result<DestChainConfig, OnRampError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<DestChainConfig, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         Self::get_dest_chain_config_internal(&env, dest_chain_selector)
     }
 
@@ -374,8 +377,8 @@ impl OnRampContract {
     /// Tuple of (chain selectors, configurations)
     pub fn get_all_dest_chain_configs(
         env: Env,
-    ) -> Result<(Vec<u64>, Vec<DestChainConfig>), OnRampError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<(Vec<u64>, Vec<DestChainConfig>), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let dest_chains: Map<u64, DestChainConfig> = env
             .storage()
@@ -401,15 +404,15 @@ impl OnRampContract {
     pub fn apply_dest_chain_config_updates(
         env: Env,
         dest_chain_config_args: Vec<DestChainConfigArgs>,
-    ) -> Result<(), OnRampError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let static_config: StaticConfig = env
             .storage()
             .instance()
             .get(&STATIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         let mut dest_chains: Map<u64, DestChainConfig> = env
             .storage()
@@ -424,17 +427,17 @@ impl OnRampContract {
                 || args.address_bytes_length == 0
                 || args.base_execution_gas_cost == 0
             {
-                return Err(OnRampError::InvalidConfig);
+                return Err(CCIPError::InvalidConfig);
             }
 
             // Validate offRamp length matches address_bytes_length
             if args.off_ramp.len() as u32 != args.address_bytes_length {
-                return Err(OnRampError::InvalidDestChainAddress);
+                return Err(CCIPError::InvalidDestChainAddress);
             }
 
             // Ensure at least one default or mandated CCV exists
             if args.default_ccvs.is_empty() && args.lane_mandated_ccvs.is_empty() {
-                return Err(OnRampError::InvalidConfig);
+                return Err(CCIPError::InvalidConfig);
             }
 
             // Get existing config or create new one
@@ -482,14 +485,14 @@ impl OnRampContract {
     ///
     /// # Arguments
     /// * `fee_tokens` - List of fee token addresses to withdraw
-    pub fn withdraw_fee_tokens(env: Env, fee_tokens: Vec<Address>) -> Result<(), OnRampError> {
-        Self::require_initialized(&env)?;
+    pub fn withdraw_fee_tokens(env: Env, fee_tokens: Vec<Address>) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let dynamic_config: DynamicConfig = env
             .storage()
             .instance()
             .get(&DYNAMIC_CONFIG)
-            .ok_or(OnRampError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         // TODO: Implement fee token withdrawal
         // For each token:
@@ -502,67 +505,22 @@ impl OnRampContract {
     }
 
     // ========================================
-    // Owner Management
-    // ========================================
-
-    /// Transfer ownership to a new address. Only callable by current owner.
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), OnRampError> {
-        Self::require_initialized(&env)?;
-        Self::require_owner(&env)?;
-
-        env.storage().instance().set(&OWNER, &new_owner);
-
-        OwnershipTransferredEvent {
-            new_owner: new_owner.clone(),
-        }
-        .publish(&env);
-
-        Ok(())
-    }
-
-    /// Get the current owner address.
-    pub fn owner(env: Env) -> Result<Address, OnRampError> {
-        Self::require_initialized(&env)?;
-        env.storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(OnRampError::NotInitialized)
-    }
-
-    // ========================================
     // Internal Helper Functions
     // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), OnRampError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(OnRampError::NotInitialized);
-        }
-        Ok(())
-    }
-
-    fn require_owner(env: &Env) -> Result<(), OnRampError> {
-        let owner: Address = env
-            .storage()
-            .instance()
-            .get(&OWNER)
-            .ok_or(OnRampError::NotInitialized)?;
-        owner.require_auth();
-        Ok(())
-    }
 
     fn get_dest_chain_config_internal(
         env: &Env,
         dest_chain_selector: u64,
-    ) -> Result<DestChainConfig, OnRampError> {
+    ) -> Result<DestChainConfig, CCIPError> {
         let dest_chains: Map<u64, DestChainConfig> =
             env.storage()
                 .persistent()
                 .get(&DEST_CHAINS)
-                .ok_or(OnRampError::DestinationChainNotSupported)?;
+                .ok_or(CCIPError::DestinationChainNotSupported)?;
 
         dest_chains
             .get(dest_chain_selector)
-            .ok_or(OnRampError::DestinationChainNotSupported)
+            .ok_or(CCIPError::DestinationChainNotSupported)
     }
 
     fn set_dest_chain_config(env: &Env, dest_chain_selector: u64, config: &DestChainConfig) {

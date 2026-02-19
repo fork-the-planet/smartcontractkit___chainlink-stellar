@@ -6,8 +6,8 @@ pub mod types;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbol, Vec};
 
 use common_authorization::{AuthorizedCallers, Ownable};
-use common_error::CCIPError as FeeQuoterError;
-use common_guard::ReentrancyGuard;
+use common_error::CCIPError;
+use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_message::StellarToAnyMessage;
 use events::{
     DestChainAddedEvent, DestChainConfigUpdatedEvent, FeeTokenAddedEvent, FeeTokenRemovedEvent,
@@ -25,6 +25,8 @@ use types::{
 // ============================================================
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const STATIC_CFG: Symbol = symbol_short!("STATIC");
 const TOKEN_PRC: Symbol = symbol_short!("TOKENPRC");
 const GAS_PRC: Symbol = symbol_short!("GASPRC");
@@ -41,6 +43,17 @@ const CCIP_LOCK_OR_BURN_V1_RET_BYTES: u32 = 32;
 
 #[contract]
 pub struct FeeQuoterContract;
+
+#[contractimpl]
+impl Initializable for FeeQuoterContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
+#[contractimpl(contracttrait)]
+impl Ownable for FeeQuoterContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
 
 #[contractimpl]
 impl FeeQuoterContract {
@@ -63,21 +76,19 @@ impl FeeQuoterContract {
         owner: Address,
         static_config: StaticConfig,
         authorized_callers: Vec<Address>,
-    ) -> Result<(), FeeQuoterError> {
-        // Check not already initialized
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(FeeQuoterError::AlreadyInitialized);
-        }
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         // Validate static config
         if static_config.max_fee_juels_per_msg <= 0 {
-            return Err(FeeQuoterError::InvalidStaticConfig);
+            return Err(CCIPError::InvalidStaticConfig);
         }
 
-        // Initialize ownership (common-authorization)
-        Ownable::init(&env, &owner);
+        <Self as Initializable>::init(&env)?;
+        <Self as Ownable>::init_owner(&env, &owner)?;
 
         // Initialize authorized callers (common-authorization)
+        // TODO: remove this in favor of using the AllowListable trait.
         AuthorizedCallers::init(&env, authorized_callers);
 
         // Store static config
@@ -122,8 +133,8 @@ impl FeeQuoterContract {
     ///
     /// # Returns
     /// Timestamped price (value may be 0 if not set)
-    pub fn get_token_price(env: Env, token: Address) -> Result<TimestampedPrice, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    pub fn get_token_price(env: Env, token: Address) -> Result<TimestampedPrice, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -147,8 +158,8 @@ impl FeeQuoterContract {
     pub fn get_token_prices(
         env: Env,
         tokens: Vec<Address>,
-    ) -> Result<Vec<TimestampedPrice>, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<Vec<TimestampedPrice>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -179,8 +190,8 @@ impl FeeQuoterContract {
     ///
     /// # Errors
     /// * `TokenNotSupported` - If token price is not set
-    pub fn get_validated_token_price(env: Env, token: Address) -> Result<u128, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    pub fn get_validated_token_price(env: Env, token: Address) -> Result<u128, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -190,11 +201,11 @@ impl FeeQuoterContract {
 
         let price = token_prices
             .get(token)
-            .ok_or(FeeQuoterError::TokenNotSupported)?;
+            .ok_or(CCIPError::TokenNotSupported)?;
 
         // Price must be set at least once
         if price.timestamp == 0 || price.value == 0 {
-            return Err(FeeQuoterError::TokenNotSupported);
+            return Err(CCIPError::TokenNotSupported);
         }
 
         Ok(price.value)
@@ -210,8 +221,8 @@ impl FeeQuoterContract {
     pub fn get_dest_chain_gas_price(
         env: Env,
         dest_chain_selector: u64,
-    ) -> Result<TimestampedPrice, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<TimestampedPrice, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let gas_prices: Map<u64, TimestampedPrice> = env
             .storage()
@@ -232,8 +243,8 @@ impl FeeQuoterContract {
     // ========================================
 
     /// Get the list of fee tokens.
-    pub fn get_fee_tokens(env: Env) -> Result<Vec<Address>, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    pub fn get_fee_tokens(env: Env) -> Result<Vec<Address>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         Ok(env
             .storage()
@@ -247,9 +258,9 @@ impl FeeQuoterContract {
     ///
     /// # Arguments
     /// * `tokens` - Tokens to remove from fee tokens
-    pub fn remove_fee_tokens(env: Env, tokens: Vec<Address>) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+    pub fn remove_fee_tokens(env: Env, tokens: Vec<Address>) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut fee_tokens: Vec<Address> = env
             .storage()
@@ -297,8 +308,8 @@ impl FeeQuoterContract {
     ///
     /// # Arguments
     /// * `price_updates` - Token and gas price updates
-    pub fn update_prices(env: Env, price_updates: PriceUpdates) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    pub fn update_prices(env: Env, price_updates: PriceUpdates) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         AuthorizedCallers::require_authorized(&env)?;
 
         // Reentrancy protection for price updates
@@ -403,24 +414,24 @@ impl FeeQuoterContract {
         non_calldata_gas: u32,
         calldata_size: u32,
         fee_token: Address,
-    ) -> Result<GasQuoteResult, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<GasQuoteResult, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
 
         if !dest_config.is_enabled {
-            return Err(FeeQuoterError::DestinationChainNotEnabled);
+            return Err(CCIPError::DestinationChainNotEnabled);
         }
 
         // Calculate total gas
         let total_gas = non_calldata_gas + calldata_size * dest_config.dest_gas_per_payload_byte;
 
         if total_gas > dest_config.max_per_msg_gas_limit {
-            return Err(FeeQuoterError::MessageGasLimitTooHigh);
+            return Err(CCIPError::MessageGasLimitTooHigh);
         }
 
         if calldata_size > dest_config.max_data_bytes {
-            return Err(FeeQuoterError::MessageTooLarge);
+            return Err(CCIPError::MessageTooLarge);
         }
 
         // Get gas price
@@ -432,10 +443,10 @@ impl FeeQuoterContract {
 
         let gas_price = gas_prices
             .get(dest_chain_selector)
-            .ok_or(FeeQuoterError::NoGasPriceAvailable)?;
+            .ok_or(CCIPError::NoGasPriceAvailable)?;
 
         if gas_price.timestamp == 0 {
-            return Err(FeeQuoterError::NoGasPriceAvailable);
+            return Err(CCIPError::NoGasPriceAvailable);
         }
 
         // Gas cost in USD cents (gas_price is in 1e18 USD, we want cents which is 1e2)
@@ -452,7 +463,7 @@ impl FeeQuoterContract {
             .storage()
             .instance()
             .get(&STATIC_CFG)
-            .ok_or(FeeQuoterError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         let premium_multiplier = if fee_token == static_config.link_token {
             dest_config.link_premium_percent
@@ -480,7 +491,7 @@ impl FeeQuoterContract {
         env: Env,
         dest_chain_selector: u64,
         token: Address,
-    ) -> Result<TokenTransferFeeResult, FeeQuoterError> {
+    ) -> Result<TokenTransferFeeResult, CCIPError> {
         Self::require_initialized(&env)?;
 
         // Try to get token-specific config
@@ -529,7 +540,7 @@ impl FeeQuoterContract {
         env: Env,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
-    ) -> Result<i128, FeeQuoterError> {
+    ) -> Result<i128, CCIPError> {
         Self::require_initialized(&env)?;
 
         // Validate the message using common-message validation
@@ -537,13 +548,13 @@ impl FeeQuoterContract {
 
         // Only 1 token per message in CCIP v1.7
         if message.token_amounts.len() > 1 {
-            return Err(FeeQuoterError::UnsupportedNumberOfTokens);
+            return Err(CCIPError::UnsupportedNumberOfTokens);
         }
 
         let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
 
         if !dest_config.is_enabled {
-            return Err(FeeQuoterError::DestinationChainNotEnabled);
+            return Err(CCIPError::DestinationChainNotEnabled);
         }
 
         // Calculate gas cost for the message payload
@@ -581,7 +592,7 @@ impl FeeQuoterContract {
         let fee_amount = if gas_quote.fee_token_price > 0 {
             (total_usd_cents * 10_u128.pow(16) / gas_quote.fee_token_price) as i128
         } else {
-            return Err(FeeQuoterError::FeeTokenNotSupported);
+            return Err(CCIPError::FeeTokenNotSupported);
         };
 
         // Check against max fee
@@ -589,10 +600,10 @@ impl FeeQuoterContract {
             .storage()
             .instance()
             .get(&STATIC_CFG)
-            .ok_or(FeeQuoterError::NotInitialized)?;
+            .ok_or(CCIPError::NotInitialized)?;
 
         if fee_amount > static_config.max_fee_juels_per_msg {
-            return Err(FeeQuoterError::MessageFeeTooHigh);
+            return Err(CCIPError::MessageFeeTooHigh);
         }
 
         Ok(fee_amount)
@@ -612,7 +623,7 @@ impl FeeQuoterContract {
         from_token: Address,
         from_token_amount: i128,
         to_token: Address,
-    ) -> Result<i128, FeeQuoterError> {
+    ) -> Result<i128, CCIPError> {
         Self::require_initialized(&env)?;
 
         let from_price = Self::get_validated_token_price(env.clone(), from_token)?;
@@ -644,15 +655,13 @@ impl FeeQuoterContract {
     pub fn get_dest_chain_config(
         env: Env,
         dest_chain_selector: u64,
-    ) -> Result<DestChainConfig, FeeQuoterError> {
+    ) -> Result<DestChainConfig, CCIPError> {
         Self::require_initialized(&env)?;
         Self::get_dest_chain_config_internal(&env, dest_chain_selector)
     }
 
     /// Get all destination chain configurations.
-    pub fn get_all_dest_configs(
-        env: Env,
-    ) -> Result<(Vec<u64>, Vec<DestChainConfig>), FeeQuoterError> {
+    pub fn get_all_dest_configs(env: Env) -> Result<(Vec<u64>, Vec<DestChainConfig>), CCIPError> {
         Self::require_initialized(&env)?;
 
         let (selectors, configs): (Vec<u64>, Vec<DestChainConfig>) = env
@@ -668,9 +677,9 @@ impl FeeQuoterContract {
     pub fn apply_dest_chain_configs(
         env: Env,
         config_args: Vec<DestChainConfigArgs>,
-    ) -> Result<(), FeeQuoterError> {
+    ) -> Result<(), CCIPError> {
         Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let (mut selectors, mut configs): (Vec<u64>, Vec<DestChainConfig>) = env
             .storage()
@@ -684,7 +693,7 @@ impl FeeQuoterContract {
                 || args.config.default_tx_gas_limit == 0
                 || args.config.default_tx_gas_limit > args.config.max_per_msg_gas_limit
             {
-                return Err(FeeQuoterError::InvalidDestChainConfig);
+                return Err(CCIPError::InvalidDestChainConfig);
             }
 
             // Check if this is a new chain or an update
@@ -737,8 +746,8 @@ impl FeeQuoterContract {
         env: Env,
         dest_chain_selector: u64,
         token: Address,
-    ) -> Result<TokenTransferFeeConfig, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    ) -> Result<TokenTransferFeeConfig, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_fees: Vec<(u64, Address, TokenTransferFeeConfig)> = env
             .storage()
@@ -766,9 +775,9 @@ impl FeeQuoterContract {
         env: Env,
         config_args: Vec<TokenFeeConfigArgs>,
         remove_args: Vec<TokenFeeConfigRemoveArgs>,
-    ) -> Result<(), FeeQuoterError> {
+    ) -> Result<(), CCIPError> {
         Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut token_fees: Vec<(u64, Address, TokenTransferFeeConfig)> = env
             .storage()
@@ -780,7 +789,7 @@ impl FeeQuoterContract {
         for args in config_args.iter() {
             // Validate bytes overhead
             if args.config.dest_bytes_overhead < CCIP_LOCK_OR_BURN_V1_RET_BYTES {
-                return Err(FeeQuoterError::InvalidDestBytesOverhead);
+                return Err(CCIPError::InvalidDestBytesOverhead);
             }
 
             // Find existing or add new
@@ -857,44 +866,35 @@ impl FeeQuoterContract {
     // ========================================
 
     /// Get the static configuration.
-    pub fn get_static_config(env: Env) -> Result<StaticConfig, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+    pub fn get_static_config(env: Env) -> Result<StaticConfig, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STATIC_CFG)
-            .ok_or(FeeQuoterError::NotInitialized)
+            .ok_or(CCIPError::NotInitialized)
     }
 
     // ========================================
     // Internal Helper Functions
     // ========================================
 
-    fn require_initialized(env: &Env) -> Result<(), FeeQuoterError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(FeeQuoterError::NotInitialized);
-        }
-        Ok(())
-    }
-
     fn get_dest_chain_config_internal(
         env: &Env,
         dest_chain_selector: u64,
-    ) -> Result<DestChainConfig, FeeQuoterError> {
+    ) -> Result<DestChainConfig, CCIPError> {
         let (selectors, configs): (Vec<u64>, Vec<DestChainConfig>) = env
             .storage()
             .persistent()
             .get(&DEST_CFG)
-            .ok_or(FeeQuoterError::DestinationChainNotEnabled)?;
+            .ok_or(CCIPError::DestinationChainNotEnabled)?;
 
         for i in 0..selectors.len() {
             if selectors.get(i).unwrap() == dest_chain_selector {
-                return configs
-                    .get(i)
-                    .ok_or(FeeQuoterError::DestinationChainNotEnabled);
+                return configs.get(i).ok_or(CCIPError::DestinationChainNotEnabled);
             }
         }
 
-        Err(FeeQuoterError::DestinationChainNotEnabled)
+        Err(CCIPError::DestinationChainNotEnabled)
     }
 }
 

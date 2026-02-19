@@ -59,7 +59,7 @@ fn test_initialize() {
 
     // Verify owner
     let stored_owner = client.owner();
-    assert_eq!(stored_owner, owner);
+    assert_eq!(stored_owner, Some(owner));
 }
 
 #[test]
@@ -184,9 +184,12 @@ fn test_transfer_ownership() {
     let new_owner = Address::generate(&env);
     client.transfer_ownership(&new_owner);
 
+    // Accept ownership (this mocks authorization from the new owner)
+    client.accept_ownership();
+
     // Verify new owner
     let stored_owner = client.owner();
-    assert_eq!(stored_owner, new_owner);
+    assert_eq!(stored_owner, Some(new_owner));
 }
 
 #[test]
