@@ -6,14 +6,12 @@ pub mod types;
 use common_authorization::{AuthorizedCallers, Ownable};
 use common_error::CCIPError as CommitteeVerifierError;
 use common_guard::initializable::Initializable;
-use common_verifier::{
-    signatures::{SignatureQuorum, SignatureQuorumConfig},
-    AllowlistConfigArgs, BaseVerifier, RemoteChainConfig, RemoteChainConfigArgs,
-};
+use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
+use common_verifier::base_verifier::BaseVerifier;
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use types::DynamicConfig;
+use types::{AllowlistConfig, DynamicConfig, RemoteChainConfig};
 
 // ============================================================
 // Storage Keys
@@ -46,10 +44,29 @@ const SIGNATURE_LENGTH_BYTES: u32 = 2;
 pub struct CommitteeVerifierContract;
 
 impl BaseVerifier for CommitteeVerifierContract {
+    type RemoteChainConfig = RemoteChainConfig;
+    type AllowlistConfig = AllowlistConfig;
+
     const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
     const RMN_PROXY: Symbol = RMN_PROXY;
     const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
     const ALLOWLIST: Symbol = ALLOWLIST;
+
+    fn emit_remote_chain_config_set_event(env: &Env, remote_chain_config: &Self::RemoteChainConfig) {
+        events::RemoteChainConfigSetEvent {
+            remote_chain_selector: remote_chain_config.remote_chain_selector,
+            router: remote_chain_config.router.clone(),
+            allowlist_enabled: remote_chain_config.allowlist_enabled,
+        }.publish(env);
+    }
+
+    fn emit_allowlist_config_set_event(env: &Env, allowlist_config: &Self::AllowlistConfig) {
+        // TODO: verify if this is the correct event to emit
+        events::AllowListStateChangedEvent {
+            dest_chain_selector: allowlist_config.dest_chain_selector,
+            allowlist_enabled: allowlist_config.allowlist_enabled,
+        }.publish(env);
+    }
 }
 
 impl Initializable for CommitteeVerifierContract {
@@ -193,7 +210,7 @@ impl CommitteeVerifierContract {
 
     pub fn apply_remote_chain_cfg_updates(
         env: Env,
-        remote_chain_config_args: Vec<RemoteChainConfigArgs>,
+        remote_chain_config_args: Vec<RemoteChainConfig>,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
         Ownable::require_owner(&env)?;
@@ -212,7 +229,7 @@ impl CommitteeVerifierContract {
 
     pub fn apply_allowlist_updates(
         env: Env,
-        allowlist_config_args_items: Vec<AllowlistConfigArgs>,
+        allowlist_config_args_items: Vec<AllowlistConfig>,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
         // Admin or authorized caller
