@@ -23,8 +23,8 @@
 //! AccessControl::require_role(&env, symbol_short!("MINTER"))?;
 //! ```
 
-pub mod events;
 pub mod allowlist;
+pub mod events;
 
 pub use events::*;
 

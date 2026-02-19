@@ -1,8 +1,8 @@
 use common_authorization::allowlist::AllowListUpdateInterface;
+use common_error::CCIPError as BaseVerifierError;
+use common_helpers::validation::Validatable;
 use common_verifier::base_verifier::RemoteChainConfigInterface;
 use soroban_sdk::{contracttype, Address, Vec};
-use common_helpers::validation::Validatable;
-use common_error::CCIPError as BaseVerifierError;
 
 /// Dynamic config mirrored from EVM CommitteeVerifier.DynamicConfig.
 #[contracttype]
@@ -27,7 +27,11 @@ pub struct RemoteChainConfig {
 
 impl RemoteChainConfigInterface for RemoteChainConfig {
     fn get_fee_data(&self) -> (u32, u32, u32) {
-        (self.fee_usd_cents, self.gas_for_verification, self.payload_size_bytes)
+        (
+            self.fee_usd_cents,
+            self.gas_for_verification,
+            self.payload_size_bytes,
+        )
     }
 
     fn remote_chain_selector(&self) -> u64 {

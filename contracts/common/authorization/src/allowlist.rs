@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Map, Symbol, TryFromVal, Val, Vec, IntoVal};
+use soroban_sdk::{Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
 use common_error::CCIPError as AuthError;
 use common_helpers::validation::Validatable;
@@ -13,16 +13,24 @@ pub trait AllowListUpdateInterface: Validatable {
 
 /// A trait to maintain a set of allowed addresses for a any purpose.
 /// It can be used for authorization as well as guarding access to certain functions.
-/// 
+///
 /// For example: The Committee Verifier contract can use this trait to maintain a set of allowed addresses for a given destination chain.
-/// 
+///
 /// The allow list is a map of u64 to vector of addresses.
 pub trait AllowListable {
     const ALLOW_LIST: Symbol; // Storage key for the allow list data
 
-    type AllowListUpdate: AllowListUpdateInterface + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone;
+    type AllowListUpdate: AllowListUpdateInterface
+        + TryFromVal<Env, Val>
+        + IntoVal<Env, Val>
+        + Clone;
 
-    fn emit_allowlist_updated_event(env: &Env, key: u64, added_addresses: &Vec<Address>, removed_addresses: &Vec<Address>);
+    fn emit_allowlist_updated_event(
+        env: &Env,
+        key: u64,
+        added_addresses: &Vec<Address>,
+        removed_addresses: &Vec<Address>,
+    );
 
     /// Initialize the authorized callers list.
     /// This enables the feature and sets the initial list of authorized callers.
@@ -41,11 +49,9 @@ pub trait AllowListable {
         env.storage()
             .instance()
             .get(&Self::ALLOW_LIST)
-            .map(|map: Option<Map<u64, Vec<Address>>>| {
-                match map {
-                    Some(map) => map.contains_key(key),
-                    None => false,
-                }
+            .map(|map: Option<Map<u64, Vec<Address>>>| match map {
+                Some(map) => map.contains_key(key),
+                None => false,
             })
             .unwrap_or(false)
     }
@@ -60,7 +66,10 @@ pub trait AllowListable {
     /// # Errors
     /// * `FeatureNotEnabled` - Allow list not initialized
     /// * `NotInitialized` - Owner not set
-    fn apply_allowlist_updates(env: &Env, updates: &Vec<Self::AllowListUpdate>) -> Result<(), AuthError> {
+    fn apply_allowlist_updates(
+        env: &Env,
+        updates: &Vec<Self::AllowListUpdate>,
+    ) -> Result<(), AuthError> {
         for update in updates.iter() {
             update.validate()?;
 
@@ -71,30 +80,30 @@ pub trait AllowListable {
             if !Self::is_allowlist_enabled(env, key) {
                 return Err(AuthError::FeatureNotEnabled);
             }
-    
+
             let mut data: Map<u64, Vec<Address>> = env
                 .storage()
                 .instance()
                 .get(&Self::ALLOW_LIST)
                 .unwrap_or(Map::new(env));
-    
+
             let mut allowlist = data.get(key).unwrap_or(Vec::new(env));
-    
+
             for address in to_add.iter() {
                 if !allowlist.contains(address.clone()) {
                     allowlist.push_back(address.clone());
                 }
             }
-    
+
             for address in to_remove.iter() {
                 if allowlist.contains(address.clone()) {
                     allowlist.remove(allowlist.first_index_of(address.clone()).unwrap());
                 }
             }
-    
+
             data.set(key, allowlist);
             env.storage().instance().set(&Self::ALLOW_LIST, &data);
-    
+
             Self::emit_allowlist_updated_event(env, key, &to_add, &to_remove);
         }
 

@@ -1,7 +1,7 @@
 use common_error::CCIPError as BaseVerifierError;
 use common_guard::initializable::Initializable;
 use common_helpers::validation::Validatable;
-use soroban_sdk::{Address, Bytes, Env, Map, Symbol, TryFromVal, Val, Vec, IntoVal};
+use soroban_sdk::{Address, Bytes, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
 use common_authorization::allowlist::AllowListable;
 
@@ -12,7 +12,7 @@ pub trait RemoteChainConfigInterface: Validatable {
     ///
     /// A tuple containing the fee in USD cents, the gas for verification, and the payload size in bytes.
     fn get_fee_data(&self) -> (u32, u32, u32);
-    
+
     fn remote_chain_selector(&self) -> u64;
 }
 
@@ -21,7 +21,10 @@ pub trait BaseVerifier: Initializable + AllowListable {
     const RMN_PROXY: Symbol;
     const REMOTE_CHAINS: Symbol;
 
-    type RemoteChainConfig: RemoteChainConfigInterface + TryFromVal<Env, Val> + IntoVal<Env, Val> + Clone;
+    type RemoteChainConfig: RemoteChainConfigInterface
+        + TryFromVal<Env, Val>
+        + IntoVal<Env, Val>
+        + Clone;
 
     fn init(
         env: &Env,
@@ -74,7 +77,7 @@ pub trait BaseVerifier: Initializable + AllowListable {
         env.storage()
             .instance()
             .set(&Self::REMOTE_CHAINS, &remote_chains);
-        
+
         Ok(())
     }
 
@@ -98,4 +101,3 @@ pub trait BaseVerifier: Initializable + AllowListable {
         Ok(cfg.get_fee_data())
     }
 }
-

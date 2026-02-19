@@ -7,8 +7,8 @@ use common_authorization::allowlist::AllowListable;
 use common_authorization::Ownable;
 use common_error::CCIPError as CommitteeVerifierError;
 use common_guard::initializable::Initializable;
-use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use common_verifier::base_verifier::BaseVerifier;
+use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
@@ -51,12 +51,16 @@ impl BaseVerifier for CommitteeVerifierContract {
     const RMN_PROXY: Symbol = RMN_PROXY;
     const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
 
-    fn emit_remote_chain_config_set_event(env: &Env, remote_chain_config: &Self::RemoteChainConfig) {
+    fn emit_remote_chain_config_set_event(
+        env: &Env,
+        remote_chain_config: &Self::RemoteChainConfig,
+    ) {
         events::RemoteChainConfigSetEvent {
             remote_chain_selector: remote_chain_config.remote_chain_selector,
             router: remote_chain_config.router.clone(),
             allowlist_enabled: remote_chain_config.allowlist_enabled,
-        }.publish(env);
+        }
+        .publish(env);
     }
 }
 
@@ -71,13 +75,19 @@ impl AllowListable for CommitteeVerifierContract {
 
     type AllowListUpdate = AllowListUpdate;
 
-    fn emit_allowlist_updated_event(env: &Env, key: u64, _added_addresses: &Vec<Address>, _removed_addresses: &Vec<Address>) {
+    fn emit_allowlist_updated_event(
+        env: &Env,
+        key: u64,
+        _added_addresses: &Vec<Address>,
+        _removed_addresses: &Vec<Address>,
+    ) {
         // TODO: implement this
-        
+
         events::AllowListStateChangedEvent {
             dest_chain_selector: key,
             allowlist_enabled: true,
-        }.publish(env);
+        }
+        .publish(env);
     }
 }
 
@@ -128,10 +138,10 @@ impl CommitteeVerifierContract {
         _verifier_args: Bytes,
     ) -> Result<Bytes, CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        
+
         let mut verification_blob = Bytes::new(&env);
-        
-        // TODO: 
+
+        // TODO:
         // 1. check that sender is allowed
         // 2. check curse status
 
@@ -178,7 +188,12 @@ impl CommitteeVerifierContract {
 
         let signatures =
             verifier_results.slice(VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES..expected);
-        <Self as SignatureQuorum>::validate_signatures(&env, source_chain_selector, signed_hash, signatures)
+        <Self as SignatureQuorum>::validate_signatures(
+            &env,
+            source_chain_selector,
+            signed_hash,
+            signatures,
+        )
     }
 
     /// Returns static version tag used in outbound verifier responses.

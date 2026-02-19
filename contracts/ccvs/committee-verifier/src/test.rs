@@ -75,7 +75,12 @@ fn test_double_initialize_fails() {
     let owner2 = Address::generate(&env);
     let dynamic_config = default_dynamic_config(&env);
 
-    client.initialize(&owner2, &dynamic_config, &storage_locations, &Address::generate(&env));
+    client.initialize(
+        &owner2,
+        &dynamic_config,
+        &storage_locations,
+        &Address::generate(&env),
+    );
 }
 
 #[test]
