@@ -20,6 +20,7 @@ use types::{AllowListUpdate, DynamicConfig, RemoteChainConfig};
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
 const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const DYNAMIC_CONFIG: Symbol = symbol_short!("DYNCFG");
 const SIGNATURE_CONFIGS: Symbol = symbol_short!("SIGCFGS");
 const STORAGE_LOC_ADMIN: Symbol = symbol_short!("STORADM");
@@ -44,32 +45,18 @@ const SIGNATURE_LENGTH_BYTES: u32 = 2;
 #[contract]
 pub struct CommitteeVerifierContract;
 
-impl BaseVerifier for CommitteeVerifierContract {
-    type RemoteChainConfig = RemoteChainConfig;
-
-    const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
-    const RMN_PROXY: Symbol = RMN_PROXY;
-    const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
-
-    fn emit_remote_chain_config_set_event(
-        env: &Env,
-        remote_chain_config: &Self::RemoteChainConfig,
-    ) {
-        events::RemoteChainConfigSetEvent {
-            remote_chain_selector: remote_chain_config.remote_chain_selector,
-            router: remote_chain_config.router.clone(),
-            allowlist_enabled: remote_chain_config.allowlist_enabled,
-        }
-        .publish(env);
-    }
-}
-
+#[contractimpl]
 impl Initializable for CommitteeVerifierContract {
     const INITIALIZED: Symbol = INITIALIZED;
 }
 
-impl SignatureQuorum for CommitteeVerifierContract {}
+#[contractimpl]
+impl Ownable for CommitteeVerifierContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
 
+#[contractimpl]
 impl AllowListable for CommitteeVerifierContract {
     const ALLOW_LIST: Symbol = ALLOWLIST;
 
@@ -92,6 +79,30 @@ impl AllowListable for CommitteeVerifierContract {
 }
 
 #[contractimpl]
+impl SignatureQuorum for CommitteeVerifierContract {}
+
+// #[contractimpl]
+impl BaseVerifier for CommitteeVerifierContract {
+    type RemoteChainConfig = RemoteChainConfig;
+
+    const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
+    const RMN_PROXY: Symbol = RMN_PROXY;
+    const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
+
+    fn emit_remote_chain_config_set_event(
+        env: &Env,
+        remote_chain_config: &Self::RemoteChainConfig,
+    ) {
+        events::RemoteChainConfigSetEvent {
+            remote_chain_selector: remote_chain_config.remote_chain_selector,
+            router: remote_chain_config.router.clone(),
+            allowlist_enabled: remote_chain_config.allowlist_enabled,
+        }
+        .publish(env);
+    }
+}
+
+#[contractimpl]
 impl CommitteeVerifierContract {
     /// Initializes CommitteeVerifier with owner/dynamic config/storage locations/RMN proxy.
     pub fn initialize(
@@ -106,8 +117,7 @@ impl CommitteeVerifierContract {
         <Self as Initializable>::init(&env)?;
         <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
         <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
-
-        Ownable::init(&env, &owner);
+        <Self as Ownable>::init(&env, &owner);
 
         env.storage()
             .instance()
@@ -218,7 +228,7 @@ impl CommitteeVerifierContract {
         dynamic_config: DynamicConfig,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
         env.storage()
             .instance()
             .set(&DYNAMIC_CONFIG, &dynamic_config);
@@ -243,7 +253,7 @@ impl CommitteeVerifierContract {
         remote_chain_config_args: Vec<RemoteChainConfig>,
     ) -> Result<(), CommitteeVerifierError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
         <Self as BaseVerifier>::apply_remote_chain_config_updates(&env, &remote_chain_config_args)?;
         Ok(())
     }
@@ -339,30 +349,6 @@ impl CommitteeVerifierContract {
         // TODO: integrate token transfer / fee token handler logic.
         // Fee withdrawal is permissionless in EVM and transfers to fee_aggregator.
         let _ = (dynamic.fee_aggregator, fee_tokens);
-        Ok(())
-    }
-
-    // ========================================
-    // Ownership
-    // ========================================
-
-    pub fn owner(env: Env) -> Result<Address, CommitteeVerifierError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        Ownable::get_owner(&env).ok_or(CommitteeVerifierError::NotInitialized)
-    }
-
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), CommitteeVerifierError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
-
-        // TODO: use common-authorization two-step ownership transfer once this crate is wired.
-        Ownable::set_new_owner(&env, &new_owner)?;
-        Ok(())
-    }
-
-    pub fn accept_ownership(env: Env) -> Result<(), CommitteeVerifierError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        Ownable::accept_ownership(&env)?;
         Ok(())
     }
 }

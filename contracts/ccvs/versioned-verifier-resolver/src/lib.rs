@@ -39,6 +39,8 @@ pub use types::{
 // ============================================================
 
 pub(crate) const INITIALIZED: Symbol = symbol_short!("INIT");
+pub(crate) const OWNER: Symbol = symbol_short!("OWNER");
+pub(crate) const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 pub(crate) const VER_INBOUND: Symbol = symbol_short!("VERINB");
 pub(crate) const DEST_OUTBND: Symbol = symbol_short!("DESTOUT");
 pub(crate) const SUP_VERS: Symbol = symbol_short!("SUPVERS");
@@ -52,8 +54,15 @@ pub(crate) const FEE_AGG: Symbol = symbol_short!("FEEAGG");
 #[contract]
 pub struct VersionedVerifierResolverContract;
 
+#[contractimpl]
 impl Initializable for VersionedVerifierResolverContract {
     const INITIALIZED: Symbol = INITIALIZED;
+}
+
+#[contractimpl]
+impl Ownable for VersionedVerifierResolverContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
 }
 
 #[contractimpl]
@@ -77,7 +86,7 @@ impl VersionedVerifierResolverContract {
     ) -> Result<(), VerifierResolverError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
-        Ownable::init(&env, &owner);
+        <Self as Ownable>::init(&env, &owner);
         <Self as Initializable>::init(&env)?;
 
         // Initialize empty mappings
@@ -242,11 +251,6 @@ impl VersionedVerifierResolverContract {
             .ok_or(VerifierResolverError::NotInitialized)
     }
 
-    /// Returns the current owner address.
-    pub fn owner(env: Env) -> Result<Address, VerifierResolverError> {
-        Ownable::get_owner(&env).ok_or(VerifierResolverError::NotInitialized)
-    }
-
     // ========================================
     // Admin Functions (Owner Only)
     // ========================================
@@ -271,7 +275,7 @@ impl VersionedVerifierResolverContract {
         implementations: Vec<InboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Ownable>::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
         let inbound_map: Map<BytesN<4>, Address> = env
             .storage()
@@ -304,7 +308,7 @@ impl VersionedVerifierResolverContract {
         implementations: Vec<OutboundImplementationUpdate>,
     ) -> Result<(), VerifierResolverError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
+        <Self as Ownable>::require_owner(&env).map_err(|_| VerifierResolverError::Unauthorized)?;
 
         let outbound_map: Map<u64, Address> = env
             .storage()
@@ -332,28 +336,12 @@ impl VersionedVerifierResolverContract {
         fee_aggregator: Address,
     ) -> Result<(), VerifierResolverError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         env.storage().instance().set(&FEE_AGG, &fee_aggregator);
 
         FeeAggregatorSetEvent { fee_aggregator }.publish(&env);
 
-        Ok(())
-    }
-
-    /// Transfer ownership to a new address (two-step process via common-authorization).
-    ///
-    /// # Arguments
-    /// * `new_owner` - The proposed new owner
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), VerifierResolverError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        Ownable::transfer_ownership(&env, &new_owner)?;
-        Ok(())
-    }
-
-    /// Accept pending ownership transfer.
-    pub fn accept_ownership(env: Env) -> Result<(), VerifierResolverError> {
-        Ownable::accept_ownership(&env)?;
         Ok(())
     }
 }

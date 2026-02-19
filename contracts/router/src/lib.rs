@@ -12,12 +12,15 @@ use common_interfaces::rmn_proxy::RmnProxyClient;
 use common_message::StellarToAnyMessage;
 use events::{CCIPSendRequestedEvent, OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent};
 use types::{OffRampEntry, OnRampEntry, RouterConfig};
+use common_guard::initializable::Initializable;
 
 // ============================================================
 // Storage Keys
 // ============================================================
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const CONFIG: Symbol = symbol_short!("CONFIG");
 const ONRAMPS: Symbol = symbol_short!("ONRAMPS");
 const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
@@ -28,6 +31,17 @@ const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
 
 #[contract]
 pub struct RouterContract;
+
+#[contractimpl]
+impl Ownable for RouterContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
+
+#[contractimpl]
+impl Initializable for RouterContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
 
 #[contractimpl]
 impl RouterContract {
@@ -44,13 +58,11 @@ impl RouterContract {
     /// # Errors
     /// * `AlreadyInitialized` - If contract is already initialized
     pub fn initialize(env: Env, owner: Address, rmn_proxy: Address) -> Result<(), RouterError> {
-        // Check not already initialized
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(RouterError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         // Initialize owner via shared authorization lib (two-step ownership)
-        Ownable::init(&env, &owner);
+        <Self as Ownable>::init(&env, &owner);
+        <Self as Initializable>::init(&env)?;
 
         // Store config
         let config = RouterConfig { rmn_proxy };
@@ -91,7 +103,7 @@ impl RouterContract {
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
     ) -> Result<i128, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         // Get OnRamp for destination
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
@@ -139,7 +151,7 @@ impl RouterContract {
         // Verify the sender's identity (Soroban equivalent of EVM's msg.sender)
         sender.require_auth();
 
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Self::require_not_cursed(&env)?;
 
         // Get OnRamp for destination
@@ -188,7 +200,7 @@ impl RouterContract {
     /// # Returns
     /// True if an OnRamp is configured for this destination
     pub fn is_chain_supported(env: Env, dest_chain_selector: u64) -> Result<bool, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let onramps: Map<u64, Address> = env
             .storage()
@@ -207,7 +219,7 @@ impl RouterContract {
     /// # Returns
     /// The OnRamp contract address
     pub fn get_onramp(env: Env, dest_chain_selector: u64) -> Result<Address, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         Self::get_onramp_internal(&env, dest_chain_selector)
     }
 
@@ -224,7 +236,7 @@ impl RouterContract {
         source_chain_selector: u64,
         offramp: Address,
     ) -> Result<bool, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -249,7 +261,7 @@ impl RouterContract {
     /// # Returns
     /// Vector of OffRampEntry structs
     pub fn get_offramps(env: Env) -> Result<Vec<OffRampEntry>, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -278,7 +290,7 @@ impl RouterContract {
     /// # Returns
     /// Vector of OnRampEntry structs
     pub fn get_onramps(env: Env) -> Result<Vec<OnRampEntry>, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let onramps: Map<u64, Address> = env
             .storage()
@@ -300,7 +312,7 @@ impl RouterContract {
 
     /// Get the Router configuration.
     pub fn get_config(env: Env) -> Result<RouterConfig, RouterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&CONFIG)
@@ -321,8 +333,8 @@ impl RouterContract {
         dest_chain_selector: u64,
         onramp: Address,
     ) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut onramps: Map<u64, Address> = env
             .storage()
@@ -353,8 +365,8 @@ impl RouterContract {
         source_chain_selector: u64,
         offramp: Address,
     ) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -398,8 +410,8 @@ impl RouterContract {
         source_chain_selector: u64,
         offramp: Address,
     ) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut offramps: Map<u64, Vec<Address>> = env
             .storage()
@@ -461,8 +473,8 @@ impl RouterContract {
         offramp_removes: Vec<OffRampEntry>,
         offramp_adds: Vec<OffRampEntry>,
     ) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         // Apply OnRamp updates
         let mut onramps: Map<u64, Address> = env
@@ -557,40 +569,8 @@ impl RouterContract {
     }
 
     // ========================================
-    // Owner Management (via common-authorization)
-    // ========================================
-
-    /// Start ownership transfer to a new address (two-step process).
-    /// The new owner must call `accept_ownership()` to complete the transfer.
-    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::transfer_ownership(&env, &new_owner)?;
-        Ok(())
-    }
-
-    /// Accept pending ownership transfer. Must be called by the pending new owner.
-    pub fn accept_ownership(env: Env) -> Result<(), RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::accept_ownership(&env)?;
-        Ok(())
-    }
-
-    /// Get the current owner address.
-    pub fn owner(env: Env) -> Result<Address, RouterError> {
-        Self::require_initialized(&env)?;
-        Ownable::get_owner(&env).ok_or(RouterError::NotInitialized)
-    }
-
-    // ========================================
     // Internal Helper Functions
     // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), RouterError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(RouterError::NotInitialized);
-        }
-        Ok(())
-    }
 
     fn require_not_cursed(env: &Env) -> Result<(), RouterError> {
         let config: RouterConfig = env

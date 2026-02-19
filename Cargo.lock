@@ -285,6 +285,7 @@ name = "common-authorization"
 version = "0.0.0"
 dependencies = [
  "common-error",
+ "common-guard",
  "common-helpers",
  "soroban-sdk",
 ]
@@ -327,13 +328,6 @@ name = "common-message"
 version = "0.0.0"
 dependencies = [
  "common-error",
- "soroban-sdk",
-]
-
-[[package]]
-name = "common-quorum"
-version = "0.0.0"
-dependencies = [
  "soroban-sdk",
 ]
 
@@ -1208,6 +1202,7 @@ version = "0.0.0"
 dependencies = [
  "common-authorization",
  "common-error",
+ "common-guard",
  "soroban-sdk",
 ]
 
@@ -1217,6 +1212,7 @@ version = "0.0.0"
 dependencies = [
  "common-authorization",
  "common-error",
+ "common-guard",
  "common-interfaces",
  "common-message",
  "onramp",

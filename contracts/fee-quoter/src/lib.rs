@@ -7,7 +7,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbo
 
 use common_authorization::{AuthorizedCallers, Ownable};
 use common_error::CCIPError as FeeQuoterError;
-use common_guard::ReentrancyGuard;
+use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_message::StellarToAnyMessage;
 use events::{
     DestChainAddedEvent, DestChainConfigUpdatedEvent, FeeTokenAddedEvent, FeeTokenRemovedEvent,
@@ -25,6 +25,8 @@ use types::{
 // ============================================================
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const OWNER: Symbol = symbol_short!("OWNER");
+const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const STATIC_CFG: Symbol = symbol_short!("STATIC");
 const TOKEN_PRC: Symbol = symbol_short!("TOKENPRC");
 const GAS_PRC: Symbol = symbol_short!("GASPRC");
@@ -41,6 +43,15 @@ const CCIP_LOCK_OR_BURN_V1_RET_BYTES: u32 = 32;
 
 #[contract]
 pub struct FeeQuoterContract;
+
+impl Initializable for FeeQuoterContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
+impl Ownable for FeeQuoterContract {
+    const OWNER: Symbol = OWNER;
+    const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
 
 #[contractimpl]
 impl FeeQuoterContract {
@@ -64,20 +75,18 @@ impl FeeQuoterContract {
         static_config: StaticConfig,
         authorized_callers: Vec<Address>,
     ) -> Result<(), FeeQuoterError> {
-        // Check not already initialized
-        if env.storage().instance().has(&INITIALIZED) {
-            return Err(FeeQuoterError::AlreadyInitialized);
-        }
+        <Self as Initializable>::require_not_initialized(&env)?;
 
         // Validate static config
         if static_config.max_fee_juels_per_msg <= 0 {
             return Err(FeeQuoterError::InvalidStaticConfig);
         }
 
-        // Initialize ownership (common-authorization)
-        Ownable::init(&env, &owner);
+        <Self as Initializable>::init(&env)?;
+        <Self as Ownable>::init(&env, &owner);
 
         // Initialize authorized callers (common-authorization)
+        // TODO: remove this in favor of using the AllowListable trait.
         AuthorizedCallers::init(&env, authorized_callers);
 
         // Store static config
@@ -123,7 +132,7 @@ impl FeeQuoterContract {
     /// # Returns
     /// Timestamped price (value may be 0 if not set)
     pub fn get_token_price(env: Env, token: Address) -> Result<TimestampedPrice, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -148,7 +157,7 @@ impl FeeQuoterContract {
         env: Env,
         tokens: Vec<Address>,
     ) -> Result<Vec<TimestampedPrice>, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -180,7 +189,7 @@ impl FeeQuoterContract {
     /// # Errors
     /// * `TokenNotSupported` - If token price is not set
     pub fn get_validated_token_price(env: Env, token: Address) -> Result<u128, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_prices: Map<Address, TimestampedPrice> = env
             .storage()
@@ -211,7 +220,7 @@ impl FeeQuoterContract {
         env: Env,
         dest_chain_selector: u64,
     ) -> Result<TimestampedPrice, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let gas_prices: Map<u64, TimestampedPrice> = env
             .storage()
@@ -233,7 +242,7 @@ impl FeeQuoterContract {
 
     /// Get the list of fee tokens.
     pub fn get_fee_tokens(env: Env) -> Result<Vec<Address>, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         Ok(env
             .storage()
@@ -248,8 +257,8 @@ impl FeeQuoterContract {
     /// # Arguments
     /// * `tokens` - Tokens to remove from fee tokens
     pub fn remove_fee_tokens(env: Env, tokens: Vec<Address>) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut fee_tokens: Vec<Address> = env
             .storage()
@@ -298,7 +307,7 @@ impl FeeQuoterContract {
     /// # Arguments
     /// * `price_updates` - Token and gas price updates
     pub fn update_prices(env: Env, price_updates: PriceUpdates) -> Result<(), FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         AuthorizedCallers::require_authorized(&env)?;
 
         // Reentrancy protection for price updates
@@ -404,7 +413,7 @@ impl FeeQuoterContract {
         calldata_size: u32,
         fee_token: Address,
     ) -> Result<GasQuoteResult, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
 
@@ -670,7 +679,7 @@ impl FeeQuoterContract {
         config_args: Vec<DestChainConfigArgs>,
     ) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let (mut selectors, mut configs): (Vec<u64>, Vec<DestChainConfig>) = env
             .storage()
@@ -738,7 +747,7 @@ impl FeeQuoterContract {
         dest_chain_selector: u64,
         token: Address,
     ) -> Result<TokenTransferFeeConfig, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
 
         let token_fees: Vec<(u64, Address, TokenTransferFeeConfig)> = env
             .storage()
@@ -768,7 +777,7 @@ impl FeeQuoterContract {
         remove_args: Vec<TokenFeeConfigRemoveArgs>,
     ) -> Result<(), FeeQuoterError> {
         Self::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut token_fees: Vec<(u64, Address, TokenTransferFeeConfig)> = env
             .storage()
@@ -858,7 +867,7 @@ impl FeeQuoterContract {
 
     /// Get the static configuration.
     pub fn get_static_config(env: Env) -> Result<StaticConfig, FeeQuoterError> {
-        Self::require_initialized(&env)?;
+        <Self as Initializable>::require_initialized(&env)?;
         env.storage()
             .instance()
             .get(&STATIC_CFG)
@@ -868,13 +877,6 @@ impl FeeQuoterContract {
     // ========================================
     // Internal Helper Functions
     // ========================================
-
-    fn require_initialized(env: &Env) -> Result<(), FeeQuoterError> {
-        if !env.storage().instance().has(&INITIALIZED) {
-            return Err(FeeQuoterError::NotInitialized);
-        }
-        Ok(())
-    }
 
     fn get_dest_chain_config_internal(
         env: &Env,

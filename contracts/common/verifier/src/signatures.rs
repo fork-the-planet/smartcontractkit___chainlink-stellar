@@ -20,7 +20,7 @@ pub struct SignatureQuorumConfig {
 //     fn signers(&self) -> Vec<BytesN<32>>;
 // }
 
-pub trait SignatureQuorum: Initializable {
+pub trait SignatureQuorum: Initializable + Ownable {
     const SIGNATURE_CONFIGS: Symbol = symbol_short!("SIGCFGS");
 
     const VERIFIER_VERSION_BYTES: u32 = 4;
@@ -146,7 +146,7 @@ pub trait SignatureQuorum: Initializable {
         signature_configs: Vec<SignatureQuorumConfig>,
     ) -> Result<(), SignaturesError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ownable::require_owner(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
 
         let mut sig_cfgs: Map<u64, SignatureQuorumConfig> = env
             .storage()

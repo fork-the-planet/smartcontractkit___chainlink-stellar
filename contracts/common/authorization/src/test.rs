@@ -13,37 +13,37 @@ pub struct TestAuthContract;
 
 #[contractimpl]
 impl TestAuthContract {
-    // ---- Ownable ----
+    // ---- Ownable (using DefaultOwnable for testing) ----
     pub fn init_owner(env: Env, owner: Address) {
-        Ownable::init(&env, &owner);
+        DefaultOwnable::init(&env, &owner);
     }
 
     pub fn get_owner(env: Env) -> Option<Address> {
-        Ownable::get_owner(&env)
+        DefaultOwnable::owner(&env)
     }
 
     pub fn is_owner(env: Env, addr: Address) -> bool {
-        Ownable::is_owner(&env, &addr)
+        DefaultOwnable::is_owner(&env, &addr)
     }
 
     pub fn require_owner(env: Env) -> Result<Address, AuthError> {
-        Ownable::require_owner(&env)
+        DefaultOwnable::require_owner(&env)
     }
 
     pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), AuthError> {
-        Ownable::transfer_ownership(&env, &new_owner)
+        DefaultOwnable::transfer_ownership(&env, &new_owner)
     }
 
     pub fn accept_ownership(env: Env) -> Result<(), AuthError> {
-        Ownable::accept_ownership(&env)
+        DefaultOwnable::accept_ownership(&env)
     }
 
     pub fn get_pending_owner(env: Env) -> Option<Address> {
-        Ownable::get_pending_owner(&env)
+        DefaultOwnable::get_pending_owner(&env)
     }
 
     pub fn cancel_transfer(env: Env) -> Result<(), AuthError> {
-        Ownable::cancel_ownership_transfer(&env)
+        DefaultOwnable::cancel_ownership_transfer(&env)
     }
 
     // ---- AuthorizedCallers ----

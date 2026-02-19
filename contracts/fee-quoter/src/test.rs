@@ -63,7 +63,7 @@ fn test_initialize() {
     client.initialize(&owner, &static_config, &authorized_callers);
 
     // Verify owner
-    // assert_eq!(Ownable::get_owner(&env), owner);
+    // assert_eq!(<FeeQuoterContract as Ownable>::get_owner(&env), owner);
 
     // Verify static config
     let stored_config = client.get_static_config();
