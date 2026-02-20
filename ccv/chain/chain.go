@@ -159,7 +159,6 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 	// 2. Configure the OffRamp with source chain selectors
 	// 3. Set up CommitteeVerifier signers from the topology
 
-	// routerContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "router")
 	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
 
 	destChainConfigArgs := []onrampbindings.DestChainConfigArgs{}
@@ -199,10 +198,6 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	contractAddr := func(name string) string {
 		return strkey.MustEncode(strkey.VersionByteContract, generateContractAddress(name, c.networkPassphrase))
 	}
-
-	// Generate deterministic OnRamp address
-	// In a real deployment, this would be obtained from DeployOnRamp
-	// onRampAddr := contractAddr("stellar-onramp")
 
 	// Locate the compiled OnRamp WASM
 	origDir, err := os.Getwd()
