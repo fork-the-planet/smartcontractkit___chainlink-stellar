@@ -317,7 +317,6 @@ dependencies = [
 name = "common-interfaces"
 version = "0.0.0"
 dependencies = [
- "ccvs-versioned-verifier-resolver",
  "common-error",
  "common-message",
  "soroban-sdk",

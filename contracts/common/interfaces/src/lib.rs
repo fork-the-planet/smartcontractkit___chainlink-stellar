@@ -15,8 +15,8 @@
 //! ```
 #![no_std]
 
+pub mod committee_verifier;
 pub mod fee_quoter;
 pub mod onramp;
 pub mod rmn_proxy;
 pub mod versioned_verifier_resolver;
-// pub mod committee_verifier;
