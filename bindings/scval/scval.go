@@ -316,3 +316,20 @@ func StructSliceToScVal[T interface{ ToScVal() (xdr.ScVal, error) }](items []T) 
 	}
 	return VecToScVal(scVals)
 }
+
+// StringSliceToScVal converts a slice of strings to an xdr.ScVal vector.
+func BytesSliceToScVal(items [][]byte) xdr.ScVal {
+	scVals := make([]xdr.ScVal, len(items))
+	for i, item := range items {
+		scVals[i] = BytesToScVal(item)
+	}
+	return VecToScVal(scVals)
+}
+
+func AddressBytes32SliceToScVal(items [][32]byte) xdr.ScVal {
+	scVals := make([]xdr.ScVal, len(items))
+	for i, item := range items {
+		scVals[i] = Bytes32ToScVal(item)
+	}
+	return VecToScVal(scVals)
+}
