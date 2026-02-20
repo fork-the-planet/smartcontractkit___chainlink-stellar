@@ -8,6 +8,8 @@ publish = false
 crate-type = ["rlib"]
 doctest = false
 
+# The deps below should not import any contracts from the workspace.
+# It can only import other common crates.
 [dependencies]
 soroban-sdk = { workspace = true }
 common-message = { workspace = true }

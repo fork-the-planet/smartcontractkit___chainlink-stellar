@@ -5,9 +5,7 @@ pub trait Contract {
         owner: soroban_sdk::Address,
         fee_aggregator: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
-    fn get_fee_aggregator(
-        env: soroban_sdk::Env,
-    ) -> Result<soroban_sdk::Address, CCIPError>;
+    fn get_fee_aggregator(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
     fn set_fee_aggregator(
         env: soroban_sdk::Env,
         fee_aggregator: soroban_sdk::Address,
@@ -190,4 +188,3 @@ pub struct OwnershipTransferStartedEvent {
     pub previous_owner: soroban_sdk::Address,
     pub new_owner: soroban_sdk::Address,
 }
-
