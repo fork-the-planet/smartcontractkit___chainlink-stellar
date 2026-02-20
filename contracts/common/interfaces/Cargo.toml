@@ -11,5 +11,4 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 common-message = { workspace = true }
-ccvs-versioned-verifier-resolver = { workspace = true }
 common-error = { workspace = true }
