@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -149,11 +151,39 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 // ConnectContractsWithSelectors implements cciptestinterfaces.CCIP17Configuration.
 // Connects this chain's OnRamp to OffRamps on remote chains and configures CommitteeVerifiers.
 func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
+	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
+
 	// TODO: implement contract connection logic for Stellar
 	// This should:
 	// 1. Configure the OnRamp with destination chain selectors
 	// 2. Configure the OffRamp with source chain selectors
 	// 3. Set up CommitteeVerifier signers from the topology
+
+	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
+
+	destChainConfigArgs := []onrampbindings.DestChainConfigArgs{}
+	for _, remoteSelector := range remoteSelectors {
+		destChainConfigArgs = append(destChainConfigArgs, onrampbindings.DestChainConfigArgs{
+			AddressBytesLength:        32,
+			BaseExecutionGasCost:      100000,
+			DefaultCcvs:               []string{c.onRampContractID},
+			DestChainSelector:         remoteSelector,
+			Router:                    c.deployerKeypair.Address(),                                     // deployer acts as router,
+			OffRamp:                   generateContractAddress("stellar-offramp", c.networkPassphrase), // TODO: use the actual OffRamp contract address
+			DefaultExecutor:           executorContractID,                                              // TODO: use the actual Executor contract address
+			LaneMandatedCcvs:          []string{},
+			MessageNetworkFeeUsdCents: 0,
+			TokenNetworkFeeUsdCents:   0,
+			TokenReceiverAllowed:      false,
+		})
+	}
+
+	err := c.onRampClient.ApplyDestChainConfigUpdates(ctx, destChainConfigArgs)
+	if err != nil {
+		return fmt.Errorf("failed to apply dest chain config updates: %w", err)
+	}
+
+	c.logger.Info().Uints64("remote selectors", remoteSelectors).Str("onramp contract ID", c.onRampContractID).Str("router address", c.deployerKeypair.Address()).Msg("Dest chain config updates applied")
 	return nil
 }
 
@@ -166,28 +196,70 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Helper to generate contract address (used for mock/placeholder contracts)
 	contractAddr := func(name string) string {
-		return hexutil.Encode(generateContractAddress(name, c.networkPassphrase))
+		return strkey.MustEncode(strkey.VersionByteContract, generateContractAddress(name, c.networkPassphrase))
 	}
 
-	// Generate deterministic OnRamp address
-	// In a real deployment, this would be obtained from DeployOnRamp
-	onRampAddr := contractAddr("stellar-onramp")
+	// Locate the compiled OnRamp WASM
+	origDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working directory: %w", err)
+	}
+	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../../../chainlink-stellar"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stellar root: %w", err)
+	}
+
+	c.logger.Info().Str("stellarRoot", stellarRoot).Msg("Stellar root")
+
+	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
+	if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", onrampWasmPath)
+	}
+
+	// Deploy the OnRamp contract
+	c.logger.Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
+
+	onrampSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "onramp")
+	onrampContractID, err := c.deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy OnRamp contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
 	// Initialize the OnRamp client with the contract ID
 	// Note: For actual deployment, we would:
 	// 1. Deploy the WASM: DeployOnRamp(ctx, c.rpcClient, c.networkPassphrase, c.deployerKeypair, wasmPath)
 	// 2. Initialize it with proper config
 	// For now, we use the deterministic address and will deploy when WASM is available
-	c.onRampContractID = onRampAddr
-	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onRampAddr)
+	c.onRampContractID = onrampContractID
+	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onrampContractID)
+
+	// Initialize the OnRamp with mock dependency contracts
+	mockFeeQuoter := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-quoter")
+	mockFeeAggregator := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
+	mockRMNRemote := mustGenerateMockContractID(c.deployerKeypair.Address(), "rmn-remote")
+	mockTokenAdminRegistry := mustGenerateMockContractID(c.deployerKeypair.Address(), "token-admin-registry")
+
+	err = c.onRampClient.Initialize(ctx, c.deployerKeypair.Address(), onrampbindings.StaticConfig{
+		ChainSelector:         selector,
+		TokenAdminRegistry:    mockTokenAdminRegistry,
+		RmnRemote:             mockRMNRemote,
+		MaxUsdCentsPerMessage: 10000, // $100
+	}, onrampbindings.DynamicConfig{
+		FeeQuoter:     mockFeeQuoter,
+		FeeAggregator: mockFeeAggregator,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize OnRamp: %w", err)
+	}
 
 	c.logger.Info().
-		Str("onRampAddress", onRampAddr).
+		Str("onRampContractID", onrampContractID).
 		Msg("OnRamp client initialized")
 
 	// Add OnRamp to datastore
 	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       onRampAddr,
+		Address:       onrampContractID,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(onrampoperations.ContractType),
 		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
@@ -195,7 +267,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Add OffRamp
 	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       contractAddr("stellar-offramp"),
+		Address:       onrampContractID, // TODO: use the actual OffRamp contract address
 		ChainSelector: selector,
 		Type:          datastore.ContractType(offrampoperations.ContractType),
 		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
@@ -203,68 +275,31 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Add Router
 	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       contractAddr("stellar-router"),
+		Address:       c.deployerKeypair.Address(), // TODO: use the actual Router contract address
 		ChainSelector: selector,
 		Type:          datastore.ContractType(routeroperations.ContractType),
 		Version:       semver.MustParse(routeroperations.Deploy.Version()),
 	})
 
-	// Add token pools
-	for i, combo := range devenvcommon.AllTokenCombinations() {
-		addressRef := combo.DestPoolAddressRef()
-		ds.AddressRefStore.Add(datastore.AddressRef{
-			Address:       contractAddr(fmt.Sprintf("stellar-dst-token-%d", i)),
-			Type:          addressRef.Type,
-			Version:       addressRef.Version,
-			Qualifier:     addressRef.Qualifier,
-			ChainSelector: selector,
-		})
-		addressRef = combo.SourcePoolAddressRef()
-		ds.AddressRefStore.Add(datastore.AddressRef{
-			Address:       contractAddr(fmt.Sprintf("stellar-src-token-%d", i)),
-			Type:          addressRef.Type,
-			Version:       addressRef.Version,
-			Qualifier:     addressRef.Qualifier,
-			ChainSelector: selector,
-		})
-	}
-
-	// Add CCTP refs (keeping it here as a reference, will uncomment later when CCTP is supported on Stellar)
-	// ds.AddressRefStore.Add(datastore.AddressRef{
-	// 	Address:       contractAddr("stellar-cctp-mtp"),
-	// 	Type:          datastore.ContractType(cctp_message_transmitter_proxy.ContractType),
-	// 	Version:       semver.MustParse(cctp_message_transmitter_proxy.Deploy.Version()),
-	// 	Qualifier:     devenvcommon.CCTPContractsQualifier,
-	// 	ChainSelector: selector,
-	// })
-	// ds.AddressRefStore.Add(datastore.AddressRef{
-	// 	Address:       hexutil.Encode(stellarAddress("stellar cctp rslvr")),
-	// 	Type:          datastore.ContractType(cctp_verifier.ResolverType),
-	// 	Version:       semver.MustParse(cctp_verifier.Deploy.Version()),
-	// 	Qualifier:     devenvcommon.CCTPContractsQualifier,
-	// 	ChainSelector: selector,
-	// })
-	// ds.AddressRefStore.Add(datastore.AddressRef{
-	// 	Address:       hexutil.Encode(stellarAddress("stellar cctp vrfr")),
-	// 	Type:          datastore.ContractType(cctp_verifier.ContractType),
-	// 	Version:       semver.MustParse(cctp_verifier.Deploy.Version()),
-	// 	Qualifier:     devenvcommon.CCTPContractsQualifier,
-	// 	ChainSelector: selector,
-	// })
-	// ds.AddressRefStore.Add(datastore.AddressRef{
-	// 	Address:       hexutil.Encode(stellarAddress("stellar usdc token")),
-	// 	Type:          datastore.ContractType(burnminterc677ops.ContractType),
-	// 	Version:       burnminterc677ops.Version,
-	// 	Qualifier:     devenvcommon.CCTPContractsQualifier,
-	// 	ChainSelector: selector,
-	// })
-	// ds.AddressRefStore.Add(datastore.AddressRef{
-	// 	Address:       hexutil.Encode(stellarAddress("usdc token pool prx")),
-	// 	Type:          datastore.ContractType(usdc_token_pool_proxy.ContractType),
-	// 	Version:       semver.MustParse(usdc_token_pool_proxy.Deploy.Version()),
-	// 	Qualifier:     devenvcommon.CCTPContractsQualifier,
-	// 	ChainSelector: selector,
-	// })
+	// // Add token pools
+	// for i, combo := range devenvcommon.AllTokenCombinations() {
+	// 	addressRef := combo.DestPoolAddressRef()
+	// 	ds.AddressRefStore.Add(datastore.AddressRef{
+	// 		Address:       contractAddr(fmt.Sprintf("stellar-dst-token-%d", i)),
+	// 		Type:          addressRef.Type,
+	// 		Version:       addressRef.Version,
+	// 		Qualifier:     addressRef.Qualifier,
+	// 		ChainSelector: selector,
+	// 	})
+	// 	addressRef = combo.SourcePoolAddressRef()
+	// 	ds.AddressRefStore.Add(datastore.AddressRef{
+	// 		Address:       contractAddr(fmt.Sprintf("stellar-src-token-%d", i)),
+	// 		Type:          addressRef.Type,
+	// 		Version:       addressRef.Version,
+	// 		Qualifier:     addressRef.Qualifier,
+	// 		ChainSelector: selector,
+	// 	})
+	// }
 
 	// Add CCV refs
 	for i, qualifier := range []string{
@@ -273,8 +308,15 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		devenvcommon.TertiaryCommitteeVerifierQualifier,
 		devenvcommon.QuaternaryReceiverQualifier,
 	} {
+		verifierAddress := contractAddr(fmt.Sprintf("stellar-ccv-%d", i))
+		c.logger.Info().Str("verifier address in strkey", verifierAddress).Msg("Adding CCV ref")
+		decoded, err := strkey.Decode(strkey.VersionByteContract, verifierAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode verifier address: %w", err)
+		}
+		c.logger.Info().Str("verifier address in hex", hexutil.Encode(decoded)).Msg("Adding CCV ref")
 		ds.AddressRefStore.Add(datastore.AddressRef{
-			Address:       contractAddr(fmt.Sprintf("stellar-ccv-%d", i)),
+			Address:       hexutil.Encode(decoded), // we must use a hex string bc chainlink-ccv will parse this
 			Type:          datastore.ContractType(committee_verifier.ResolverType),
 			Version:       semver.MustParse(committee_verifier.Deploy.Version()),
 			Qualifier:     qualifier,
@@ -329,12 +371,22 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 	// Generate a deployer keypair for this network
 	// Use the network passphrase as part of the seed for deterministic key generation
 	deployerSeed := fmt.Sprintf("deployer-%s", c.networkPassphrase)
+	c.logger.Info().Str("deployerSeed", deployerSeed).Msg("Deployer seed")
 	seedHash := sha256.Sum256([]byte(deployerSeed))
 	deployerKP, err := keypair.FromRawSeed(seedHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create deployer keypair: %w", err)
 	}
 	c.deployerKeypair = deployerKP
+
+	// Fund the deployer account via Friendbot before any contract deployments.
+	// Friendbot may not be ready immediately after the container starts, so retry.
+	friendbotURL := input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL
+	if friendbotURL != "" {
+		if err := c.fundViaFriendbot(friendbotURL, c.deployerKeypair.Address()); err != nil {
+			return nil, fmt.Errorf("failed to fund deployer account: %w", err)
+		}
+	}
 
 	// Create the deployer which serves as the common Invoker for contract interactions
 	c.deployer = stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, c.deployerKeypair)
@@ -348,6 +400,43 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 	return out, nil
 }
 
+// fundViaFriendbot funds a Stellar account using the Friendbot faucet with retries.
+// Friendbot may take up to 90 seconds to become ready after a container starts.
+func (c *Chain) fundViaFriendbot(friendbotURL, address string) error {
+	faucetURL := fmt.Sprintf("%s?addr=%s", friendbotURL, address)
+
+	var lastErr error
+	maxRetries := 9
+	retryInterval := 20 * time.Second
+
+	for attempt := range maxRetries {
+		resp, err := http.Get(faucetURL)
+		if err != nil {
+			lastErr = fmt.Errorf("friendbot request failed: %w", err)
+			c.logger.Debug().Err(err).Int("attempt", attempt+1).Msg("Friendbot request failed, retrying...")
+			time.Sleep(retryInterval)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			c.logger.Info().Str("address", address).Msg("Account funded via Friendbot")
+			return nil
+		}
+
+		resp.Body.Close()
+		lastErr = fmt.Errorf("friendbot returned status %s", resp.Status)
+		c.logger.Debug().
+			Str("status", resp.Status).
+			Int("attempt", attempt+1).
+			Int("maxRetries", maxRetries).
+			Msg("Friendbot not ready, retrying...")
+		time.Sleep(retryInterval)
+	}
+
+	return fmt.Errorf("friendbot not ready after %d attempts: %w", maxRetries, lastErr)
+}
+
 // FundAddresses implements cciptestinterfaces.CCIP17Configuration.
 // Funds addresses with native Stellar Lumens (XLM).
 func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addresses []protocol.UnknownAddress, nativeAmount *big.Int) error {
@@ -357,8 +446,8 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 
 		// Retry logic for friendbot - it may take up to 90 seconds to be ready after container start
 		var lastErr error
-		maxRetries := 4
-		retryInterval := 30 * time.Second
+		maxRetries := 9
+		retryInterval := 20 * time.Second
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			resp, err := http.Get(faucetUrl)
@@ -623,4 +712,17 @@ func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, tim
 	// TODO: implement - poll for the event
 
 	return cciptestinterfaces.MessageSentEvent{}, nil
+}
+
+// generateMockContractID generates a deterministic mock contract ID for testing.
+func mustGenerateMockContractID(deployerAddress, contractName string) string {
+	// Generate a deterministic salt
+	salt := stellardeployment.GenerateDeterministicSalt(deployerAddress, contractName)
+
+	// Encode as a Stellar contract address
+	encoded, err := strkey.Encode(strkey.VersionByteContract, salt[:])
+	if err != nil {
+		panic(fmt.Errorf("failed to encode mock contract ID: %w", err))
+	}
+	return encoded
 }
