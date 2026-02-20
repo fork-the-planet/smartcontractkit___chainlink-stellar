@@ -59,7 +59,7 @@ impl Initializable for VersionedVerifierResolverContract {
     const INITIALIZED: Symbol = INITIALIZED;
 }
 
-#[contractimpl]
+#[contractimpl(contracttrait)]
 impl Ownable for VersionedVerifierResolverContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
