@@ -15,6 +15,18 @@
 
 set -euo pipefail
 
+MIN_STELLAR="25.1.0"
+ACTUAL_STELLAR=$(stellar --version 2>/dev/null | head -1 | awk '{print $2}')
+if [[ -z "$ACTUAL_STELLAR" ]]; then
+  echo "ERROR: stellar CLI not found. Install: cargo install stellar-cli --version $MIN_STELLAR"
+  exit 1
+fi
+if [[ "$(printf '%s\n%s' "$MIN_STELLAR" "$ACTUAL_STELLAR" | sort -V | head -1)" != "$MIN_STELLAR" ]]; then
+  echo "ERROR: stellar CLI >= $MIN_STELLAR required (found $ACTUAL_STELLAR)"
+  echo "Install: cargo install stellar-cli"
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WASM_DIR="$REPO_ROOT/target/wasm32v1-none/release"

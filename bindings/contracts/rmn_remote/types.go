@@ -55,6 +55,45 @@ func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
 	return result, nil
 }
 
+// AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
+type AnyToStellarMessage struct {
+	Placeholder uint64
+}
+
+// ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
+func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"placeholder": scval.Uint64ToScVal(s.Placeholder),
+	})
+}
+
+// AnyToStellarMessageFromScVal parses an xdr.ScVal into AnyToStellarMessage.
+func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AnyToStellarMessage{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "placeholder":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("placeholder: %w", err)
+			}
+			result.Placeholder = v
+		}
+	}
+
+	return result, nil
+}
+
 // StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
 type StellarToAnyMessage struct {
 	Data         []byte
@@ -133,92 +172,6 @@ func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
 	return result, nil
 }
 
-// AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
-type AnyToStellarMessage struct {
-	Placeholder uint64
-}
-
-// ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
-func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"placeholder": scval.Uint64ToScVal(s.Placeholder),
-	})
-}
-
-// AnyToStellarMessageFromScVal parses an xdr.ScVal into AnyToStellarMessage.
-func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &AnyToStellarMessage{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "placeholder":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("placeholder: %w", err)
-			}
-			result.Placeholder = v
-		}
-	}
-
-	return result, nil
-}
-
-// Signer represents the Signer struct from the contract.
-type Signer struct {
-	NodeIndex     uint64
-	OnchainPubKey [32]byte
-}
-
-// ToScVal converts Signer to an xdr.ScVal for contract calls.
-func (s Signer) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"node_index":      scval.Uint64ToScVal(s.NodeIndex),
-		"onchain_pub_key": scval.Bytes32ToScVal(s.OnchainPubKey),
-	})
-}
-
-// SignerFromScVal parses an xdr.ScVal into Signer.
-func SignerFromScVal(val xdr.ScVal) (*Signer, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &Signer{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "node_index":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("node_index: %w", err)
-			}
-			result.NodeIndex = v
-		case "onchain_pub_key":
-			v, err := scval.Bytes32FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("onchain_pub_key: %w", err)
-			}
-			result.OnchainPubKey = v
-		}
-	}
-
-	return result, nil
-}
-
 // Config represents the Config struct from the contract.
 type Config struct {
 	FSign               uint64
@@ -275,6 +228,53 @@ func ConfigFromScVal(val xdr.ScVal) (*Config, error) {
 				}
 				result.Signers[i] = *v
 			}
+		}
+	}
+
+	return result, nil
+}
+
+// Signer represents the Signer struct from the contract.
+type Signer struct {
+	NodeIndex     uint64
+	OnchainPubKey [32]byte
+}
+
+// ToScVal converts Signer to an xdr.ScVal for contract calls.
+func (s Signer) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"node_index":      scval.Uint64ToScVal(s.NodeIndex),
+		"onchain_pub_key": scval.Bytes32ToScVal(s.OnchainPubKey),
+	})
+}
+
+// SignerFromScVal parses an xdr.ScVal into Signer.
+func SignerFromScVal(val xdr.ScVal) (*Signer, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &Signer{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "node_index":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("node_index: %w", err)
+			}
+			result.NodeIndex = v
+		case "onchain_pub_key":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("onchain_pub_key: %w", err)
+			}
+			result.OnchainPubKey = v
 		}
 	}
 
@@ -435,43 +435,6 @@ var CCIPErrorMessage = map[int]string{
 	73: "zero value not allowed",
 }
 
-// OwnershipTransferStartedEvent represents the OwnershipTransferStartedEvent event.
-// Topics: [auth_OwnerTransferStart]
-type OwnershipTransferStartedEvent struct {
-	PreviousOwner string
-	NewOwner      string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OwnershipTransferStartedEventTopic is the event topic identifier.
-const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
-
-// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
-// Topics: [auth_CallerAdded]
-type AuthorizedCallerAddedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerAddedEventTopic is the event topic identifier.
-const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
-
-// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
-// Topics: [auth_CallerRemoved]
-type AuthorizedCallerRemovedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerRemovedEventTopic is the event topic identifier.
-const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
-
 // RoleGrantedEvent represents the RoleGrantedEvent event.
 // Topics: [auth_RoleGranted]
 type RoleGrantedEvent struct {
@@ -500,19 +463,42 @@ type RoleRevokedEvent struct {
 // RoleRevokedEventTopic is the event topic identifier.
 const RoleRevokedEventTopic = "auth_RoleRevoked"
 
-// ConfigSetEvent represents the ConfigSetEvent event.
-// Topics: [rmn_ConfigSet]
-type ConfigSetEvent struct {
-	Version    uint32
-	NumSigners uint32
-	FSign      uint64
+// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
+// Topics: [auth_CallerAdded]
+type AuthorizedCallerAddedEvent struct {
+	Caller string
 	// Event metadata
 	Ledger uint32
 	TxHash string
 }
 
-// ConfigSetEventTopic is the event topic identifier.
-const ConfigSetEventTopic = "rmn_ConfigSet"
+// AuthorizedCallerAddedEventTopic is the event topic identifier.
+const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
+
+// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
+// Topics: [auth_CallerRemoved]
+type AuthorizedCallerRemovedEvent struct {
+	Caller string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AuthorizedCallerRemovedEventTopic is the event topic identifier.
+const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
+
+// OwnershipTransferStartedEvent represents the OwnershipTransferStartedEvent event.
+// Topics: [auth_OwnerTransferStart]
+type OwnershipTransferStartedEvent struct {
+	PreviousOwner string
+	NewOwner      string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OwnershipTransferStartedEventTopic is the event topic identifier.
+const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
 
 // CursedEvent represents the CursedEvent event.
 // Topics: [rmn_Cursed]
@@ -537,3 +523,17 @@ type UncursedEvent struct {
 
 // UncursedEventTopic is the event topic identifier.
 const UncursedEventTopic = "rmn_Uncursed"
+
+// ConfigSetEvent represents the ConfigSetEvent event.
+// Topics: [rmn_ConfigSet]
+type ConfigSetEvent struct {
+	Version    uint32
+	NumSigners uint32
+	FSign      uint64
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// ConfigSetEventTopic is the event topic identifier.
+const ConfigSetEventTopic = "rmn_ConfigSet"
