@@ -386,6 +386,11 @@ func BytesSliceToScVal(items [][]byte) xdr.ScVal {
 }
 
 func AddressBytes32SliceToScVal(items [][32]byte) xdr.ScVal {
+	return Bytes32SliceToScVal(items)
+}
+
+// Bytes32SliceToScVal converts a slice of [32]byte to an xdr.ScVal vector (for Vec<BytesN<32>>).
+func Bytes32SliceToScVal(items [][32]byte) xdr.ScVal {
 	scVals := make([]xdr.ScVal, len(items))
 	for i, item := range items {
 		scVals[i] = Bytes32ToScVal(item)
