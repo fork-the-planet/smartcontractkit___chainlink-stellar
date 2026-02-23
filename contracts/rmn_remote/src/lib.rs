@@ -34,8 +34,7 @@ const CHAIN_SEL: Symbol = symbol_short!("CHAINSEL");
 /// Global curse subject — an active curse on this subject causes `is_cursed()` to return true.
 /// Equivalent to EVM `GLOBAL_CURSE_SUBJECT = 0x01000000000000000000000000000001`.
 const GLOBAL_CURSE_SUBJECT: [u8; 16] = [
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x01,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 ];
 
 /// Report digest header: keccak256("RMN_V1_6_ANY2EVM_REPORT") equivalent for Stellar.
@@ -160,17 +159,17 @@ impl RmnRemoteContract {
         //   hash(header || local_chain_selector || dest_chain_selector || offramp || config_digest || merkle_root)
         let mut payload = Bytes::new(&env);
         payload.append(&Bytes::from_slice(&env, RMN_REPORT_HEADER));
-        payload.append(&Bytes::from_slice(&env, &local_chain_selector.to_be_bytes()));
+        payload.append(&Bytes::from_slice(
+            &env,
+            &local_chain_selector.to_be_bytes(),
+        ));
         payload.append(&Bytes::from_slice(&env, &dest_chain_selector.to_be_bytes()));
         payload.append(&Bytes::from_array(&env, &offramp.to_array()));
         payload.append(&Bytes::from_array(
             &env,
             &config.rmn_home_config_digest.to_array(),
         ));
-        payload.append(&Bytes::from_array(
-            &env,
-            &merkle_root.to_array(),
-        ));
+        payload.append(&Bytes::from_array(&env, &merkle_root.to_array()));
 
         let digest: BytesN<32> = env.crypto().keccak256(&payload).into();
 
@@ -245,7 +244,10 @@ impl RmnRemoteContract {
         let mut new_signers: Map<BytesN<32>, bool> = Map::new(&env);
         for i in 0..new_config.signers.len() {
             let signer: Signer = new_config.signers.get(i).unwrap();
-            if new_signers.get(signer.onchain_pub_key.clone()).unwrap_or(false) {
+            if new_signers
+                .get(signer.onchain_pub_key.clone())
+                .unwrap_or(false)
+            {
                 return Err(CCIPError::DuplicateOnchainPublicKey);
             }
             new_signers.set(signer.onchain_pub_key, true);
@@ -254,11 +256,7 @@ impl RmnRemoteContract {
         env.storage().instance().set(&SIGNERS, &new_signers);
         env.storage().instance().set(&CONFIG, &new_config);
 
-        let mut config_count: u32 = env
-            .storage()
-            .instance()
-            .get(&CONFIG_CNT)
-            .unwrap_or(0);
+        let mut config_count: u32 = env.storage().instance().get(&CONFIG_CNT).unwrap_or(0);
         config_count += 1;
         env.storage().instance().set(&CONFIG_CNT, &config_count);
 
