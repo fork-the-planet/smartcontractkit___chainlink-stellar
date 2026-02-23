@@ -70,7 +70,7 @@ cd "$REPO_ROOT"
 
 if [[ "$run_interfaces" == true ]]; then
   echo "Running gen_interfaces.sh first..."
-  "$SCRIPT_DIR/gen_interfaces.sh"
+  "$SCRIPT_DIR/gen_interfaces.sh" && cargo fmt -p common-interfaces
   echo ""
 fi
 
