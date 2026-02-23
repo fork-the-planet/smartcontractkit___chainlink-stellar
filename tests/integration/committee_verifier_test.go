@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -8,30 +6,42 @@ import (
 	"testing"
 	"time"
 
+	ccvsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
-func TestVersionedVerifierResolver(t *testing.T) {
+func TestCommitteeVerifier(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	projectRoot, deployerKP, deployer, _, _ := helpers.SetupTestEnv(ctx, t)
 
-	// Deploy the VersionedVerifierResolver contract
-	t.Log("Deploying VersionedVerifierResolver contract...")
-	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "versioned-verifier-resolver")
-	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "ccvs_versioned_verifier_resolver.wasm")
+	// Deploy the CommitteeVerifier contract
+	t.Log("Deploying CommitteeVerifier contract...")
+	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "committee-verifier")
+	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "ccvs_committee_verifier.wasm")
 
 	contractID, err := deployer.DeployContract(ctx, wasmPath, salt)
 	if err != nil {
-		t.Fatalf("Failed to deploy VersionedVerifierResolver: %v", err)
+		t.Fatalf("Failed to deploy CommitteeVerifier: %v", err)
 	}
-	t.Logf("VersionedVerifierResolver deployed at: %s", contractID)
+	t.Logf("CommitteeVerifier deployed at: %s", contractID)
+
+	// Deploy the RMN Proxy contract
+	t.Log("Deploying RMN Proxy contract...")
+	salt = deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-proxy")
+	wasmPath = filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_proxy.wasm")
+	rmnProxyContractID, err := deployer.DeployContract(ctx, wasmPath, salt)
+	if err != nil {
+		t.Fatalf("Failed to deploy RMN Proxy: %v", err)
+	}
+	t.Logf("RMN Proxy deployed at: %s", rmnProxyContractID)
 
 	// Create client
-	client := vvrbindings.NewVersionedVerifierResolverClient(deployer, contractID)
+	client := ccvsbindings.NewCommiteeVerifierClient(deployer, contractID)
 
 	// Generate mock addresses
 	mockFeeAggregator := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-aggregator")
@@ -39,11 +49,24 @@ func TestVersionedVerifierResolver(t *testing.T) {
 	mockOutboundVerifier := helpers.GenerateMockContractID(t, deployerKP.Address(), "outbound-verifier")
 
 	t.Run("initialize", func(t *testing.T) {
-		err := client.Initialize(ctx, deployerKP.Address(), mockFeeAggregator)
+		// Initialize RMN Proxy
+		rmnProxyClient := rmnproxybindings.NewRMNProxyClient(deployer, rmnProxyContractID)
+		mockRmnRemote := helpers.GenerateMockContractID(t, deployerKP.Address(), "rmn-remote")
+		err := rmnProxyClient.Initialize(ctx, deployerKP.Address(), mockRmnRemote)
 		if err != nil {
-			t.Fatalf("Failed to initialize: %v", err)
+			t.Fatalf("Failed to initialize RMN Proxy: %v", err)
 		}
-		t.Log("VersionedVerifierResolver initialized successfully")
+		t.Log("RMN Proxy initialized successfully")
+
+		// Initialize CommitteeVerifier
+		err = client.Initialize(ctx, deployerKP.Address(), ccvsbindings.DynamicConfig{
+			FeeAggregator: mockFeeAggregator,
+		}, [][]byte{}, rmnProxyContractID)
+		if err != nil {
+			t.Fatalf("Failed to initialize CommitteeVerifier: %v", err)
+		}
+
+		t.Log("CommitteeVerifier initialized successfully with RMN Proxy")
 	})
 
 	t.Run("verify owner", func(t *testing.T) {

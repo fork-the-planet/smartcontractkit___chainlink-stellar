@@ -177,12 +177,84 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\t\treturn \"\", err\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn v, nil\n")
-	case strings.HasPrefix(returnType, "soroban_sdk::BytesN<"):
-		b.WriteString("\tv, err := scval.Bytes32FromScVal(*result)\n")
+	case returnType == "soroban_sdk::Bytes":
+		b.WriteString("\tv, ok := result.GetBytes()\n")
+		b.WriteString("\tif !ok {\n")
+		b.WriteString("\t\treturn nil, fmt.Errorf(\"expected bytes return type\")\n")
+		b.WriteString("\t}\n")
+		b.WriteString("\treturn []byte(v), nil\n")
+	case strings.Contains(returnType, "Option<") && strings.Contains(returnType, "soroban_sdk::Address"):
+		b.WriteString("\tv, err := scval.OptionalAddressFromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
-		b.WriteString("\t\treturn [32]byte{}, err\n")
+		b.WriteString("\t\treturn nil, err\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn v, nil\n")
+	case returnType == "u128":
+		b.WriteString("\tv, err := scval.U128FromScVal(*result)\n")
+		b.WriteString("\tif err != nil {\n")
+		b.WriteString("\t\treturn scval.U128{}, err\n")
+		b.WriteString("\t}\n")
+		b.WriteString("\treturn v, nil\n")
+	case strings.HasPrefix(returnType, "soroban_sdk::BytesN<"):
+		if extractBytesNSize(returnType) == 4 {
+			b.WriteString("\tv, err := scval.Bytes4FromScVal(*result)\n")
+			b.WriteString("\tif err != nil {\n")
+			b.WriteString("\t\treturn [4]byte{}, err\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn v, nil\n")
+		} else {
+			b.WriteString("\tv, err := scval.Bytes32FromScVal(*result)\n")
+			b.WriteString("\tif err != nil {\n")
+			b.WriteString("\t\treturn [32]byte{}, err\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn v, nil\n")
+		}
+	case strings.HasPrefix(returnType, "soroban_sdk::Vec<"):
+		innerType := extractVecInnerType(returnType)
+		if innerType == "soroban_sdk::Address" {
+			b.WriteString("\tvec, ok := result.GetVec()\n")
+			b.WriteString("\tif !ok || vec == nil {\n")
+			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\tout := make([]string, len(*vec))\n")
+			b.WriteString("\tfor i, item := range *vec {\n")
+			b.WriteString("\t\tv, err := scval.AddressFromScVal(item)\n")
+			b.WriteString("\t\tif err != nil {\n")
+			b.WriteString("\t\t\treturn nil, err\n")
+			b.WriteString("\t\t}\n")
+			b.WriteString("\t\tout[i] = v\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn out, nil\n")
+		} else if innerType == "soroban_sdk::Bytes" {
+			b.WriteString("\tvec, ok := result.GetVec()\n")
+			b.WriteString("\tif !ok || vec == nil {\n")
+			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\tout := make([][]byte, len(*vec))\n")
+			b.WriteString("\tfor i, item := range *vec {\n")
+			b.WriteString("\t\tv, ok := item.GetBytes()\n")
+			b.WriteString("\t\tif !ok {\n")
+			b.WriteString("\t\t\treturn nil, fmt.Errorf(\"vec item is not bytes\")\n")
+			b.WriteString("\t\t}\n")
+			b.WriteString("\t\tout[i] = []byte(v)\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn out, nil\n")
+		} else {
+			structName := extractStructName(innerType)
+			b.WriteString("\tvec, ok := result.GetVec()\n")
+			b.WriteString("\tif !ok || vec == nil {\n")
+			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
+			b.WriteString("\t}\n")
+			b.WriteString(fmt.Sprintf("\tout := make([]%s, len(*vec))\n", structName))
+			b.WriteString("\tfor i, item := range *vec {\n")
+			b.WriteString(fmt.Sprintf("\t\tv, err := %sFromScVal(item)\n", structName))
+			b.WriteString("\t\tif err != nil {\n")
+			b.WriteString("\t\t\treturn nil, err\n")
+			b.WriteString("\t\t}\n")
+			b.WriteString("\t\tout[i] = *v\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn out, nil\n")
+		}
 	default:
 		// Struct type
 		structName := extractStructName(returnType)
@@ -272,6 +344,11 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
+	case f.Type == "u128":
+		b.WriteString("\t\t\tv, err := scval.U128FromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tif err == nil {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+		b.WriteString("\t\t\t}\n")
 	case f.Type == "i128":
 		b.WriteString("\t\t\tv, err := scval.I128FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
@@ -282,13 +359,22 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
+	case f.Type == "soroban_sdk::Symbol":
+		b.WriteString("\t\t\tv, err := scval.SymbolFromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tif err == nil {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+		b.WriteString("\t\t\t}\n")
 	case f.Type == "soroban_sdk::Bytes":
 		b.WriteString("\t\t\tv, ok := entry.Val.GetBytes()\n")
 		b.WriteString("\t\t\tif ok {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = []byte(v)\n", target))
 		b.WriteString("\t\t\t}\n")
 	case strings.HasPrefix(f.Type, "soroban_sdk::BytesN<"):
-		b.WriteString("\t\t\tv, err := scval.Bytes32FromScVal(entry.Val)\n")
+		if extractBytesNSize(f.Type) == 4 {
+			b.WriteString("\t\t\tv, err := scval.Bytes4FromScVal(entry.Val)\n")
+		} else {
+			b.WriteString("\t\t\tv, err := scval.Bytes32FromScVal(entry.Val)\n")
+		}
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
@@ -308,17 +394,20 @@ func isReadOnlyFunction(fn Function) bool {
 }
 
 func parseReturnType(returnStr string) (string, bool) {
+	returnStr = strings.TrimSpace(returnStr)
+	// Option<InnerType> - return full type so rustTypeToGo can produce *string
+	if strings.HasPrefix(returnStr, "Option<") {
+		return returnStr, true
+	}
 	// Result<RetType, Error> or Result<(), Error>
 	if strings.HasPrefix(returnStr, "Result<") {
 		inner := strings.TrimSuffix(strings.TrimPrefix(returnStr, "Result<"), ">")
-		// Split by last comma to separate ok and error types
 		parts := splitReturnType(inner)
 		if len(parts) >= 1 {
 			okType := strings.TrimSpace(parts[0])
 			if okType == "()" {
 				return "", false
 			}
-			// Handle tuple returns - skip for now (complex)
 			if strings.HasPrefix(okType, "(") {
 				return "", false // Skip tuple returns for now
 			}
@@ -364,12 +453,15 @@ func splitReturnType(s string) []string {
 func isStructType(rustType string) bool {
 	// Check if it's a custom struct (not a primitive or SDK type)
 	switch rustType {
-	case "u64", "u32", "i128", "bool":
+	case "u64", "u32", "u128", "i128", "bool":
 		return false
-	case "soroban_sdk::Address", "soroban_sdk::Bytes":
+	case "soroban_sdk::Address", "soroban_sdk::Bytes", "soroban_sdk::Symbol":
 		return false
 	}
 	if strings.HasPrefix(rustType, "soroban_sdk::") {
+		return false
+	}
+	if strings.HasPrefix(rustType, "Option<") {
 		return false
 	}
 	return true
@@ -381,6 +473,8 @@ func getArgConverter(rustType, varName string) string {
 		return fmt.Sprintf("scval.Uint64ToScVal(%s)", varName)
 	case "u32":
 		return fmt.Sprintf("scval.Uint32ToScVal(%s)", varName)
+	case "u128":
+		return fmt.Sprintf("scval.MustToScVal((%s).ToScVal())", varName)
 	case "i128":
 		return fmt.Sprintf("scval.I128ToScVal(%s)", varName)
 	case "bool":
@@ -391,7 +485,14 @@ func getArgConverter(rustType, varName string) string {
 		return fmt.Sprintf("scval.BytesToScVal(%s)", varName)
 	}
 
+	if strings.Contains(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
+		return fmt.Sprintf("scval.OptionalAddressToScVal(%s)", varName)
+	}
+
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
+		if extractBytesNSize(rustType) == 4 {
+			return fmt.Sprintf("scval.Bytes4ToScVal(%s)", varName)
+		}
 		return fmt.Sprintf("scval.Bytes32ToScVal(%s)", varName)
 	}
 
@@ -399,6 +500,15 @@ func getArgConverter(rustType, varName string) string {
 		innerType := extractVecInnerType(rustType)
 		if innerType == "soroban_sdk::Address" {
 			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", varName)
+		}
+		if innerType == "soroban_sdk::Bytes" {
+			return fmt.Sprintf("scval.BytesSliceToScVal(%s)", varName)
+		}
+		if extractBytesNSize(innerType) == 4 {
+			return fmt.Sprintf("scval.Bytes4SliceToScVal(%s)", varName)
+		}
+		if extractBytesNSize(innerType) == 32 {
+			return fmt.Sprintf("scval.AddressBytes32SliceToScVal(%s)", varName)
 		}
 		return fmt.Sprintf("scval.StructSliceToScVal(%s)", varName)
 	}
@@ -411,12 +521,20 @@ func zeroValue(rustType string) string {
 	switch rustType {
 	case "u64", "u32", "i128":
 		return "0"
+	case "u128":
+		return "scval.U128{}"
 	case "bool":
 		return "false"
 	case "soroban_sdk::Address":
 		return "\"\""
 	}
+	if strings.HasPrefix(rustType, "Option<") {
+		return "nil"
+	}
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
+		if extractBytesNSize(rustType) == 4 {
+			return "[4]byte{}"
+		}
 		return "[32]byte{}"
 	}
 	return "nil"

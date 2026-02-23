@@ -8,6 +8,170 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// TokenAmount represents the TokenAmount struct from the contract.
+type TokenAmount struct {
+	Amount int64
+	Token string
+}
+
+// ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
+func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"amount": scval.I128ToScVal(s.Amount),
+		"token": scval.AddressToScVal(s.Token),
+	})
+}
+
+// TokenAmountFromScVal parses an xdr.ScVal into TokenAmount.
+func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &TokenAmount{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "amount":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("amount: %w", err)
+			}
+			result.Amount = v
+		case "token":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("token: %w", err)
+			}
+			result.Token = v
+		}
+	}
+
+	return result, nil
+}
+
+// StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
+type StellarToAnyMessage struct {
+	Data []byte
+	ExtraArgs []byte
+	FeeToken string
+	Receiver []byte
+	TokenAmounts []TokenAmount
+}
+
+// ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
+func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"data": scval.BytesToScVal(s.Data),
+		"extra_args": scval.BytesToScVal(s.ExtraArgs),
+		"fee_token": scval.AddressToScVal(s.FeeToken),
+		"receiver": scval.BytesToScVal(s.Receiver),
+		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
+	})
+}
+
+// StellarToAnyMessageFromScVal parses an xdr.ScVal into StellarToAnyMessage.
+func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &StellarToAnyMessage{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "data":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("data is not bytes")
+			}
+			result.Data = []byte(v)
+		case "extra_args":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("extra_args is not bytes")
+			}
+			result.ExtraArgs = []byte(v)
+		case "fee_token":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("fee_token: %w", err)
+			}
+			result.FeeToken = v
+		case "receiver":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("receiver is not bytes")
+			}
+			result.Receiver = []byte(v)
+		case "token_amounts":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("token_amounts is not a vec")
+			}
+			result.TokenAmounts = make([]TokenAmount, len(*vec))
+			for i, item := range *vec {
+				v, err := TokenAmountFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.TokenAmounts[i] = *v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
+type AnyToStellarMessage struct {
+	Placeholder uint64
+}
+
+// ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
+func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"placeholder": scval.Uint64ToScVal(s.Placeholder),
+	})
+}
+
+// AnyToStellarMessageFromScVal parses an xdr.ScVal into AnyToStellarMessage.
+func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AnyToStellarMessage{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "placeholder":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("placeholder: %w", err)
+			}
+			result.Placeholder = v
+		}
+	}
+
+	return result, nil
+}
+
 // PriceUpdates represents the PriceUpdates struct from the contract.
 type PriceUpdates struct {
 	GasPriceUpdates []GasPriceUpdate
@@ -119,7 +283,7 @@ func StaticConfigFromScVal(val xdr.ScVal) (*StaticConfig, error) {
 // GasPriceUpdate represents the GasPriceUpdate struct from the contract.
 type GasPriceUpdate struct {
 	DestChainSelector uint64
-	UsdPerUnitGas u128
+	UsdPerUnitGas scval.U128
 }
 
 // ToScVal converts GasPriceUpdate to an xdr.ScVal for contract calls.
@@ -152,11 +316,11 @@ func GasPriceUpdateFromScVal(val xdr.ScVal) (*GasPriceUpdate, error) {
 			}
 			result.DestChainSelector = v
 		case "usd_per_unit_gas":
-			v, err := u128FromScVal(entry.Val)
+			v, err := scval.U128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("usd_per_unit_gas: %w", err)
 			}
-			result.UsdPerUnitGas = *v
+			result.UsdPerUnitGas = v
 		}
 	}
 
@@ -165,8 +329,8 @@ func GasPriceUpdateFromScVal(val xdr.ScVal) (*GasPriceUpdate, error) {
 
 // GasQuoteResult represents the GasQuoteResult struct from the contract.
 type GasQuoteResult struct {
-	FeeTokenPrice u128
-	GasCostUsdCents u128
+	FeeTokenPrice scval.U128
+	GasCostUsdCents scval.U128
 	PremiumMultiplier uint32
 	TotalGas uint32
 }
@@ -197,17 +361,17 @@ func GasQuoteResultFromScVal(val xdr.ScVal) (*GasQuoteResult, error) {
 
 		switch string(key) {
 		case "fee_token_price":
-			v, err := u128FromScVal(entry.Val)
+			v, err := scval.U128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("fee_token_price: %w", err)
 			}
-			result.FeeTokenPrice = *v
+			result.FeeTokenPrice = v
 		case "gas_cost_usd_cents":
-			v, err := u128FromScVal(entry.Val)
+			v, err := scval.U128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("gas_cost_usd_cents: %w", err)
 			}
-			result.GasCostUsdCents = *v
+			result.GasCostUsdCents = v
 		case "premium_multiplier":
 			v, ok := entry.Val.GetU32()
 			if !ok {
@@ -340,7 +504,7 @@ func DestChainConfigFromScVal(val xdr.ScVal) (*DestChainConfig, error) {
 // TimestampedPrice represents the TimestampedPrice struct from the contract.
 type TimestampedPrice struct {
 	Timestamp uint64
-	Value u128
+	Value scval.U128
 }
 
 // ToScVal converts TimestampedPrice to an xdr.ScVal for contract calls.
@@ -373,11 +537,11 @@ func TimestampedPriceFromScVal(val xdr.ScVal) (*TimestampedPrice, error) {
 			}
 			result.Timestamp = v
 		case "value":
-			v, err := u128FromScVal(entry.Val)
+			v, err := scval.U128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("value: %w", err)
 			}
-			result.Value = *v
+			result.Value = v
 		}
 	}
 
@@ -387,7 +551,7 @@ func TimestampedPriceFromScVal(val xdr.ScVal) (*TimestampedPrice, error) {
 // TokenPriceUpdate represents the TokenPriceUpdate struct from the contract.
 type TokenPriceUpdate struct {
 	Token string
-	UsdPerToken u128
+	UsdPerToken scval.U128
 }
 
 // ToScVal converts TokenPriceUpdate to an xdr.ScVal for contract calls.
@@ -420,11 +584,11 @@ func TokenPriceUpdateFromScVal(val xdr.ScVal) (*TokenPriceUpdate, error) {
 			}
 			result.Token = v
 		case "usd_per_token":
-			v, err := u128FromScVal(entry.Val)
+			v, err := scval.U128FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("usd_per_token: %w", err)
 			}
-			result.UsdPerToken = *v
+			result.UsdPerToken = v
 		}
 	}
 
@@ -698,269 +862,204 @@ func TokenFeeConfigRemoveArgsFromScVal(val xdr.ScVal) (*TokenFeeConfigRemoveArgs
 	return result, nil
 }
 
-// TokenAmount represents the TokenAmount struct from the contract.
-type TokenAmount struct {
-	Amount int64
-	Token string
-}
-
-// ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
-func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"amount": scval.I128ToScVal(s.Amount),
-		"token": scval.AddressToScVal(s.Token),
-	})
-}
-
-// TokenAmountFromScVal parses an xdr.ScVal into TokenAmount.
-func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &TokenAmount{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "amount":
-			v, err := scval.I128FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("amount: %w", err)
-			}
-			result.Amount = v
-		case "token":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("token: %w", err)
-			}
-			result.Token = v
-		}
-	}
-
-	return result, nil
-}
-
-// AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
-type AnyToStellarMessage struct {
-	Placeholder uint64
-}
-
-// ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
-func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"placeholder": scval.Uint64ToScVal(s.Placeholder),
-	})
-}
-
-// AnyToStellarMessageFromScVal parses an xdr.ScVal into AnyToStellarMessage.
-func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &AnyToStellarMessage{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "placeholder":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("placeholder: %w", err)
-			}
-			result.Placeholder = v
-		}
-	}
-
-	return result, nil
-}
-
-// StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
-type StellarToAnyMessage struct {
-	Data []byte
-	ExtraArgs []byte
-	FeeToken string
-	Receiver []byte
-	TokenAmounts []TokenAmount
-}
-
-// ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
-func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"data": scval.BytesToScVal(s.Data),
-		"extra_args": scval.BytesToScVal(s.ExtraArgs),
-		"fee_token": scval.AddressToScVal(s.FeeToken),
-		"receiver": scval.BytesToScVal(s.Receiver),
-		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
-	})
-}
-
-// StellarToAnyMessageFromScVal parses an xdr.ScVal into StellarToAnyMessage.
-func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &StellarToAnyMessage{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "data":
-			v, ok := entry.Val.GetBytes()
-			if !ok {
-				return nil, fmt.Errorf("data is not bytes")
-			}
-			result.Data = []byte(v)
-		case "extra_args":
-			v, ok := entry.Val.GetBytes()
-			if !ok {
-				return nil, fmt.Errorf("extra_args is not bytes")
-			}
-			result.ExtraArgs = []byte(v)
-		case "fee_token":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("fee_token: %w", err)
-			}
-			result.FeeToken = v
-		case "receiver":
-			v, ok := entry.Val.GetBytes()
-			if !ok {
-				return nil, fmt.Errorf("receiver is not bytes")
-			}
-			result.Receiver = []byte(v)
-		case "token_amounts":
-			vec, ok := entry.Val.GetVec()
-			if !ok || vec == nil {
-				return nil, fmt.Errorf("token_amounts is not a vec")
-			}
-			result.TokenAmounts = make([]TokenAmount, len(*vec))
-			for i, item := range *vec {
-				v, err := TokenAmountFromScVal(item)
-				if err != nil {
-					return nil, err
-				}
-				result.TokenAmounts[i] = *v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// FeeQuoterError represents the contract error codes.
+// CCIPError represents the contract error codes.
 const (
-	FeeQuoterErrorAlreadyInitialized = 1
-	FeeQuoterErrorNotInitialized = 2
-	FeeQuoterErrorUnauthorized = 3
-	FeeQuoterErrorTokenNotSupported = 4
-	FeeQuoterErrorFeeTokenNotSupported = 5
-	FeeQuoterErrorNoGasPriceAvailable = 6
-	FeeQuoterErrorDestinationChainNotEnabled = 7
-	FeeQuoterErrorInvalidExtraArgsTag = 8
-	FeeQuoterErrorInvalidExtraArgsData = 9
-	FeeQuoterErrorMessageGasLimitTooHigh = 10
-	FeeQuoterErrorMessageTooLarge = 11
-	FeeQuoterErrorUnsupportedNumberOfTokens = 12
-	FeeQuoterErrorInvalidDestChainConfig = 13
-	FeeQuoterErrorMessageFeeTooHigh = 14
-	FeeQuoterErrorInvalidStaticConfig = 15
-	FeeQuoterErrorInvalidTokenReceiver = 16
-	FeeQuoterErrorSourceTokenDataTooLarge = 17
-	FeeQuoterErrorInvalidDestBytesOverhead = 18
-	FeeQuoterErrorCallerNotAuthorized = 19
-	FeeQuoterErrorAuthorizedCallerAlreadyExists = 20
-	FeeQuoterErrorAuthorizedCallerNotFound = 21
-	FeeQuoterErrorNoPendingOwner = 22
-	FeeQuoterErrorReentrancyGuardReentrantCall = 23
-	FeeQuoterErrorAuthFeatureNotEnabled = 24
-	FeeQuoterErrorInvalidTokenAmount = 25
-	FeeQuoterErrorInvalidReceiverAddress = 26
+	CCIPErrorNotInitialized = 1
+	CCIPErrorAlreadyInitialized = 2
+	CCIPErrorUnauthorized = 3
+	CCIPErrorNotOwner = 4
+	CCIPErrorNoPendingOwner = 5
+	CCIPErrorCallerNotAuthorized = 6
+	CCIPErrorCallerAlreadyAuthorized = 7
+	CCIPErrorCallerNotFound = 8
+	CCIPErrorRoleNotGranted = 9
+	CCIPErrorFeatureNotEnabled = 10
+	CCIPErrorRoleAlreadyGranted = 11
+	CCIPErrorCannotRenounceRole = 12
+	CCIPErrorInvalidVersionTag = 13
+	CCIPErrorInvalidSignatureLength = 14
+	CCIPErrorInvalidSignature = 15
+	CCIPErrorInvalidSignatureCount = 16
+	CCIPErrorInvalidSignatureThreshold = 17
+	CCIPErrorInvalidSignaturePubkey = 18
+	CCIPErrorSourceNotConfigured = 19
+	CCIPErrorInvalidVerifierResults = 20
+	CCIPErrorReentrantCall = 21
+	CCIPErrorTokenNotSupported = 22
+	CCIPErrorFeeTokenNotSupported = 23
+	CCIPErrorNoGasPriceAvailable = 24
+	CCIPErrorDestinationChainNotEnabled = 25
+	CCIPErrorInvalidExtraArgsTag = 26
+	CCIPErrorInvalidExtraArgsData = 27
+	CCIPErrorMessageGasLimitTooHigh = 28
+	CCIPErrorMessageTooLarge = 29
+	CCIPErrorUnsupportedNumberOfTokens = 30
+	CCIPErrorInvalidDestChainConfig = 31
+	CCIPErrorMessageFeeTooHigh = 32
+	CCIPErrorInvalidStaticConfig = 33
+	CCIPErrorInvalidTokenReceiver = 34
+	CCIPErrorSourceTokenDataTooLarge = 35
+	CCIPErrorInvalidDestBytesOverhead = 36
+	CCIPErrorDestinationChainNotSupported = 37
+	CCIPErrorMustBeCalledByRouter = 38
+	CCIPErrorRouterMustSetOriginalSender = 39
+	CCIPErrorCannotSendZeroTokens = 40
+	CCIPErrorCanOnlySendOneTokenPerMessage = 41
+	CCIPErrorUnsupportedToken = 42
+	CCIPErrorInvalidDestChainAddress = 43
+	CCIPErrorFeeExceedsMaxAllowed = 44
+	CCIPErrorInsufficientFeeTokenAmount = 45
+	CCIPErrorTokenReceiverNotAllowed = 46
+	CCIPErrorCursedByRMN = 47
+	CCIPErrorRemoteChainNotSupported = 48
+	CCIPErrorSenderNotAllowed = 49
+	CCIPErrorInvalidTokenAmount = 50
+	CCIPErrorInvalidReceiverAddress = 51
+	CCIPErrorInvalidConfig = 52
+	CCIPErrorInvalidVerifierResultsLength = 53
+	CCIPErrorInboundImplementationNotFound = 54
+	CCIPErrorOutboundImplementationNotFound = 55
+	CCIPErrorInvalidAddress = 56
+	CCIPErrorInvalidChainSelector = 57
+	CCIPErrorInvalidVersion = 58
+	CCIPErrorInvalidCCVVersion = 59
+	CCIPErrorOffRampAlreadyExists = 60
+	CCIPErrorOffRampMismatch = 61
+	CCIPErrorBadRMNSignal = 62
+	CCIPErrorUnsupportedDestinationChain = 63
 )
 
-// FeeQuoterErrorMessage returns a human-readable message for error codes.
-var FeeQuoterErrorMessage = map[int]string{
-	1: "already initialized",
-	2: "not initialized",
-	3: "unauthorized",
-	4: "token not supported",
-	5: "fee token not supported",
-	6: "no gas price available",
-	7: "destination chain not enabled",
-	8: "invalid extra args tag",
-	9: "invalid extra args data",
-	10: "message gas limit too high",
-	11: "message too large",
-	12: "unsupported number of tokens",
-	13: "invalid dest chain config",
-	14: "message fee too high",
-	15: "invalid static config",
-	16: "invalid token receiver",
-	17: "source token data too large",
-	18: "invalid dest bytes overhead",
-	19: "caller not authorized",
-	20: "authorized caller already exists",
-	21: "authorized caller not found",
-	22: "no pending owner",
-	23: "reentrancy guard reentrant call",
-	24: "auth feature not enabled",
-	25: "invalid token amount",
-	26: "invalid receiver address",
-}
-
-// AuthError represents the contract error codes.
-const (
-	AuthErrorNotInitialized = 1
-	AuthErrorUnauthorized = 2
-	AuthErrorNotOwner = 3
-	AuthErrorNoPendingOwner = 4
-	AuthErrorCallerNotAuthorized = 5
-	AuthErrorCallerAlreadyAuthorized = 6
-	AuthErrorCallerNotFound = 7
-	AuthErrorRoleNotGranted = 8
-	AuthErrorFeatureNotEnabled = 9
-	AuthErrorRoleAlreadyGranted = 10
-	AuthErrorCannotRenounceRole = 11
-)
-
-// AuthErrorMessage returns a human-readable message for error codes.
-var AuthErrorMessage = map[int]string{
+// CCIPErrorMessage returns a human-readable message for error codes.
+var CCIPErrorMessage = map[int]string{
 	1: "not initialized",
-	2: "unauthorized",
-	3: "not owner",
-	4: "no pending owner",
-	5: "caller not authorized",
-	6: "caller already authorized",
-	7: "caller not found",
-	8: "role not granted",
-	9: "feature not enabled",
-	10: "role already granted",
-	11: "cannot renounce role",
+	2: "already initialized",
+	3: "unauthorized",
+	4: "not owner",
+	5: "no pending owner",
+	6: "caller not authorized",
+	7: "caller already authorized",
+	8: "caller not found",
+	9: "role not granted",
+	10: "feature not enabled",
+	11: "role already granted",
+	12: "cannot renounce role",
+	13: "invalid version tag",
+	14: "invalid signature length",
+	15: "invalid signature",
+	16: "invalid signature count",
+	17: "invalid signature threshold",
+	18: "invalid signature pubkey",
+	19: "source not configured",
+	20: "invalid verifier results",
+	21: "reentrant call",
+	22: "token not supported",
+	23: "fee token not supported",
+	24: "no gas price available",
+	25: "destination chain not enabled",
+	26: "invalid extra args tag",
+	27: "invalid extra args data",
+	28: "message gas limit too high",
+	29: "message too large",
+	30: "unsupported number of tokens",
+	31: "invalid dest chain config",
+	32: "message fee too high",
+	33: "invalid static config",
+	34: "invalid token receiver",
+	35: "source token data too large",
+	36: "invalid dest bytes overhead",
+	37: "destination chain not supported",
+	38: "must be called by router",
+	39: "router must set original sender",
+	40: "cannot send zero tokens",
+	41: "can only send one token per message",
+	42: "unsupported token",
+	43: "invalid dest chain address",
+	44: "fee exceeds max allowed",
+	45: "insufficient fee token amount",
+	46: "token receiver not allowed",
+	47: "cursed by r m n",
+	48: "remote chain not supported",
+	49: "sender not allowed",
+	50: "invalid token amount",
+	51: "invalid receiver address",
+	52: "invalid config",
+	53: "invalid verifier results length",
+	54: "inbound implementation not found",
+	55: "outbound implementation not found",
+	56: "invalid address",
+	57: "invalid chain selector",
+	58: "invalid version",
+	59: "invalid c c v version",
+	60: "off ramp already exists",
+	61: "off ramp mismatch",
+	62: "bad r m n signal",
+	63: "unsupported destination chain",
 }
 
-// GuardError represents the contract error codes.
-const (
-	GuardErrorReentrantCall = 1
-)
-
-// GuardErrorMessage returns a human-readable message for error codes.
-var GuardErrorMessage = map[int]string{
-	1: "reentrant call",
+// RoleGrantedEvent represents the RoleGrantedEvent event.
+// Topics: [auth_RoleGranted]
+type RoleGrantedEvent struct {
+	Role string
+	Account string
+	Sender string
+	// Event metadata
+	Ledger uint32
+	TxHash string
 }
+
+// RoleGrantedEventTopic is the event topic identifier.
+const RoleGrantedEventTopic = "auth_RoleGranted"
+
+// RoleRevokedEvent represents the RoleRevokedEvent event.
+// Topics: [auth_RoleRevoked]
+type RoleRevokedEvent struct {
+	Role string
+	Account string
+	Sender string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// RoleRevokedEventTopic is the event topic identifier.
+const RoleRevokedEventTopic = "auth_RoleRevoked"
+
+// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
+// Topics: [auth_CallerAdded]
+type AuthorizedCallerAddedEvent struct {
+	Caller string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AuthorizedCallerAddedEventTopic is the event topic identifier.
+const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
+
+// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
+// Topics: [auth_CallerRemoved]
+type AuthorizedCallerRemovedEvent struct {
+	Caller string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AuthorizedCallerRemovedEventTopic is the event topic identifier.
+const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
+
+// OwnershipTransferStartedEvent represents the OwnershipTransferStartedEvent event.
+// Topics: [auth_OwnerTransferStart]
+type OwnershipTransferStartedEvent struct {
+	PreviousOwner string
+	NewOwner string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OwnershipTransferStartedEventTopic is the event topic identifier.
+const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
 
 // FeeTokenAddedEvent represents the FeeTokenAddedEvent event.
 // Topics: [fq_FeeTokenAdded]
@@ -1004,7 +1103,7 @@ const FeeTokenRemovedEventTopic = "fq_FeeTokenRemoved"
 // Topics: [fq_UsdPerTokenUpdated]
 type UsdPerTokenUpdatedEvent struct {
 	Token string
-	Value u128
+	Value scval.U128
 	Timestamp uint64
 	// Event metadata
 	Ledger uint32
@@ -1018,7 +1117,7 @@ const UsdPerTokenUpdatedEventTopic = "fq_UsdPerTokenUpdated"
 // Topics: [fq_UsdPerUnitGasUpdated]
 type UsdPerUnitGasUpdatedEvent struct {
 	DestChainSelector uint64
-	Value u128
+	Value scval.U128
 	Timestamp uint64
 	// Event metadata
 	Ledger uint32
@@ -1070,82 +1169,4 @@ type DestChainConfigUpdatedEvent struct {
 
 // DestChainConfigUpdatedEventTopic is the event topic identifier.
 const DestChainConfigUpdatedEventTopic = "fq_DestChainConfigUpdated"
-
-// RoleGrantedEvent represents the RoleGrantedEvent event.
-// Topics: [auth_RoleGranted]
-type RoleGrantedEvent struct {
-	Role Symbol
-	Account string
-	Sender string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// RoleGrantedEventTopic is the event topic identifier.
-const RoleGrantedEventTopic = "auth_RoleGranted"
-
-// RoleRevokedEvent represents the RoleRevokedEvent event.
-// Topics: [auth_RoleRevoked]
-type RoleRevokedEvent struct {
-	Role Symbol
-	Account string
-	Sender string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// RoleRevokedEventTopic is the event topic identifier.
-const RoleRevokedEventTopic = "auth_RoleRevoked"
-
-// OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
-// Topics: [auth_OwnerTransferred]
-type OwnershipTransferredEvent struct {
-	PreviousOwner string
-	NewOwner string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OwnershipTransferredEventTopic is the event topic identifier.
-const OwnershipTransferredEventTopic = "auth_OwnerTransferred"
-
-// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
-// Topics: [auth_CallerAdded]
-type AuthorizedCallerAddedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerAddedEventTopic is the event topic identifier.
-const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
-
-// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
-// Topics: [auth_CallerRemoved]
-type AuthorizedCallerRemovedEvent struct {
-	Caller string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// AuthorizedCallerRemovedEventTopic is the event topic identifier.
-const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
-
-// OwnershipTransferStartedEvent represents the OwnershipTransferStartedEvent event.
-// Topics: [auth_OwnerTransferStart]
-type OwnershipTransferStartedEvent struct {
-	PreviousOwner string
-	NewOwner string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OwnershipTransferStartedEventTopic is the event topic identifier.
-const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
 
