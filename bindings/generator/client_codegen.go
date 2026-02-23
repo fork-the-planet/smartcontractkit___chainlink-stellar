@@ -196,19 +196,12 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn v, nil\n")
 	case strings.HasPrefix(returnType, "soroban_sdk::BytesN<"):
-		if extractBytesNSize(returnType) == 4 {
-			b.WriteString("\tv, err := scval.Bytes4FromScVal(*result)\n")
-			b.WriteString("\tif err != nil {\n")
-			b.WriteString("\t\treturn [4]byte{}, err\n")
-			b.WriteString("\t}\n")
-			b.WriteString("\treturn v, nil\n")
-		} else {
-			b.WriteString("\tv, err := scval.Bytes32FromScVal(*result)\n")
-			b.WriteString("\tif err != nil {\n")
-			b.WriteString("\t\treturn [32]byte{}, err\n")
-			b.WriteString("\t}\n")
-			b.WriteString("\treturn v, nil\n")
-		}
+		n := extractBytesNSize(returnType)
+		b.WriteString(fmt.Sprintf("\tv, err := scval.Bytes%dFromScVal(*result)\n", n))
+		b.WriteString("\tif err != nil {\n")
+		b.WriteString(fmt.Sprintf("\t\treturn [%d]byte{}, err\n", n))
+		b.WriteString("\t}\n")
+		b.WriteString("\treturn v, nil\n")
 	case strings.HasPrefix(returnType, "soroban_sdk::Vec<"):
 		innerType := extractVecInnerType(returnType)
 		if innerType == "soroban_sdk::Address" {
@@ -237,6 +230,21 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 			b.WriteString("\t\t\treturn nil, fmt.Errorf(\"vec item is not bytes\")\n")
 			b.WriteString("\t\t}\n")
 			b.WriteString("\t\tout[i] = []byte(v)\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn out, nil\n")
+		} else if n := extractBytesNSize(innerType); n > 0 {
+			goType := rustTypeToGo(innerType)
+			b.WriteString("\tvec, ok := result.GetVec()\n")
+			b.WriteString("\tif !ok || vec == nil {\n")
+			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
+			b.WriteString("\t}\n")
+			b.WriteString(fmt.Sprintf("\tout := make([]%s, len(*vec))\n", goType))
+			b.WriteString("\tfor i, item := range *vec {\n")
+			b.WriteString(fmt.Sprintf("\t\tv, err := scval.Bytes%dFromScVal(item)\n", n))
+			b.WriteString("\t\tif err != nil {\n")
+			b.WriteString("\t\t\treturn nil, err\n")
+			b.WriteString("\t\t}\n")
+			b.WriteString("\t\tout[i] = v\n")
 			b.WriteString("\t}\n")
 			b.WriteString("\treturn out, nil\n")
 		} else {
@@ -370,11 +378,8 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = []byte(v)\n", target))
 		b.WriteString("\t\t\t}\n")
 	case strings.HasPrefix(f.Type, "soroban_sdk::BytesN<"):
-		if extractBytesNSize(f.Type) == 4 {
-			b.WriteString("\t\t\tv, err := scval.Bytes4FromScVal(entry.Val)\n")
-		} else {
-			b.WriteString("\t\t\tv, err := scval.Bytes32FromScVal(entry.Val)\n")
-		}
+		n := extractBytesNSize(f.Type)
+		b.WriteString(fmt.Sprintf("\t\t\tv, err := scval.Bytes%dFromScVal(entry.Val)\n", n))
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
@@ -490,10 +495,8 @@ func getArgConverter(rustType, varName string) string {
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
-		if extractBytesNSize(rustType) == 4 {
-			return fmt.Sprintf("scval.Bytes4ToScVal(%s)", varName)
-		}
-		return fmt.Sprintf("scval.Bytes32ToScVal(%s)", varName)
+		n := extractBytesNSize(rustType)
+		return fmt.Sprintf("scval.Bytes%dToScVal(%s)", n, varName)
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
@@ -504,11 +507,8 @@ func getArgConverter(rustType, varName string) string {
 		if innerType == "soroban_sdk::Bytes" {
 			return fmt.Sprintf("scval.BytesSliceToScVal(%s)", varName)
 		}
-		if extractBytesNSize(innerType) == 4 {
-			return fmt.Sprintf("scval.Bytes4SliceToScVal(%s)", varName)
-		}
-		if extractBytesNSize(innerType) == 32 {
-			return fmt.Sprintf("scval.AddressBytes32SliceToScVal(%s)", varName)
+		if n := extractBytesNSize(innerType); n > 0 {
+			return fmt.Sprintf("scval.Bytes%dSliceToScVal(%s)", n, varName)
 		}
 		return fmt.Sprintf("scval.StructSliceToScVal(%s)", varName)
 	}
@@ -532,10 +532,8 @@ func zeroValue(rustType string) string {
 		return "nil"
 	}
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {
-		if extractBytesNSize(rustType) == 4 {
-			return "[4]byte{}"
-		}
-		return "[32]byte{}"
+		n := extractBytesNSize(rustType)
+		return fmt.Sprintf("[%d]byte{}", n)
 	}
 	return "nil"
 }
