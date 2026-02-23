@@ -7,6 +7,7 @@ use common_authorization::allowlist::AllowListable;
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
+use common_helpers::curse_checkable::CurseCheckable;
 use common_verifier::base_verifier::BaseVerifier;
 use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
@@ -54,6 +55,11 @@ impl Initializable for CommitteeVerifierContract {
 impl Ownable for CommitteeVerifierContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
+}
+
+#[contractimpl]
+impl CurseCheckable for CommitteeVerifierContract {
+    const RMN_PROXY: Symbol = RMN_PROXY;
 }
 
 #[contractimpl]
@@ -151,10 +157,7 @@ impl CommitteeVerifierContract {
 
         let mut verification_blob = Bytes::new(&env);
 
-        // TODO:
-        // 1. check that sender is allowed
-        // 2. check curse status
-
+        <Self as CurseCheckable>::require_not_cursed(&env)?;
         <Self as AllowListable>::require_in_allowlist(&env, dest_chain_selector, &sender)?;
 
         verification_blob.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
