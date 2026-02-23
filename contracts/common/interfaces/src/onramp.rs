@@ -10,10 +10,7 @@ pub trait OnRampInterface {
         message: StellarToAnyMessage,
     ) -> Result<i128, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
-    fn init_owner(
-        env: soroban_sdk::Env,
-        owner: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -261,4 +258,3 @@ pub struct DestChainConfigSetEvent {
 pub struct OwnershipTransferredEvent {
     pub new_owner: soroban_sdk::Address,
 }
-

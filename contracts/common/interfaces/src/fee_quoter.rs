@@ -5,10 +5,7 @@ use common_message::{StellarToAnyMessage, TokenAmount};
 pub trait FeeQuoterInterface {
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
-    fn init_owner(
-        env: soroban_sdk::Env,
-        owner: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -20,10 +17,7 @@ pub trait FeeQuoterInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
-    fn update_prices(
-        env: soroban_sdk::Env,
-        price_updates: PriceUpdates,
-    ) -> Result<(), CCIPError>;
+    fn update_prices(env: soroban_sdk::Env, price_updates: PriceUpdates) -> Result<(), CCIPError>;
     fn get_fee_tokens(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::Address>, CCIPError>;
@@ -343,4 +337,3 @@ pub struct DestChainConfigUpdatedEvent {
     pub is_enabled: bool,
     pub max_data_bytes: u32,
 }
-
