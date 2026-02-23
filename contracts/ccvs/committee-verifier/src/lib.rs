@@ -92,7 +92,6 @@ impl BaseVerifier for CommitteeVerifierContract {
     type RemoteChainConfig = RemoteChainConfig;
 
     const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
-    const RMN_PROXY: Symbol = RMN_PROXY;
     const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
 
     fn emit_remote_chain_config_set_event(
@@ -122,8 +121,9 @@ impl CommitteeVerifierContract {
 
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
+        <Self as CurseCheckable>::init(&env, &rmn_proxy)?;
         <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
-        <Self as BaseVerifier>::init(&env, &storage_locations, &rmn_proxy)?;
+        <Self as BaseVerifier>::init(&env, &storage_locations)?;
 
         env.storage()
             .instance()
@@ -159,6 +159,8 @@ impl CommitteeVerifierContract {
 
         <Self as CurseCheckable>::require_not_cursed(&env)?;
         <Self as AllowListable>::require_in_allowlist(&env, dest_chain_selector, &sender)?;
+
+        // TODO: generate correct verification blob
 
         verification_blob.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
         Ok(verification_blob)
