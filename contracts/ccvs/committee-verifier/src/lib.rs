@@ -177,8 +177,7 @@ impl CommitteeVerifierContract {
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
-        // TODO: check if cursed by RMNProxy
-        // Self::assert_not_cursed_by_rmn(&env, source_chain_selector)?;
+        <Self as CurseCheckable>::require_not_cursed(&env)?;
 
         if verifier_results.len() < VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES {
             return Err(CCIPError::InvalidVerifierResults);

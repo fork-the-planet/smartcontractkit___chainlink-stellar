@@ -13,6 +13,7 @@ use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_message::{MessageIdCompute, StellarToAnyMessage};
 use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
+use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 
 // ============================================================
 // Storage Keys

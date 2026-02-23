@@ -8,54 +8,6 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// InboundImplementationUpdate represents the InboundImplementationUpdate struct from the contract.
-// Verifier is a pointer: nil = Option::None (remove), non-nil = Option::Some(Address) (set).
-type InboundImplementationUpdate struct {
-	Verifier *string
-	Version  [4]byte
-}
-
-// ToScVal converts InboundImplementationUpdate to an xdr.ScVal for contract calls.
-func (s InboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"verifier": scval.OptionalAddressToScVal(s.Verifier),
-		"version":  scval.Bytes4ToScVal(s.Version),
-	})
-}
-
-// InboundImplementationUpdateFromScVal parses an xdr.ScVal into InboundImplementationUpdate.
-func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementationUpdate, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &InboundImplementationUpdate{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "verifier":
-			v, err := scval.OptionalAddressFromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("verifier: %w", err)
-			}
-			result.Verifier = v
-		case "version":
-			v, err := scval.Bytes4FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("version: %w", err)
-			}
-			result.Version = v
-		}
-	}
-
-	return result, nil
-}
-
 // InboundImplementationArgs represents the InboundImplementationArgs struct from the contract.
 type InboundImplementationArgs struct {
 	Verifier string
@@ -66,7 +18,7 @@ type InboundImplementationArgs struct {
 func (s InboundImplementationArgs) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"verifier": scval.AddressToScVal(s.Verifier),
-		"version":  scval.Bytes4ToScVal(s.Version),
+		"version":  scval.Bytes32ToScVal(s.Version),
 	})
 }
 
@@ -92,59 +44,11 @@ func InboundImplementationArgsFromScVal(val xdr.ScVal) (*InboundImplementationAr
 			}
 			result.Verifier = v
 		case "version":
-			v, err := scval.Bytes4FromScVal(entry.Val)
+			v, err := scval.Bytes32FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("version: %w", err)
 			}
 			result.Version = v
-		}
-	}
-
-	return result, nil
-}
-
-// OutboundImplementationUpdate represents the OutboundImplementationUpdate struct from the contract.
-// Verifier is a pointer: nil = Option::None (remove), non-nil = Option::Some(Address) (set).
-type OutboundImplementationUpdate struct {
-	DestChainSelector uint64
-	Verifier          *string
-}
-
-// ToScVal converts OutboundImplementationUpdate to an xdr.ScVal for contract calls.
-func (s OutboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"verifier":            scval.OptionalAddressToScVal(s.Verifier),
-	})
-}
-
-// OutboundImplementationUpdateFromScVal parses an xdr.ScVal into OutboundImplementationUpdate.
-func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementationUpdate, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &OutboundImplementationUpdate{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "dest_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("dest_chain_selector: %w", err)
-			}
-			result.DestChainSelector = v
-		case "verifier":
-			v, err := scval.OptionalAddressFromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("verifier: %w", err)
-			}
-			result.Verifier = v
 		}
 	}
 
@@ -198,60 +102,232 @@ func OutboundImplementationArgsFromScVal(val xdr.ScVal) (*OutboundImplementation
 	return result, nil
 }
 
-// VerifierResolverError represents the contract error codes.
-const (
-	VerifierResolverErrorAlreadyInitialized             = 1
-	VerifierResolverErrorNotInitialized                 = 2
-	VerifierResolverErrorUnauthorized                   = 3
-	VerifierResolverErrorInvalidVerifierResultsLength   = 4
-	VerifierResolverErrorInboundImplementationNotFound  = 5
-	VerifierResolverErrorOutboundImplementationNotFound = 6
-	VerifierResolverErrorInvalidAddress                 = 7
-	VerifierResolverErrorInvalidChainSelector           = 8
-	VerifierResolverErrorInvalidVersion                 = 9
-)
-
-// VerifierResolverErrorMessage returns a human-readable message for error codes.
-var VerifierResolverErrorMessage = map[int]string{
-	1: "already initialized",
-	2: "not initialized",
-	3: "unauthorized",
-	4: "invalid verifier results length",
-	5: "inbound implementation not found",
-	6: "outbound implementation not found",
-	7: "invalid address",
-	8: "invalid chain selector",
-	9: "invalid version",
+// InboundImplementationUpdate represents the InboundImplementationUpdate struct from the contract.
+type InboundImplementationUpdate struct {
+	Verifier Address
+	Version  [4]byte
 }
 
-// AuthError represents the contract error codes.
+// ToScVal converts InboundImplementationUpdate to an xdr.ScVal for contract calls.
+func (s InboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"verifier": scval.MustToScVal((s.Verifier).ToScVal()),
+		"version":  scval.Bytes32ToScVal(s.Version),
+	})
+}
+
+// InboundImplementationUpdateFromScVal parses an xdr.ScVal into InboundImplementationUpdate.
+func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementationUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &InboundImplementationUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "verifier":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("verifier: %w", err)
+			}
+			result.Verifier = *v
+		case "version":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("version: %w", err)
+			}
+			result.Version = v
+		}
+	}
+
+	return result, nil
+}
+
+// OutboundImplementationUpdate represents the OutboundImplementationUpdate struct from the contract.
+type OutboundImplementationUpdate struct {
+	DestChainSelector uint64
+	Verifier          Address
+}
+
+// ToScVal converts OutboundImplementationUpdate to an xdr.ScVal for contract calls.
+func (s OutboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
+		"verifier":            scval.MustToScVal((s.Verifier).ToScVal()),
+	})
+}
+
+// OutboundImplementationUpdateFromScVal parses an xdr.ScVal into OutboundImplementationUpdate.
+func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementationUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &OutboundImplementationUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("dest_chain_selector: %w", err)
+			}
+			result.DestChainSelector = v
+		case "verifier":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("verifier: %w", err)
+			}
+			result.Verifier = v
+		}
+	}
+
+	return result, nil
+}
+
+// CCIPError represents the contract error codes.
 const (
-	AuthErrorNotInitialized          = 1
-	AuthErrorUnauthorized            = 2
-	AuthErrorNotOwner                = 3
-	AuthErrorNoPendingOwner          = 4
-	AuthErrorCallerNotAuthorized     = 5
-	AuthErrorCallerAlreadyAuthorized = 6
-	AuthErrorCallerNotFound          = 7
-	AuthErrorRoleNotGranted          = 8
-	AuthErrorFeatureNotEnabled       = 9
-	AuthErrorRoleAlreadyGranted      = 10
-	AuthErrorCannotRenounceRole      = 11
+	CCIPErrorNotInitialized                 = 1
+	CCIPErrorAlreadyInitialized             = 2
+	CCIPErrorUnauthorized                   = 3
+	CCIPErrorNotOwner                       = 4
+	CCIPErrorNoPendingOwner                 = 5
+	CCIPErrorCallerNotAuthorized            = 6
+	CCIPErrorCallerAlreadyAuthorized        = 7
+	CCIPErrorCallerNotFound                 = 8
+	CCIPErrorRoleNotGranted                 = 9
+	CCIPErrorFeatureNotEnabled              = 10
+	CCIPErrorRoleAlreadyGranted             = 11
+	CCIPErrorCannotRenounceRole             = 12
+	CCIPErrorInvalidVersionTag              = 13
+	CCIPErrorInvalidSignatureLength         = 14
+	CCIPErrorInvalidSignature               = 15
+	CCIPErrorInvalidSignatureCount          = 16
+	CCIPErrorInvalidSignatureThreshold      = 17
+	CCIPErrorInvalidSignaturePubkey         = 18
+	CCIPErrorSourceNotConfigured            = 19
+	CCIPErrorInvalidVerifierResults         = 20
+	CCIPErrorReentrantCall                  = 21
+	CCIPErrorTokenNotSupported              = 22
+	CCIPErrorFeeTokenNotSupported           = 23
+	CCIPErrorNoGasPriceAvailable            = 24
+	CCIPErrorDestinationChainNotEnabled     = 25
+	CCIPErrorInvalidExtraArgsTag            = 26
+	CCIPErrorInvalidExtraArgsData           = 27
+	CCIPErrorMessageGasLimitTooHigh         = 28
+	CCIPErrorMessageTooLarge                = 29
+	CCIPErrorUnsupportedNumberOfTokens      = 30
+	CCIPErrorInvalidDestChainConfig         = 31
+	CCIPErrorMessageFeeTooHigh              = 32
+	CCIPErrorInvalidStaticConfig            = 33
+	CCIPErrorInvalidTokenReceiver           = 34
+	CCIPErrorSourceTokenDataTooLarge        = 35
+	CCIPErrorInvalidDestBytesOverhead       = 36
+	CCIPErrorDestinationChainNotSupported   = 37
+	CCIPErrorMustBeCalledByRouter           = 38
+	CCIPErrorRouterMustSetOriginalSender    = 39
+	CCIPErrorCannotSendZeroTokens           = 40
+	CCIPErrorCanOnlySendOneTokenPerMessage  = 41
+	CCIPErrorUnsupportedToken               = 42
+	CCIPErrorInvalidDestChainAddress        = 43
+	CCIPErrorFeeExceedsMaxAllowed           = 44
+	CCIPErrorInsufficientFeeTokenAmount     = 45
+	CCIPErrorTokenReceiverNotAllowed        = 46
+	CCIPErrorCursedByRMN                    = 47
+	CCIPErrorRemoteChainNotSupported        = 48
+	CCIPErrorSenderNotAllowed               = 49
+	CCIPErrorInvalidTokenAmount             = 50
+	CCIPErrorInvalidReceiverAddress         = 51
+	CCIPErrorInvalidConfig                  = 52
+	CCIPErrorInvalidVerifierResultsLength   = 53
+	CCIPErrorInboundImplementationNotFound  = 54
+	CCIPErrorOutboundImplementationNotFound = 55
+	CCIPErrorInvalidAddress                 = 56
+	CCIPErrorInvalidChainSelector           = 57
+	CCIPErrorInvalidVersion                 = 58
+	CCIPErrorInvalidCCVVersion              = 59
+	CCIPErrorOffRampAlreadyExists           = 60
+	CCIPErrorOffRampMismatch                = 61
+	CCIPErrorBadRMNSignal                   = 62
+	CCIPErrorUnsupportedDestinationChain    = 63
 )
 
-// AuthErrorMessage returns a human-readable message for error codes.
-var AuthErrorMessage = map[int]string{
+// CCIPErrorMessage returns a human-readable message for error codes.
+var CCIPErrorMessage = map[int]string{
 	1:  "not initialized",
-	2:  "unauthorized",
-	3:  "not owner",
-	4:  "no pending owner",
-	5:  "caller not authorized",
-	6:  "caller already authorized",
-	7:  "caller not found",
-	8:  "role not granted",
-	9:  "feature not enabled",
-	10: "role already granted",
-	11: "cannot renounce role",
+	2:  "already initialized",
+	3:  "unauthorized",
+	4:  "not owner",
+	5:  "no pending owner",
+	6:  "caller not authorized",
+	7:  "caller already authorized",
+	8:  "caller not found",
+	9:  "role not granted",
+	10: "feature not enabled",
+	11: "role already granted",
+	12: "cannot renounce role",
+	13: "invalid version tag",
+	14: "invalid signature length",
+	15: "invalid signature",
+	16: "invalid signature count",
+	17: "invalid signature threshold",
+	18: "invalid signature pubkey",
+	19: "source not configured",
+	20: "invalid verifier results",
+	21: "reentrant call",
+	22: "token not supported",
+	23: "fee token not supported",
+	24: "no gas price available",
+	25: "destination chain not enabled",
+	26: "invalid extra args tag",
+	27: "invalid extra args data",
+	28: "message gas limit too high",
+	29: "message too large",
+	30: "unsupported number of tokens",
+	31: "invalid dest chain config",
+	32: "message fee too high",
+	33: "invalid static config",
+	34: "invalid token receiver",
+	35: "source token data too large",
+	36: "invalid dest bytes overhead",
+	37: "destination chain not supported",
+	38: "must be called by router",
+	39: "router must set original sender",
+	40: "cannot send zero tokens",
+	41: "can only send one token per message",
+	42: "unsupported token",
+	43: "invalid dest chain address",
+	44: "fee exceeds max allowed",
+	45: "insufficient fee token amount",
+	46: "token receiver not allowed",
+	47: "cursed by r m n",
+	48: "remote chain not supported",
+	49: "sender not allowed",
+	50: "invalid token amount",
+	51: "invalid receiver address",
+	52: "invalid config",
+	53: "invalid verifier results length",
+	54: "inbound implementation not found",
+	55: "outbound implementation not found",
+	56: "invalid address",
+	57: "invalid chain selector",
+	58: "invalid version",
+	59: "invalid c c v version",
+	60: "off ramp already exists",
+	61: "off ramp mismatch",
+	62: "bad r m n signal",
+	63: "unsupported destination chain",
 }
 
 // InboundImplSetEvent represents the InboundImplSetEvent event.
@@ -267,18 +343,6 @@ type InboundImplSetEvent struct {
 // InboundImplSetEventTopic is the event topic identifier.
 const InboundImplSetEventTopic = "vvr_InboundImplSet"
 
-// InboundImplRemovedEvent represents the InboundImplRemovedEvent event.
-// Topics: [vvr_InboundImplRemoved]
-type InboundImplRemovedEvent struct {
-	Version [4]byte
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// InboundImplRemovedEventTopic is the event topic identifier.
-const InboundImplRemovedEventTopic = "vvr_InboundImplRemoved"
-
 // OutboundImplSetEvent represents the OutboundImplSetEvent event.
 // Topics: [vvr_OutboundImplSet]
 type OutboundImplSetEvent struct {
@@ -292,18 +356,6 @@ type OutboundImplSetEvent struct {
 // OutboundImplSetEventTopic is the event topic identifier.
 const OutboundImplSetEventTopic = "vvr_OutboundImplSet"
 
-// OutboundImplRemovedEvent represents the OutboundImplRemovedEvent event.
-// Topics: [vvr_OutboundImplRemoved]
-type OutboundImplRemovedEvent struct {
-	DestChainSelector uint64
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OutboundImplRemovedEventTopic is the event topic identifier.
-const OutboundImplRemovedEventTopic = "vvr_OutboundImplRemoved"
-
 // FeeAggregatorSetEvent represents the FeeAggregatorSetEvent event.
 // Topics: [vvr_FeeAggregatorSet]
 type FeeAggregatorSetEvent struct {
@@ -316,6 +368,30 @@ type FeeAggregatorSetEvent struct {
 // FeeAggregatorSetEventTopic is the event topic identifier.
 const FeeAggregatorSetEventTopic = "vvr_FeeAggregatorSet"
 
+// InboundImplRemovedEvent represents the InboundImplRemovedEvent event.
+// Topics: [vvr_InboundImplRemoved]
+type InboundImplRemovedEvent struct {
+	Version [4]byte
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// InboundImplRemovedEventTopic is the event topic identifier.
+const InboundImplRemovedEventTopic = "vvr_InboundImplRemoved"
+
+// OutboundImplRemovedEvent represents the OutboundImplRemovedEvent event.
+// Topics: [vvr_OutboundImplRemoved]
+type OutboundImplRemovedEvent struct {
+	DestChainSelector uint64
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OutboundImplRemovedEventTopic is the event topic identifier.
+const OutboundImplRemovedEventTopic = "vvr_OutboundImplRemoved"
+
 // OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
 // Topics: [vvr_OwnerTransferred]
 type OwnershipTransferredEvent struct {
@@ -327,6 +403,71 @@ type OwnershipTransferredEvent struct {
 
 // OwnershipTransferredEventTopic is the event topic identifier.
 const OwnershipTransferredEventTopic = "vvr_OwnerTransferred"
+
+// RoleGrantedEvent represents the RoleGrantedEvent event.
+// Topics: [auth_RoleGranted]
+type RoleGrantedEvent struct {
+	Role    Symbol
+	Account string
+	Sender  string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// RoleGrantedEventTopic is the event topic identifier.
+const RoleGrantedEventTopic = "auth_RoleGranted"
+
+// RoleRevokedEvent represents the RoleRevokedEvent event.
+// Topics: [auth_RoleRevoked]
+type RoleRevokedEvent struct {
+	Role    Symbol
+	Account string
+	Sender  string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// RoleRevokedEventTopic is the event topic identifier.
+const RoleRevokedEventTopic = "auth_RoleRevoked"
+
+// OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
+// Topics: [auth_OwnerTransferred]
+type OwnershipTransferredEvent struct {
+	PreviousOwner string
+	NewOwner      string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OwnershipTransferredEventTopic is the event topic identifier.
+const OwnershipTransferredEventTopic = "auth_OwnerTransferred"
+
+// AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
+// Topics: [auth_CallerAdded]
+type AuthorizedCallerAddedEvent struct {
+	Caller string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AuthorizedCallerAddedEventTopic is the event topic identifier.
+const AuthorizedCallerAddedEventTopic = "auth_CallerAdded"
+
+// AuthorizedCallerRemovedEvent represents the AuthorizedCallerRemovedEvent event.
+// Topics: [auth_CallerRemoved]
+type AuthorizedCallerRemovedEvent struct {
+	Caller string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AuthorizedCallerRemovedEventTopic is the event topic identifier.
+const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
 
 // OwnershipTransferStartedEvent represents the OwnershipTransferStartedEvent event.
 // Topics: [auth_OwnerTransferStart]

@@ -1027,6 +1027,7 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-interfaces",
  "common-message",
  "soroban-sdk",
 ]
