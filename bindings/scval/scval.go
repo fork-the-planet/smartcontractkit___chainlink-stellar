@@ -72,6 +72,15 @@ func Bytes4ToScVal(b [4]byte) xdr.ScVal {
 	}
 }
 
+// Bytes16ToScVal converts a [16]byte to an xdr.ScVal.
+func Bytes16ToScVal(b [16]byte) xdr.ScVal {
+	bytes := xdr.ScBytes(b[:])
+	return xdr.ScVal{
+		Type:  xdr.ScValTypeScvBytes,
+		Bytes: &bytes,
+	}
+}
+
 // Bytes32ToScVal converts a [32]byte to an xdr.ScVal.
 func Bytes32ToScVal(b [32]byte) xdr.ScVal {
 	bytes := xdr.ScBytes(b[:])
@@ -272,6 +281,20 @@ func Bytes4FromScVal(val xdr.ScVal) ([4]byte, error) {
 	return result, nil
 }
 
+// Bytes16FromScVal extracts a [16]byte from an xdr.ScVal containing BytesN<16>.
+func Bytes16FromScVal(val xdr.ScVal) ([16]byte, error) {
+	bytes, ok := val.GetBytes()
+	if !ok {
+		return [16]byte{}, fmt.Errorf("not a bytes type: %v", val.Type)
+	}
+	if len(bytes) != 16 {
+		return [16]byte{}, fmt.Errorf("expected 16 bytes, got %d", len(bytes))
+	}
+	var result [16]byte
+	copy(result[:], bytes)
+	return result, nil
+}
+
 // Bytes32FromScVal extracts a [32]byte from an xdr.ScVal containing BytesN<32>.
 func Bytes32FromScVal(val xdr.ScVal) ([32]byte, error) {
 	bytes, ok := val.GetBytes()
@@ -375,6 +398,15 @@ func Bytes4SliceToScVal(items [][4]byte) xdr.ScVal {
 	scVals := make([]xdr.ScVal, len(items))
 	for i, item := range items {
 		scVals[i] = Bytes4ToScVal(item)
+	}
+	return VecToScVal(scVals)
+}
+
+// Bytes16SliceToScVal converts a slice of [16]byte to an xdr.ScVal vector (for Vec<BytesN<16>>).
+func Bytes16SliceToScVal(items [][16]byte) xdr.ScVal {
+	scVals := make([]xdr.ScVal, len(items))
+	for i, item := range items {
+		scVals[i] = Bytes16ToScVal(item)
 	}
 	return VecToScVal(scVals)
 }
