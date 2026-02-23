@@ -53,16 +53,6 @@ fn setup() -> (
     (env, client, owner, rmn_proxy, storage_locations)
 }
 
-fn setup_uninitialized() -> (Env, CommitteeVerifierContractClient<'static>) {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register(CommitteeVerifierContract, ());
-    let client = CommitteeVerifierContractClient::new(&env, &contract_id);
-
-    (env, client)
-}
-
 // ============================================================
 // Initialization Tests
 // ============================================================
