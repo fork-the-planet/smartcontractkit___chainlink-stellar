@@ -23,6 +23,7 @@ jobs:
         with:
           toolchain: "1.93.1"
           targets: wasm32v1-none
+          components: rustfmt
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
