@@ -18,7 +18,7 @@ type InboundImplementationArgs struct {
 func (s InboundImplementationArgs) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"verifier": scval.AddressToScVal(s.Verifier),
-		"version":  scval.Bytes32ToScVal(s.Version),
+		"version":  scval.Bytes4ToScVal(s.Version),
 	})
 }
 
@@ -44,7 +44,7 @@ func InboundImplementationArgsFromScVal(val xdr.ScVal) (*InboundImplementationAr
 			}
 			result.Verifier = v
 		case "version":
-			v, err := scval.Bytes32FromScVal(entry.Val)
+			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("version: %w", err)
 			}
@@ -104,15 +104,15 @@ func OutboundImplementationArgsFromScVal(val xdr.ScVal) (*OutboundImplementation
 
 // InboundImplementationUpdate represents the InboundImplementationUpdate struct from the contract.
 type InboundImplementationUpdate struct {
-	Verifier Address
+	Verifier *string
 	Version  [4]byte
 }
 
 // ToScVal converts InboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s InboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"verifier": scval.MustToScVal((s.Verifier).ToScVal()),
-		"version":  scval.Bytes32ToScVal(s.Version),
+		"verifier": scval.OptionalAddressToScVal(s.Verifier),
+		"version":  scval.Bytes4ToScVal(s.Version),
 	})
 }
 
@@ -132,13 +132,13 @@ func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementation
 
 		switch string(key) {
 		case "verifier":
-			v, err := scval.AddressFromScVal(entry.Val)
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}
-			result.Verifier = *v
+			result.Verifier = v
 		case "version":
-			v, err := scval.Bytes32FromScVal(entry.Val)
+			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("version: %w", err)
 			}
@@ -152,14 +152,14 @@ func InboundImplementationUpdateFromScVal(val xdr.ScVal) (*InboundImplementation
 // OutboundImplementationUpdate represents the OutboundImplementationUpdate struct from the contract.
 type OutboundImplementationUpdate struct {
 	DestChainSelector uint64
-	Verifier          Address
+	Verifier          *string
 }
 
 // ToScVal converts OutboundImplementationUpdate to an xdr.ScVal for contract calls.
 func (s OutboundImplementationUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"verifier":            scval.MustToScVal((s.Verifier).ToScVal()),
+		"verifier":            scval.OptionalAddressToScVal(s.Verifier),
 	})
 }
 
@@ -185,11 +185,175 @@ func OutboundImplementationUpdateFromScVal(val xdr.ScVal) (*OutboundImplementati
 			}
 			result.DestChainSelector = v
 		case "verifier":
-			v, err := scval.AddressFromScVal(entry.Val)
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("verifier: %w", err)
 			}
 			result.Verifier = v
+		}
+	}
+
+	return result, nil
+}
+
+// TokenAmount represents the TokenAmount struct from the contract.
+type TokenAmount struct {
+	Amount int64
+	Token  string
+}
+
+// ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
+func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"amount": scval.I128ToScVal(s.Amount),
+		"token":  scval.AddressToScVal(s.Token),
+	})
+}
+
+// TokenAmountFromScVal parses an xdr.ScVal into TokenAmount.
+func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &TokenAmount{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "amount":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("amount: %w", err)
+			}
+			result.Amount = v
+		case "token":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("token: %w", err)
+			}
+			result.Token = v
+		}
+	}
+
+	return result, nil
+}
+
+// AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
+type AnyToStellarMessage struct {
+	Placeholder uint64
+}
+
+// ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
+func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"placeholder": scval.Uint64ToScVal(s.Placeholder),
+	})
+}
+
+// AnyToStellarMessageFromScVal parses an xdr.ScVal into AnyToStellarMessage.
+func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AnyToStellarMessage{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "placeholder":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("placeholder: %w", err)
+			}
+			result.Placeholder = v
+		}
+	}
+
+	return result, nil
+}
+
+// StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
+type StellarToAnyMessage struct {
+	Data         []byte
+	ExtraArgs    []byte
+	FeeToken     string
+	Receiver     []byte
+	TokenAmounts []TokenAmount
+}
+
+// ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
+func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"data":          scval.BytesToScVal(s.Data),
+		"extra_args":    scval.BytesToScVal(s.ExtraArgs),
+		"fee_token":     scval.AddressToScVal(s.FeeToken),
+		"receiver":      scval.BytesToScVal(s.Receiver),
+		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
+	})
+}
+
+// StellarToAnyMessageFromScVal parses an xdr.ScVal into StellarToAnyMessage.
+func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &StellarToAnyMessage{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "data":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("data is not bytes")
+			}
+			result.Data = []byte(v)
+		case "extra_args":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("extra_args is not bytes")
+			}
+			result.ExtraArgs = []byte(v)
+		case "fee_token":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("fee_token: %w", err)
+			}
+			result.FeeToken = v
+		case "receiver":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("receiver is not bytes")
+			}
+			result.Receiver = []byte(v)
+		case "token_amounts":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("token_amounts is not a vec")
+			}
+			result.TokenAmounts = make([]TokenAmount, len(*vec))
+			for i, item := range *vec {
+				v, err := TokenAmountFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.TokenAmounts[i] = *v
+			}
 		}
 	}
 
@@ -407,7 +571,7 @@ const OwnershipTransferredEventTopic = "vvr_OwnerTransferred"
 // RoleGrantedEvent represents the RoleGrantedEvent event.
 // Topics: [auth_RoleGranted]
 type RoleGrantedEvent struct {
-	Role    Symbol
+	Role    string
 	Account string
 	Sender  string
 	// Event metadata
@@ -421,7 +585,7 @@ const RoleGrantedEventTopic = "auth_RoleGranted"
 // RoleRevokedEvent represents the RoleRevokedEvent event.
 // Topics: [auth_RoleRevoked]
 type RoleRevokedEvent struct {
-	Role    Symbol
+	Role    string
 	Account string
 	Sender  string
 	// Event metadata
@@ -431,19 +595,6 @@ type RoleRevokedEvent struct {
 
 // RoleRevokedEventTopic is the event topic identifier.
 const RoleRevokedEventTopic = "auth_RoleRevoked"
-
-// OwnershipTransferredEvent represents the OwnershipTransferredEvent event.
-// Topics: [auth_OwnerTransferred]
-type OwnershipTransferredEvent struct {
-	PreviousOwner string
-	NewOwner      string
-	// Event metadata
-	Ledger uint32
-	TxHash string
-}
-
-// OwnershipTransferredEventTopic is the event topic identifier.
-const OwnershipTransferredEventTopic = "auth_OwnerTransferred"
 
 // AuthorizedCallerAddedEvent represents the AuthorizedCallerAddedEvent event.
 // Topics: [auth_CallerAdded]

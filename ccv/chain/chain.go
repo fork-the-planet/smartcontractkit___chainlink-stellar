@@ -34,7 +34,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
-	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/onramp"
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
