@@ -6,7 +6,7 @@ build:
 	stellar contract build
 
 generate-interfaces:
-	./scripts/gen_interfaces.sh
+	./scripts/gen_interfaces.sh && cargo fmt -p common-interfaces
 
 test:
 	cargo test --workspace
