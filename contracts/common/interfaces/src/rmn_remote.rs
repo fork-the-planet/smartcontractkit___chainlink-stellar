@@ -1,29 +1,11 @@
 #[soroban_sdk::contractargs(name = "RmnRemoteArgs")]
 #[soroban_sdk::contractclient(name = "RmnRemoteClient")]
 pub trait RmnRemoteInterface {
-    fn init_owner(
+    fn curse(
         env: soroban_sdk::Env,
-        owner: soroban_sdk::Address,
+        subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
     ) -> Result<(), CCIPError>;
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
-    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
-    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
-    fn transfer_ownership(
-        env: soroban_sdk::Env,
-        new_owner: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
-    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
-    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
-    fn set_new_owner(
-        env: soroban_sdk::Env,
-        new_owner: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn initialize(
-        env: soroban_sdk::Env,
-        owner: soroban_sdk::Address,
-        local_chain_selector: u64,
-    ) -> Result<(), CCIPError>;
     fn verify(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
@@ -31,31 +13,54 @@ pub trait RmnRemoteInterface {
         merkle_root: soroban_sdk::BytesN<32>,
         signatures: soroban_sdk::Vec<(soroban_sdk::BytesN<32>, soroban_sdk::BytesN<64>)>,
     ) -> Result<(), CCIPError>;
-    fn set_config(env: soroban_sdk::Env, new_config: Config) -> Result<(), CCIPError>;
-    fn get_versioned_config(env: soroban_sdk::Env) -> Result<(u32, Config), CCIPError>;
-    fn get_local_chain_selector(env: soroban_sdk::Env) -> Result<u64, CCIPError>;
-    fn curse(
-        env: soroban_sdk::Env,
-        subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
-    ) -> Result<(), CCIPError>;
     fn uncurse(
         env: soroban_sdk::Env,
         subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
     ) -> Result<(), CCIPError>;
+    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
+    fn is_cursed(env: soroban_sdk::Env) -> bool;
+    fn init_owner(
+        env: soroban_sdk::Env,
+        owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn initialize(
+        env: soroban_sdk::Env,
+        owner: soroban_sdk::Address,
+        local_chain_selector: u64,
+    ) -> Result<(), CCIPError>;
+    fn set_config(env: soroban_sdk::Env, new_config: Config) -> Result<(), CCIPError>;
+    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn set_new_owner(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn transfer_ownership(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_cursed_subjects(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::BytesN<16>>, CCIPError>;
-    fn is_cursed(env: soroban_sdk::Env) -> bool;
+    fn get_versioned_config(env: soroban_sdk::Env) -> Result<(u32, Config), CCIPError>;
     fn is_cursed_by_subject(
         env: soroban_sdk::Env,
         subject: soroban_sdk::BytesN<16>,
     ) -> bool;
+    fn get_local_chain_selector(env: soroban_sdk::Env) -> Result<u64, CCIPError>;
+    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TokenAmount {
     pub amount: i128,
     pub token: soroban_sdk::Address,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AnyToStellarMessage {
+    pub placeholder: u64,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -68,21 +73,16 @@ pub struct StellarToAnyMessage {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct AnyToStellarMessage {
-    pub placeholder: u64,
+pub struct Config {
+    pub f_sign: u64,
+    pub rmn_home_config_digest: soroban_sdk::BytesN<32>,
+    pub signers: soroban_sdk::Vec<Signer>,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Signer {
     pub node_index: u64,
     pub onchain_pub_key: soroban_sdk::BytesN<32>,
-}
-#[soroban_sdk::contracttype(export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Config {
-    pub f_sign: u64,
-    pub rmn_home_config_digest: soroban_sdk::BytesN<32>,
-    pub signers: soroban_sdk::Vec<Signer>,
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -161,22 +161,6 @@ pub enum CCIPError {
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
 }
-#[soroban_sdk::contractevent(topics = ["auth_OwnerTransferStart"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OwnershipTransferStartedEvent {
-    pub previous_owner: soroban_sdk::Address,
-    pub new_owner: soroban_sdk::Address,
-}
-#[soroban_sdk::contractevent(topics = ["auth_CallerAdded"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct AuthorizedCallerAddedEvent {
-    pub caller: soroban_sdk::Address,
-}
-#[soroban_sdk::contractevent(topics = ["auth_CallerRemoved"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct AuthorizedCallerRemovedEvent {
-    pub caller: soroban_sdk::Address,
-}
 #[soroban_sdk::contractevent(topics = ["auth_RoleGranted"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct RoleGrantedEvent {
@@ -191,12 +175,21 @@ pub struct RoleRevokedEvent {
     pub account: soroban_sdk::Address,
     pub sender: soroban_sdk::Address,
 }
-#[soroban_sdk::contractevent(topics = ["rmn_ConfigSet"], export = false)]
+#[soroban_sdk::contractevent(topics = ["auth_CallerAdded"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ConfigSetEvent {
-    pub version: u32,
-    pub num_signers: u32,
-    pub f_sign: u64,
+pub struct AuthorizedCallerAddedEvent {
+    pub caller: soroban_sdk::Address,
+}
+#[soroban_sdk::contractevent(topics = ["auth_CallerRemoved"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AuthorizedCallerRemovedEvent {
+    pub caller: soroban_sdk::Address,
+}
+#[soroban_sdk::contractevent(topics = ["auth_OwnerTransferStart"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OwnershipTransferStartedEvent {
+    pub previous_owner: soroban_sdk::Address,
+    pub new_owner: soroban_sdk::Address,
 }
 #[soroban_sdk::contractevent(topics = ["rmn_Cursed"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -207,5 +200,12 @@ pub struct CursedEvent {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct UncursedEvent {
     pub subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
+}
+#[soroban_sdk::contractevent(topics = ["rmn_ConfigSet"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ConfigSetEvent {
+    pub version: u32,
+    pub num_signers: u32,
+    pub f_sign: u64,
 }
 

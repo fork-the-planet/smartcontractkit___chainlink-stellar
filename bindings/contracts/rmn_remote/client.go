@@ -31,15 +31,15 @@ func (c *RmnRemoteClient) ContractID() string {
 	return c.contractID
 }
 
-// InitOwner calls the init_owner function on the contract.
-func (c *RmnRemoteClient) InitOwner(ctx context.Context, owner string) error {
+// Curse calls the curse function on the contract.
+func (c *RmnRemoteClient) Curse(ctx context.Context, subjects [][16]byte) error {
 	args := []xdr.ScVal{
-		scval.AddressToScVal(owner),
+		scval.Bytes16SliceToScVal(subjects),
 	}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "init_owner", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "curse", args)
 	if err != nil {
-		return fmt.Errorf("failed to call init_owner: %w", err)
+		return fmt.Errorf("failed to call curse: %w", err)
 	}
 
 	_ = result // void return
@@ -66,6 +66,21 @@ func (c *RmnRemoteClient) Owner(ctx context.Context) (*string, error) {
 	return v, nil
 }
 
+// Uncurse calls the uncurse function on the contract.
+func (c *RmnRemoteClient) Uncurse(ctx context.Context, subjects [][16]byte) error {
+	args := []xdr.ScVal{
+		scval.Bytes16SliceToScVal(subjects),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "uncurse", args)
+	if err != nil {
+		return fmt.Errorf("failed to call uncurse: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // IsOwner calls the is_owner function on the contract.
 func (c *RmnRemoteClient) IsOwner(ctx context.Context, addr string) error {
 	args := []xdr.ScVal{
@@ -75,6 +90,65 @@ func (c *RmnRemoteClient) IsOwner(ctx context.Context, addr string) error {
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
 	if err != nil {
 		return fmt.Errorf("failed to call is_owner: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// IsCursed calls the is_cursed function on the contract.
+func (c *RmnRemoteClient) IsCursed(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_cursed", args)
+	if err != nil {
+		return fmt.Errorf("failed to call is_cursed: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// InitOwner calls the init_owner function on the contract.
+func (c *RmnRemoteClient) InitOwner(ctx context.Context, owner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(owner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "init_owner", args)
+	if err != nil {
+		return fmt.Errorf("failed to call init_owner: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// Initialize calls the initialize function on the contract.
+func (c *RmnRemoteClient) Initialize(ctx context.Context, owner string, localChainSelector uint64) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(owner),
+		scval.Uint64ToScVal(localChainSelector),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
+	if err != nil {
+		return fmt.Errorf("failed to call initialize: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// SetConfig calls the set_config function on the contract.
+func (c *RmnRemoteClient) SetConfig(ctx context.Context, newConfig Config) error {
+	args := []xdr.ScVal{
+		scval.MustToScVal(newConfig.ToScVal()),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_config", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_config: %w", err)
 	}
 
 	_ = result // void return
@@ -101,15 +175,15 @@ func (c *RmnRemoteClient) RequireOwner(ctx context.Context) (string, error) {
 	return v, nil
 }
 
-// TransferOwnership calls the transfer_ownership function on the contract.
-func (c *RmnRemoteClient) TransferOwnership(ctx context.Context, newOwner string) error {
+// SetNewOwner calls the set_new_owner function on the contract.
+func (c *RmnRemoteClient) SetNewOwner(ctx context.Context, newOwner string) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(newOwner),
 	}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_new_owner", args)
 	if err != nil {
-		return fmt.Errorf("failed to call transfer_ownership: %w", err)
+		return fmt.Errorf("failed to call set_new_owner: %w", err)
 	}
 
 	_ = result // void return
@@ -149,122 +223,15 @@ func (c *RmnRemoteClient) GetPendingOwner(ctx context.Context) (*string, error) 
 	return v, nil
 }
 
-// CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
-func (c *RmnRemoteClient) CancelOwnershipTransfer(ctx context.Context) error {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "cancel_ownership_transfer", args)
-	if err != nil {
-		return fmt.Errorf("failed to call cancel_ownership_transfer: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// SetNewOwner calls the set_new_owner function on the contract.
-func (c *RmnRemoteClient) SetNewOwner(ctx context.Context, newOwner string) error {
+// TransferOwnership calls the transfer_ownership function on the contract.
+func (c *RmnRemoteClient) TransferOwnership(ctx context.Context, newOwner string) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(newOwner),
 	}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_new_owner", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
 	if err != nil {
-		return fmt.Errorf("failed to call set_new_owner: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// Initialize calls the initialize function on the contract.
-func (c *RmnRemoteClient) Initialize(ctx context.Context, owner string, localChainSelector uint64) error {
-	args := []xdr.ScVal{
-		scval.AddressToScVal(owner),
-		scval.Uint64ToScVal(localChainSelector),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
-	if err != nil {
-		return fmt.Errorf("failed to call initialize: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// SetConfig calls the set_config function on the contract.
-func (c *RmnRemoteClient) SetConfig(ctx context.Context, newConfig Config) error {
-	args := []xdr.ScVal{
-		scval.MustToScVal(newConfig.ToScVal()),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_config", args)
-	if err != nil {
-		return fmt.Errorf("failed to call set_config: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// GetVersionedConfig calls the get_versioned_config function on the contract.
-func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) error {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_versioned_config", args)
-	if err != nil {
-		return fmt.Errorf("failed to call get_versioned_config: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// GetLocalChainSelector calls the get_local_chain_selector function on the contract.
-func (c *RmnRemoteClient) GetLocalChainSelector(ctx context.Context) (uint64, error) {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_local_chain_selector", args)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call get_local_chain_selector: %w", err)
-	}
-
-	if result == nil {
-		return 0, fmt.Errorf("no return value from get_local_chain_selector")
-	}
-
-	v, err := scval.Uint64FromScVal(*result)
-	if err != nil {
-		return 0, err
-	}
-	return v, nil
-}
-
-// Curse calls the curse function on the contract.
-func (c *RmnRemoteClient) Curse(ctx context.Context, subjects [][16]byte) error {
-	args := []xdr.ScVal{
-		scval.Bytes16SliceToScVal(subjects),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "curse", args)
-	if err != nil {
-		return fmt.Errorf("failed to call curse: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// Uncurse calls the uncurse function on the contract.
-func (c *RmnRemoteClient) Uncurse(ctx context.Context, subjects [][16]byte) error {
-	args := []xdr.ScVal{
-		scval.Bytes16SliceToScVal(subjects),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "uncurse", args)
-	if err != nil {
-		return fmt.Errorf("failed to call uncurse: %w", err)
+		return fmt.Errorf("failed to call transfer_ownership: %w", err)
 	}
 
 	_ = result // void return
@@ -299,13 +266,13 @@ func (c *RmnRemoteClient) GetCursedSubjects(ctx context.Context) ([][16]byte, er
 	return out, nil
 }
 
-// IsCursed calls the is_cursed function on the contract.
-func (c *RmnRemoteClient) IsCursed(ctx context.Context) error {
+// GetVersionedConfig calls the get_versioned_config function on the contract.
+func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) error {
 	args := []xdr.ScVal{}
 
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_cursed", args)
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_versioned_config", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_cursed: %w", err)
+		return fmt.Errorf("failed to call get_versioned_config: %w", err)
 	}
 
 	_ = result // void return
@@ -327,210 +294,37 @@ func (c *RmnRemoteClient) IsCursedBySubject(ctx context.Context, subject [16]byt
 	return nil
 }
 
-// WaitForOwnershipTransferStartedEvent waits for a OwnershipTransferStartedEvent event.
-func (c *RmnRemoteClient) WaitForOwnershipTransferStartedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferStartedEvent) bool) (*OwnershipTransferStartedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+// GetLocalChainSelector calls the get_local_chain_selector function on the contract.
+func (c *RmnRemoteClient) GetLocalChainSelector(ctx context.Context) (uint64, error) {
+	args := []xdr.ScVal{}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferStartedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_local_chain_selector", args)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call get_local_chain_selector: %w", err)
 	}
+
+	if result == nil {
+		return 0, fmt.Errorf("no return value from get_local_chain_selector")
+	}
+
+	v, err := scval.Uint64FromScVal(*result)
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
+// CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
+func (c *RmnRemoteClient) CancelOwnershipTransfer(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "cancel_ownership_transfer", args)
+	if err != nil {
+		return fmt.Errorf("failed to call cancel_ownership_transfer: %w", err)
 	}
 
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &OwnershipTransferStartedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "previous_owner":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.PreviousOwner = v
-			}
-		case "new_owner":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.NewOwner = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForAuthorizedCallerAddedEvent waits for a AuthorizedCallerAddedEvent event.
-func (c *RmnRemoteClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerAddedEvent) bool) (*AuthorizedCallerAddedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerAddedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &AuthorizedCallerAddedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "caller":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Caller = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForAuthorizedCallerRemovedEvent waits for a AuthorizedCallerRemovedEvent event.
-func (c *RmnRemoteClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerRemovedEvent) bool) (*AuthorizedCallerRemovedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerRemovedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &AuthorizedCallerRemovedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "caller":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Caller = v
-			}
-		}
-	}
-
-	return result, nil
+	_ = result // void return
+	return nil
 }
 
 // WaitForRoleGrantedEvent waits for a RoleGrantedEvent event.
@@ -687,8 +481,8 @@ func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	return result, nil
 }
 
-// WaitForConfigSetEvent waits for a ConfigSetEvent event.
-func (c *RmnRemoteClient) WaitForConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ConfigSetEvent) bool) (*ConfigSetEvent, error) {
+// WaitForAuthorizedCallerAddedEvent waits for a AuthorizedCallerAddedEvent event.
+func (c *RmnRemoteClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerAddedEvent) bool) (*AuthorizedCallerAddedEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -702,13 +496,13 @@ func (c *RmnRemoteClient) WaitForConfigSetEvent(ctx context.Context, startLedger
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ConfigSetEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerAddedEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := parseConfigSetEvent(e)
+				parsed, err := parseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -720,7 +514,7 @@ func (c *RmnRemoteClient) WaitForConfigSetEvent(ctx context.Context, startLedger
 	}
 }
 
-func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -731,7 +525,7 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &ConfigSetEvent{
+	result := &AuthorizedCallerAddedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -743,14 +537,149 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 		}
 
 		switch string(key) {
-		case "version":
-			// TODO: parse complex type
-		case "num_signers":
-			// TODO: parse complex type
-		case "f_sign":
-			v, err := scval.Uint64FromScVal(entry.Val)
+		case "caller":
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
-				result.FSign = v
+				result.Caller = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForAuthorizedCallerRemovedEvent waits for a AuthorizedCallerRemovedEvent event.
+func (c *RmnRemoteClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerRemovedEvent) bool) (*AuthorizedCallerRemovedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerRemovedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &AuthorizedCallerRemovedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "caller":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Caller = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForOwnershipTransferStartedEvent waits for a OwnershipTransferStartedEvent event.
+func (c *RmnRemoteClient) WaitForOwnershipTransferStartedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferStartedEvent) bool) (*OwnershipTransferStartedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferStartedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseOwnershipTransferStartedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &OwnershipTransferStartedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "previous_owner":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.PreviousOwner = v
+			}
+		case "new_owner":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.NewOwner = v
 			}
 		}
 	}
@@ -880,6 +809,77 @@ func parseUncursedEvent(e protocolrpc.EventInfo) (*UncursedEvent, error) {
 		switch string(key) {
 		case "subjects":
 			// TODO: parse complex type
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForConfigSetEvent waits for a ConfigSetEvent event.
+func (c *RmnRemoteClient) WaitForConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ConfigSetEvent) bool) (*ConfigSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ConfigSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := parseConfigSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &ConfigSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "version":
+			// TODO: parse complex type
+		case "num_signers":
+			// TODO: parse complex type
+		case "f_sign":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.FSign = v
+			}
 		}
 	}
 
