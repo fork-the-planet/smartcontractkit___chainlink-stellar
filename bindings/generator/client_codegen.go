@@ -71,23 +71,23 @@ func generateConstructor(b *strings.Builder, contract *Contract) {
 
 func generateMethod(b *strings.Builder, contract *Contract, fn Function) {
 	methodName := snakeToPascal(fn.Name)
-	
+
 	// Determine if this is a read-only method (getter) or a state-changing method
 	isReadOnly := isReadOnlyFunction(fn)
-	
+
 	// Parse return type
 	returnType, returnsValue := parseReturnType(fn.Returns)
 
 	// Generate method signature
 	b.WriteString(fmt.Sprintf("// %s calls the %s function on the contract.\n", methodName, fn.Name))
-	
+
 	// Build parameter list
 	params := []string{"ctx context.Context"}
 	for _, input := range fn.Inputs {
 		goType := rustTypeToGo(input.Type)
 		params = append(params, fmt.Sprintf("%s %s", snakeToCamel(input.Name), goType))
 	}
-	
+
 	// Build return type
 	var returns string
 	if returnsValue {
@@ -121,7 +121,7 @@ func generateMethod(b *strings.Builder, contract *Contract, fn Function) {
 	} else {
 		b.WriteString(fmt.Sprintf("\tresult, err := c.invoker.InvokeContract(ctx, c.contractID, \"%s\", args)\n", fn.Name))
 	}
-	
+
 	b.WriteString("\tif err != nil {\n")
 	if returnsValue {
 		b.WriteString(fmt.Sprintf("\t\treturn %s, fmt.Errorf(\"failed to call %s: %%w\", err)\n", zeroValue(returnType), fn.Name))
@@ -270,7 +270,7 @@ func generateEventHelpers(b *strings.Builder, contract *Contract) {
 	// Generate WaitForEvent helper
 	for _, event := range contract.Events {
 		b.WriteString(fmt.Sprintf("// WaitFor%s waits for a %s event.\n", event.Name, event.Name))
-		b.WriteString(fmt.Sprintf("func (c *%sClient) WaitFor%s(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*%s) bool) (*%s, error) {\n", 
+		b.WriteString(fmt.Sprintf("func (c *%sClient) WaitFor%s(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*%s) bool) (*%s, error) {\n",
 			contract.Name, event.Name, event.Name, event.Name))
 		b.WriteString("\tstartTime := time.Now()\n")
 		b.WriteString("\tticker := time.NewTicker(2 * time.Second)\n")
@@ -325,12 +325,12 @@ func generateEventParser(b *strings.Builder, event Event) {
 	b.WriteString("\t\t\tcontinue\n")
 	b.WriteString("\t\t}\n\n")
 	b.WriteString("\t\tswitch string(key) {\n")
-	
+
 	for _, f := range event.Fields {
 		b.WriteString(fmt.Sprintf("\t\tcase \"%s\":\n", f.Name))
 		generateEventFieldParsing(b, f, "result."+snakeToPascal(f.Name))
 	}
-	
+
 	b.WriteString("\t\t}\n")
 	b.WriteString("\t}\n\n")
 	b.WriteString("\treturn result, nil\n")
@@ -387,10 +387,10 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 
 func isReadOnlyFunction(fn Function) bool {
 	name := strings.ToLower(fn.Name)
-	return strings.HasPrefix(name, "get_") || 
-		   strings.HasPrefix(name, "is_") ||
-		   name == "owner" ||
-		   name == "balance"
+	return strings.HasPrefix(name, "get_") ||
+		strings.HasPrefix(name, "is_") ||
+		name == "owner" ||
+		name == "balance"
 }
 
 func parseReturnType(returnStr string) (string, bool) {

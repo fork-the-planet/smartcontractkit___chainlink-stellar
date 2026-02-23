@@ -11,14 +11,14 @@ import (
 // TokenAmount represents the TokenAmount struct from the contract.
 type TokenAmount struct {
 	Amount int64
-	Token string
+	Token  string
 }
 
 // ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
 func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"amount": scval.I128ToScVal(s.Amount),
-		"token": scval.AddressToScVal(s.Token),
+		"token":  scval.AddressToScVal(s.Token),
 	})
 }
 
@@ -96,20 +96,20 @@ func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
 
 // StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
 type StellarToAnyMessage struct {
-	Data []byte
-	ExtraArgs []byte
-	FeeToken string
-	Receiver []byte
+	Data         []byte
+	ExtraArgs    []byte
+	FeeToken     string
+	Receiver     []byte
 	TokenAmounts []TokenAmount
 }
 
 // ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
 func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"data": scval.BytesToScVal(s.Data),
-		"extra_args": scval.BytesToScVal(s.ExtraArgs),
-		"fee_token": scval.AddressToScVal(s.FeeToken),
-		"receiver": scval.BytesToScVal(s.Receiver),
+		"data":          scval.BytesToScVal(s.Data),
+		"extra_args":    scval.BytesToScVal(s.ExtraArgs),
+		"fee_token":     scval.AddressToScVal(s.FeeToken),
+		"receiver":      scval.BytesToScVal(s.Receiver),
 		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
 	})
 }
@@ -174,82 +174,82 @@ func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
 
 // CCIPError represents the contract error codes.
 const (
-	CCIPErrorNotInitialized = 1
-	CCIPErrorAlreadyInitialized = 2
-	CCIPErrorUnauthorized = 3
-	CCIPErrorNotOwner = 4
-	CCIPErrorNoPendingOwner = 5
-	CCIPErrorCallerNotAuthorized = 6
-	CCIPErrorCallerAlreadyAuthorized = 7
-	CCIPErrorCallerNotFound = 8
-	CCIPErrorRoleNotGranted = 9
-	CCIPErrorFeatureNotEnabled = 10
-	CCIPErrorRoleAlreadyGranted = 11
-	CCIPErrorCannotRenounceRole = 12
-	CCIPErrorInvalidVersionTag = 13
-	CCIPErrorInvalidSignatureLength = 14
-	CCIPErrorInvalidSignature = 15
-	CCIPErrorInvalidSignatureCount = 16
-	CCIPErrorInvalidSignatureThreshold = 17
-	CCIPErrorInvalidSignaturePubkey = 18
-	CCIPErrorSourceNotConfigured = 19
-	CCIPErrorInvalidVerifierResults = 20
-	CCIPErrorReentrantCall = 21
-	CCIPErrorTokenNotSupported = 22
-	CCIPErrorFeeTokenNotSupported = 23
-	CCIPErrorNoGasPriceAvailable = 24
-	CCIPErrorDestinationChainNotEnabled = 25
-	CCIPErrorInvalidExtraArgsTag = 26
-	CCIPErrorInvalidExtraArgsData = 27
-	CCIPErrorMessageGasLimitTooHigh = 28
-	CCIPErrorMessageTooLarge = 29
-	CCIPErrorUnsupportedNumberOfTokens = 30
-	CCIPErrorInvalidDestChainConfig = 31
-	CCIPErrorMessageFeeTooHigh = 32
-	CCIPErrorInvalidStaticConfig = 33
-	CCIPErrorInvalidTokenReceiver = 34
-	CCIPErrorSourceTokenDataTooLarge = 35
-	CCIPErrorInvalidDestBytesOverhead = 36
-	CCIPErrorDestinationChainNotSupported = 37
-	CCIPErrorMustBeCalledByRouter = 38
-	CCIPErrorRouterMustSetOriginalSender = 39
-	CCIPErrorCannotSendZeroTokens = 40
-	CCIPErrorCanOnlySendOneTokenPerMessage = 41
-	CCIPErrorUnsupportedToken = 42
-	CCIPErrorInvalidDestChainAddress = 43
-	CCIPErrorFeeExceedsMaxAllowed = 44
-	CCIPErrorInsufficientFeeTokenAmount = 45
-	CCIPErrorTokenReceiverNotAllowed = 46
-	CCIPErrorCursedByRMN = 47
-	CCIPErrorRemoteChainNotSupported = 48
-	CCIPErrorSenderNotAllowed = 49
-	CCIPErrorInvalidTokenAmount = 50
-	CCIPErrorInvalidReceiverAddress = 51
-	CCIPErrorInvalidConfig = 52
-	CCIPErrorInvalidVerifierResultsLength = 53
-	CCIPErrorInboundImplementationNotFound = 54
+	CCIPErrorNotInitialized                 = 1
+	CCIPErrorAlreadyInitialized             = 2
+	CCIPErrorUnauthorized                   = 3
+	CCIPErrorNotOwner                       = 4
+	CCIPErrorNoPendingOwner                 = 5
+	CCIPErrorCallerNotAuthorized            = 6
+	CCIPErrorCallerAlreadyAuthorized        = 7
+	CCIPErrorCallerNotFound                 = 8
+	CCIPErrorRoleNotGranted                 = 9
+	CCIPErrorFeatureNotEnabled              = 10
+	CCIPErrorRoleAlreadyGranted             = 11
+	CCIPErrorCannotRenounceRole             = 12
+	CCIPErrorInvalidVersionTag              = 13
+	CCIPErrorInvalidSignatureLength         = 14
+	CCIPErrorInvalidSignature               = 15
+	CCIPErrorInvalidSignatureCount          = 16
+	CCIPErrorInvalidSignatureThreshold      = 17
+	CCIPErrorInvalidSignaturePubkey         = 18
+	CCIPErrorSourceNotConfigured            = 19
+	CCIPErrorInvalidVerifierResults         = 20
+	CCIPErrorReentrantCall                  = 21
+	CCIPErrorTokenNotSupported              = 22
+	CCIPErrorFeeTokenNotSupported           = 23
+	CCIPErrorNoGasPriceAvailable            = 24
+	CCIPErrorDestinationChainNotEnabled     = 25
+	CCIPErrorInvalidExtraArgsTag            = 26
+	CCIPErrorInvalidExtraArgsData           = 27
+	CCIPErrorMessageGasLimitTooHigh         = 28
+	CCIPErrorMessageTooLarge                = 29
+	CCIPErrorUnsupportedNumberOfTokens      = 30
+	CCIPErrorInvalidDestChainConfig         = 31
+	CCIPErrorMessageFeeTooHigh              = 32
+	CCIPErrorInvalidStaticConfig            = 33
+	CCIPErrorInvalidTokenReceiver           = 34
+	CCIPErrorSourceTokenDataTooLarge        = 35
+	CCIPErrorInvalidDestBytesOverhead       = 36
+	CCIPErrorDestinationChainNotSupported   = 37
+	CCIPErrorMustBeCalledByRouter           = 38
+	CCIPErrorRouterMustSetOriginalSender    = 39
+	CCIPErrorCannotSendZeroTokens           = 40
+	CCIPErrorCanOnlySendOneTokenPerMessage  = 41
+	CCIPErrorUnsupportedToken               = 42
+	CCIPErrorInvalidDestChainAddress        = 43
+	CCIPErrorFeeExceedsMaxAllowed           = 44
+	CCIPErrorInsufficientFeeTokenAmount     = 45
+	CCIPErrorTokenReceiverNotAllowed        = 46
+	CCIPErrorCursedByRMN                    = 47
+	CCIPErrorRemoteChainNotSupported        = 48
+	CCIPErrorSenderNotAllowed               = 49
+	CCIPErrorInvalidTokenAmount             = 50
+	CCIPErrorInvalidReceiverAddress         = 51
+	CCIPErrorInvalidConfig                  = 52
+	CCIPErrorInvalidVerifierResultsLength   = 53
+	CCIPErrorInboundImplementationNotFound  = 54
 	CCIPErrorOutboundImplementationNotFound = 55
-	CCIPErrorInvalidAddress = 56
-	CCIPErrorInvalidChainSelector = 57
-	CCIPErrorInvalidVersion = 58
-	CCIPErrorInvalidCCVVersion = 59
-	CCIPErrorOffRampAlreadyExists = 60
-	CCIPErrorOffRampMismatch = 61
-	CCIPErrorBadRMNSignal = 62
-	CCIPErrorUnsupportedDestinationChain = 63
+	CCIPErrorInvalidAddress                 = 56
+	CCIPErrorInvalidChainSelector           = 57
+	CCIPErrorInvalidVersion                 = 58
+	CCIPErrorInvalidCCVVersion              = 59
+	CCIPErrorOffRampAlreadyExists           = 60
+	CCIPErrorOffRampMismatch                = 61
+	CCIPErrorBadRMNSignal                   = 62
+	CCIPErrorUnsupportedDestinationChain    = 63
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
 var CCIPErrorMessage = map[int]string{
-	1: "not initialized",
-	2: "already initialized",
-	3: "unauthorized",
-	4: "not owner",
-	5: "no pending owner",
-	6: "caller not authorized",
-	7: "caller already authorized",
-	8: "caller not found",
-	9: "role not granted",
+	1:  "not initialized",
+	2:  "already initialized",
+	3:  "unauthorized",
+	4:  "not owner",
+	5:  "no pending owner",
+	6:  "caller not authorized",
+	7:  "caller already authorized",
+	8:  "caller not found",
+	9:  "role not granted",
 	10: "feature not enabled",
 	11: "role already granted",
 	12: "cannot renounce role",
@@ -309,9 +309,9 @@ var CCIPErrorMessage = map[int]string{
 // RoleGrantedEvent represents the RoleGrantedEvent event.
 // Topics: [auth_RoleGranted]
 type RoleGrantedEvent struct {
-	Role string
+	Role    string
 	Account string
-	Sender string
+	Sender  string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -323,9 +323,9 @@ const RoleGrantedEventTopic = "auth_RoleGranted"
 // RoleRevokedEvent represents the RoleRevokedEvent event.
 // Topics: [auth_RoleRevoked]
 type RoleRevokedEvent struct {
-	Role string
+	Role    string
 	Account string
-	Sender string
+	Sender  string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -362,7 +362,7 @@ const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
 // Topics: [auth_OwnerTransferStart]
 type OwnershipTransferStartedEvent struct {
 	PreviousOwner string
-	NewOwner string
+	NewOwner      string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -382,4 +382,3 @@ type RmnSetEvent struct {
 
 // RmnSetEventTopic is the event topic identifier.
 const RmnSetEventTopic = "rmn_proxy_RmnSet"
-
