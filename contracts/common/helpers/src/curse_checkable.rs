@@ -1,6 +1,6 @@
 use common_error::CCIPError;
-use common_interfaces::rmn_proxy::RmnProxyClient;
 use common_guard::initializable::Initializable;
+use common_interfaces::rmn_proxy::RmnProxyClient;
 use soroban_sdk::{contracttrait, symbol_short, Env, Symbol};
 
 /// Cursable trait for contracts that can be cursed.
