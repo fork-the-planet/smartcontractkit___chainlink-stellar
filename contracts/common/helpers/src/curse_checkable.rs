@@ -1,7 +1,7 @@
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_interfaces::rmn_proxy::RmnProxyClient;
-use soroban_sdk::{Address, Env, Symbol, contracttrait, symbol_short};
+use soroban_sdk::{contracttrait, symbol_short, Address, Env, Symbol};
 
 /// Cursable trait for contracts that can be cursed.
 ///
@@ -34,10 +34,10 @@ pub trait CurseCheckable: Initializable {
             .instance()
             .get(&Self::RMN_PROXY)
             .ok_or(CCIPError::NotInitialized)?;
-        
+
         let rmn_proxy_client = RmnProxyClient::new(&env, &rmn_proxy);
         let cursed = rmn_proxy_client.is_cursed();
-        
+
         Ok(cursed)
     }
 
