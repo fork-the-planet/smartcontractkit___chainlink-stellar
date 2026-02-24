@@ -326,7 +326,7 @@ func (c *CommitteeVerifierClient) ForwardToResolver(ctx context.Context, destCha
 }
 
 // GetAllowlistEntry calls the get_allowlist_entry function on the contract.
-func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) ([]string, error) {
+func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) (Option<AllowListEntry>, error) {
 	args := []xdr.ScVal{
 		scval.Uint64ToScVal(key),
 	}
@@ -340,19 +340,7 @@ func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uin
 		return nil, fmt.Errorf("no return value from get_allowlist_entry")
 	}
 
-	vec, ok := result.GetVec()
-	if !ok || vec == nil {
-		return nil, fmt.Errorf("expected vec return type")
-	}
-	out := make([]string, len(*vec))
-	for i, item := range *vec {
-		v, err := scval.AddressFromScVal(item)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
-	}
-	return out, nil
+	return Option<AllowListEntry>FromScVal(*result)
 }
 
 // WithdrawFeeTokens calls the withdraw_fee_tokens function on the contract.
@@ -1497,3 +1485,4 @@ func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTran
 
 	return result, nil
 }
+

@@ -76,6 +76,12 @@ pub struct OutboundImplementationUpdate {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListEntry {
+    pub allowlist: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct AllowListUpdate {
     pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
     pub allowlist_enabled: bool,

@@ -55,10 +55,7 @@ pub trait CommitteeVerifierInterface {
         fee_token_amount: i128,
         verifier_args: soroban_sdk::Bytes,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
-    fn get_allowlist_entry(
-        env: soroban_sdk::Env,
-        key: u64,
-    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
+    fn get_allowlist_entry(env: soroban_sdk::Env, key: u64) -> Option<AllowListEntry>;
     fn withdraw_fee_tokens(
         env: soroban_sdk::Env,
         fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
@@ -122,6 +119,12 @@ pub struct RemoteChainConfig {
     pub payload_size_bytes: u32,
     pub remote_chain_selector: u64,
     pub router: Option<soroban_sdk::Address>,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListEntry {
+    pub allowlist: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

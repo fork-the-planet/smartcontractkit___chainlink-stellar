@@ -109,31 +109,33 @@ pub trait AllowListable: Ownable {
             let to_remove = update.removed_allowlisted_senders;
 
             // The call to `is_allowlist_enabled` will return false if the allowlist has never been set.
-            if !Self::is_allowlist_enabled(env, key) {
+            if !Self::is_allowlist_enabled(env, key) && !update.allowlist_enabled {
                 return Err(CCIPError::FeatureNotEnabled);
             }
 
-            let mut data: Map<u64, Vec<Address>> = env
+            let mut data: Map<u64, AllowListEntry> = env
                 .storage()
                 .instance()
                 .get(&Self::ALLOW_LIST)
                 .unwrap_or(Map::new(env));
 
-            let mut allowlist = data.get(key).unwrap_or(Vec::new(env));
+            let mut allowlist_entry = data
+                .get(key)
+                .unwrap_or(AllowListEntry { allowlist_enabled: update.allowlist_enabled, allowlist: Vec::new(env) });
 
             for address in to_add.iter() {
-                if !allowlist.contains(address.clone()) {
-                    allowlist.push_back(address.clone());
+                if !allowlist_entry.allowlist.contains(address.clone()) {
+                    allowlist_entry.allowlist.push_back(address.clone());
                 }
             }
 
             for address in to_remove.iter() {
-                if allowlist.contains(address.clone()) {
-                    allowlist.remove(allowlist.first_index_of(address.clone()).unwrap());
+                if allowlist_entry.allowlist.contains(address.clone()) {
+                    allowlist_entry.allowlist.remove(allowlist_entry.allowlist.first_index_of(address.clone()).unwrap());
                 }
             }
 
-            data.set(key, allowlist);
+            data.set(key, allowlist_entry);
             env.storage().instance().set(&Self::ALLOW_LIST, &data);
 
             Self::emit_allowlist_updated_event(env, key, &to_add, &to_remove);

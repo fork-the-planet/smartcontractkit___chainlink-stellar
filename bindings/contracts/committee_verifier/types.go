@@ -134,6 +134,60 @@ func RemoteChainConfigFromScVal(val xdr.ScVal) (*RemoteChainConfig, error) {
 	return result, nil
 }
 
+// AllowListEntry represents the AllowListEntry struct from the contract.
+type AllowListEntry struct {
+	Allowlist        []string
+	AllowlistEnabled bool
+}
+
+// ToScVal converts AllowListEntry to an xdr.ScVal for contract calls.
+func (s AllowListEntry) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"allowlist":         scval.AddressSliceToScVal(s.Allowlist),
+		"allowlist_enabled": scval.BoolToScVal(s.AllowlistEnabled),
+	})
+}
+
+// AllowListEntryFromScVal parses an xdr.ScVal into AllowListEntry.
+func AllowListEntryFromScVal(val xdr.ScVal) (*AllowListEntry, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AllowListEntry{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "allowlist":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("allowlist is not a vec")
+			}
+			result.Allowlist = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Allowlist[i] = v
+			}
+		case "allowlist_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("allowlist_enabled is not bool")
+			}
+			result.AllowlistEnabled = v
+		}
+	}
+
+	return result, nil
+}
+
 // AllowListUpdate represents the AllowListUpdate struct from the contract.
 type AllowListUpdate struct {
 	AddedAllowlistedSenders   []string
@@ -385,7 +439,7 @@ type SignatureQuorumConfig struct {
 // ToScVal converts SignatureQuorumConfig to an xdr.ScVal for contract calls.
 func (s SignatureQuorumConfig) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"signers":               scval.AddressBytes32SliceToScVal(s.Signers),
+		"signers":               scval.Bytes32SliceToScVal(s.Signers),
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 		"threshold":             scval.Uint32ToScVal(s.Threshold),
 	})

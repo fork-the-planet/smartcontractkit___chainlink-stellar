@@ -79,6 +79,7 @@ func TestCommitteeVerifier(t *testing.T) {
 		err := client.ApplyAllowlistUpdates(ctx, []ccvsbindings.AllowListUpdate{
 			{
 				DestChainSelector:         1,
+				AllowlistEnabled:          true,
 				AddedAllowlistedSenders:   []string{mockedAllowlistedSender},
 				RemovedAllowlistedSenders: []string{},
 			},
