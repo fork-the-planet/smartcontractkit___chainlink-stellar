@@ -208,18 +208,6 @@ impl OnRampContract {
         // Verify caller is the router
         dest_config.router.require_auth();
 
-        // Validate original sender
-        // Note: In Soroban, we can't check for "zero address" the same way as EVM
-        // The router must have explicitly set this
-
-        // Validate message
-        // TODO: move to message type impl
-        if message.token_amounts.len() > 1 {
-            // Exit reentrancy guard before returning
-            ReentrancyGuard::exit(&env);
-            return Err(CCIPError::CanOnlySendOneTokenPerMessage);
-        }
-
         // Parse extra args
         let extra_args_val = message.extra_args.to_val();
         let extra_args = GenericExtraArgsV3::try_from_val(&env, &extra_args_val)
@@ -236,7 +224,9 @@ impl OnRampContract {
 
         // Generate message ID (keccak256(messageBytes))
         let message_id = message.compute_message_id(&env);
-        let (verification_blobs, receipts) = Self::invoke_verifiers_internal(
+
+        // Invoke verifiers to get verification blobs and generate receipts
+        let (verifier_blobs, receipts) = Self::invoke_verifiers_internal(
             &env,
             &dest_config,
             dest_chain_selector,
@@ -266,7 +256,7 @@ impl OnRampContract {
                 .unwrap_or(0),
             encoded_message: message.to_bytes(&env),
             receipts,
-            verifier_blobs: verification_blobs,
+            verifier_blobs,
         }
         .publish(&env);
 

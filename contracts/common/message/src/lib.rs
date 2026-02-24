@@ -99,6 +99,10 @@ pub struct StellarToAnyMessage {
 
 impl StellarToAnyMessage {
     pub fn validate(&self) -> Result<(), CCIPError> {
+        if self.token_amounts.len() > 1 {
+            return Err(CCIPError::CanOnlySendOneTokenPerMessage);
+        }
+
         for token_amount in self.token_amounts.iter() {
             token_amount.validate()?;
         }
