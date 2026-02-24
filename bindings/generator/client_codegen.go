@@ -383,6 +383,48 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
+	case strings.HasPrefix(f.Type, "soroban_sdk::Vec<"):
+		innerType := extractVecInnerType(f.Type)
+		b.WriteString("\t\t\tvec, ok := entry.Val.GetVec()\n")
+		b.WriteString("\t\t\tif ok && vec != nil {\n")
+		if innerType == "soroban_sdk::Address" {
+			b.WriteString(fmt.Sprintf("\t\t\t\tparsed := make([]string, len(*vec))\n"))
+			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
+			b.WriteString("\t\t\t\t\tv, err := scval.AddressFromScVal(item)\n")
+			b.WriteString("\t\t\t\t\tif err == nil {\n")
+			b.WriteString("\t\t\t\t\t\tparsed[i] = v\n")
+			b.WriteString("\t\t\t\t\t}\n")
+			b.WriteString("\t\t\t\t}\n")
+		} else if innerType == "soroban_sdk::Bytes" {
+			b.WriteString("\t\t\t\tparsed := make([][]byte, len(*vec))\n")
+			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
+			b.WriteString("\t\t\t\t\tv, ok := item.GetBytes()\n")
+			b.WriteString("\t\t\t\t\tif ok {\n")
+			b.WriteString("\t\t\t\t\t\tparsed[i] = []byte(v)\n")
+			b.WriteString("\t\t\t\t\t}\n")
+			b.WriteString("\t\t\t\t}\n")
+		} else if n := extractBytesNSize(innerType); n > 0 {
+			goType := rustTypeToGo(innerType)
+			b.WriteString(fmt.Sprintf("\t\t\t\tparsed := make([]%s, len(*vec))\n", goType))
+			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
+			b.WriteString(fmt.Sprintf("\t\t\t\t\tv, err := scval.Bytes%dFromScVal(item)\n", n))
+			b.WriteString("\t\t\t\t\tif err == nil {\n")
+			b.WriteString("\t\t\t\t\t\tparsed[i] = v\n")
+			b.WriteString("\t\t\t\t\t}\n")
+			b.WriteString("\t\t\t\t}\n")
+		} else {
+			goType := rustTypeToGo(innerType)
+			b.WriteString(fmt.Sprintf("\t\t\t\tparsed := make([]%s, 0, len(*vec))\n", goType))
+			b.WriteString("\t\t\t\tfor _, item := range *vec {\n")
+			structName := extractStructName(innerType)
+			b.WriteString(fmt.Sprintf("\t\t\t\t\tv, err := %sFromScVal(item)\n", structName))
+			b.WriteString("\t\t\t\t\tif err == nil {\n")
+			b.WriteString("\t\t\t\t\t\tparsed = append(parsed, *v)\n")
+			b.WriteString("\t\t\t\t\t}\n")
+			b.WriteString("\t\t\t\t}\n")
+		}
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = parsed\n", target))
+		b.WriteString("\t\t\t}\n")
 	default:
 		b.WriteString("\t\t\t// TODO: parse complex type\n")
 	}
@@ -400,12 +442,16 @@ func isReadOnlyFunction(fn Function) bool {
 
 func parseReturnType(returnStr string) (string, bool) {
 	returnStr = strings.TrimSpace(returnStr)
+
+	if returnStr == "" {
+		return "", false
+	}
+
 	// Option<InnerType> - return full type so rustTypeToGo can produce *string
 	if strings.HasPrefix(returnStr, "Option<") {
 		return returnStr, true
-	}
-	// Result<RetType, Error> or Result<(), Error>
-	if strings.HasPrefix(returnStr, "Result<") {
+	} else if strings.HasPrefix(returnStr, "Result<") {
+		// Result<RetType, Error> or Result<(), Error>
 		inner := strings.TrimSuffix(strings.TrimPrefix(returnStr, "Result<"), ">")
 		parts := splitReturnType(inner)
 		if len(parts) >= 1 {
@@ -419,7 +465,7 @@ func parseReturnType(returnStr string) (string, bool) {
 			return okType, true
 		}
 	}
-	return "", false
+	return returnStr, true
 }
 
 func splitReturnType(s string) []string {

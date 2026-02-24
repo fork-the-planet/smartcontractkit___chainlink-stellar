@@ -75,18 +75,25 @@ func (c *OnRampClient) GetFee(ctx context.Context, destChainSelector uint64, mes
 }
 
 // IsOwner calls the is_owner function on the contract.
-func (c *OnRampClient) IsOwner(ctx context.Context, addr string) error {
+func (c *OnRampClient) IsOwner(ctx context.Context, addr string) (bool, error) {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(addr),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_owner: %w", err)
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // InitOwner calls the init_owner function on the contract.
@@ -912,9 +919,29 @@ func parseCCIPMessageSentEvent(e protocolrpc.EventInfo) (*CCIPMessageSentEvent, 
 				result.EncodedMessage = []byte(v)
 			}
 		case "receipts":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([]Receipt, 0, len(*vec))
+				for _, item := range *vec {
+					v, err := ReceiptFromScVal(item)
+					if err == nil {
+						parsed = append(parsed, *v)
+					}
+				}
+				result.Receipts = parsed
+			}
 		case "verifier_blobs":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][]byte, len(*vec))
+				for i, item := range *vec {
+					v, ok := item.GetBytes()
+					if ok {
+						parsed[i] = []byte(v)
+					}
+				}
+				result.VerifierBlobs = parsed
+			}
 		}
 	}
 

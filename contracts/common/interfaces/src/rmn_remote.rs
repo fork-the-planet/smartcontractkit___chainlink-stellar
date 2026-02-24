@@ -6,13 +6,6 @@ pub trait RmnRemoteInterface {
         subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
     ) -> Result<(), CCIPError>;
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
-    fn verify(
-        env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        offramp: soroban_sdk::BytesN<32>,
-        merkle_root: soroban_sdk::BytesN<32>,
-        signatures: soroban_sdk::Vec<(soroban_sdk::BytesN<32>, soroban_sdk::BytesN<64>)>,
-    ) -> Result<(), CCIPError>;
     fn uncurse(
         env: soroban_sdk::Env,
         subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,

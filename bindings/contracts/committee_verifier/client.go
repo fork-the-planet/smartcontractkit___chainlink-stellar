@@ -70,18 +70,25 @@ func (c *CommitteeVerifierClient) GetFee(ctx context.Context, destChainSelector 
 }
 
 // IsOwner calls the is_owner function on the contract.
-func (c *CommitteeVerifierClient) IsOwner(ctx context.Context, addr string) error {
+func (c *CommitteeVerifierClient) IsOwner(ctx context.Context, addr string) (bool, error) {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(addr),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_owner: %w", err)
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // InitOwner calls the init_owner function on the contract.
@@ -118,16 +125,23 @@ func (c *CommitteeVerifierClient) Initialize(ctx context.Context, owner string, 
 }
 
 // VersionTag calls the version_tag function on the contract.
-func (c *CommitteeVerifierClient) VersionTag(ctx context.Context) error {
+func (c *CommitteeVerifierClient) VersionTag(ctx context.Context) ([4]byte, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "version_tag", args)
 	if err != nil {
-		return fmt.Errorf("failed to call version_tag: %w", err)
+		return [4]byte{}, fmt.Errorf("failed to call version_tag: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return [4]byte{}, fmt.Errorf("no return value from version_tag")
+	}
+
+	v, err := scval.Bytes4FromScVal(*result)
+	if err != nil {
+		return [4]byte{}, err
+	}
+	return v, nil
 }
 
 // RequireOwner calls the require_owner function on the contract.
@@ -1009,9 +1023,29 @@ func parseStorageLocationsUpdatedEvent(e protocolrpc.EventInfo) (*StorageLocatio
 
 		switch string(key) {
 		case "old_locations":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][]byte, len(*vec))
+				for i, item := range *vec {
+					v, ok := item.GetBytes()
+					if ok {
+						parsed[i] = []byte(v)
+					}
+				}
+				result.OldLocations = parsed
+			}
 		case "new_locations":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][]byte, len(*vec))
+				for i, item := range *vec {
+					v, ok := item.GetBytes()
+					if ok {
+						parsed[i] = []byte(v)
+					}
+				}
+				result.NewLocations = parsed
+			}
 		}
 	}
 

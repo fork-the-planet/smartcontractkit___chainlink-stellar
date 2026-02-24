@@ -3,9 +3,7 @@
 mod events;
 pub mod types;
 
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec};
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
@@ -37,10 +35,6 @@ const GLOBAL_CURSE_SUBJECT: [u8; 16] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 ];
 
-/// Report digest header: keccak256("RMN_V1_6_ANY2EVM_REPORT") equivalent for Stellar.
-/// Used as domain separator in the signed payload.
-const RMN_REPORT_HEADER: &[u8] = b"RMN_V1_6_REPORT";
-
 // ============================================================
 // Contract
 // ============================================================
@@ -48,12 +42,8 @@ const RMN_REPORT_HEADER: &[u8] = b"RMN_V1_6_REPORT";
 /// RMN Remote contract for Stellar/Soroban.
 ///
 /// Port of the EVM `RMNRemote.sol` contract. Provides:
-///   - **Verification**: validates RMN node ed25519 signatures on message reports
 ///   - **Cursing**: owner can curse/uncurse subjects to emergency-halt message flows
 ///   - **Configuration**: manages the set of trusted RMN signers and threshold
-///
-/// Unlike EVM, Soroban uses ed25519 for signature verification (native to Stellar)
-/// instead of secp256k1/ecrecover.
 #[contract]
 pub struct RmnRemoteContract;
 
@@ -101,107 +91,6 @@ impl RmnRemoteContract {
         // Initialize empty signers map (pubkey -> true)
         let signers: Map<BytesN<32>, bool> = Map::new(&env);
         env.storage().instance().set(&SIGNERS, &signers);
-
-        Ok(())
-    }
-
-    // ========================================
-    // Verification
-    // ========================================
-
-    /// Verify RMN node signatures on a message report.
-    ///
-    /// Mirrors EVM `RMNRemote.verify()`. Checks that:
-    /// 1. Enough signers have signed (at least `f_sign + 1`)
-    /// 2. Each signature is from a known, configured signer
-    /// 3. Signatures are in ascending signer order (prevents duplicates)
-    ///
-    /// # Arguments
-    /// * `dest_chain_selector` - The destination chain selector
-    /// * `offramp` - The OffRamp contract address (raw 32-byte key)
-    /// * `merkle_root` - The Merkle root of the message batch
-    /// * `signatures` - Vec of (public_key, signature) pairs, sorted by ascending public key
-    pub fn verify(
-        env: Env,
-        dest_chain_selector: u64,
-        offramp: BytesN<32>,
-        merkle_root: BytesN<32>,
-        signatures: Vec<(BytesN<32>, BytesN<64>)>,
-    ) -> Result<(), CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-
-        let config_count: u32 = env
-            .storage()
-            .instance()
-            .get(&CONFIG_CNT)
-            .ok_or(CCIPError::NotInitialized)?;
-        if config_count == 0 {
-            return Err(CCIPError::ConfigNotSet);
-        }
-
-        let config: Config = env
-            .storage()
-            .instance()
-            .get(&CONFIG)
-            .ok_or(CCIPError::NotInitialized)?;
-
-        if (signatures.len() as u64) < config.f_sign + 1 {
-            return Err(CCIPError::ThresholdNotMet);
-        }
-
-        let local_chain_selector: u64 = env
-            .storage()
-            .instance()
-            .get(&CHAIN_SEL)
-            .ok_or(CCIPError::NotInitialized)?;
-
-        // Build the report digest:
-        //   hash(header || local_chain_selector || dest_chain_selector || offramp || config_digest || merkle_root)
-        let mut payload = Bytes::new(&env);
-        payload.append(&Bytes::from_slice(&env, RMN_REPORT_HEADER));
-        payload.append(&Bytes::from_slice(
-            &env,
-            &local_chain_selector.to_be_bytes(),
-        ));
-        payload.append(&Bytes::from_slice(&env, &dest_chain_selector.to_be_bytes()));
-        payload.append(&Bytes::from_array(&env, &offramp.to_array()));
-        payload.append(&Bytes::from_array(
-            &env,
-            &config.rmn_home_config_digest.to_array(),
-        ));
-        payload.append(&Bytes::from_array(&env, &merkle_root.to_array()));
-
-        let digest: BytesN<32> = env.crypto().keccak256(&payload).into();
-
-        let signers_map: Map<BytesN<32>, bool> = env
-            .storage()
-            .instance()
-            .get(&SIGNERS)
-            .ok_or(CCIPError::NotInitialized)?;
-
-        let mut prev_pubkey: Option<BytesN<32>> = None;
-
-        for i in 0..signatures.len() {
-            let (pubkey, sig) = signatures.get(i).unwrap();
-
-            // Enforce ascending order to prevent duplicate signers
-            if let Some(ref prev) = prev_pubkey {
-                if pubkey.to_array() <= prev.to_array() {
-                    return Err(CCIPError::OutOfOrderSignatures);
-                }
-            }
-
-            // Check that the signer is in the configured set
-            if !signers_map.get(pubkey.clone()).unwrap_or(false) {
-                return Err(CCIPError::UnexpectedSigner);
-            }
-
-            // Verify ed25519 signature
-            env.crypto()
-                .ed25519_verify(&pubkey, &digest.clone().into(), &sig);
-
-            prev_pubkey = Some(pubkey);
-        }
 
         Ok(())
     }
@@ -312,13 +201,13 @@ impl RmnRemoteContract {
             .get(&CURSED)
             .ok_or(CCIPError::NotInitialized)?;
 
-        for i in 0..subjects.len() {
-            let subject = subjects.get(i).unwrap();
+        subjects.iter().try_for_each(|subject| {
             if cursed.get(subject.clone()).unwrap_or(false) {
                 return Err(CCIPError::AlreadyCursed);
             }
             cursed.set(subject, true);
-        }
+            Ok(())
+        })?;
 
         env.storage().instance().set(&CURSED, &cursed);
 
@@ -340,13 +229,13 @@ impl RmnRemoteContract {
             .get(&CURSED)
             .ok_or(CCIPError::NotInitialized)?;
 
-        for i in 0..subjects.len() {
-            let subject = subjects.get(i).unwrap();
+        subjects.iter().try_for_each(|subject| {
             if !cursed.get(subject.clone()).unwrap_or(false) {
                 return Err(CCIPError::NotCursed);
             }
             cursed.remove(subject);
-        }
+            Ok(())
+        })?;
 
         env.storage().instance().set(&CURSED, &cursed);
 
