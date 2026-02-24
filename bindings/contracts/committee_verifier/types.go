@@ -385,7 +385,7 @@ type SignatureQuorumConfig struct {
 // ToScVal converts SignatureQuorumConfig to an xdr.ScVal for contract calls.
 func (s SignatureQuorumConfig) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"signers":               scval.AddressBytes32SliceToScVal(s.Signers),
+		"signers":               scval.Bytes32SliceToScVal(s.Signers),
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 		"threshold":             scval.Uint32ToScVal(s.Threshold),
 	})

@@ -400,12 +400,16 @@ func isReadOnlyFunction(fn Function) bool {
 
 func parseReturnType(returnStr string) (string, bool) {
 	returnStr = strings.TrimSpace(returnStr)
+
+	if returnStr == "" {
+		return "", false
+	}
+
 	// Option<InnerType> - return full type so rustTypeToGo can produce *string
 	if strings.HasPrefix(returnStr, "Option<") {
 		return returnStr, true
-	}
-	// Result<RetType, Error> or Result<(), Error>
-	if strings.HasPrefix(returnStr, "Result<") {
+	} else if strings.HasPrefix(returnStr, "Result<") {
+		// Result<RetType, Error> or Result<(), Error>
 		inner := strings.TrimSuffix(strings.TrimPrefix(returnStr, "Result<"), ">")
 		parts := splitReturnType(inner)
 		if len(parts) >= 1 {
@@ -419,7 +423,8 @@ func parseReturnType(returnStr string) (string, bool) {
 			return okType, true
 		}
 	}
-	return "", false
+
+	return returnStr, true
 }
 
 func splitReturnType(s string) []string {
