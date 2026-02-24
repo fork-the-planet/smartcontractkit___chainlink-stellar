@@ -23,6 +23,13 @@ impl Validatable for AllowListUpdate {
     }
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowListEntry {
+    pub allowlist_enabled: bool,
+    pub allowlist: Vec<Address>,
+}
+
 /// A trait to maintain a set of allowed addresses for a any purpose.
 /// It can be used for authorization as well as guarding access to certain functions.
 ///
@@ -47,19 +54,33 @@ pub trait AllowListable: Ownable {
     /// * `env` - The environment
     /// * `initial_callers` - Initial list of authorized addresses
     fn init_allowlist(env: &Env, initial_allowlist: Map<u64, Vec<Address>>) {
+        // TODO: add a guard here to make sure this method is only called once during initialization.
+        
+        let mut allowlist_map: Map<u64, AllowListEntry> = Map::new(env);
+
+        initial_allowlist.iter().for_each(|(key, value)| {
+            allowlist_map.set(key, AllowListEntry { allowlist_enabled: true, allowlist: value.clone() });
+        });
+
         env.storage()
             .instance()
-            .set(&Self::ALLOW_LIST, &initial_allowlist);
+            .set(&Self::ALLOW_LIST, &allowlist_map);
     }
 
     /// Check if the allow list is enabled for a given key.
     fn is_allowlist_enabled(env: &Env, key: u64) -> bool {
+        // TODO: use persistent storage instead to avoid having to load the entire map all the time due to unbounded size.
         env.storage()
             .instance()
             .get(&Self::ALLOW_LIST)
-            .map(|map: Option<Map<u64, Vec<Address>>>| match map {
-                Some(map) => map.contains_key(key),
-                None => false,
+            .map(|map: Option<Map<u64, AllowListEntry>>| {
+                match map {
+                    Some(map) => map
+                        .get(key)
+                        .map(|entry| entry.allowlist_enabled)
+                        .unwrap_or(false),
+                    None => false,
+                }
             })
             .unwrap_or(false)
     }
@@ -87,6 +108,7 @@ pub trait AllowListable: Ownable {
             let to_add = update.added_allowlisted_senders;
             let to_remove = update.removed_allowlisted_senders;
 
+            // The call to `is_allowlist_enabled` will return false if the allowlist has never been set.
             if !Self::is_allowlist_enabled(env, key) {
                 return Err(CCIPError::FeatureNotEnabled);
             }
@@ -121,19 +143,21 @@ pub trait AllowListable: Ownable {
     }
 
     /// Get the allowlist for a specific key.
-    fn get_allowlist_entry(env: &Env, key: u64) -> Vec<Address> {
+    fn get_allowlist_entry(env: &Env, key: u64) -> Option<AllowListEntry> {
         env.storage()
             .instance()
             .get(&Self::ALLOW_LIST)
             .unwrap_or(Map::new(env))
             .get(key)
-            .unwrap_or(Vec::new(env))
     }
 
     /// Check if an address is in the allow list.
     fn is_in_allowlist(env: &Env, key: u64, addr: &Address) -> bool {
-        let allowlist = Self::get_allowlist_entry(env, key);
-        allowlist.contains(addr)
+        if let Some(entry) = Self::get_allowlist_entry(env, key) {
+            return entry.allowlist.contains(addr)
+        }
+
+        false
     }
 
     /// Require that a given address is in the allow list.
@@ -146,8 +170,7 @@ pub trait AllowListable: Ownable {
             return Err(CCIPError::FeatureNotEnabled);
         }
 
-        let allowlist = Self::get_allowlist_entry(env, key);
-        if !allowlist.contains(address) {
+        if !Self::is_in_allowlist(env, key, address) {
             return Err(CCIPError::CallerNotAuthorized);
         }
 
