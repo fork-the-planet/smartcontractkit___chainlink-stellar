@@ -274,17 +274,23 @@ func TestRmnRemote(t *testing.T) {
 		}
 
 		// is_cursed should detect the global curse
-		err = client.IsCursed(ctx)
+		isCursed, err := client.IsCursed(ctx)
 		if err != nil {
 			t.Fatalf("IsCursed failed after global curse: %v", err)
+		}
+		if !isCursed {
+			t.Fatal("IsCursed should return true after global curse")
 		}
 		t.Log("Global curse applied and IsCursed returned successfully")
 
 		// is_cursed_by_subject for an arbitrary subject should also detect global curse
 		arbitrary := [16]byte{0xFF}
-		err = client.IsCursedBySubject(ctx, arbitrary)
+		isCursedBySubject, err := client.IsCursedBySubject(ctx, arbitrary)
 		if err != nil {
 			t.Fatalf("IsCursedBySubject failed after global curse: %v", err)
+		}
+		if !isCursedBySubject {
+			t.Fatal("IsCursedBySubject should return true after global curse")
 		}
 		t.Log("IsCursedBySubject correctly responds after global curse")
 

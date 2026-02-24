@@ -82,31 +82,45 @@ func (c *RmnRemoteClient) Uncurse(ctx context.Context, subjects [][16]byte) erro
 }
 
 // IsOwner calls the is_owner function on the contract.
-func (c *RmnRemoteClient) IsOwner(ctx context.Context, addr string) error {
+func (c *RmnRemoteClient) IsOwner(ctx context.Context, addr string) (bool, error) {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(addr),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_owner: %w", err)
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // IsCursed calls the is_cursed function on the contract.
-func (c *RmnRemoteClient) IsCursed(ctx context.Context) error {
+func (c *RmnRemoteClient) IsCursed(ctx context.Context) (bool, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_cursed", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_cursed: %w", err)
+		return false, fmt.Errorf("failed to call is_cursed: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_cursed")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // InitOwner calls the init_owner function on the contract.
@@ -267,31 +281,60 @@ func (c *RmnRemoteClient) GetCursedSubjects(ctx context.Context) ([][16]byte, er
 }
 
 // GetVersionedConfig calls the get_versioned_config function on the contract.
-func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) error {
+func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) (uint32, *Config, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_versioned_config", args)
 	if err != nil {
-		return fmt.Errorf("failed to call get_versioned_config: %w", err)
+		return 0, nil, fmt.Errorf("failed to call get_versioned_config: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return 0, nil, fmt.Errorf("no return value from get_versioned_config")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return 0, nil, fmt.Errorf("expected vec for tuple return")
+	}
+	if len(*vec) != 2 {
+		return 0, nil, fmt.Errorf("expected 2 elements, got %d", len(*vec))
+	}
+
+	v0Raw, ok := (*vec)[0].GetU32()
+	if !ok {
+		return 0, nil, fmt.Errorf("tuple[0]: expected u32")
+	}
+	v0 := uint32(v0Raw)
+
+	v1, err := ConfigFromScVal((*vec)[1])
+	if err != nil {
+		return 0, nil, fmt.Errorf("tuple[1]: %w", err)
+	}
+
+	return v0, v1, nil
 }
 
 // IsCursedBySubject calls the is_cursed_by_subject function on the contract.
-func (c *RmnRemoteClient) IsCursedBySubject(ctx context.Context, subject [16]byte) error {
+func (c *RmnRemoteClient) IsCursedBySubject(ctx context.Context, subject [16]byte) (bool, error) {
 	args := []xdr.ScVal{
 		scval.Bytes16ToScVal(subject),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_cursed_by_subject", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_cursed_by_subject: %w", err)
+		return false, fmt.Errorf("failed to call is_cursed_by_subject: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_cursed_by_subject")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // GetLocalChainSelector calls the get_local_chain_selector function on the contract.
@@ -744,7 +787,17 @@ func parseCursedEvent(e protocolrpc.EventInfo) (*CursedEvent, error) {
 
 		switch string(key) {
 		case "subjects":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][16]byte, len(*vec))
+				for i, item := range *vec {
+					v, err := scval.Bytes16FromScVal(item)
+					if err == nil {
+						parsed[i] = v
+					}
+				}
+				result.Subjects = parsed
+			}
 		}
 	}
 
@@ -808,7 +861,17 @@ func parseUncursedEvent(e protocolrpc.EventInfo) (*UncursedEvent, error) {
 
 		switch string(key) {
 		case "subjects":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][16]byte, len(*vec))
+				for i, item := range *vec {
+					v, err := scval.Bytes16FromScVal(item)
+					if err == nil {
+						parsed[i] = v
+					}
+				}
+				result.Subjects = parsed
+			}
 		}
 	}
 

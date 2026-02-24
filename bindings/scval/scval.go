@@ -267,6 +267,15 @@ func Uint64FromScVal(val xdr.ScVal) (uint64, error) {
 	return uint64(u64), nil
 }
 
+// BytesFromScVal extracts a byte slice from an xdr.ScVal containing Bytes.
+func BytesFromScVal(val xdr.ScVal) ([]byte, error) {
+	bytes, ok := val.GetBytes()
+	if !ok {
+		return nil, fmt.Errorf("not a bytes type: %v", val.Type)
+	}
+	return []byte(bytes), nil
+}
+
 // Bytes4FromScVal extracts a [4]byte from an xdr.ScVal containing BytesN<4>.
 func Bytes4FromScVal(val xdr.ScVal) ([4]byte, error) {
 	bytes, ok := val.GetBytes()
@@ -385,10 +394,6 @@ func BytesSliceToScVal(items [][]byte) xdr.ScVal {
 	return VecToScVal(scVals)
 }
 
-func AddressBytes32SliceToScVal(items [][32]byte) xdr.ScVal {
-	return Bytes32SliceToScVal(items)
-}
-
 // Bytes32SliceToScVal converts a slice of [32]byte to an xdr.ScVal vector (for Vec<BytesN<32>>).
 func Bytes32SliceToScVal(items [][32]byte) xdr.ScVal {
 	scVals := make([]xdr.ScVal, len(items))
@@ -396,6 +401,10 @@ func Bytes32SliceToScVal(items [][32]byte) xdr.ScVal {
 		scVals[i] = Bytes32ToScVal(item)
 	}
 	return VecToScVal(scVals)
+}
+
+func AddressBytes32SliceToScVal(items [][32]byte) xdr.ScVal {
+	return Bytes32SliceToScVal(items)
 }
 
 // Bytes4SliceToScVal converts a slice of [4]byte to an xdr.ScVal vector (for Vec<BytesN<4>>).
