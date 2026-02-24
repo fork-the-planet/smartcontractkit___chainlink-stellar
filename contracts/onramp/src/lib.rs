@@ -5,7 +5,7 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, TryFromVal, TryIntoVal, Vec, contract, contractimpl, symbol_short, xdr::ToXdr
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, TryFromVal, Vec, contract, contractimpl, symbol_short
 };
 
 use common_authorization::Ownable;
@@ -236,34 +236,16 @@ impl OnRampContract {
 
         // Generate message ID (keccak256(messageBytes))
         let message_id = message.compute_message_id(&env);
-
-        // Call each verifier
-        let mut verification_blobs = Vec::new(&env);
-        extra_args.ccvs
-            .iter()
-            .zip(extra_args.ccv_args)
-            .try_for_each(|(ccv, ccv_args)| {
-                // ccv.require_auth();
-                let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
-                let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
-                let mut verifier_args = Vec::new(&env);
-                verifier_args.push_back(dest_chain_selector.into_val(&env));
-                verifier_args.push_back(original_sender.into_val(&env));
-                verifier_args.push_back(message_id.into_val(&env));
-                verifier_args.push_back(message.fee_token.into_val(&env));
-                verifier_args.push_back(fee_token_amount.into_val(&env));
-                verifier_args.push_back(ccv_args.into_val(&env));
-
-                let verifier_response = env.invoke_contract::<Result<Bytes, CCIPError>>(&verifier_address, &Symbol::new(&env, "forward_to_verifier"), verifier_args);
-
-                match verifier_response {
-                    Ok(verification_blob) => {
-                        verification_blobs.push_back(verification_blob);
-                        Ok(())
-                    },
-                    Err(error) => Err(error),
-                }
-            })?;
+        let (verification_blobs, receipts) = Self::invoke_verifiers_internal(
+            &env,
+            &dest_config,
+            dest_chain_selector,
+            &message_id,
+            &original_sender,
+            &message,
+            &extra_args,
+            fee_token_amount,
+        )?;
 
         // Increment message number (sequence number for this destination)
         dest_config.message_number += 1;
@@ -283,7 +265,7 @@ impl OnRampContract {
                 .map(|token_amount| token_amount.amount)
                 .unwrap_or(0),
             encoded_message: message.to_bytes(&env),
-            receipts: Vec::new(&env),
+            receipts,
             verifier_blobs: verification_blobs,
         }
         .publish(&env);
@@ -570,6 +552,84 @@ impl OnRampContract {
 
         dest_chains.set(dest_chain_selector, config.clone());
         env.storage().persistent().set(&DEST_CHAINS, &dest_chains);
+    }
+
+    fn invoke_verifiers_internal(
+        env: &Env,
+        dest_config: &DestChainConfig,
+        dest_chain_selector: u64,
+        message_id: &BytesN<32>,
+        original_sender: &Address,
+        message: &StellarToAnyMessage,
+        extra_args: &GenericExtraArgsV3,
+        fee_token_amount: i128,
+    ) -> Result<(Vec<Bytes>, Vec<Receipt>), CCIPError> {
+        let mut receipts = Vec::new(env);
+        let mut verification_blobs = Vec::new(env);
+        let message_bytes = message.to_bytes(env);
+
+        for (ccv, ccv_args) in extra_args.ccvs.iter().zip(extra_args.ccv_args.iter()) {
+            let vvr = VersionedVerifierResolverClient::new(env, &ccv);
+            let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
+
+            let mut fee_args = Vec::new(env);
+            fee_args.push_back(dest_chain_selector.into_val(env));
+            fee_args.push_back(message_bytes.clone().into_val(env));
+            fee_args.push_back(ccv_args.clone().into_val(env));
+            fee_args.push_back(extra_args.block_confirmations.into_val(env));
+
+            let (fee, dest_gas_limit, dest_bytes_overhead) = env.invoke_contract::<Result<(u32, u32, u32), CCIPError>>(
+                &verifier_address,
+                &Symbol::new(env, "get_fee"),
+                fee_args,
+            )?;
+
+            receipts.push_back(Receipt {
+                issuer: ccv,
+                dest_gas_limit,
+                dest_bytes_overhead,
+                // TODO: convert verifier fee units to fee-token units with FeeQuoter integration.
+                fee_token_amount: i128::from(fee),
+                extra_args: ccv_args.clone(),
+            });
+
+            let mut verifier_args = Vec::new(&env);
+            verifier_args.push_back(dest_chain_selector.into_val(env));
+            verifier_args.push_back(original_sender.into_val(env));
+            verifier_args.push_back(message_id.into_val(env));
+            verifier_args.push_back(message.fee_token.into_val(env));
+            verifier_args.push_back(fee_token_amount.into_val(env));
+            verifier_args.push_back(ccv_args.into_val(env));
+
+            let verification_blob = env.invoke_contract::<Result<Bytes, CCIPError>>(
+                &verifier_address, 
+                &Symbol::new(&env, "forward_to_verifier"), 
+                verifier_args
+            )?;
+
+            verification_blobs.push_back(verification_blob);
+        }
+
+        receipts.push_back(Receipt {
+            issuer: extra_args.executor.clone(),
+            dest_gas_limit: dest_config
+                .base_execution_gas_cost
+                .saturating_add(extra_args.gas_limit),
+            dest_bytes_overhead: 0,
+            fee_token_amount: 0,
+            extra_args: extra_args.executor_args.clone(),
+        });
+
+        receipts.push_back(Receipt {
+            // Align with EVM: attribute network fee receipt to the forwarding router.
+            issuer: dest_config.router.clone(),
+            dest_gas_limit: 0,
+            dest_bytes_overhead: 0,
+            fee_token_amount,
+            extra_args: Bytes::new(env),
+        });
+
+        Ok((verification_blobs, receipts))
     }
 }
 
