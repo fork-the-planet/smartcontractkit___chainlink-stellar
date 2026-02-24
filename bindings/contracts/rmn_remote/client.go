@@ -281,16 +281,38 @@ func (c *RmnRemoteClient) GetCursedSubjects(ctx context.Context) ([][16]byte, er
 }
 
 // GetVersionedConfig calls the get_versioned_config function on the contract.
-func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) error {
+func (c *RmnRemoteClient) GetVersionedConfig(ctx context.Context) (uint32, *Config, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_versioned_config", args)
 	if err != nil {
-		return fmt.Errorf("failed to call get_versioned_config: %w", err)
+		return 0, nil, fmt.Errorf("failed to call get_versioned_config: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return 0, nil, fmt.Errorf("no return value from get_versioned_config")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return 0, nil, fmt.Errorf("expected vec for tuple return")
+	}
+	if len(*vec) != 2 {
+		return 0, nil, fmt.Errorf("expected 2 elements, got %d", len(*vec))
+	}
+
+	v0Raw, ok := (*vec)[0].GetU32()
+	if !ok {
+		return 0, nil, fmt.Errorf("tuple[0]: expected u32")
+	}
+	v0 := uint32(v0Raw)
+
+	v1, err := ConfigFromScVal((*vec)[1])
+	if err != nil {
+		return 0, nil, fmt.Errorf("tuple[1]: %w", err)
+	}
+
+	return v0, v1, nil
 }
 
 // IsCursedBySubject calls the is_cursed_by_subject function on the contract.
