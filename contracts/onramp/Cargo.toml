@@ -15,6 +15,7 @@ common-guard = { workspace = true }
 common-error = { workspace = true }
 common-authorization = { workspace = true }
 common-interfaces = { workspace = true }
+common-helpers = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

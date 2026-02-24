@@ -355,21 +355,26 @@ func (c *CommitteeVerifierClient) ForwardToResolver(ctx context.Context, destCha
 }
 
 // GetAllowlistEntry calls the get_allowlist_entry function on the contract.
-func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) (Option<AllowListEntry>, error) {
+func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) (AllowListEntry, error) {
 	args := []xdr.ScVal{
 		scval.Uint64ToScVal(key),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_allowlist_entry", args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call get_allowlist_entry: %w", err)
+		return AllowListEntry{}, fmt.Errorf("failed to call get_allowlist_entry: %w", err)
 	}
 
 	if result == nil {
-		return nil, fmt.Errorf("no return value from get_allowlist_entry")
+		return AllowListEntry{}, fmt.Errorf("no return value from get_allowlist_entry")
 	}
 
-	return Option<AllowListEntry>FromScVal(*result)
+	response, err := AllowListEntryFromScVal(*result)
+	if err != nil {
+		return AllowListEntry{}, fmt.Errorf("failed to parse get_allowlist_entry response: %w", err)
+	}
+
+	return *response, nil
 }
 
 // WithdrawFeeTokens calls the withdraw_fee_tokens function on the contract.
@@ -1534,4 +1539,3 @@ func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTran
 
 	return result, nil
 }
-

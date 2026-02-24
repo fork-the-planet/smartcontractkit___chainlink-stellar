@@ -142,7 +142,7 @@ impl CommitteeVerifierContract {
     // ========================================
 
     /// Source-side hook that checks sender permissions and returns version tag.
-    pub fn forward_to_resolver(
+    pub fn forward_to_verifier(
         env: Env,
         dest_chain_selector: u64,
         sender: Address,

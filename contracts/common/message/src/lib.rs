@@ -1,7 +1,7 @@
 #![no_std]
 
 use common_error::CCIPError;
-use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{Address, Bytes, BytesN, Env, FromVal, TryFromVal, TryIntoVal, Vec, contracttype, xdr::{ReadXdrIter, ToXdr}};
 
 // ============================================================
 // MessageIdCompute Trait
@@ -57,6 +57,23 @@ impl ToBytes for TokenAmount {
         bytes.append(&Bytes::from_array(env, &self.amount.to_be_bytes()));
         bytes
     }
+}
+
+// ============================================================
+// GenericExtraArgsV3
+// ============================================================
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GenericExtraArgsV3 {
+    pub gas_limit: u32,
+    pub block_confirmations: u32,
+    pub ccvs: Vec<Address>,
+    pub ccv_args: Vec<Bytes>,
+    pub executor: Address,
+    pub executor_args: Bytes,
+    pub token_receiver: Bytes,
+    pub token_args: Bytes,
 }
 
 // ============================================================
