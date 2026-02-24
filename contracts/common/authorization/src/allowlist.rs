@@ -1,15 +1,27 @@
-use soroban_sdk::{Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
+use soroban_sdk::{contracttrait, contracttype, Address, Env, Map, Symbol, Vec};
 
 use common_error::CCIPError;
 use common_helpers::validation::Validatable;
 
-pub trait AllowListUpdateInterface: Validatable {
-    fn key(&self) -> u64;
-    fn get_allowlist_addresses_to_remove(&self) -> Vec<Address>;
-    fn get_allowlist_addresses_to_add(&self) -> Vec<Address>;
+use crate::Ownable;
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowListUpdate {
+    pub dest_chain_selector: u64,
+    pub allowlist_enabled: bool,
+    pub added_allowlisted_senders: Vec<Address>,
+    pub removed_allowlisted_senders: Vec<Address>,
 }
 
-// Ownable is now a trait; use DefaultOwnable for generic owner checks in apply_allowlist_updates.
+impl Validatable for AllowListUpdate {
+    fn validate(&self) -> Result<(), CCIPError> {
+        if self.dest_chain_selector == 0 {
+            return Err(CCIPError::InvalidConfig);
+        }
+        Ok(())
+    }
+}
 
 /// A trait to maintain a set of allowed addresses for a any purpose.
 /// It can be used for authorization as well as guarding access to certain functions.
@@ -17,13 +29,9 @@ pub trait AllowListUpdateInterface: Validatable {
 /// For example: The Committee Verifier contract can use this trait to maintain a set of allowed addresses for a given destination chain.
 ///
 /// The allow list is a map of u64 to vector of addresses.
-pub trait AllowListable {
+#[contracttrait]
+pub trait AllowListable: Ownable {
     const ALLOW_LIST: Symbol; // Storage key for the allow list data
-
-    type AllowListUpdate: AllowListUpdateInterface
-        + TryFromVal<Env, Val>
-        + IntoVal<Env, Val>
-        + Clone;
 
     fn emit_allowlist_updated_event(
         env: &Env,
@@ -68,14 +76,16 @@ pub trait AllowListable {
     /// * `NotInitialized` - Owner not set
     fn apply_allowlist_updates(
         env: &Env,
-        updates: &Vec<Self::AllowListUpdate>,
+        updates: &Vec<AllowListUpdate>,
     ) -> Result<(), CCIPError> {
+        <Self as Ownable>::require_owner(env)?;
+
         for update in updates.iter() {
             update.validate()?;
 
-            let key = update.key();
-            let to_add = update.get_allowlist_addresses_to_add();
-            let to_remove = update.get_allowlist_addresses_to_remove();
+            let key = update.dest_chain_selector;
+            let to_add = update.added_allowlisted_senders;
+            let to_remove = update.removed_allowlisted_senders;
 
             if !Self::is_allowlist_enabled(env, key) {
                 return Err(CCIPError::FeatureNotEnabled);

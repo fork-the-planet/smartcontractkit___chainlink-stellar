@@ -3,7 +3,7 @@
 mod events;
 pub mod types;
 
-use common_authorization::allowlist::AllowListable;
+use common_authorization::allowlist::{AllowListable, AllowListUpdate};
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
@@ -13,7 +13,7 @@ use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use types::{AllowListUpdate, DynamicConfig, RemoteChainConfig};
+use types::{DynamicConfig, RemoteChainConfig};
 
 // ============================================================
 // Storage Keys
@@ -62,11 +62,9 @@ impl CurseCheckable for CommitteeVerifierContract {
     const RMN_PROXY: Symbol = RMN_PROXY;
 }
 
-#[contractimpl]
+#[contractimpl(contracttrait)]
 impl AllowListable for CommitteeVerifierContract {
     const ALLOW_LIST: Symbol = ALLOWLIST;
-
-    type AllowListUpdate = AllowListUpdate;
 
     fn emit_allowlist_updated_event(
         env: &Env,

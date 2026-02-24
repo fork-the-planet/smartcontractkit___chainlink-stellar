@@ -32,19 +32,6 @@ func (c *VersionedVerifierResolverClient) ContractID() string {
 }
 
 // Owner calls the owner function on the contract.
-<<<<<<< HEAD:bindings/versioned_verifier_resolver/client.go
-func (c *VersionedVerifierResolverClient) Owner(ctx context.Context) error {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "owner", args)
-	if err != nil {
-		return fmt.Errorf("failed to call owner: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-||||||| merged common ancestors:bindings/versioned_verifier_resolver/client.go
-=======
 func (c *VersionedVerifierResolverClient) Owner(ctx context.Context) (*string, error) {
 	args := []xdr.ScVal{}
 
@@ -62,7 +49,6 @@ func (c *VersionedVerifierResolverClient) Owner(ctx context.Context) (*string, e
 		return nil, err
 	}
 	return v, nil
->>>>>>> main:bindings/contracts/versioned_verifier_resolver/client.go
 }
 
 // IsOwner calls the is_owner function on the contract.
@@ -160,55 +146,6 @@ func (c *VersionedVerifierResolverClient) AcceptOwnership(ctx context.Context) e
 }
 
 // GetPendingOwner calls the get_pending_owner function on the contract.
-<<<<<<< HEAD:bindings/versioned_verifier_resolver/client.go
-func (c *VersionedVerifierResolverClient) GetPendingOwner(ctx context.Context) error {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_pending_owner", args)
-	if err != nil {
-		return fmt.Errorf("failed to call get_pending_owner: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-||||||| merged common ancestors:bindings/versioned_verifier_resolver/client.go
-// GetOutboundImplementation calls the get_outbound_implementation function on the contract.
-func (c *VersionedVerifierResolverClient) GetOutboundImplementation(ctx context.Context, destChainSelector uint64, extraArgs []byte) (string, error) {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(destChainSelector),
-		scval.BytesToScVal(extraArgs),
-	}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_outbound_implementation", args)
-	if err != nil {
-		return "", fmt.Errorf("failed to call get_outbound_implementation: %w", err)
-	}
-
-	if result == nil {
-		return "", fmt.Errorf("no return value from get_outbound_implementation")
-	}
-
-	v, err := scval.AddressFromScVal(*result)
-	if err != nil {
-		return "", err
-	}
-	return v, nil
-}
-
-// GetAllOutboundImplementations calls the get_all_outbound_implementations function on the contract.
-func (c *VersionedVerifierResolverClient) GetAllOutboundImplementations(ctx context.Context) error {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_all_outbound_implementations", args)
-	if err != nil {
-		return fmt.Errorf("failed to call get_all_outbound_implementations: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-=======
 func (c *VersionedVerifierResolverClient) GetPendingOwner(ctx context.Context) (*string, error) {
 	args := []xdr.ScVal{}
 
@@ -226,7 +163,6 @@ func (c *VersionedVerifierResolverClient) GetPendingOwner(ctx context.Context) (
 		return nil, err
 	}
 	return v, nil
->>>>>>> main:bindings/contracts/versioned_verifier_resolver/client.go
 }
 
 // GetFeeAggregator calls the get_fee_aggregator function on the contract.
@@ -450,7 +386,7 @@ func parseInboundImplSetEvent(e protocolrpc.EventInfo) (*InboundImplSetEvent, er
 
 		switch string(key) {
 		case "version":
-			v, err := scval.Bytes32FromScVal(entry.Val)
+			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err == nil {
 				result.Version = v
 			}
@@ -661,260 +597,6 @@ func parseInboundImplRemovedEvent(e protocolrpc.EventInfo) (*InboundImplRemovedE
 
 		switch string(key) {
 		case "version":
-<<<<<<< HEAD:bindings/versioned_verifier_resolver/client.go
-			v, err := scval.Bytes32FromScVal(entry.Val)
-			if err == nil {
-				result.Version = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForOutboundImplRemovedEvent waits for a OutboundImplRemovedEvent event.
-func (c *VersionedVerifierResolverClient) WaitForOutboundImplRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OutboundImplRemovedEvent) bool) (*OutboundImplRemovedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OutboundImplRemovedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseOutboundImplRemovedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func parseOutboundImplRemovedEvent(e protocolrpc.EventInfo) (*OutboundImplRemovedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &OutboundImplRemovedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "dest_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err == nil {
-				result.DestChainSelector = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForOwnershipTransferredEvent waits for a OwnershipTransferredEvent event.
-func (c *VersionedVerifierResolverClient) WaitForOwnershipTransferredEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferredEvent) bool) (*OwnershipTransferredEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferredEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseOwnershipTransferredEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-// WaitForRoleGrantedEvent waits for a RoleGrantedEvent event.
-func (c *VersionedVerifierResolverClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleGrantedEvent) bool) (*RoleGrantedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleGrantedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &RoleGrantedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "role":
-			// TODO: parse complex type
-		case "account":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Account = v
-			}
-		case "sender":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Sender = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForRoleRevokedEvent waits for a RoleRevokedEvent event.
-func (c *VersionedVerifierResolverClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleRevokedEvent) bool) (*RoleRevokedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleRevokedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &RoleRevokedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "role":
-			// TODO: parse complex type
-		case "account":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Account = v
-			}
-		case "sender":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Sender = v
-||||||| merged common ancestors:bindings/versioned_verifier_resolver/client.go
-=======
 			v, err := scval.Bytes4FromScVal(entry.Val)
 			if err == nil {
 				result.Version = v
@@ -985,7 +667,6 @@ func parseOutboundImplRemovedEvent(e protocolrpc.EventInfo) (*OutboundImplRemove
 			v, err := scval.Uint64FromScVal(entry.Val)
 			if err == nil {
 				result.DestChainSelector = v
->>>>>>> main:bindings/contracts/versioned_verifier_resolver/client.go
 			}
 		}
 	}
@@ -1049,11 +730,6 @@ func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransfer
 		}
 
 		switch string(key) {
-		case "previous_owner":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.PreviousOwner = v
-			}
 		case "new_owner":
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
@@ -1065,9 +741,6 @@ func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransfer
 	return result, nil
 }
 
-<<<<<<< HEAD:bindings/versioned_verifier_resolver/client.go
-||||||| merged common ancestors:bindings/versioned_verifier_resolver/client.go
-=======
 // WaitForRoleGrantedEvent waits for a RoleGrantedEvent event.
 func (c *VersionedVerifierResolverClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleGrantedEvent) bool) (*RoleGrantedEvent, error) {
 	startTime := time.Now()
@@ -1222,7 +895,6 @@ func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	return result, nil
 }
 
->>>>>>> main:bindings/contracts/versioned_verifier_resolver/client.go
 // WaitForAuthorizedCallerAddedEvent waits for a AuthorizedCallerAddedEvent event.
 func (c *VersionedVerifierResolverClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerAddedEvent) bool) (*AuthorizedCallerAddedEvent, error) {
 	startTime := time.Now()

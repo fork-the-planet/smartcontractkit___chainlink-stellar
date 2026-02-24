@@ -55,75 +55,6 @@ func DynamicConfigFromScVal(val xdr.ScVal) (*DynamicConfig, error) {
 	return result, nil
 }
 
-// AllowListUpdate represents the AllowListUpdate struct from the contract.
-type AllowListUpdate struct {
-	AddedAllowlistedSenders   []string
-	DestChainSelector         uint64
-	RemovedAllowlistedSenders []string
-}
-
-// ToScVal converts AllowListUpdate to an xdr.ScVal for contract calls.
-func (s AllowListUpdate) ToScVal() (xdr.ScVal, error) {
-	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"added_allowlisted_senders":   scval.AddressSliceToScVal(s.AddedAllowlistedSenders),
-		"dest_chain_selector":         scval.Uint64ToScVal(s.DestChainSelector),
-		"removed_allowlisted_senders": scval.AddressSliceToScVal(s.RemovedAllowlistedSenders),
-	})
-}
-
-// AllowListUpdateFromScVal parses an xdr.ScVal into AllowListUpdate.
-func AllowListUpdateFromScVal(val xdr.ScVal) (*AllowListUpdate, error) {
-	scMap, ok := val.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("not a map type")
-	}
-
-	result := &AllowListUpdate{}
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "added_allowlisted_senders":
-			vec, ok := entry.Val.GetVec()
-			if !ok || vec == nil {
-				return nil, fmt.Errorf("added_allowlisted_senders is not a vec")
-			}
-			result.AddedAllowlistedSenders = make([]string, len(*vec))
-			for i, item := range *vec {
-				v, err := scval.AddressFromScVal(item)
-				if err != nil {
-					return nil, err
-				}
-				result.AddedAllowlistedSenders[i] = v
-			}
-		case "dest_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("dest_chain_selector: %w", err)
-			}
-			result.DestChainSelector = v
-		case "removed_allowlisted_senders":
-			vec, ok := entry.Val.GetVec()
-			if !ok || vec == nil {
-				return nil, fmt.Errorf("removed_allowlisted_senders is not a vec")
-			}
-			result.RemovedAllowlistedSenders = make([]string, len(*vec))
-			for i, item := range *vec {
-				v, err := scval.AddressFromScVal(item)
-				if err != nil {
-					return nil, err
-				}
-				result.RemovedAllowlistedSenders[i] = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
 // RemoteChainConfig represents the RemoteChainConfig struct from the contract.
 type RemoteChainConfig struct {
 	AllowlistEnabled    bool
@@ -197,6 +128,83 @@ func RemoteChainConfigFromScVal(val xdr.ScVal) (*RemoteChainConfig, error) {
 				return nil, fmt.Errorf("router: %w", err)
 			}
 			result.Router = v
+		}
+	}
+
+	return result, nil
+}
+
+// AllowListUpdate represents the AllowListUpdate struct from the contract.
+type AllowListUpdate struct {
+	AddedAllowlistedSenders   []string
+	AllowlistEnabled          bool
+	DestChainSelector         uint64
+	RemovedAllowlistedSenders []string
+}
+
+// ToScVal converts AllowListUpdate to an xdr.ScVal for contract calls.
+func (s AllowListUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"added_allowlisted_senders":   scval.AddressSliceToScVal(s.AddedAllowlistedSenders),
+		"allowlist_enabled":           scval.BoolToScVal(s.AllowlistEnabled),
+		"dest_chain_selector":         scval.Uint64ToScVal(s.DestChainSelector),
+		"removed_allowlisted_senders": scval.AddressSliceToScVal(s.RemovedAllowlistedSenders),
+	})
+}
+
+// AllowListUpdateFromScVal parses an xdr.ScVal into AllowListUpdate.
+func AllowListUpdateFromScVal(val xdr.ScVal) (*AllowListUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AllowListUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "added_allowlisted_senders":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("added_allowlisted_senders is not a vec")
+			}
+			result.AddedAllowlistedSenders = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.AddedAllowlistedSenders[i] = v
+			}
+		case "allowlist_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("allowlist_enabled is not bool")
+			}
+			result.AllowlistEnabled = v
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("dest_chain_selector: %w", err)
+			}
+			result.DestChainSelector = v
+		case "removed_allowlisted_senders":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("removed_allowlisted_senders is not a vec")
+			}
+			result.RemovedAllowlistedSenders = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.RemovedAllowlistedSenders[i] = v
+			}
 		}
 	}
 

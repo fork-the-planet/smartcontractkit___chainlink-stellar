@@ -24,12 +24,17 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn init_allowlist(
+        env: soroban_sdk::Env,
+        initial_allowlist: soroban_sdk::Map<u64, soroban_sdk::Vec<soroban_sdk::Address>>,
+    );
     fn verify_message(
         env: soroban_sdk::Env,
         source_chain_selector: u64,
         message_hash: soroban_sdk::BytesN<32>,
         verifier_results: soroban_sdk::Bytes,
     ) -> Result<(), CCIPError>;
+    fn is_in_allowlist(env: soroban_sdk::Env, key: u64, addr: soroban_sdk::Address) -> bool;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
@@ -50,13 +55,27 @@ pub trait CommitteeVerifierInterface {
         fee_token_amount: i128,
         verifier_args: soroban_sdk::Bytes,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
+    fn get_allowlist_entry(
+        env: soroban_sdk::Env,
+        key: u64,
+    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
     fn withdraw_fee_tokens(
         env: soroban_sdk::Env,
         fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
     ) -> Result<(), CCIPError>;
+    fn is_allowlist_enabled(env: soroban_sdk::Env, key: u64) -> bool;
+    fn require_in_allowlist(
+        env: soroban_sdk::Env,
+        key: u64,
+        address: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_storage_locations(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::Bytes>, CCIPError>;
+    fn apply_allowlist_updates(
+        env: soroban_sdk::Env,
+        updates: soroban_sdk::Vec<AllowListUpdate>,
+    ) -> Result<(), CCIPError>;
     fn get_remote_chain_config(
         env: soroban_sdk::Env,
         remote_chain_selector: u64,
@@ -96,13 +115,6 @@ pub struct DynamicConfig {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct AllowListUpdate {
-    pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub dest_chain_selector: u64,
-    pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
-}
-#[soroban_sdk::contracttype(export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct RemoteChainConfig {
     pub allowlist_enabled: bool,
     pub fee_usd_cents: u32,
@@ -110,6 +122,14 @@ pub struct RemoteChainConfig {
     pub payload_size_bytes: u32,
     pub remote_chain_selector: u64,
     pub router: Option<soroban_sdk::Address>,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListUpdate {
+    pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+    pub dest_chain_selector: u64,
+    pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
