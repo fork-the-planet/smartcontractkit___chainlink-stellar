@@ -67,11 +67,11 @@ func TestCommitteeVerifier(t *testing.T) {
 	})
 
 	t.Run("get version tag", func(t *testing.T) {
-		err := client.VersionTag(ctx)
+		tag, err := client.VersionTag(ctx)
 		if err != nil {
 			t.Fatalf("Failed to get version tag: %v", err)
 		}
-		t.Log("Version tag retrieved successfully")
+		t.Logf("Version tag retrieved successfully: %v", tag)
 	})
 
 	t.Run("set allowlist", func(t *testing.T) {
@@ -89,7 +89,11 @@ func TestCommitteeVerifier(t *testing.T) {
 		}
 		t.Log("Allowlist set successfully")
 
-		//...
+		allowlist, err := client.GetAllowlistEntry(ctx, 1)
+		if err != nil {
+			t.Fatalf("Failed to get allowlist: %v", err)
+		}
+		t.Logf("Allowlist: %v", allowlist)
 	})
 
 }

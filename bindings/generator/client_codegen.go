@@ -63,7 +63,7 @@ func generateConstructor(b *strings.Builder, contract *Contract) {
 	b.WriteString("}\n\n")
 
 	// ContractID getter
-	b.WriteString(fmt.Sprintf("// ContractID returns the contract ID.\n"))
+	b.WriteString("// ContractID returns the contract ID.\n")
 	b.WriteString(fmt.Sprintf("func (c *%sClient) ContractID() string {\n", contract.Name))
 	b.WriteString("\treturn c.contractID\n")
 	b.WriteString("}\n\n")
