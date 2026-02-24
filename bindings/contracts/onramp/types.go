@@ -815,6 +815,16 @@ const (
 	CCIPErrorOffRampMismatch                = 61
 	CCIPErrorBadRMNSignal                   = 62
 	CCIPErrorUnsupportedDestinationChain    = 63
+	CCIPErrorAlreadyCursed                  = 64
+	CCIPErrorConfigNotSet                   = 65
+	CCIPErrorDuplicateOnchainPublicKey      = 66
+	CCIPErrorInvalidSignerOrder             = 67
+	CCIPErrorNotEnoughSigners               = 68
+	CCIPErrorNotCursed                      = 69
+	CCIPErrorOutOfOrderSignatures           = 70
+	CCIPErrorThresholdNotMet                = 71
+	CCIPErrorUnexpectedSigner               = 72
+	CCIPErrorZeroValueNotAllowed            = 73
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
@@ -882,6 +892,16 @@ var CCIPErrorMessage = map[int]string{
 	61: "off ramp mismatch",
 	62: "bad r m n signal",
 	63: "unsupported destination chain",
+	64: "already cursed",
+	65: "config not set",
+	66: "duplicate onchain public key",
+	67: "invalid signer order",
+	68: "not enough signers",
+	69: "not cursed",
+	70: "out of order signatures",
+	71: "threshold not met",
+	72: "unexpected signer",
+	73: "zero value not allowed",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.

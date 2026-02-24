@@ -1211,6 +1211,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmn_remote"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "router"
 version = "0.0.0"
 dependencies = [

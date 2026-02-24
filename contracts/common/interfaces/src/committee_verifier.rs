@@ -227,6 +227,16 @@ pub enum CCIPError {
     OffRampMismatch = 61,
     BadRMNSignal = 62,
     UnsupportedDestinationChain = 63,
+    AlreadyCursed = 64,
+    ConfigNotSet = 65,
+    DuplicateOnchainPublicKey = 66,
+    InvalidSignerOrder = 67,
+    NotEnoughSigners = 68,
+    NotCursed = 69,
+    OutOfOrderSignatures = 70,
+    ThresholdNotMet = 71,
+    UnexpectedSigner = 72,
+    ZeroValueNotAllowed = 73,
 }
 #[soroban_sdk::contractevent(topics = ["ccv_ConfigSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
