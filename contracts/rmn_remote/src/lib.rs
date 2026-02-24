@@ -115,19 +115,21 @@ impl RmnRemoteContract {
             return Err(CCIPError::ZeroValueNotAllowed);
         }
 
-        // Validate signer ordering (strictly increasing node_index)
-        for i in 1..new_config.signers.len() {
-            let prev = new_config.signers.get(i - 1).unwrap();
-            let curr = new_config.signers.get(i).unwrap();
-            if prev.node_index >= curr.node_index {
-                return Err(CCIPError::InvalidSignerOrder);
-            }
-        }
-
         // Validate minimum signer count: need 2f+1
         if (new_config.signers.len() as u64) < 2 * new_config.f_sign + 1 {
             return Err(CCIPError::NotEnoughSigners);
         }
+
+        // Validate signer ordering (strictly increasing node_index)
+        new_config
+            .signers
+            .iter()
+            .try_fold(None, |prev: Option<u64>, signer| {
+                if prev.is_some_and(|p| p >= signer.node_index) {
+                    return Err(CCIPError::InvalidSignerOrder);
+                }
+                Ok(Some(signer.node_index))
+            })?;
 
         // Build new signers map, checking for duplicate public keys
         let mut new_signers: Map<BytesN<32>, bool> = Map::new(&env);
