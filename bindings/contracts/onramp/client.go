@@ -31,6 +31,21 @@ func (c *OnRampClient) ContractID() string {
 	return c.contractID
 }
 
+// Init calls the init function on the contract.
+func (c *OnRampClient) Init(ctx context.Context, rmnProxy string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(rmnProxy),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "init", args)
+	if err != nil {
+		return fmt.Errorf("failed to call init: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // Owner calls the owner function on the contract.
 func (c *OnRampClient) Owner(ctx context.Context) (*string, error) {
 	args := []xdr.ScVal{}
@@ -87,6 +102,26 @@ func (c *OnRampClient) IsOwner(ctx context.Context, addr string) (bool, error) {
 
 	if result == nil {
 		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
+// IsCursed calls the is_cursed function on the contract.
+func (c *OnRampClient) IsCursed(ctx context.Context) (bool, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_cursed", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_cursed: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_cursed")
 	}
 
 	v, ok := result.GetB()
@@ -226,6 +261,19 @@ func (c *OnRampClient) GetDynamicConfig(ctx context.Context) (*DynamicConfig, er
 	}
 
 	return DynamicConfigFromScVal(*result)
+}
+
+// RequireNotCursed calls the require_not_cursed function on the contract.
+func (c *OnRampClient) RequireNotCursed(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "require_not_cursed", args)
+	if err != nil {
+		return fmt.Errorf("failed to call require_not_cursed: %w", err)
+	}
+
+	_ = result // void return
+	return nil
 }
 
 // SetDynamicConfig calls the set_dynamic_config function on the contract.
@@ -1125,3 +1173,4 @@ func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransfer
 
 	return result, nil
 }
+

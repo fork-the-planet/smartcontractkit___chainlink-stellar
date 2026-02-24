@@ -95,7 +95,7 @@ func generateMethod(b *strings.Builder, contract *Contract, fn Function) {
 			var goTypes []string
 			for _, t := range parseTupleTypes(returnType) {
 				gt := rustTypeToGo(t)
-				if isStructType(t) {
+				if !strings.HasPrefix(t, "Option<") && isStructType(t) {
 					gt = "*" + gt
 				}
 				goTypes = append(goTypes, gt)
@@ -103,7 +103,10 @@ func generateMethod(b *strings.Builder, contract *Contract, fn Function) {
 			returns = fmt.Sprintf("(%s, error)", strings.Join(goTypes, ", "))
 		} else {
 			goReturnType := rustTypeToGo(returnType)
-			if isStructType(returnType) {
+			if strings.HasPrefix(returnType, "Option<") {
+				// rustTypeToGo already returns *T for Option<T>, no extra * needed
+				returns = fmt.Sprintf("(%s, error)", goReturnType)
+			} else if isStructType(returnType) {
 				returns = fmt.Sprintf("(*%s, error)", goReturnType)
 			} else {
 				returns = fmt.Sprintf("(%s, error)", goReturnType)
@@ -197,6 +200,18 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\treturn []byte(v), nil\n")
 	case strings.Contains(returnType, "Option<") && strings.Contains(returnType, "soroban_sdk::Address"):
 		b.WriteString("\tv, err := scval.OptionalAddressFromScVal(*result)\n")
+		b.WriteString("\tif err != nil {\n")
+		b.WriteString("\t\treturn nil, err\n")
+		b.WriteString("\t}\n")
+		b.WriteString("\treturn v, nil\n")
+	case strings.HasPrefix(returnType, "Option<"):
+		innerType := strings.TrimSuffix(strings.TrimPrefix(returnType, "Option<"), ">")
+		innerType = strings.TrimSpace(innerType)
+		structName := extractStructName(innerType)
+		b.WriteString("\tif result.Type == xdr.ScValTypeScvVoid {\n")
+		b.WriteString("\t\treturn nil, nil\n")
+		b.WriteString("\t}\n")
+		b.WriteString(fmt.Sprintf("\tv, err := %sFromScVal(*result)\n", structName))
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn nil, err\n")
 		b.WriteString("\t}\n")
@@ -544,7 +559,9 @@ func isStructType(rustType string) bool {
 		return false
 	}
 	if strings.HasPrefix(rustType, "Option<") {
-		return false
+		inner := strings.TrimSuffix(strings.TrimPrefix(rustType, "Option<"), ">")
+		inner = strings.TrimSpace(inner)
+		return isStructType(inner)
 	}
 	return true
 }

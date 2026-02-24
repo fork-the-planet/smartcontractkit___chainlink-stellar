@@ -12,10 +12,7 @@ pub trait RmnRemoteInterface {
     ) -> Result<(), CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn is_cursed(env: soroban_sdk::Env) -> bool;
-    fn init_owner(
-        env: soroban_sdk::Env,
-        owner: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -37,10 +34,7 @@ pub trait RmnRemoteInterface {
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::BytesN<16>>, CCIPError>;
     fn get_versioned_config(env: soroban_sdk::Env) -> Result<(u32, Config), CCIPError>;
-    fn is_cursed_by_subject(
-        env: soroban_sdk::Env,
-        subject: soroban_sdk::BytesN<16>,
-    ) -> bool;
+    fn is_cursed_by_subject(env: soroban_sdk::Env, subject: soroban_sdk::BytesN<16>) -> bool;
     fn get_local_chain_selector(env: soroban_sdk::Env) -> Result<u64, CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 }
@@ -63,6 +57,18 @@ pub struct AllowListUpdate {
 pub struct TokenAmount {
     pub amount: i128,
     pub token: soroban_sdk::Address,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GenericExtraArgsV3 {
+    pub block_confirmations: u32,
+    pub ccv_args: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub executor: soroban_sdk::Address,
+    pub executor_args: soroban_sdk::Bytes,
+    pub gas_limit: u32,
+    pub token_args: soroban_sdk::Bytes,
+    pub token_receiver: soroban_sdk::Bytes,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -215,4 +221,3 @@ pub struct ConfigSetEvent {
     pub num_signers: u32,
     pub f_sign: u64,
 }
-

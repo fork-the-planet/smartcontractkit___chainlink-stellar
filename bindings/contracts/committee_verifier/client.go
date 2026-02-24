@@ -327,8 +327,8 @@ func (c *CommitteeVerifierClient) TransferOwnership(ctx context.Context, newOwne
 	return nil
 }
 
-// ForwardToResolver calls the forward_to_resolver function on the contract.
-func (c *CommitteeVerifierClient) ForwardToResolver(ctx context.Context, destChainSelector uint64, sender string, messageId [32]byte, feeToken string, feeTokenAmount int64, verifierArgs []byte) ([]byte, error) {
+// ForwardToVerifier calls the forward_to_verifier function on the contract.
+func (c *CommitteeVerifierClient) ForwardToVerifier(ctx context.Context, destChainSelector uint64, sender string, messageId [32]byte, feeToken string, feeTokenAmount int64, verifierArgs []byte) ([]byte, error) {
 	args := []xdr.ScVal{
 		scval.Uint64ToScVal(destChainSelector),
 		scval.AddressToScVal(sender),
@@ -338,13 +338,13 @@ func (c *CommitteeVerifierClient) ForwardToResolver(ctx context.Context, destCha
 		scval.BytesToScVal(verifierArgs),
 	}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "forward_to_resolver", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "forward_to_verifier", args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call forward_to_resolver: %w", err)
+		return nil, fmt.Errorf("failed to call forward_to_verifier: %w", err)
 	}
 
 	if result == nil {
-		return nil, fmt.Errorf("no return value from forward_to_resolver")
+		return nil, fmt.Errorf("no return value from forward_to_verifier")
 	}
 
 	v, ok := result.GetBytes()
@@ -355,26 +355,28 @@ func (c *CommitteeVerifierClient) ForwardToResolver(ctx context.Context, destCha
 }
 
 // GetAllowlistEntry calls the get_allowlist_entry function on the contract.
-func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) (AllowListEntry, error) {
+func (c *CommitteeVerifierClient) GetAllowlistEntry(ctx context.Context, key uint64) (*AllowListEntry, error) {
 	args := []xdr.ScVal{
 		scval.Uint64ToScVal(key),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_allowlist_entry", args)
 	if err != nil {
-		return AllowListEntry{}, fmt.Errorf("failed to call get_allowlist_entry: %w", err)
+		return nil, fmt.Errorf("failed to call get_allowlist_entry: %w", err)
 	}
 
 	if result == nil {
-		return AllowListEntry{}, fmt.Errorf("no return value from get_allowlist_entry")
+		return nil, fmt.Errorf("no return value from get_allowlist_entry")
 	}
 
-	response, err := AllowListEntryFromScVal(*result)
+	if result.Type == xdr.ScValTypeScvVoid {
+		return nil, nil
+	}
+	v, err := AllowListEntryFromScVal(*result)
 	if err != nil {
-		return AllowListEntry{}, fmt.Errorf("failed to parse get_allowlist_entry response: %w", err)
+		return nil, err
 	}
-
-	return *response, nil
+	return v, nil
 }
 
 // WithdrawFeeTokens calls the withdraw_fee_tokens function on the contract.
@@ -1539,3 +1541,4 @@ func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTran
 
 	return result, nil
 }
+
