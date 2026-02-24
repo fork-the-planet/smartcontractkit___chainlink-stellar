@@ -208,10 +208,24 @@ impl OnRampContract {
         // Verify caller is the router
         dest_config.router.require_auth();
 
-        // Parse extra args
-        let extra_args_val = message.extra_args.to_val();
-        let extra_args = GenericExtraArgsV3::try_from_val(&env, &extra_args_val)
-            .map_err(|_| CCIPError::InvalidExtraArgsData)?;
+        // Parse extra args; use default when empty (common for simple messages)
+        let extra_args = if message.extra_args.len() == 0 {
+            // TODO: move Default next to struct definition, also is an empty extra args a valid case?
+            GenericExtraArgsV3 {
+                gas_limit: 0,
+                block_confirmations: 0,
+                ccvs: Vec::new(&env),
+                ccv_args: Vec::new(&env),
+                executor: dest_config.default_executor.clone(),
+                executor_args: Bytes::new(&env),
+                token_receiver: Bytes::new(&env),
+                token_args: Bytes::new(&env),
+            }
+        } else {
+            let extra_args_val = message.extra_args.to_val();
+            GenericExtraArgsV3::try_from_val(&env, &extra_args_val)
+                .map_err(|_| CCIPError::InvalidExtraArgsData)?
+        };
 
         // TODO: Implement full message processing logic:
         // 3. Get pool CCVs if token transfer
