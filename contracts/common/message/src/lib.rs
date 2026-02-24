@@ -1,7 +1,7 @@
 #![no_std]
 
 use common_error::CCIPError;
-use soroban_sdk::{Address, Bytes, BytesN, Env, Vec, contracttype, xdr::ToXdr};
+use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 // ============================================================
 // MessageIdCompute Trait

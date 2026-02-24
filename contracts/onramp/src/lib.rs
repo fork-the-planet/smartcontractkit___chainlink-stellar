@@ -5,13 +5,14 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, TryFromVal, Vec, contract, contractimpl, symbol_short
+    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol,
+    TryFromVal, Vec,
 };
 
 use common_authorization::Ownable;
-use common_helpers::curse_checkable::CurseCheckable;
 use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
+use common_helpers::curse_checkable::CurseCheckable;
 use common_message::{GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes};
 use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
@@ -582,11 +583,12 @@ impl OnRampContract {
             fee_args.push_back(ccv_args.clone().into_val(env));
             fee_args.push_back(extra_args.block_confirmations.into_val(env));
 
-            let (fee, dest_gas_limit, dest_bytes_overhead) = env.invoke_contract::<Result<(u32, u32, u32), CCIPError>>(
-                &verifier_address,
-                &Symbol::new(env, "get_fee"),
-                fee_args,
-            )?;
+            let (fee, dest_gas_limit, dest_bytes_overhead) =
+                env.invoke_contract::<Result<(u32, u32, u32), CCIPError>>(
+                    &verifier_address,
+                    &Symbol::new(env, "get_fee"),
+                    fee_args,
+                )?;
 
             receipts.push_back(Receipt {
                 issuer: ccv,
@@ -606,9 +608,9 @@ impl OnRampContract {
             verifier_args.push_back(ccv_args.into_val(env));
 
             let verification_blob = env.invoke_contract::<Result<Bytes, CCIPError>>(
-                &verifier_address, 
-                &Symbol::new(&env, "forward_to_verifier"), 
-                verifier_args
+                &verifier_address,
+                &Symbol::new(&env, "forward_to_verifier"),
+                verifier_args,
             )?;
 
             verification_blobs.push_back(verification_blob);

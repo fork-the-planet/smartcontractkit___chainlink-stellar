@@ -3,7 +3,7 @@
 mod events;
 pub mod types;
 
-use common_authorization::allowlist::{AllowListable, AllowListUpdate, AllowListEntry};
+use common_authorization::allowlist::{AllowListEntry, AllowListUpdate, AllowListable};
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
