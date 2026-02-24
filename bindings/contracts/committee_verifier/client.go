@@ -52,7 +52,7 @@ func (c *CommitteeVerifierClient) Owner(ctx context.Context) (*string, error) {
 }
 
 // GetFee calls the get_fee function on the contract.
-func (c *CommitteeVerifierClient) GetFee(ctx context.Context, destChainSelector uint64, message []byte, extraArgs []byte, blockConfirmations uint32) error {
+func (c *CommitteeVerifierClient) GetFee(ctx context.Context, destChainSelector uint64, message []byte, extraArgs []byte, blockConfirmations uint32) (uint32, uint32, uint32, error) {
 	args := []xdr.ScVal{
 		scval.Uint64ToScVal(destChainSelector),
 		scval.BytesToScVal(message),
@@ -62,26 +62,62 @@ func (c *CommitteeVerifierClient) GetFee(ctx context.Context, destChainSelector 
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_fee", args)
 	if err != nil {
-		return fmt.Errorf("failed to call get_fee: %w", err)
+		return 0, 0, 0, fmt.Errorf("failed to call get_fee: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return 0, 0, 0, fmt.Errorf("no return value from get_fee")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return 0, 0, 0, fmt.Errorf("expected vec for tuple return")
+	}
+	if len(*vec) != 3 {
+		return 0, 0, 0, fmt.Errorf("expected 3 elements, got %d", len(*vec))
+	}
+
+	v0Raw, ok := (*vec)[0].GetU32()
+	if !ok {
+		return 0, 0, 0, fmt.Errorf("tuple[0]: expected u32")
+	}
+	v0 := uint32(v0Raw)
+
+	v1Raw, ok := (*vec)[1].GetU32()
+	if !ok {
+		return 0, 0, 0, fmt.Errorf("tuple[1]: expected u32")
+	}
+	v1 := uint32(v1Raw)
+
+	v2Raw, ok := (*vec)[2].GetU32()
+	if !ok {
+		return 0, 0, 0, fmt.Errorf("tuple[2]: expected u32")
+	}
+	v2 := uint32(v2Raw)
+
+	return v0, v1, v2, nil
 }
 
 // IsOwner calls the is_owner function on the contract.
-func (c *CommitteeVerifierClient) IsOwner(ctx context.Context, addr string) error {
+func (c *CommitteeVerifierClient) IsOwner(ctx context.Context, addr string) (bool, error) {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(addr),
 	}
 
 	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
 	if err != nil {
-		return fmt.Errorf("failed to call is_owner: %w", err)
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
 }
 
 // InitOwner calls the init_owner function on the contract.
@@ -118,16 +154,23 @@ func (c *CommitteeVerifierClient) Initialize(ctx context.Context, owner string, 
 }
 
 // VersionTag calls the version_tag function on the contract.
-func (c *CommitteeVerifierClient) VersionTag(ctx context.Context) error {
+func (c *CommitteeVerifierClient) VersionTag(ctx context.Context) ([4]byte, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "version_tag", args)
 	if err != nil {
-		return fmt.Errorf("failed to call version_tag: %w", err)
+		return [4]byte{}, fmt.Errorf("failed to call version_tag: %w", err)
 	}
 
-	_ = result // void return
-	return nil
+	if result == nil {
+		return [4]byte{}, fmt.Errorf("no return value from version_tag")
+	}
+
+	v, err := scval.Bytes4FromScVal(*result)
+	if err != nil {
+		return [4]byte{}, err
+	}
+	return v, nil
 }
 
 // RequireOwner calls the require_owner function on the contract.
@@ -1009,9 +1052,29 @@ func parseStorageLocationsUpdatedEvent(e protocolrpc.EventInfo) (*StorageLocatio
 
 		switch string(key) {
 		case "old_locations":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][]byte, len(*vec))
+				for i, item := range *vec {
+					v, ok := item.GetBytes()
+					if ok {
+						parsed[i] = []byte(v)
+					}
+				}
+				result.OldLocations = parsed
+			}
 		case "new_locations":
-			// TODO: parse complex type
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][]byte, len(*vec))
+				for i, item := range *vec {
+					v, ok := item.GetBytes()
+					if ok {
+						parsed[i] = []byte(v)
+					}
+				}
+				result.NewLocations = parsed
+			}
 		}
 	}
 
