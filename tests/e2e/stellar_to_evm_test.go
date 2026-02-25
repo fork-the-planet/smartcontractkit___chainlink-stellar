@@ -14,6 +14,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
+	chainsel "github.com/smartcontractkit/chain-selectors"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
@@ -66,7 +67,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	os.Setenv("CTF_CONFIG_OUTPUT", configOutputPath)
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
 
-	stellarChainID := "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
+	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
 
 	ctx := ccv.Plog.WithContext(t.Context())
 	l := zerolog.Ctx(ctx)
