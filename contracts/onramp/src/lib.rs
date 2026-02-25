@@ -231,7 +231,6 @@ impl OnRampContract {
         // TODO: Implement full message processing logic:
         // 3. Get pool CCVs if token transfer
         // 4. Merge CCV lists
-        // 5. Build MessageV1
         // 6. Get receipts and calculate fees
         // 7. Validate fee amount
         // 8. Distribute fees
