@@ -130,6 +130,8 @@ type E2ETestEnv struct {
 	SourceChainDetails *chain_selectors.ChainDetails
 	DestChainDetails   *chain_selectors.ChainDetails
 	Chains             map[uint64]cciptestinterfaces.CCIP17
+	AggregatorClients  map[string]*ccv.AggregatorClient
+	IndexerMonitor     *ccv.IndexerMonitor
 }
 
 func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string) *E2ETestEnv {
@@ -275,5 +277,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		DestChain:          destChain,
 		SourceChainDetails: &stellarDetails,
 		DestChainDetails:   &evmDetails,
+		AggregatorClients:  aggregatorClients,
+		IndexerMonitor:     indexerMonitor,
 	}
 }
