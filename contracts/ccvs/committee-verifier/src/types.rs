@@ -54,7 +54,6 @@ impl Validatable for RemoteChainConfig {
     }
 }
 
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FeeResponse {

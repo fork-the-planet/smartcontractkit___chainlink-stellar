@@ -4,7 +4,9 @@ mod events;
 pub mod types;
 
 use common_interfaces::{
-    committee_verifier::FeeResponse, fee_quoter::{FeeQuoterClient, GasQuoteResult}, versioned_verifier_resolver::VersionedVerifierResolverClient
+    committee_verifier::FeeResponse,
+    fee_quoter::{FeeQuoterClient, GasQuoteResult},
+    versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
@@ -164,9 +166,11 @@ impl OnRampContract {
         // TODO: Merge CCV lists
 
         // TODO: add the defualt ccv from dest config if no user-specified CCVs
-        
+
         // Query each CCV for fees
-        let ccv_fees_usd_cents = extra_args.ccvs.iter()
+        let ccv_fees_usd_cents = extra_args
+            .ccvs
+            .iter()
             .zip(extra_args.ccv_args.iter())
             .try_fold(0u128, |acc, (ccv, ccv_args)| {
                 let ccv_fee_response = Self::get_ccv_fee_internal(
@@ -178,10 +182,9 @@ impl OnRampContract {
                     &extra_args,
                 )?;
 
-                Ok(
-                    acc.checked_add(ccv_fee_response.fee as u128)
-                        .ok_or(CCIPError::InvalidFeeCalculation)?
-                )
+                Ok(acc
+                    .checked_add(ccv_fee_response.fee as u128)
+                    .ok_or(CCIPError::InvalidFeeCalculation)?)
             })?;
 
         let ccv_fees_in_fee_token = ccv_fees_usd_cents
@@ -193,12 +196,13 @@ impl OnRampContract {
         // TODO: Query executor for fees
         // TODO: Query pool for fees (if token transfer)
 
-        let total_fee = message_fee.fee_token_amount
+        let total_fee = message_fee
+            .fee_token_amount
             .checked_add(ccv_fees_in_fee_token)
             .ok_or(CCIPError::InvalidFeeCalculation)?;
 
         Ok(total_fee)
-    }   
+    }
 
     /// Forward a message from the Router to be sent cross-chain.
     ///
@@ -627,11 +631,11 @@ impl OnRampContract {
             let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
 
             let ccv_fee_response = Self::get_ccv_fee_internal(
-                env, 
-                &verifier_address, 
-                dest_chain_selector, 
-                &message_bytes, 
-                &ccv_args, 
+                env,
+                &verifier_address,
+                dest_chain_selector,
+                &message_bytes,
+                &ccv_args,
                 extra_args,
             )?;
 

@@ -132,8 +132,11 @@ fn test_apply_remote_chain_config_and_get_fee() {
     assert_eq!(retrieved.fee_usd_cents, 10);
     assert_eq!(retrieved.gas_for_verification, 100_000);
 
-    let FeeResponse { fee, dest_gas_limit, dest_bytes_overhead } =
-        client.get_fee(&dest_chain, &Bytes::new(&env), &Bytes::new(&env), &0u32);
+    let FeeResponse {
+        fee,
+        dest_gas_limit,
+        dest_bytes_overhead,
+    } = client.get_fee(&dest_chain, &Bytes::new(&env), &Bytes::new(&env), &0u32);
     assert_eq!(fee, 10);
     assert_eq!(dest_gas_limit, 100_000);
     assert_eq!(dest_bytes_overhead, 256);
