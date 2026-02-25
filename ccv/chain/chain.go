@@ -243,7 +243,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	err = c.onRampClient.Initialize(ctx, c.deployerKeypair.Address(), onrampbindings.StaticConfig{
 		ChainSelector:         selector,
 		TokenAdminRegistry:    mockTokenAdminRegistry,
-		RmnRemote:             mockRMNRemote,
+		RmnProxy:              mockRMNRemote,
 		MaxUsdCentsPerMessage: 10000, // $100
 	}, onrampbindings.DynamicConfig{
 		FeeQuoter:     mockFeeQuoter,
@@ -304,9 +304,9 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	// Add CCV refs
 	for i, qualifier := range []string{
 		devenvcommon.DefaultCommitteeVerifierQualifier,
-		devenvcommon.SecondaryCommitteeVerifierQualifier,
-		devenvcommon.TertiaryCommitteeVerifierQualifier,
-		devenvcommon.QuaternaryReceiverQualifier,
+		// devenvcommon.SecondaryCommitteeVerifierQualifier,
+		// devenvcommon.TertiaryCommitteeVerifierQualifier,
+		// devenvcommon.QuaternaryReceiverQualifier,
 	} {
 		verifierAddress := contractAddr(fmt.Sprintf("stellar-ccv-%d", i))
 		c.logger.Info().Str("verifier address in strkey", verifierAddress).Msg("Adding CCV ref")
