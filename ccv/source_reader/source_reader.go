@@ -86,6 +86,7 @@ func NewSourceReaderWithClient(
 
 	return &SourceReader{
 		client:               client,
+		invoker:              invoker,
 		ccipOnrampAddress:    ccipOnrampAddress,
 		ccipMessageSentTopic: ccipMessageSentTopic,
 		rmnRemoteAddress:     rmnRemoteAddress,
@@ -623,8 +624,7 @@ func (s *SourceReader) LatestAndFinalizedBlock(ctx context.Context) (latest, fin
 	return &header, &header, nil
 }
 
-// GetRMNCursedSubjects is currently a stub; fill in once the Stellar RMN
-// contract/location is defined.
+// GetRMNCursedSubjects gets the cursed subjects from the RMN Remote contract.
 func (s *SourceReader) GetRMNCursedSubjects(ctx context.Context) ([]protocol.Bytes16, error) {
 	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(s.invoker, s.rmnRemoteAddress)
 	cursedSubjects, err := rmnRemoteClient.GetCursedSubjects(ctx)

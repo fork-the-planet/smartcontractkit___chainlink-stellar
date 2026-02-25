@@ -104,8 +104,10 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	)
 	rmnRemoteRef, err := env.DataStore.Addresses().Get(rmnRemoteKey)
 	require.NoError(t, err)
-	rmnRemoteAddress := rmnRemoteRef.Address
-	require.NotEmpty(t, rmnRemoteAddress)
+	require.NotEmpty(t, rmnRemoteRef.Address)
+
+	rmnRemoteAddress, err := hexToContractStrkey(rmnRemoteRef.Address)
+	require.NoError(t, err)
 	l.Info().Str("rmnRemoteAddress", rmnRemoteAddress).Msg("Found RMN Remote in CCV datastore")
 
 	onRampClient := onrampbindings.NewOnRampClient(deployer, onrampContractID)
