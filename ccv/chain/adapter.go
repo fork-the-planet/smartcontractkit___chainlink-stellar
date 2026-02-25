@@ -42,7 +42,9 @@ func (s *StellarAdapter) AddressRefToBytes(ref datastore.AddressRef) ([]byte, er
 		return decoded, nil
 	}
 	if decoded, err := hex.DecodeString(strings.TrimPrefix(ref.Address, "0x")); err == nil {
-		return decoded, nil
+		if len(decoded) == 32 {
+			return decoded, nil
+		}
 	}
 	return nil, fmt.Errorf("failed to decode Stellar address %q: not a valid contract (C...), account (G...), or hex address", ref.Address)
 }
