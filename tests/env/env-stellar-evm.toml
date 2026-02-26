@@ -178,6 +178,7 @@ execution_interval = 15_000_000_000
 
 ## Verifier Setup
 [[verifier]]
+  chain_family = "stellar"
   image = "verifier:dev"
   container_name = "default-verifier-1"
   nop_alias = "default-verifier-1"
@@ -199,6 +200,7 @@ execution_interval = 15_000_000_000
       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 [[verifier]]
+  chain_family = "stellar"
   image = "verifier:dev"
   container_name = "default-verifier-2"
   nop_alias = "default-verifier-2"

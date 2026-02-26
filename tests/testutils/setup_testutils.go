@@ -15,6 +15,7 @@ import (
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
@@ -30,6 +31,7 @@ import (
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
+	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/modifier"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -147,6 +149,11 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	// Register the Stellar chain implementation
 	registry.GetGlobalChainImplRegistry().
 		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout)))
+
+	committeeverifier.RegisterModifier(
+		chain_selectors.FamilyStellar,
+		modifier.StellarModifier,
+	)
 
 	in, err := ccv.NewEnvironment()
 	require.NoError(t, err)

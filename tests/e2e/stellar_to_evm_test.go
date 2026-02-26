@@ -186,7 +186,20 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 			Str("capturedMessageID", hex.EncodeToString(capturedEvent.MessageID[:])).
 			Uint64("sequenceNumber", uint64(capturedEvent.Message.SequenceNumber)).
 			Uint64("blockNumber", capturedEvent.BlockNumber).
+			Int("receiptsCount", len(capturedEvent.Receipts)).
 			Msg("Message captured via SourceReader")
+
+		for i, r := range capturedEvent.Receipts {
+			l.Info().
+				Int("index", i).
+				Str("issuer", r.Issuer.String()).
+				Uint64("destGasLimit", r.DestGasLimit).
+				Uint32("destBytesOverhead", r.DestBytesOverhead).
+				Str("feeTokenAmount", r.FeeTokenAmount.String()).
+				Str("extraArgs", hex.EncodeToString(r.ExtraArgs)).
+				Str("blob", hex.EncodeToString(r.Blob)).
+				Msg("Receipt details")
+		}
 
 		// Verify the captured event matches what we sent
 		require.Equal(t, protocol.Bytes32(messageID), capturedEvent.MessageID,
