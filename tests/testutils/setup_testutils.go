@@ -210,7 +210,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		Deployer:          deployer,
 		RPCClient:         rpcClient,
 		NetworkPassphrase: networkPassphrase,
-		Output:             output,
+		Output:            output,
 	}, nil
 }
 

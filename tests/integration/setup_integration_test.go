@@ -11,9 +11,9 @@ import (
 	"time"
 
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
 const sharedContainerName = "blockchain-stellar-integration-shared"
