@@ -59,15 +59,10 @@ func TestCommitteeVerifier(t *testing.T) {
 	// Generate mock addresses
 	mockFeeAggregator := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-aggregator")
 
-	t.Run("initialize", func(t *testing.T) {
-		err := initialize(ctx, t, deployer, deployerKP, rmnRemoteContractID, rmnProxyContractID, client, mockFeeAggregator)
-
-		if err != nil {
-			t.Fatalf("Failed to initialize CommitteeVerifier: %v", err)
-		}
-
-		t.Log("CommitteeVerifier initialized successfully")
-	})
+	err = initialize(ctx, t, deployer, deployerKP, rmnRemoteContractID, rmnProxyContractID, client, mockFeeAggregator)
+	if err != nil {
+		t.Fatalf("Failed to contract dependencies: %v", err)
+	}
 
 	t.Run("get version tag", func(t *testing.T) {
 		tag, err := client.VersionTag(ctx)
@@ -287,6 +282,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	err := rmnRemoteClient.Initialize(ctx, deployerKP.Address(), localChainSelector)
 	if err != nil {
 		t.Fatalf("Failed to initialize RMN Remote: %v", err)
+		return err
 	}
 	t.Log("RMN Remote initialized successfully")
 
@@ -295,6 +291,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	err = rmnProxyClient.Initialize(ctx, deployerKP.Address(), rmnRemoteContractID)
 	if err != nil {
 		t.Fatalf("Failed to initialize RMN Proxy: %v", err)
+		return err
 	}
 	t.Log("RMN Proxy initialized successfully")
 
@@ -304,6 +301,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	}, [][]byte{}, rmnProxyContractID)
 	if err != nil {
 		t.Fatalf("Failed to initialize CommitteeVerifier: %v", err)
+		return err
 	}
 
 	t.Log("CommitteeVerifier initialized successfully with RMN Proxy")
