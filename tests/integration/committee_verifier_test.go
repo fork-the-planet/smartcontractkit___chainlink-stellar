@@ -35,7 +35,7 @@ func TestCommitteeVerifier(t *testing.T) {
 
 	// Deploy the RMN Remote contract (required for RMN Proxy's is_cursed delegation)
 	t.Log("Deploying RMN Remote contract...")
-	salt = deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-remote")
+	salt = deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-remote-"+t.Name())
 	wasmPath = filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
 	rmnRemoteContractID, err := deployer.DeployContract(ctx, wasmPath, salt)
 	if err != nil {
