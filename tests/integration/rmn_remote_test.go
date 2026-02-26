@@ -10,7 +10,6 @@ import (
 
 	rmnbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
 var globalCurseSubject = [16]byte{
@@ -22,7 +21,7 @@ func TestRmnRemote(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := helpers.SetupTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
 
 	// Deploy the RmnRemote contract
 	t.Log("Deploying RmnRemote contract...")

@@ -18,7 +18,7 @@ func TestOnRamp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := helpers.SetupTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
 
 	t.Run("can deploy onramp contract", func(t *testing.T) {
 		// Deploy the OnRamp contract

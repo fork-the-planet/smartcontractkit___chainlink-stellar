@@ -172,11 +172,11 @@ pub trait AllowListable: Ownable {
     /// Require that a given address is in the allow list.
     ///
     /// # Errors
-    /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
     /// * `CallerNotAuthorized` - No authorized caller provided auth
     fn require_in_allowlist(env: &Env, key: u64, address: &Address) -> Result<(), CCIPError> {
+        // If the allowlist is not enabled, we assume the address is allowed.
         if !Self::is_allowlist_enabled(env, key) {
-            return Err(CCIPError::FeatureNotEnabled);
+            return Ok(());
         }
 
         if !Self::is_in_allowlist(env, key, address) {
