@@ -235,12 +235,15 @@ fn test_forward_to_verifier_fails_when_sender_not_in_allowlist() {
     let fee_token = Address::generate(&env);
     let verifier_args = Bytes::new(&env);
 
-    client.apply_allowlist_updates(&vec![&env, AllowListUpdate {
-        dest_chain_selector: dest_chain,
-        allowlist_enabled: true,
-        added_allowlisted_senders: vec![&env],
-        removed_allowlisted_senders: vec![&env],
-    }]);
+    client.apply_allowlist_updates(&vec![
+        &env,
+        AllowListUpdate {
+            dest_chain_selector: dest_chain,
+            allowlist_enabled: true,
+            added_allowlisted_senders: vec![&env],
+            removed_allowlisted_senders: vec![&env],
+        },
+    ]);
 
     client.forward_to_verifier(
         &dest_chain,
