@@ -205,8 +205,7 @@ fn test_transfer_ownership() {
 // ============================================================
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")] // FeatureNotEnabled
-fn test_forward_to_verifier_fails_when_allowlist_not_enabled_for_chain() {
+fn test_forward_to_verifier_passes_when_allowlist_not_enabled_for_chain() {
     let (env, client, _owner, ..) = setup();
 
     let dest_chain: u64 = 12345;
@@ -214,6 +213,34 @@ fn test_forward_to_verifier_fails_when_allowlist_not_enabled_for_chain() {
     let message_id = BytesN::from_array(&env, &[0u8; 32]);
     let fee_token = Address::generate(&env);
     let verifier_args = Bytes::new(&env);
+
+    client.forward_to_verifier(
+        &dest_chain,
+        &sender,
+        &message_id,
+        &fee_token,
+        &0,
+        &verifier_args,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")] // CallerNotAuthorized
+fn test_forward_to_verifier_fails_when_sender_not_in_allowlist() {
+    let (env, client, _owner, ..) = setup();
+
+    let dest_chain: u64 = 12345;
+    let sender = Address::generate(&env);
+    let message_id = BytesN::from_array(&env, &[0u8; 32]);
+    let fee_token = Address::generate(&env);
+    let verifier_args = Bytes::new(&env);
+
+    client.apply_allowlist_updates(&vec![&env, AllowListUpdate {
+        dest_chain_selector: dest_chain,
+        allowlist_enabled: true,
+        added_allowlisted_senders: vec![&env],
+        removed_allowlisted_senders: vec![&env],
+    }]);
 
     client.forward_to_verifier(
         &dest_chain,
