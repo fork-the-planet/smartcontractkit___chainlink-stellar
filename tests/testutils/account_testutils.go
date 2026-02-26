@@ -14,7 +14,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 )
 
-// findProjectRoot finds the root of the chainlink-stellar project.
+// FindProjectRoot finds the root of the chainlink-stellar project.
 func FindProjectRoot(t *testing.T) string {
 	dir, err := FindProjectRootErr()
 	if err != nil {
