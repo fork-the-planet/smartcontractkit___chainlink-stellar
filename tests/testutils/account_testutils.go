@@ -16,23 +16,29 @@ import (
 
 // findProjectRoot finds the root of the chainlink-stellar project.
 func FindProjectRoot(t *testing.T) string {
-	// Start from the current working directory
+	dir, err := FindProjectRootErr()
+	if err != nil {
+		t.Fatalf("Failed to find project root: %v", err)
+	}
+	return dir
+}
+
+// FindProjectRootErr finds the root of the chainlink-stellar project, returning an error on failure.
+func FindProjectRootErr() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
+		return "", fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Walk up until we find Cargo.toml
 	for {
 		cargoPath := filepath.Join(dir, "Cargo.toml")
 		if _, err := os.Stat(cargoPath); err == nil {
-			return dir
+			return dir, nil
 		}
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			// Reached root without finding Cargo.toml
-			t.Fatal("Could not find project root (Cargo.toml)")
+			return "", fmt.Errorf("could not find project root (Cargo.toml)")
 		}
 		dir = parent
 	}

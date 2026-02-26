@@ -40,16 +40,25 @@ const STELLAR_LOCALNET_PASSPHRASE = "Standalone Network ; February 2017"
 
 // getFreePort asks the OS for an available TCP port.
 func getFreePort(t *testing.T) string {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	port, err := getFreePortErr()
 	if err != nil {
 		t.Fatalf("Failed to find free port: %v", err)
+	}
+	return port
+}
+
+// getFreePortErr asks the OS for an available TCP port, returning an error on failure.
+func getFreePortErr() (string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("failed to listen: %w", err)
 	}
 	defer l.Close()
 	_, port, err := net.SplitHostPort(l.Addr().String())
 	if err != nil {
-		t.Fatalf("Failed to parse free port: %v", err)
+		return "", fmt.Errorf("failed to parse port: %w", err)
 	}
-	return port
+	return port, nil
 }
 
 func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
@@ -118,6 +127,91 @@ func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *de
 	projectRoot := FindProjectRoot(t)
 
 	return projectRoot, deployerKP, deployer, rpcClient, networkPassphrase
+}
+
+// SharedTestEnv holds the result of SetupTestEnvShared for use across multiple integration tests.
+type SharedTestEnv struct {
+	ProjectRoot       string
+	DeployerKP        *keypair.Full
+	Deployer          *deployment.Deployer
+	RPCClient         *rpcclient.Client
+	NetworkPassphrase string
+	Output            *blockchain.Output // for teardown
+}
+
+// SetupTestEnvShared performs the same setup as SetupTestEnv but without *testing.T.
+// It returns the blockchain Output for teardown. Use containerName for a stable container name
+// when sharing across tests (e.g. "blockchain-stellar-integration-shared").
+func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestEnv, error) {
+	chain := chain.New(zerolog.New(os.Stdout))
+
+	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
+
+	port, err := getFreePortErr()
+	if err != nil {
+		return nil, fmt.Errorf("get free port: %w", err)
+	}
+
+	input := &blockchain.Input{
+		Type:          "stellar",
+		ChainID:       string(chainID[:]),
+		ContainerName: containerName,
+		Port:          port,
+		DockerCmdParamsOverrides: []string{
+			"--enable-soroban-rpc",
+			"--local",
+		},
+		Image: "stellar/quickstart:testing",
+	}
+
+	output, err := chain.DeployLocalNetwork(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("deploy local network: %w", err)
+	}
+
+	rpcURL := output.Nodes[0].ExternalHTTPUrl
+	networkPassphrase := chain.NetworkPassphrase()
+
+	rpcClient := rpcclient.NewClient(rpcURL, &http.Client{Timeout: 60 * time.Second})
+
+	if err := WaitForFriendbot(
+		ctx,
+		input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL,
+		3*time.Minute,
+	); err != nil {
+		return nil, fmt.Errorf("friendbot not ready: %w", err)
+	}
+
+	deployerKP, err := keypair.Random()
+	if err != nil {
+		return nil, fmt.Errorf("generate deployer keypair: %w", err)
+	}
+
+	deployerAddressBytes, err := strkey.Decode(strkey.VersionByteAccountID, deployerKP.Address())
+	if err != nil {
+		return nil, fmt.Errorf("decode deployer address: %w", err)
+	}
+
+	err = chain.FundAddresses(ctx, input, []protocol.UnknownAddress{deployerAddressBytes}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fund deployer: %w", err)
+	}
+
+	deployer := deployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
+
+	projectRoot, err := FindProjectRootErr()
+	if err != nil {
+		return nil, fmt.Errorf("find project root: %w", err)
+	}
+
+	return &SharedTestEnv{
+		ProjectRoot:       projectRoot,
+		DeployerKP:        deployerKP,
+		Deployer:          deployer,
+		RPCClient:         rpcClient,
+		NetworkPassphrase: networkPassphrase,
+		Output:             output,
+	}, nil
 }
 
 type E2ETestEnv struct {
