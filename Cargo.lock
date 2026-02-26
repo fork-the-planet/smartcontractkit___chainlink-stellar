@@ -238,6 +238,7 @@ dependencies = [
  "common-helpers",
  "common-verifier",
  "rmn_proxy",
+ "rmn_remote",
  "soroban-sdk",
 ]
 
@@ -1027,6 +1028,8 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-helpers",
+ "common-interfaces",
  "common-message",
  "soroban-sdk",
 ]
@@ -1206,6 +1209,8 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-interfaces",
+ "rmn_remote",
  "soroban-sdk",
 ]
 
@@ -1228,8 +1233,10 @@ dependencies = [
  "common-guard",
  "common-interfaces",
  "common-message",
+ "fee-quoter",
  "onramp",
  "rmn_proxy",
+ "rmn_remote",
  "soroban-sdk",
 ]
 

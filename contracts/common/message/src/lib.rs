@@ -1,7 +1,11 @@
 #![no_std]
 
 use common_error::CCIPError;
-use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{
+    contracttype,
+    xdr::{FromXdr, ToXdr},
+    Address, Bytes, BytesN, Env, TryFromVal, Vec,
+};
 
 // ============================================================
 // MessageIdCompute Trait
@@ -60,6 +64,38 @@ impl ToBytes for TokenAmount {
 }
 
 // ============================================================
+// GenericExtraArgsV3
+// ============================================================
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GenericExtraArgsV3 {
+    pub gas_limit: u32,
+    pub block_confirmations: u32,
+    pub ccvs: Vec<Address>,
+    pub ccv_args: Vec<Bytes>,
+    pub executor: Address,
+    pub executor_args: Bytes,
+    pub token_receiver: Bytes,
+    pub token_args: Bytes,
+}
+
+impl GenericExtraArgsV3 {
+    pub fn new(env: &Env, executor: Address) -> Self {
+        Self {
+            gas_limit: 0,
+            block_confirmations: 0,
+            ccvs: Vec::new(env),
+            ccv_args: Vec::new(env),
+            executor,
+            executor_args: Bytes::new(env),
+            token_receiver: Bytes::new(env),
+            token_args: Bytes::new(env),
+        }
+    }
+}
+
+// ============================================================
 // StellarToAnyMessage
 // ============================================================
 
@@ -82,6 +118,10 @@ pub struct StellarToAnyMessage {
 
 impl StellarToAnyMessage {
     pub fn validate(&self) -> Result<(), CCIPError> {
+        if self.token_amounts.len() > 1 {
+            return Err(CCIPError::CanOnlySendOneTokenPerMessage);
+        }
+
         for token_amount in self.token_amounts.iter() {
             token_amount.validate()?;
         }

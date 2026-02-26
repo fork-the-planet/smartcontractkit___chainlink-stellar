@@ -8,6 +8,137 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// AllowListEntry represents the AllowListEntry struct from the contract.
+type AllowListEntry struct {
+	Allowlist        []string
+	AllowlistEnabled bool
+}
+
+// ToScVal converts AllowListEntry to an xdr.ScVal for contract calls.
+func (s AllowListEntry) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"allowlist":         scval.AddressSliceToScVal(s.Allowlist),
+		"allowlist_enabled": scval.BoolToScVal(s.AllowlistEnabled),
+	})
+}
+
+// AllowListEntryFromScVal parses an xdr.ScVal into AllowListEntry.
+func AllowListEntryFromScVal(val xdr.ScVal) (*AllowListEntry, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AllowListEntry{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "allowlist":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("allowlist is not a vec")
+			}
+			result.Allowlist = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Allowlist[i] = v
+			}
+		case "allowlist_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("allowlist_enabled is not bool")
+			}
+			result.AllowlistEnabled = v
+		}
+	}
+
+	return result, nil
+}
+
+// AllowListUpdate represents the AllowListUpdate struct from the contract.
+type AllowListUpdate struct {
+	AddedAllowlistedSenders   []string
+	AllowlistEnabled          bool
+	DestChainSelector         uint64
+	RemovedAllowlistedSenders []string
+}
+
+// ToScVal converts AllowListUpdate to an xdr.ScVal for contract calls.
+func (s AllowListUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"added_allowlisted_senders":   scval.AddressSliceToScVal(s.AddedAllowlistedSenders),
+		"allowlist_enabled":           scval.BoolToScVal(s.AllowlistEnabled),
+		"dest_chain_selector":         scval.Uint64ToScVal(s.DestChainSelector),
+		"removed_allowlisted_senders": scval.AddressSliceToScVal(s.RemovedAllowlistedSenders),
+	})
+}
+
+// AllowListUpdateFromScVal parses an xdr.ScVal into AllowListUpdate.
+func AllowListUpdateFromScVal(val xdr.ScVal) (*AllowListUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &AllowListUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "added_allowlisted_senders":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("added_allowlisted_senders is not a vec")
+			}
+			result.AddedAllowlistedSenders = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.AddedAllowlistedSenders[i] = v
+			}
+		case "allowlist_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("allowlist_enabled is not bool")
+			}
+			result.AllowlistEnabled = v
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("dest_chain_selector: %w", err)
+			}
+			result.DestChainSelector = v
+		case "removed_allowlisted_senders":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("removed_allowlisted_senders is not a vec")
+			}
+			result.RemovedAllowlistedSenders = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.RemovedAllowlistedSenders[i] = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // TokenAmount represents the TokenAmount struct from the contract.
 type TokenAmount struct {
 	Amount int64
@@ -49,6 +180,115 @@ func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
 				return nil, fmt.Errorf("token: %w", err)
 			}
 			result.Token = v
+		}
+	}
+
+	return result, nil
+}
+
+// GenericExtraArgsV3 represents the GenericExtraArgsV3 struct from the contract.
+type GenericExtraArgsV3 struct {
+	BlockConfirmations uint32
+	CcvArgs            [][]byte
+	Ccvs               []string
+	Executor           string
+	ExecutorArgs       []byte
+	GasLimit           uint32
+	TokenArgs          []byte
+	TokenReceiver      []byte
+}
+
+// ToScVal converts GenericExtraArgsV3 to an xdr.ScVal for contract calls.
+func (s GenericExtraArgsV3) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"block_confirmations": scval.Uint32ToScVal(s.BlockConfirmations),
+		"ccv_args":            scval.BytesSliceToScVal(s.CcvArgs),
+		"ccvs":                scval.AddressSliceToScVal(s.Ccvs),
+		"executor":            scval.AddressToScVal(s.Executor),
+		"executor_args":       scval.BytesToScVal(s.ExecutorArgs),
+		"gas_limit":           scval.Uint32ToScVal(s.GasLimit),
+		"token_args":          scval.BytesToScVal(s.TokenArgs),
+		"token_receiver":      scval.BytesToScVal(s.TokenReceiver),
+	})
+}
+
+// GenericExtraArgsV3FromScVal parses an xdr.ScVal into GenericExtraArgsV3.
+func GenericExtraArgsV3FromScVal(val xdr.ScVal) (*GenericExtraArgsV3, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &GenericExtraArgsV3{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "block_confirmations":
+			v, ok := entry.Val.GetU32()
+			if !ok {
+				return nil, fmt.Errorf("block_confirmations is not u32")
+			}
+			result.BlockConfirmations = uint32(v)
+		case "ccv_args":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("ccv_args is not a vec")
+			}
+			result.CcvArgs = make([][]byte, len(*vec))
+			for i, item := range *vec {
+				v, ok := item.GetBytes()
+				if !ok {
+					return nil, fmt.Errorf("vec item is not bytes")
+				}
+				result.CcvArgs[i] = []byte(v)
+			}
+		case "ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("ccvs is not a vec")
+			}
+			result.Ccvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Ccvs[i] = v
+			}
+		case "executor":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("executor: %w", err)
+			}
+			result.Executor = v
+		case "executor_args":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("executor_args is not bytes")
+			}
+			result.ExecutorArgs = []byte(v)
+		case "gas_limit":
+			v, ok := entry.Val.GetU32()
+			if !ok {
+				return nil, fmt.Errorf("gas_limit is not u32")
+			}
+			result.GasLimit = uint32(v)
+		case "token_args":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("token_args is not bytes")
+			}
+			result.TokenArgs = []byte(v)
+		case "token_receiver":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("token_receiver is not bytes")
+			}
+			result.TokenReceiver = []byte(v)
 		}
 	}
 
@@ -247,83 +487,87 @@ const (
 	CCIPErrorThresholdNotMet                = 71
 	CCIPErrorUnexpectedSigner               = 72
 	CCIPErrorZeroValueNotAllowed            = 73
+	CCIPErrorInvalidFeeCalculation          = 801
+	CCIPErrorInvalidFeeTokenConversion      = 802
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
 var CCIPErrorMessage = map[int]string{
-	1:  "not initialized",
-	2:  "already initialized",
-	3:  "unauthorized",
-	4:  "not owner",
-	5:  "no pending owner",
-	6:  "caller not authorized",
-	7:  "caller already authorized",
-	8:  "caller not found",
-	9:  "role not granted",
-	10: "feature not enabled",
-	11: "role already granted",
-	12: "cannot renounce role",
-	13: "invalid version tag",
-	14: "invalid signature length",
-	15: "invalid signature",
-	16: "invalid signature count",
-	17: "invalid signature threshold",
-	18: "invalid signature pubkey",
-	19: "source not configured",
-	20: "invalid verifier results",
-	21: "reentrant call",
-	22: "token not supported",
-	23: "fee token not supported",
-	24: "no gas price available",
-	25: "destination chain not enabled",
-	26: "invalid extra args tag",
-	27: "invalid extra args data",
-	28: "message gas limit too high",
-	29: "message too large",
-	30: "unsupported number of tokens",
-	31: "invalid dest chain config",
-	32: "message fee too high",
-	33: "invalid static config",
-	34: "invalid token receiver",
-	35: "source token data too large",
-	36: "invalid dest bytes overhead",
-	37: "destination chain not supported",
-	38: "must be called by router",
-	39: "router must set original sender",
-	40: "cannot send zero tokens",
-	41: "can only send one token per message",
-	42: "unsupported token",
-	43: "invalid dest chain address",
-	44: "fee exceeds max allowed",
-	45: "insufficient fee token amount",
-	46: "token receiver not allowed",
-	47: "cursed by r m n",
-	48: "remote chain not supported",
-	49: "sender not allowed",
-	50: "invalid token amount",
-	51: "invalid receiver address",
-	52: "invalid config",
-	53: "invalid verifier results length",
-	54: "inbound implementation not found",
-	55: "outbound implementation not found",
-	56: "invalid address",
-	57: "invalid chain selector",
-	58: "invalid version",
-	59: "invalid c c v version",
-	60: "off ramp already exists",
-	61: "off ramp mismatch",
-	62: "bad r m n signal",
-	63: "unsupported destination chain",
-	64: "already cursed",
-	65: "config not set",
-	66: "duplicate onchain public key",
-	67: "invalid signer order",
-	68: "not enough signers",
-	69: "not cursed",
-	70: "out of order signatures",
-	71: "threshold not met",
-	72: "unexpected signer",
-	73: "zero value not allowed",
+	1:   "not initialized",
+	2:   "already initialized",
+	3:   "unauthorized",
+	4:   "not owner",
+	5:   "no pending owner",
+	6:   "caller not authorized",
+	7:   "caller already authorized",
+	8:   "caller not found",
+	9:   "role not granted",
+	10:  "feature not enabled",
+	11:  "role already granted",
+	12:  "cannot renounce role",
+	13:  "invalid version tag",
+	14:  "invalid signature length",
+	15:  "invalid signature",
+	16:  "invalid signature count",
+	17:  "invalid signature threshold",
+	18:  "invalid signature pubkey",
+	19:  "source not configured",
+	20:  "invalid verifier results",
+	21:  "reentrant call",
+	22:  "token not supported",
+	23:  "fee token not supported",
+	24:  "no gas price available",
+	25:  "destination chain not enabled",
+	26:  "invalid extra args tag",
+	27:  "invalid extra args data",
+	28:  "message gas limit too high",
+	29:  "message too large",
+	30:  "unsupported number of tokens",
+	31:  "invalid dest chain config",
+	32:  "message fee too high",
+	33:  "invalid static config",
+	34:  "invalid token receiver",
+	35:  "source token data too large",
+	36:  "invalid dest bytes overhead",
+	37:  "destination chain not supported",
+	38:  "must be called by router",
+	39:  "router must set original sender",
+	40:  "cannot send zero tokens",
+	41:  "can only send one token per message",
+	42:  "unsupported token",
+	43:  "invalid dest chain address",
+	44:  "fee exceeds max allowed",
+	45:  "insufficient fee token amount",
+	46:  "token receiver not allowed",
+	47:  "cursed by r m n",
+	48:  "remote chain not supported",
+	49:  "sender not allowed",
+	50:  "invalid token amount",
+	51:  "invalid receiver address",
+	52:  "invalid config",
+	53:  "invalid verifier results length",
+	54:  "inbound implementation not found",
+	55:  "outbound implementation not found",
+	56:  "invalid address",
+	57:  "invalid chain selector",
+	58:  "invalid version",
+	59:  "invalid c c v version",
+	60:  "off ramp already exists",
+	61:  "off ramp mismatch",
+	62:  "bad r m n signal",
+	63:  "unsupported destination chain",
+	64:  "already cursed",
+	65:  "config not set",
+	66:  "duplicate onchain public key",
+	67:  "invalid signer order",
+	68:  "not enough signers",
+	69:  "not cursed",
+	70:  "out of order signatures",
+	71:  "threshold not met",
+	72:  "unexpected signer",
+	73:  "zero value not allowed",
+	801: "invalid fee calculation",
+	802: "invalid fee token conversion",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.

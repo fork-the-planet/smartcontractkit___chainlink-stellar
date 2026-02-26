@@ -266,6 +266,9 @@ func rustTypeToGo(rustType string) string {
 		if inner == "soroban_sdk::Address" {
 			return "*string"
 		}
+		// Option<Struct> -> *Struct
+		innerType := rustTypeToGo(inner)
+		return "*" + innerType
 	}
 
 	if strings.HasPrefix(rustType, "soroban_sdk::BytesN<") {

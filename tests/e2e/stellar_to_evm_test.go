@@ -2,17 +2,22 @@ package e2e_tests
 
 import (
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
+	chainsel "github.com/smartcontractkit/chain-selectors"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
-	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
+	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -62,7 +67,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	os.Setenv("CTF_CONFIG_OUTPUT", configOutputPath)
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
 
-	stellarChainID := "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
+	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
 
 	ctx := ccv.Plog.WithContext(t.Context())
 	l := zerolog.Ctx(ctx)
@@ -86,17 +91,35 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	)
 	onrampRef, err := env.DataStore.Addresses().Get(onrampKey)
 	require.NoError(t, err)
-	onrampContractID := onrampRef.Address
-	require.NotEmpty(t, onrampContractID)
+	require.NotEmpty(t, onrampRef.Address)
+
+	onrampContractID, err := hexToContractStrkey(onrampRef.Address)
+	require.NoError(t, err)
 	l.Info().Str("onrampContractID", onrampContractID).Msg("Found OnRamp in CCV datastore")
+
+	rmnRemoteKey := datastore.NewAddressRefKey(
+		stellarDetails.ChainSelector,
+		datastore.ContractType(rmn_remote.ContractType),
+		rmn_remote.Version,
+		"",
+	)
+	rmnRemoteRef, err := env.DataStore.Addresses().Get(rmnRemoteKey)
+	require.NoError(t, err)
+	require.NotEmpty(t, rmnRemoteRef.Address)
+
+	rmnRemoteAddress, err := hexToContractStrkey(rmnRemoteRef.Address)
+	require.NoError(t, err)
+	l.Info().Str("rmnRemoteAddress", rmnRemoteAddress).Msg("Found RMN Remote in CCV datastore")
 
 	onRampClient := onrampbindings.NewOnRampClient(deployer, onrampContractID)
 
 	// Create the Stellar source reader with the DEPLOYED OnRamp contract ID
 	stellarSourceReader, err := ccvsourcereader.NewSourceReaderWithClient(
 		rpc,
+		deployer,
 		onrampContractID,
 		"onramp_1_7_CCIPMessageSent", // Event topic from OnRamp contract
+		rmnRemoteAddress,
 		l,
 	)
 	require.NoError(t, err)
@@ -163,7 +186,20 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 			Str("capturedMessageID", hex.EncodeToString(capturedEvent.MessageID[:])).
 			Uint64("sequenceNumber", uint64(capturedEvent.Message.SequenceNumber)).
 			Uint64("blockNumber", capturedEvent.BlockNumber).
+			Int("receiptsCount", len(capturedEvent.Receipts)).
 			Msg("Message captured via SourceReader")
+
+		for i, r := range capturedEvent.Receipts {
+			l.Info().
+				Int("index", i).
+				Str("issuer", r.Issuer.String()).
+				Uint64("destGasLimit", r.DestGasLimit).
+				Uint32("destBytesOverhead", r.DestBytesOverhead).
+				Str("feeTokenAmount", r.FeeTokenAmount.String()).
+				Str("extraArgs", hex.EncodeToString(r.ExtraArgs)).
+				Str("blob", hex.EncodeToString(r.Blob)).
+				Msg("Receipt details")
+		}
 
 		// Verify the captured event matches what we sent
 		require.Equal(t, protocol.Bytes32(messageID), capturedEvent.MessageID,
@@ -215,4 +251,13 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		// 	Str("messageID", hex.EncodeToString(messageID[:])).
 		// 	Msg("Message executed successfully on EVM")
 	})
+}
+
+// hexToContractStrkey converts a 0x-prefixed hex address to a Stellar contract strkey (C…).
+func hexToContractStrkey(hexAddr string) (string, error) {
+	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
+	if err != nil {
+		return "", fmt.Errorf("decode hex address: %w", err)
+	}
+	return strkey.Encode(strkey.VersionByteContract, raw)
 }

@@ -25,7 +25,7 @@ pub trait FeeQuoterInterface {
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
-    ) -> Result<i128, CCIPError>;
+    ) -> Result<MessageFeeResult, CCIPError>;
     fn get_token_price(
         env: soroban_sdk::Env,
         token: soroban_sdk::Address,
@@ -94,7 +94,33 @@ pub trait FeeQuoterInterface {
         token: soroban_sdk::Address,
     ) -> Result<u128, CCIPError>;
 }
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListEntry {
+    pub allowlist: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListUpdate {
+    pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+    pub dest_chain_selector: u64,
+    pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+}
 
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GenericExtraArgsV3 {
+    pub block_confirmations: u32,
+    pub ccv_args: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub executor: soroban_sdk::Address,
+    pub executor_args: soroban_sdk::Bytes,
+    pub gas_limit: u32,
+    pub token_args: soroban_sdk::Bytes,
+    pub token_receiver: soroban_sdk::Bytes,
+}
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct AnyToStellarMessage {
@@ -140,6 +166,13 @@ pub struct DestChainConfig {
     pub max_data_bytes: u32,
     pub max_per_msg_gas_limit: u32,
     pub network_fee_usd_cents: u32,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct MessageFeeResult {
+    pub fee_token_amount: i128,
+    pub fee_token_price: u128,
+    pub fee_usd_cents: u128,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -263,6 +296,8 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+    InvalidFeeCalculation = 801,
+    InvalidFeeTokenConversion = 802,
 }
 #[soroban_sdk::contractevent(topics = ["auth_RoleGranted"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

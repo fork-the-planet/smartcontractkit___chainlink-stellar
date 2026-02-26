@@ -8,7 +8,7 @@ pub trait CommitteeVerifierInterface {
         message: soroban_sdk::Bytes,
         extra_args: soroban_sdk::Bytes,
         block_confirmations: u32,
-    ) -> Result<(u32, u32, u32), CCIPError>;
+    ) -> Result<FeeResponse, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
@@ -24,12 +24,17 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn init_allowlist(
+        env: soroban_sdk::Env,
+        initial_allowlist: soroban_sdk::Map<u64, soroban_sdk::Vec<soroban_sdk::Address>>,
+    );
     fn verify_message(
         env: soroban_sdk::Env,
         source_chain_selector: u64,
         message_hash: soroban_sdk::BytesN<32>,
         verifier_results: soroban_sdk::Bytes,
     ) -> Result<(), CCIPError>;
+    fn is_in_allowlist(env: soroban_sdk::Env, key: u64, addr: soroban_sdk::Address) -> bool;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
@@ -41,7 +46,7 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
-    fn forward_to_resolver(
+    fn forward_to_verifier(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
         sender: soroban_sdk::Address,
@@ -50,13 +55,24 @@ pub trait CommitteeVerifierInterface {
         fee_token_amount: i128,
         verifier_args: soroban_sdk::Bytes,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
+    fn get_allowlist_entry(env: soroban_sdk::Env, key: u64) -> Option<AllowListEntry>;
     fn withdraw_fee_tokens(
         env: soroban_sdk::Env,
         fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
     ) -> Result<(), CCIPError>;
+    fn is_allowlist_enabled(env: soroban_sdk::Env, key: u64) -> bool;
+    fn require_in_allowlist(
+        env: soroban_sdk::Env,
+        key: u64,
+        address: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_storage_locations(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::Bytes>, CCIPError>;
+    fn apply_allowlist_updates(
+        env: soroban_sdk::Env,
+        updates: soroban_sdk::Vec<AllowListUpdate>,
+    ) -> Result<(), CCIPError>;
     fn get_remote_chain_config(
         env: soroban_sdk::Env,
         remote_chain_selector: u64,
@@ -90,16 +106,16 @@ pub trait CommitteeVerifierInterface {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DynamicConfig {
-    pub allowlist_admin: Option<soroban_sdk::Address>,
-    pub fee_aggregator: Option<soroban_sdk::Address>,
+pub struct FeeResponse {
+    pub dest_bytes_overhead: u32,
+    pub dest_gas_limit: u32,
+    pub fee: u32,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct AllowListUpdate {
-    pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub dest_chain_selector: u64,
-    pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+pub struct DynamicConfig {
+    pub allowlist_admin: Option<soroban_sdk::Address>,
+    pub fee_aggregator: Option<soroban_sdk::Address>,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -113,9 +129,35 @@ pub struct RemoteChainConfig {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListEntry {
+    pub allowlist: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AllowListUpdate {
+    pub added_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub allowlist_enabled: bool,
+    pub dest_chain_selector: u64,
+    pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TokenAmount {
     pub amount: i128,
     pub token: soroban_sdk::Address,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GenericExtraArgsV3 {
+    pub block_confirmations: u32,
+    pub ccv_args: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub executor: soroban_sdk::Address,
+    pub executor_args: soroban_sdk::Bytes,
+    pub gas_limit: u32,
+    pub token_args: soroban_sdk::Bytes,
+    pub token_receiver: soroban_sdk::Bytes,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -214,6 +256,8 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+    InvalidFeeCalculation = 801,
+    InvalidFeeTokenConversion = 802,
 }
 #[soroban_sdk::contractevent(topics = ["ccv_ConfigSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

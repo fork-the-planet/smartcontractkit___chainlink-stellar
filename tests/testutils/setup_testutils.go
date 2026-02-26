@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	ccv "github.com/smartcontractkit/chainlink-ccv/devenv"
-	"github.com/smartcontractkit/chainlink-ccv/devenv/cciptestinterfaces"
-	"github.com/smartcontractkit/chainlink-ccv/devenv/registry"
+	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
@@ -28,8 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
-	devenvcommon "github.com/smartcontractkit/chainlink-ccv/devenv/common"
+	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
+	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/modifier"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -130,6 +132,8 @@ type E2ETestEnv struct {
 	SourceChainDetails *chain_selectors.ChainDetails
 	DestChainDetails   *chain_selectors.ChainDetails
 	Chains             map[uint64]cciptestinterfaces.CCIP17
+	AggregatorClients  map[string]*ccv.AggregatorClient
+	IndexerMonitor     *ccv.IndexerMonitor
 }
 
 func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string) *E2ETestEnv {
@@ -145,6 +149,11 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	// Register the Stellar chain implementation
 	registry.GetGlobalChainImplRegistry().
 		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout)))
+
+	committeeverifier.RegisterModifier(
+		chain_selectors.FamilyStellar,
+		modifier.StellarModifier,
+	)
 
 	in, err := ccv.NewEnvironment()
 	require.NoError(t, err)
@@ -275,5 +284,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		DestChain:          destChain,
 		SourceChainDetails: &stellarDetails,
 		DestChainDetails:   &evmDetails,
+		AggregatorClients:  aggregatorClients,
+		IndexerMonitor:     indexerMonitor,
 	}
 }
