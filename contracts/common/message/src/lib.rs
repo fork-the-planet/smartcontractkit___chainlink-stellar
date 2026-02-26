@@ -1,7 +1,7 @@
 #![no_std]
 
 use common_error::CCIPError;
-use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, TryFromVal, Vec};
+use soroban_sdk::{Address, Bytes, BytesN, Env, TryFromVal, Vec, contracttype, xdr::{FromXdr, ToXdr}};
 
 // ============================================================
 // MessageIdCompute Trait
@@ -88,12 +88,6 @@ impl GenericExtraArgsV3 {
             token_receiver: Bytes::new(env),
             token_args: Bytes::new(env),
         }
-    }
-
-    pub fn try_from_bytes(env: &Env, bytes: Bytes) -> Result<GenericExtraArgsV3, CCIPError> {
-        let extra_args_val = bytes.to_val();
-        GenericExtraArgsV3::try_from_val(env, &extra_args_val)
-            .map_err(|_| CCIPError::InvalidExtraArgsData)
     }
 }
 

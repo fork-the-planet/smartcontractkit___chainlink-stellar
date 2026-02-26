@@ -9,7 +9,7 @@ use common_interfaces::{
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec, contract, contractimpl, symbol_short, xdr::FromXdr
 };
 
 use common_authorization::Ownable;
@@ -155,7 +155,8 @@ impl OnRampContract {
         let extra_args = if message.extra_args.len() == 0 {
             GenericExtraArgsV3::new(&env, dest_config.default_executor.clone())
         } else {
-            GenericExtraArgsV3::try_from_bytes(&env, message.extra_args.clone())?
+            GenericExtraArgsV3::from_xdr(&env, &message.extra_args.clone())
+                .map_err(|_| CCIPError::InvalidExtraArgsData)?
         };
 
         // Get message fee (incl. transfer fees and network fees) with the fee token price.
@@ -261,7 +262,8 @@ impl OnRampContract {
             // TODO: is a completely empty extra args value a valid case?
             GenericExtraArgsV3::new(&env, dest_config.default_executor.clone())
         } else {
-            GenericExtraArgsV3::try_from_bytes(&env, message.extra_args.clone())?
+            GenericExtraArgsV3::from_xdr(&env, &message.extra_args.clone())
+                .map_err(|_| CCIPError::InvalidExtraArgsData)?
         };
 
         // Get message fee (incl. transfer fees and network fees) with the fee token price.
