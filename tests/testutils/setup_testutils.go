@@ -169,6 +169,18 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		return nil, fmt.Errorf("deploy local network: %w", err)
 	}
 
+	// Defer cleanup on failure: if any step after deployment fails, we must terminate
+	// the container to avoid leaking it. On success, we skip cleanup so the caller
+	// can use the env and teardown in TestMain.
+	success := false
+	defer func() {
+		if !success && output != nil && output.Container != nil {
+			termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = output.Container.Terminate(termCtx)
+		}
+	}()
+
 	rpcURL := output.Nodes[0].ExternalHTTPUrl
 	networkPassphrase := chain.NetworkPassphrase()
 
@@ -204,6 +216,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		return nil, fmt.Errorf("find project root: %w", err)
 	}
 
+	success = true
 	return &SharedTestEnv{
 		ProjectRoot:       projectRoot,
 		DeployerKP:        deployerKP,
