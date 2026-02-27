@@ -38,6 +38,18 @@ jobs:
       - name: Clone chainlink-ccv
         run: git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Install Stellar CLI
+        run: cargo install stellar-cli --locked
+
+      - name: Build contracts
+        run: make build
+
       - name: Setup Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
