@@ -43,9 +43,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run unit tests (root module)
+      - name: Run unit tests (ccv packages)
+        working-directory: ccv
         run: go test -v -race -fullpath -shuffle on -coverprofile=coverage.out ./...
-
-      - name: Run unit tests (bindings module)
-        working-directory: bindings
-        run: go test -v -race -fullpath -shuffle on -coverprofile=coverage-bindings.out ./...
