@@ -1,0 +1,48 @@
+name: Go Unit Tests
+
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test-go:
+    name: Go Unit Tests
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: "github.com/smartcontractkit/*"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup GitHub Token
+        id: setup-github-token
+        uses: smartcontractkit/.github/actions/setup-github-token@ef78fa97bf3c77de6563db1175422703e9e6674f # setup-github-token@0.2.1
+        with:
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-lambda-url: ${{ secrets.AWS_LAMBDA_URL }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          set-git-config: "true"
+
+      - name: Clone chainlink-ccv
+        run: git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests (ccv packages)
+        working-directory: ccv
+        run: go test -v -race -fullpath -shuffle on -coverprofile=coverage.out ./...
