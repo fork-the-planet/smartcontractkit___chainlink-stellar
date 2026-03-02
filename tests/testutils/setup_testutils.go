@@ -31,7 +31,7 @@ import (
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/modifier"
+	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -259,7 +259,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	committeeverifier.RegisterModifier(
 		chain_selectors.FamilyStellar,
-		modifier.StellarModifier,
+		stellarcommon.StellarModifier,
 	)
 
 	in, err := ccv.NewEnvironment()
