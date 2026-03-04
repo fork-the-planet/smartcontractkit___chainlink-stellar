@@ -4,8 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +25,6 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
-	"github.com/smartcontractkit/chainlink-testing-framework/framework"
 )
 
 const (
@@ -35,41 +32,19 @@ const (
 	stellarSentTimeout = 30 * time.Second
 )
 
-// Start the environment required for this test using:
-// CTF_CONFIGS=env-stellar-evm.toml go run ./cmd/ccv
-// from the build/devenv directory.
-//
 // Contracts must be compiled before running:
-// make build
-// from the chainlink-stellar root directory.
+//
+//	make build
+//
+// Start the devenv from the chainlink-stellar root:
+//
+//	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv
+//
+// Once the devenv is running, run the test:
+//
+//	go test -v -timeout 10m ./tests/e2e/...
 func TestStellarToEVMSourceReader(t *testing.T) {
-	ccvDevenvDir, err := filepath.Abs("../../../chainlink-ccv/build/devenv")
-	require.NoError(t, err)
-
-	// We change the working dir to allow chainlink-ccv command to find the fake
-	// services with relative paths
-	origDir, err := os.Getwd()
-	require.NoError(t, err)
-	err = os.Chdir(ccvDevenvDir)
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		os.Chdir(origDir)
-		framework.RemoveTestContainers()
-	})
-
-	// CTF_CONFIGS must be a relative path because ccv.Load joins it with "."
-	// via filepath.Join, which strips leading "/" from absolute paths.
-	// This path is relative to ccvDevenvDir (the CWD after Chdir).
-	configRelPath, err := filepath.Rel(ccvDevenvDir, filepath.Join(origDir, "../env/env-stellar-evm.toml"))
-	require.NoError(t, err)
-
-	configOutputPath, err := filepath.Rel(ccvDevenvDir, filepath.Join(origDir, "../env/env-stellar-evm-out.toml"))
-	require.NoError(t, err)
-
-	os.Setenv("CTF_CONFIGS", configRelPath)
-	os.Setenv("CTF_CONFIG_OUTPUT", configOutputPath)
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
+	configOutputPath := "../env/env-stellar-evm-out.toml"
 
 	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
 	stellarSelector := chainsel.STELLAR_LOCALNET.Selector

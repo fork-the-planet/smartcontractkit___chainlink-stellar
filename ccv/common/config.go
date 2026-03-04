@@ -8,6 +8,7 @@ import (
 const DefaultStellarConfigPath = "/etc/config/stellar.toml"
 
 type Config struct {
-	// ReaderConfigs is a map of chain selectors to reader configurations.
-	ReaderConfigs map[string]sourcereader.ReaderConfig
+	// ReaderConfigs is a map of chain selectors (as decimal strings) to reader
+	// configurations.  The TOML key is "reader_configs".
+	ReaderConfigs map[string]sourcereader.ReaderConfig `toml:"reader_configs"`
 }

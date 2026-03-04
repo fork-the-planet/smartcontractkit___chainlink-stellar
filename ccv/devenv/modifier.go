@@ -1,4 +1,4 @@
-package common
+package devenv
 
 import (
 	"encoding/hex"
@@ -17,6 +17,7 @@ import (
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/strkey"
 
+	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 )
 
@@ -46,7 +47,7 @@ func StellarModifier(req testcontainers.ContainerRequest, verifierInput *committ
 	}
 
 	//nolint:staticcheck
-	req.Mounts = append(req.Mounts, testcontainers.BindMount(configFilePath, DefaultStellarConfigPath))
+	req.Mounts = append(req.Mounts, testcontainers.BindMount(configFilePath, common.DefaultStellarConfigPath))
 
 	return req, nil
 }
@@ -99,24 +100,23 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 			return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
 		}
 
-		// rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]
-		// if !ok {
-		// 	return nil, fmt.Errorf("no deployed RMN Remote address for Stellar chain %s in GeneratedConfig", strSelector)
-		// }
-		// rmnRemoteAddress, err := hexToContractStrkey(rmnRemoteHex)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", strSelector, err)
-		// }
+		var rmnRemoteContractID string
+		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok {
+			rmnRemoteContractID, err = hexToContractStrkey(rmnRemoteHex)
+			if err != nil {
+				return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", strSelector, err)
+			}
+		}
 
 		readerConfigs[strSelector] = sourcereader.ReaderConfig{
 			NetworkPassphrase:   networkPassphrase,
 			SorobanRPCURL:       sorobanRPCURL,
 			OnRampContractID:    onrampContractID,
-			RMNRemoteContractID: "", // TODO: add RMN Remote contract ID
+			RMNRemoteContractID: rmnRemoteContractID,
 		}
 	}
 
-	cfg := Config{ReaderConfigs: readerConfigs}
+	cfg := common.Config{ReaderConfigs: readerConfigs}
 	configBytes, err := toml.Marshal(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("marshal stellar config: %w", err)

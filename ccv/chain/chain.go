@@ -228,16 +228,10 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return hexutil.Encode(raw), nil
 	}
 
-	// Locate the compiled OnRamp WASM
-	origDir, err := os.Getwd()
+	stellarRoot, err := findStellarRoot()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+		return nil, fmt.Errorf("failed to locate chainlink-stellar root: %w", err)
 	}
-	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../../../chainlink-stellar"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stellar root: %w", err)
-	}
-
 	c.logger.Info().Str("stellarRoot", stellarRoot).Msg("Stellar root")
 
 	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
@@ -610,8 +604,18 @@ func (c *Chain) fundViaFriendbot(friendbotURL, address string) error {
 
 // FundAddresses implements cciptestinterfaces.CCIP17Configuration.
 // Funds addresses with native Stellar Lumens (XLM).
+// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently
+// skipped — this handles the case where the framework passes EVM pricer
+// addresses (20 bytes) to every chain implementation.
 func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addresses []protocol.UnknownAddress, nativeAmount *big.Int) error {
 	for _, addr := range addresses {
+		if len(addr) != stellarAddressLen {
+			c.logger.Debug().
+				Int("addressLen", len(addr)).
+				Int("expectedLen", stellarAddressLen).
+				Msg("Skipping non-Stellar address in FundAddresses")
+			continue
+		}
 		addrStr := strkey.MustEncode(strkey.VersionByteAccountID, addr)
 		faucetUrl := fmt.Sprintf("%s?addr=%s", input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL, addrStr)
 
@@ -663,7 +667,6 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 
 	c.logger.Info().
 		Int("numAddresses", len(addresses)).
-		Str("amount", nativeAmount.String()).
 		Msg("Funded Stellar addresses")
 	return nil
 }
@@ -883,6 +886,29 @@ func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, tim
 	// TODO: implement - poll for the event
 
 	return cciptestinterfaces.MessageSentEvent{}, nil
+}
+
+// findStellarRoot locates the chainlink-stellar project root by walking up from
+// CWD looking for go.mod. This works whether the devenv CLI is run from the
+// chainlink-stellar root directly or from a subdirectory.
+func findStellarRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "target")); err == nil {
+				return dir, nil
+			}
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("could not find go.mod in any parent of %s", dir)
+		}
+		dir = parent
+	}
 }
 
 // generateMockContractID generates a deterministic mock contract ID for testing.
