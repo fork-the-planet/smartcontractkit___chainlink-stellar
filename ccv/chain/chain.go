@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -28,9 +27,9 @@ import (
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
-	"github.com/smartcontractkit/chainlink-ccv/deployments"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	"github.com/smartcontractkit/chainlink-ccv/deployments"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
@@ -83,6 +82,7 @@ var (
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
 type Chain struct {
+	chainSelector     uint64
 	logger            zerolog.Logger
 	rpcClient         *rpcclient.Client
 	networkPassphrase string
@@ -94,9 +94,10 @@ type Chain struct {
 }
 
 // New creates a new Stellar Chain instance.
-func New(logger zerolog.Logger) *Chain {
+func New(logger zerolog.Logger, selector uint64) *Chain {
 	return &Chain{
-		logger: logger,
+		logger:        logger,
+		chainSelector: selector,
 	}
 }
 
@@ -121,6 +122,12 @@ func (c *Chain) DeployerAddress() string {
 // ChainFamily implements cciptestinterfaces.CCIP17Configuration.
 func (c *Chain) ChainFamily() string {
 	return chainsel.FamilyStellar
+}
+
+// ChainSelector implements cciptestinterfaces.CCIP17.
+// Returns the selector for this chain.
+func (c *Chain) ChainSelector() uint64 {
+	return c.chainSelector
 }
 
 // ConfigureNodes implements cciptestinterfaces.CCIP17Configuration.
@@ -840,7 +847,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 
 // SendMessageWithNonce implements cciptestinterfaces.CCIP17.
 // Sends a CCIP message with a specific nonce.
-func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *atomic.Uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
+func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
 	// TODO: implement - call the Router/OnRamp contract with specific nonce
 	// NOTE: sender *bind.TransactOpts is EVM-specific and will need adaptation for Stellar
 	return cciptestinterfaces.MessageSentEvent{}, nil
@@ -889,4 +896,12 @@ func mustGenerateMockContractID(deployerAddress, contractName string) string {
 		panic(fmt.Errorf("failed to encode mock contract ID: %w", err))
 	}
 	return encoded
+}
+
+func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAddress, amount *big.Int) error {
+	return fmt.Errorf("not implemented")
 }

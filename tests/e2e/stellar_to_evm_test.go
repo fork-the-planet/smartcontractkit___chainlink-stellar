@@ -18,7 +18,11 @@ import (
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
@@ -68,11 +72,12 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "false")
 
 	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
+	stellarSelector := chainsel.STELLAR_LOCALNET.Selector
 
 	ctx := ccv.Plog.WithContext(t.Context())
 	l := zerolog.Ctx(ctx)
 
-	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID)
+	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID, stellarSelector)
 	deployer := env.Deployer
 	deployerKP := env.DeployerKP
 	rpc := env.RPCClient
@@ -213,43 +218,37 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		// Verifier and Execution Assertions
 		// =====================================================================
 
-		// NOTE: These assertions require the verifier to be configured with the
-		// actual deployed OnRamp contract ID. Currently, the environment setup
-		// generates deterministic placeholder addresses in DeployContractsForSelector
-		// (chain.go) and the verifier config uses those placeholders.
-		//
-		// TODO: Update the environment setup to:
-		// 1. Deploy real Stellar contracts (router, onramp, etc.)
-		// 2. Pass the deployed OnRamp contract ID to the verifier config
-		// Once that is done, these assertions should pass end-to-end.
+		defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
+		require.NotNil(t, defaultAggregatorClient)
 
-		// Wait for verification through the aggregator
-		// testCtx := e2e.NewTestingContext(t, t.Context(), chains, defaultAggregatorClient, indexerMonitor)
-		// result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
-		// 	TickInterval:            1 * time.Second,
-		// 	ExpectedVerifierResults: 1, // just committee verifier
-		// 	Timeout:                 tests.WaitTimeout(t),
-		// 	AssertVerifierLogs:      false,
-		// 	AssertExecutorLogs:      false,
-		// })
-		// require.NoError(t, err)
-		// require.NotNil(t, result.AggregatedResult)
-		// require.Len(t, result.IndexedVerifications.Results, 1)
+		// Wait for the committee verifier to sign and the aggregator to collect
+		// a quorum of signatures for this message.
+		testCtx := e2e.NewTestingContext(t, t.Context(), env.Chains, defaultAggregatorClient, env.IndexerMonitor)
+		result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
+			TickInterval:            1 * time.Second,
+			ExpectedVerifierResults: 1, // one default committee verifier
+			Timeout:                 tests.WaitTimeout(t),
+			AssertVerifierLogs:      false,
+			AssertExecutorLogs:      false,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result.AggregatedResult)
+		require.Len(t, result.IndexedVerifications.Results, 1)
 
-		// // Wait for execution on EVM
-		// ev, err := destChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, 1, tests.WaitTimeout(t))
-		// require.NoError(t, err)
-		// require.Equalf(
-		// 	t,
-		// 	cciptestinterfaces.ExecutionStateSuccess,
-		// 	ev.State,
-		// 	"message should have been successfully executed, return data: %x",
-		// 	ev.ReturnData,
-		// )
+		// Wait for the message to be executed on the EVM destination chain.
+		ev, err := destChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, 1, tests.WaitTimeout(t))
+		require.NoError(t, err)
+		require.Equalf(
+			t,
+			cciptestinterfaces.ExecutionStateSuccess,
+			ev.State,
+			"message should have been successfully executed, return data: %x",
+			ev.ReturnData,
+		)
 
-		// l.Info().
-		// 	Str("messageID", hex.EncodeToString(messageID[:])).
-		// 	Msg("Message executed successfully on EVM")
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Msg("Message executed successfully on EVM")
 	})
 }
 

@@ -22,8 +22,8 @@ import (
 )
 
 type factory struct {
-	lggr   logger.Logger
-	helper *blockchain.Helper
+	lggr  logger.Logger
+	infos map[string]*blockchain.Info
 
 	// map of chain selector to Stellar reader config
 	// this is used to create the Stellar source reader
@@ -50,20 +50,12 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 		return nil, fmt.Errorf("stellar config not found for chain %d", chainSelector)
 	}
 
-	blockchainInfo, err := f.helper.GetBlockchainByChainSelector(chainSelector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get network specific data for chain %d: %w", chainSelector, err)
-	}
-
 	// TODO: move it into its own method separately
 	if stellarConfig.SorobanRPCURL == "" {
 		return nil, fmt.Errorf("soroban rpc url is required for chain %d", chainSelector)
 	}
 	if stellarConfig.NetworkPassphrase == "" {
 		return nil, fmt.Errorf("network passphrase is required for chain %d", chainSelector)
-	}
-	if blockchainInfo.NetworkSpecificData == nil {
-		return nil, fmt.Errorf("network specific data not found for chain %d", chainSelector)
 	}
 
 	// TODO: get the deployer's keypair from env instead of generating a random one
@@ -86,7 +78,7 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 		deployer,
 		stellarConfig.OnRampContractID,
 		common.StellarCCIPMessageSentTopic,
-		stellarConfig.RMNRemoteAddress,
+		stellarConfig.RMNRemoteContractID,
 		&zerologLogger,
 	)
 	if err != nil {
@@ -96,10 +88,10 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 	return newAccessor(sourceReader), nil
 }
 
-func NewFactory(lggr logger.Logger, helper *blockchain.Helper, config map[string]sourcereader.ReaderConfig) chainaccess.AccessorFactory {
+func NewFactory(lggr logger.Logger, infos map[string]*blockchain.Info, config map[string]sourcereader.ReaderConfig) chainaccess.AccessorFactory {
 	return &factory{
 		lggr:   lggr,
-		helper: helper,
+		infos:  infos,
 		config: config,
 	}
 }

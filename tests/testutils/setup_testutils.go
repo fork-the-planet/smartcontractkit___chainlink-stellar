@@ -24,7 +24,6 @@ import (
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
@@ -62,10 +61,11 @@ func getFreePortErr() (string, error) {
 }
 
 func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
-	// Deploy local Stellar network using devenv
-	chain := chain.New(zerolog.New(os.Stdout))
+	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
+	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
-	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
+	// Deploy local Stellar network using devenv
+	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port := getFreePort(t)
 	containerName := fmt.Sprintf("blockchain-stellar-%s", t.Name())
@@ -143,9 +143,10 @@ type SharedTestEnv struct {
 // It returns the blockchain Output for teardown. Use containerName for a stable container name
 // when sharing across tests (e.g. "blockchain-stellar-integration-shared").
 func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestEnv, error) {
-	chain := chain.New(zerolog.New(os.Stdout))
+	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
+	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
-	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
+	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port, err := getFreePortErr()
 	if err != nil {
@@ -243,7 +244,7 @@ type E2ETestEnv struct {
 	IndexerMonitor     *ccv.IndexerMonitor
 }
 
-func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string) *E2ETestEnv {
+func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string, stellarSelector uint64) *E2ETestEnv {
 	// Register the Stellar chain adapter by using the EVM adapter as a base
 	global_family_registry := registry.GetGlobalChainFamilyAdapterRegistry()
 	evm_adapter, ok := global_family_registry.GetChainFamily(chain_selectors.FamilyEVM)
@@ -255,7 +256,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	// Register the Stellar chain implementation
 	registry.GetGlobalChainImplRegistry().
-		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout)))
+		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout), stellarSelector))
 
 	committeeverifier.RegisterModifier(
 		chain_selectors.FamilyStellar,

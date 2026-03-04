@@ -197,6 +197,7 @@ execution_interval = 15_000_000_000
     [verifier.stellar_configs.17301180955411967724.reader_config]
       network_passphrase = "Standalone Network ; February 2017"
       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
+      rmn_remote_address = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 [[verifier]]
@@ -219,6 +220,7 @@ execution_interval = 15_000_000_000
     [verifier.stellar_configs.17301180955411967724.reader_config]
       network_passphrase = "Standalone Network ; February 2017"
       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
+      rmn_remote_address = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 # # Secondary Verifier Setup

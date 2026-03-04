@@ -45,8 +45,8 @@ type ReaderConfig struct {
 	NetworkPassphrase string `toml:"network_passphrase"`
 	// OnRampContractID is the contract ID of the Stellar OnRamp contract.
 	OnRampContractID string `toml:"onramp_contract_id"`
-	// RMNRemoteAddress is the address of the RMN Remote contract.
-	RMNRemoteAddress string `toml:"rmn_remote_address"`
+	// RMNRemoteContractID is the contract ID of the RMN Remote contract.
+	RMNRemoteContractID string `toml:"rmn_remote_contract_id"`
 	// SorobanRPCURL is the URL of the Soroban RPC endpoint.
 	SorobanRPCURL string `toml:"soroban_rpc_url"`
 }

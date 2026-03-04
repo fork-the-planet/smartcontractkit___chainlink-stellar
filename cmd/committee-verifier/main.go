@@ -38,7 +38,12 @@ func main() {
 		"StellarCommitteeVerifier",
 		cmd.NewServiceFactory(
 			chainsel.FamilyStellar,
-			func(ctx context.Context, lggr logger.Logger, helper *blockchain.Helper, cfg commit.Config) (chainaccess.AccessorFactory, error) {
+			func(
+				ctx context.Context,
+				lggr logger.Logger,
+				infos map[string]*blockchain.Info,
+				cfg commit.Config,
+			) (chainaccess.AccessorFactory, error) {
 				configPath, ok := os.LookupEnv(StellarConfigPathEnv)
 				if !ok {
 					configPath = common.DefaultStellarConfigPath
@@ -49,7 +54,7 @@ func main() {
 					return nil, fmt.Errorf("failed to load config: %w", err)
 				}
 
-				return accessors.NewFactory(lggr, helper, stellarConfig.ReaderConfigs), nil
+				return accessors.NewFactory(lggr, infos, stellarConfig.ReaderConfigs), nil
 			}),
 		bootstrap.WithLogLevel[commit.JobSpec](zapcore.InfoLevel),
 	); err != nil {
