@@ -19,10 +19,12 @@ import (
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
@@ -34,10 +36,12 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
@@ -299,8 +303,32 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Str("rmnProxyContractID", rmnProxyContractID).Msg("RMN Proxy initialized")
 
+	// Deploy the FeeQuoter contract
+	feeQuoterWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "fee_quoter.wasm")
+	if _, statErr := os.Stat(feeQuoterWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("FeeQuoter WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", feeQuoterWasmPath)
+	}
+
+	c.logger.Info().Str("wasmPath", feeQuoterWasmPath).Msg("Deploying FeeQuoter contract...")
+	feeQuoterSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "fee-quoter")
+	feeQuoterContractID, err := c.deployer.DeployContract(ctx, feeQuoterWasmPath, feeQuoterSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy FeeQuoter contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
+
+	mockLinkToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "link-token")
+	feeQuoterClient := fqbindings.NewFeeQuoterClient(c.deployer, feeQuoterContractID)
+	err = feeQuoterClient.Initialize(ctx, c.deployerKeypair.Address(), fqbindings.StaticConfig{
+		LinkToken:         mockLinkToken,
+		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
+	}, []string{c.deployerKeypair.Address()})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize FeeQuoter: %w", err)
+	}
+	c.logger.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
+
 	// Initialize the OnRamp with dependency contracts
-	mockFeeQuoter := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-quoter")
 	mockFeeAggregator := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
 	mockTokenAdminRegistry := mustGenerateMockContractID(c.deployerKeypair.Address(), "token-admin-registry")
 
@@ -310,7 +338,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		RmnProxy:              rmnProxyContractID,
 		MaxUsdCentsPerMessage: 10000, // $100
 	}, onrampbindings.DynamicConfig{
-		FeeQuoter:     mockFeeQuoter,
+		FeeQuoter:     feeQuoterContractID,
 		FeeAggregator: mockFeeAggregator,
 	})
 	if err != nil {
@@ -413,6 +441,58 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
 
+	// Configure FeeQuoter destination chains
+	fqDestChainConfigs := []fqbindings.DestChainConfigArgs{}
+	for _, rs := range remoteSelectors {
+		fqDestChainConfigs = append(fqDestChainConfigs, fqbindings.DestChainConfigArgs{
+			DestChainSelector: rs,
+			Config: fqbindings.DestChainConfig{
+				IsEnabled:             true,
+				MaxDataBytes:          50000,
+				MaxPerMsgGasLimit:     4_000_000,
+				DestGasOverhead:       350_000,
+				DestGasPerPayloadByte: 16,
+				DefaultTokenFeeUsd:    50,
+				DefaultTokenDestGas:   50_000,
+				DefaultTxGasLimit:     200_000,
+				NetworkFeeUsdCents:    100,
+				LinkPremiumPercent:    90,
+			},
+		})
+	}
+	err = feeQuoterClient.ApplyDestChainConfigs(ctx, fqDestChainConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply dest chain configs on FeeQuoter: %w", err)
+	}
+	c.logger.Info().Int("count", len(fqDestChainConfigs)).Msg("FeeQuoter dest chain configs applied")
+
+	// Set token and gas prices on the FeeQuoter so get_message_fee works
+	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
+	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		gasPriceUpdates = append(gasPriceUpdates, fqbindings.GasPriceUpdate{
+			DestChainSelector: rs,
+			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}), // 1e14
+		})
+	}
+	err = feeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
+		TokenPriceUpdates: []fqbindings.TokenPriceUpdate{
+			{
+				Token:       mockLinkToken,
+				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 15_000_000_000_000_000_000}), // $15
+			},
+			{
+				Token:       mockFeeToken,
+				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
+			},
+		},
+		GasPriceUpdates: gasPriceUpdates,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update prices on FeeQuoter: %w", err)
+	}
+	c.logger.Info().Msg("FeeQuoter prices updated")
+
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
 	if err != nil {
@@ -511,6 +591,18 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Address:       rmnRemoteHex,
 		Type:          datastore.ContractType(rmn_remote.ContractType),
 		Version:       semver.MustParse(rmn_remote.Deploy.Version()),
+		ChainSelector: selector,
+	})
+
+	// Add fee quoter refs — use the deployed FeeQuoter contract address
+	feeQuoterHex, err := strkeyToHex(feeQuoterContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert FeeQuoter address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       feeQuoterHex,
+		Type:          datastore.ContractType(fee_quoter.ContractType),
+		Version:       semver.MustParse(fee_quoter.Deploy.Version()),
 		ChainSelector: selector,
 	})
 

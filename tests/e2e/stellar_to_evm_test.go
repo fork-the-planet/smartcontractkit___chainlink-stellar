@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
@@ -104,6 +105,21 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	)
 	require.NoError(t, err)
 	l.Info().Str("onrampContractID", onrampContractID).Msg("Created Stellar source reader")
+
+	// Read fee quoter state
+	feeQuoterKey := datastore.NewAddressRefKey(
+		stellarDetails.ChainSelector,
+		datastore.ContractType(fee_quoter.ContractType),
+		fee_quoter.Version,
+		"",
+	)
+	feeQuoterRef, err := env.DataStore.Addresses().Get(feeQuoterKey)
+	require.NoError(t, err)
+	require.NotEmpty(t, feeQuoterRef.Address)
+
+	feeQuoterContractID, err := hexToContractStrkey(feeQuoterRef.Address)
+	require.NoError(t, err)
+	l.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("Found FeeQuoter in CCV datastore")
 
 	t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
 		// Get receiver address on EVM
