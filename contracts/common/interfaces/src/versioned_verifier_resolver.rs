@@ -196,6 +196,11 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+    OnlyRegistryModuleOrOwner = 201,
+    OnlyAdministrator = 202,
+    OnlyPendingAdministrator = 203,
+    TokenAlreadyRegistered = 204,
+    InvalidTokenPoolToken = 205,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

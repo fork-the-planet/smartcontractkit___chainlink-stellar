@@ -730,6 +730,11 @@ const (
 	CCIPErrorThresholdNotMet                = 71
 	CCIPErrorUnexpectedSigner               = 72
 	CCIPErrorZeroValueNotAllowed            = 73
+	CCIPErrorOnlyRegistryModuleOrOwner      = 201
+	CCIPErrorOnlyAdministrator              = 202
+	CCIPErrorOnlyPendingAdministrator       = 203
+	CCIPErrorTokenAlreadyRegistered         = 204
+	CCIPErrorInvalidTokenPoolToken          = 205
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -809,6 +814,11 @@ var CCIPErrorMessage = map[int]string{
 	71:  "threshold not met",
 	72:  "unexpected signer",
 	73:  "zero value not allowed",
+	201: "only registry module or owner",
+	202: "only administrator",
+	203: "only pending administrator",
+	204: "token already registered",
+	205: "invalid token pool token",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
