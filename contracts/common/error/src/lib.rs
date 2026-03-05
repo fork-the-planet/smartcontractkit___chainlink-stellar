@@ -131,6 +131,15 @@ pub enum CCIPError {
     ZeroValueNotAllowed = 73,
 
     // ============================================================
+    // TokenAdminRegistry errors
+    // ============================================================
+    OnlyRegistryModuleOrOwner = 201,
+    OnlyAdministrator = 202,
+    OnlyPendingAdministrator = 203,
+    TokenAlreadyRegistered = 204,
+    InvalidTokenPoolToken = 205,
+
+    // ============================================================
     // Calculation errors
     // ============================================================
     InvalidFeeCalculation = 801,
