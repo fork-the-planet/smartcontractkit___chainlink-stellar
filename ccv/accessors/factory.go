@@ -10,7 +10,6 @@ import (
 
 	"github.com/rs/zerolog"
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccv/integration/pkg/blockchain"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
@@ -22,11 +21,9 @@ import (
 )
 
 type factory struct {
-	lggr  logger.Logger
-	infos map[string]*blockchain.Info
+	lggr logger.Logger
 
 	// map of chain selector to Stellar reader config
-	// this is used to create the Stellar source reader
 	config map[string]sourcereader.ReaderConfig
 }
 
@@ -88,10 +85,9 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 	return newAccessor(sourceReader), nil
 }
 
-func NewFactory(lggr logger.Logger, infos map[string]*blockchain.Info, config map[string]sourcereader.ReaderConfig) chainaccess.AccessorFactory {
+func NewFactory(lggr logger.Logger, config map[string]sourcereader.ReaderConfig) chainaccess.AccessorFactory {
 	return &factory{
 		lggr:   lggr,
-		infos:  infos,
 		config: config,
 	}
 }

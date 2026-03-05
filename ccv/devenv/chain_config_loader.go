@@ -33,11 +33,15 @@ func StellarChainConfigLoader(outputs []*blockchain.Output) (map[string]any, err
 
 		strSelector := strconv.FormatUint(details.ChainSelector, 10)
 
-		// Return placeholder values — the real values are provided via the
-		// bind-mounted config file written by StellarModifier.
+		// Return basic node info for the Stellar chain.
+		// Other values are populated by the bind-mounted config file written by StellarModifier.
+		// TODO: this can be made more generic and not just specific to ReaderConfig values.
 		ret[strSelector] = sourcereader.ReaderConfig{
-			NetworkPassphrase: "dontuse",
-			SorobanRPCURL:     "dontuse",
+			NetworkPassphrase: output.NetworkSpecificData.StellarNetwork.NetworkPassphrase,
+			SorobanRPCURL:     output.Nodes[0].InternalHTTPUrl,
+			// contract IDs are unknown at this point, they are populated by the modifier
+			OnRampContractID:    "",
+			RMNRemoteContractID: "",
 		}
 	}
 

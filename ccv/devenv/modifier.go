@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
@@ -67,6 +68,10 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 			return nil, fmt.Errorf("parse GeneratedConfig: %w", err)
 		}
 	}
+
+	// TODO: remove this after debugging
+	l := zerolog.New(os.Stderr).Level(zerolog.DebugLevel).With().Fields(map[string]any{"component": "stellar-modifier"}).Logger()
+	l.Info().Msgf("Deployed config: %+v", deployedCfg)
 
 	readerConfigs := make(map[string]sourcereader.ReaderConfig)
 

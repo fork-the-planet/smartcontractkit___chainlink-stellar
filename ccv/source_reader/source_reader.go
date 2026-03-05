@@ -102,7 +102,9 @@ func (s *SourceReader) FetchMessageSentEvents(ctx context.Context, fromBlock, to
 	if fromSeq > math.MaxUint32 {
 		return nil, fmt.Errorf("block number exceeds uint32 (ledger seq) range: %d", fromSeq)
 	}
-	fromLedger := uint32(fromSeq)
+
+	// OnStellar, ledger 7 is the min starting ledger number.
+	fromLedger := max(uint32(fromSeq), 7)
 
 	var toLedger uint32
 	if toBlock != nil {
