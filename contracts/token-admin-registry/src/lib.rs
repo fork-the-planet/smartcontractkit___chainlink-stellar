@@ -73,10 +73,7 @@ impl TokenAdminRegistryContract {
     }
 
     /// Returns pool addresses for multiple tokens.
-    pub fn get_pools(
-        env: Env,
-        tokens: Vec<Address>,
-    ) -> Result<Vec<Option<Address>>, CCIPError> {
+    pub fn get_pools(env: Env, tokens: Vec<Address>) -> Result<Vec<Option<Address>>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let mut pools = Vec::new(&env);
         for token in tokens.iter() {
@@ -102,11 +99,7 @@ impl TokenAdminRegistryContract {
     ) -> Result<Vec<Address>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
-        let total: u32 = env
-            .storage()
-            .instance()
-            .get(&TOKEN_COUNT)
-            .unwrap_or(0u32);
+        let total: u32 = env.storage().instance().get(&TOKEN_COUNT).unwrap_or(0u32);
 
         if start_index >= total {
             return Ok(Vec::new(&env));
@@ -351,7 +344,9 @@ impl TokenAdminRegistryContract {
         }
 
         if found {
-            env.storage().instance().set(&REGISTRY_MODULES, &new_modules);
+            env.storage()
+                .instance()
+                .set(&REGISTRY_MODULES, &new_modules);
             RegistryModuleRemovedEvent { module }.publish(&env);
         }
 
@@ -364,7 +359,7 @@ impl TokenAdminRegistryContract {
 
     fn get_token_config_internal(env: &Env, token: &Address) -> TokenConfig {
         // TODO: should we introduce an extension for the TTL here?
-        
+
         env.storage()
             .persistent()
             .get(&DataKey::TokenConfig(token.clone()))
@@ -391,11 +386,7 @@ impl TokenAdminRegistryContract {
     }
 
     fn add_token_to_index(env: &Env, token: &Address) {
-        let count: u32 = env
-            .storage()
-            .instance()
-            .get(&TOKEN_COUNT)
-            .unwrap_or(0u32);
+        let count: u32 = env.storage().instance().get(&TOKEN_COUNT).unwrap_or(0u32);
 
         // Only add if not already indexed (idempotent, same as EVM's EnumerableSet.add)
         for i in 0..count {
