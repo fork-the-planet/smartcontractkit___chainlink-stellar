@@ -49,6 +49,6 @@ Contracts are deployed as a part of the toplogy spin up step (when `make up` is 
 3. The chain implmenetation incldues a method `DeployContractsForSelector(...)` which is responsible for deploying contracts to teh provided chain selector.
 
 
-### ...
+### Is it required to re-build all the images when making changes?
 
 ...

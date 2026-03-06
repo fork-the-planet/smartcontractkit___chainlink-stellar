@@ -12,7 +12,10 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Masterminds/semver/v3"
+
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
@@ -24,6 +27,7 @@ import (
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
@@ -121,6 +125,22 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	l.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("Found FeeQuoter in CCV datastore")
 
+	// Look up the VVR (Versioned Verifier Resolver) address from the CCV datastore.
+	// Stored under committee_verifier.ResolverType by DeployContractsForSelector.
+	vvrKey := datastore.NewAddressRefKey(
+		stellarDetails.ChainSelector,
+		datastore.ContractType(committee_verifier.ResolverType),
+		semver.MustParse(committee_verifier.Deploy.Version()),
+		devenvcommon.DefaultCommitteeVerifierQualifier,
+	)
+	vvrRef, err := env.DataStore.Addresses().Get(vvrKey)
+	require.NoError(t, err)
+	require.NotEmpty(t, vvrRef.Address)
+
+	vvrContractID, err := hexToContractStrkey(vvrRef.Address)
+	require.NoError(t, err)
+	l.Info().Str("vvrContractID", vvrContractID).Msg("Found VVR in CCV datastore")
+
 	t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
 		// Get receiver address on EVM
 		evmReceiver, err := destChain.GetEOAReceiverAddress()
@@ -133,14 +153,30 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		startLedger := latestLedger.Sequence
 		l.Info().Uint32("startLedger", startLedger).Msg("Recording start ledger before sending")
 
-		// Build the CCIP message
+		// Build ExtraArgs with the VVR address so that the OnRamp invokes the
+		// VVR -> CommitteeVerifier chain and produces verification blobs.
 		mockFeeToken := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-token")
+		mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "executor")
+		extraArgs := onrampbindings.GenericExtraArgsV3{
+			Ccvs:               []string{vvrContractID},
+			CcvArgs:            [][]byte{{}},
+			Executor:           mockExecutor,
+			ExecutorArgs:       []byte{},
+			GasLimit:           0,
+			BlockConfirmations: 0,
+			TokenReceiver:      []byte{},
+			TokenArgs:          []byte{},
+		}
+		encodedExtraArgs, err := ccvchain.EncodeExtraArgsV3(extraArgs)
+		require.NoError(t, err)
+
+		// Build the CCIP message
 		msg := onrampbindings.StellarToAnyMessage{
-			Receiver:     evmReceiver,                    // 20-byte EVM address
-			Data:         []byte("hello from stellar"),   // arbitrary payload
-			TokenAmounts: []onrampbindings.TokenAmount{}, // no token transfer
-			FeeToken:     mockFeeToken,                   // placeholder fee token
-			ExtraArgs:    []byte{},                       // no extra args
+			Receiver:     evmReceiver,
+			Data:         []byte("hello from stellar"),
+			TokenAmounts: []onrampbindings.TokenAmount{},
+			FeeToken:     mockFeeToken,
+			ExtraArgs:    encodedExtraArgs,
 		}
 
 		// Send the message via the OnRamp's forward_from_router.

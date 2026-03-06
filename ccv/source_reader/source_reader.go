@@ -287,16 +287,12 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 	_ = feeToken              // TODO: map to Message when fee token field is added
 	_ = tokenAmountBeforeFees // TODO: map to Message when token transfer fields are populated
 
-	msg := &protocol.Message{
-		Sender:              protocol.UnknownAddress([]byte(sender)),
-		SenderLength:        uint8(len(sender)),
-		Data:                encodedMessage,
-		DataLength:          uint16(len(encodedMessage)),
-		OnRampAddress:       protocol.UnknownAddress([]byte(s.ccipOnrampAddress)),
-		OnRampAddressLength: uint8(len(s.ccipOnrampAddress)),
-		Version:             protocol.MessageVersion,
-		SequenceNumber:      protocol.SequenceNumber(sequenceNumber),
-		DestChainSelector:   protocol.ChainSelector(destChainSelector),
+	// Decode the canonical MessageV1 encoding emitted by the OnRamp.
+	// This reconstructs the full protocol.Message so that MessageID()
+	// (re-encode + keccak256) matches the onchain-computed message ID.
+	msg, err := protocol.DecodeMessage(encodedMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode encoded_message as MessageV1: %w", err)
 	}
 
 	return &protocol.MessageSentEvent{
@@ -327,6 +323,34 @@ func addressFromScVal(val xdr.ScVal) (string, error) {
 		return strkey.Encode(strkey.VersionByteContract, contractID[:])
 	default:
 		return "", fmt.Errorf("unsupported address type: %s", addr.Type)
+	}
+}
+
+// rawBytesFromAddressScVal extracts the raw 32-byte key from an xdr.ScVal address.
+// This produces the same byte representation used by the datastore (via strkeyToHex),
+// ensuring consistency with the offchain verifier's ReceiptIssuerFilter.
+func rawBytesFromAddressScVal(val xdr.ScVal) ([]byte, error) {
+	addr, ok := val.GetAddress()
+	if !ok {
+		return nil, fmt.Errorf("not an address (type=%s)", val.Type)
+	}
+	switch addr.Type {
+	case xdr.ScAddressTypeScAddressTypeAccount:
+		accountID := addr.MustAccountId()
+		pubKey := accountID.Ed25519
+		if pubKey == nil {
+			return nil, fmt.Errorf("account ID has no Ed25519 key")
+		}
+		raw := make([]byte, 32)
+		copy(raw, (*pubKey)[:])
+		return raw, nil
+	case xdr.ScAddressTypeScAddressTypeContract:
+		contractID := addr.MustContractId()
+		raw := make([]byte, 32)
+		copy(raw, contractID[:])
+		return raw, nil
+	default:
+		return nil, fmt.Errorf("unsupported address type: %s", addr.Type)
 	}
 }
 
@@ -365,8 +389,8 @@ func parseReceipt(val xdr.ScVal) (*protocol.ReceiptWithBlob, error) {
 		}
 		switch string(key) {
 		case "issuer":
-			if addr, err := addressFromScVal(entry.Val); err == nil {
-				r.Issuer = protocol.UnknownAddress([]byte(addr))
+			if raw, err := rawBytesFromAddressScVal(entry.Val); err == nil {
+				r.Issuer = protocol.UnknownAddress(raw)
 			}
 		case "dest_gas_limit":
 			if u32, ok := entry.Val.GetU32(); ok {

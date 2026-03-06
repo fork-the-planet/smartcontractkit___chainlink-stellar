@@ -9,15 +9,18 @@ use common_interfaces::{
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::FromXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
-    Symbol, Vec,
+    contract, contractimpl, symbol_short,
+    xdr::{FromXdr, ToXdr},
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
-use common_message::{GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes};
+use common_message::{
+    CcipMessageV1, GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes,
+};
 use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
 
@@ -251,16 +254,16 @@ impl OnRampContract {
         // Enter reentrancy guard (uses temporary storage)
         ReentrancyGuard::enter(&env)?;
 
-        // Get destination chain config
+        // Get configs
         let mut dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
         let dynamic_config = Self::get_dynamic_config_internal(&env)?;
+        let static_config = Self::get_static_config_internal(&env)?;
 
         // Verify caller is the router
         dest_config.router.require_auth();
 
         // Parse extra args; use default when empty (common for simple messages)
         let extra_args = if message.extra_args.len() == 0 {
-            // TODO: is a completely empty extra args value a valid case?
             GenericExtraArgsV3::new(&env, dest_config.default_executor.clone())
         } else {
             GenericExtraArgsV3::from_xdr(&env, &message.extra_args.clone())
@@ -274,8 +277,29 @@ impl OnRampContract {
         // Get pool CCVs if token transfer
         // Merge CCV lists
 
-        // Generate message ID (keccak256(messageBytes))
-        let message_id = message.compute_message_id(&env);
+        // Compute sequence number before building the canonical message
+        dest_config.message_number += 1;
+        let sequence_number = dest_config.message_number;
+
+        // Build canonical MessageV1 for message ID computation and event encoding
+        let ccip_msg = CcipMessageV1 {
+            source_chain_selector: static_config.chain_selector,
+            dest_chain_selector,
+            sequence_number,
+            execution_gas_limit: extra_args.gas_limit,
+            ccip_receive_gas_limit: 0,
+            finality: extra_args.block_confirmations as u16,
+            ccv_and_executor_hash: BytesN::from_array(&env, &[0u8; 32]), // TODO: compute from CCV + executor config
+            onramp_address: env.current_contract_address().to_xdr(&env),
+            offramp_address: dest_config.off_ramp.clone().to_xdr(&env),
+            sender: original_sender.clone().to_xdr(&env),
+            receiver: message.receiver.clone(),
+            dest_blob: Bytes::new(&env),
+            token_transfer: Bytes::new(&env), // TODO: encode token transfers
+            data: message.data.clone(),
+        };
+
+        let message_id = ccip_msg.compute_message_id(&env);
 
         // Invoke verifiers to get verification blobs and generate receipts
         let (verifier_blobs, mut receipts) = Self::get_ccv_blobs_and_receipts_internal(
@@ -308,16 +332,14 @@ impl OnRampContract {
         //     extra_args: extra_args.executor_args.clone(),
         // });
 
-        // Increment message number (sequence number for this destination)
-        dest_config.message_number += 1;
-        let sequence_number = dest_config.message_number;
+        // Persist updated sequence number
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
 
         // TODO: sum all fees and validate
         // TODO: Distribute fees
         // TODO: Lock or burn tokens
 
-        // Emit CCIPMessageSent event
+        // Emit CCIPMessageSent event with canonical MessageV1 encoding
         CCIPMessageSentEvent {
             dest_chain_selector,
             sequence_number,
@@ -329,7 +351,7 @@ impl OnRampContract {
                 .get(0)
                 .map(|token_amount| token_amount.amount)
                 .unwrap_or(0),
-            encoded_message: message.to_bytes(&env),
+            encoded_message: ccip_msg.to_bytes(&env),
             receipts,
             verifier_blobs,
         }

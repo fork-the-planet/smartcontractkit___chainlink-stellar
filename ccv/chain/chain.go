@@ -95,6 +95,7 @@ type Chain struct {
 	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
+	vvrContractID     string
 }
 
 // New creates a new Stellar Chain instance.
@@ -181,7 +182,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 		destChainConfigArgs = append(destChainConfigArgs, onrampbindings.DestChainConfigArgs{
 			AddressBytesLength:        32,
 			BaseExecutionGasCost:      100000,
-			DefaultCcvs:               []string{c.onRampContractID},
+			DefaultCcvs:               []string{c.vvrContractID},
 			DestChainSelector:         remoteSelector,
 			Router:                    c.deployerKeypair.Address(),                                     // deployer acts as router,
 			OffRamp:                   generateContractAddress("stellar-offramp", c.networkPassphrase), // TODO: use the actual OffRamp contract address
@@ -363,6 +364,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return nil, fmt.Errorf("failed to deploy VVR contract: %w", err)
 	}
 	c.logger.Info().Str("contractID", vvrContractID).Msg("VVR contract deployed")
+	c.vvrContractID = vvrContractID
 
 	vvrClient := vvrbindings.NewVersionedVerifierResolverClient(c.deployer, vvrContractID)
 
@@ -894,13 +896,30 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Str("receiver", fields.Receiver.String()).
 		Msg("Sending CCIP message from Stellar")
 
+	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
+
+	extraArgs := onrampbindings.GenericExtraArgsV3{
+		Ccvs:               []string{c.vvrContractID},
+		CcvArgs:            [][]byte{{}},
+		Executor:           executorContractID,
+		ExecutorArgs:       []byte{},
+		GasLimit:           0,
+		BlockConfirmations: 0,
+		TokenReceiver:      []byte{},
+		TokenArgs:          []byte{},
+	}
+	encodedExtraArgs, err := EncodeExtraArgsV3(extraArgs)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
+	}
+
 	// Build the message
 	message := onrampbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: make([]onrampbindings.TokenAmount, 0), // No token transfers for basic test
-		FeeToken:     c.deployerKeypair.Address(),           // Use deployer as fee token placeholder
-		ExtraArgs:    []byte{},
+		TokenAmounts: make([]onrampbindings.TokenAmount, 0),
+		FeeToken:     c.deployerKeypair.Address(),
+		ExtraArgs:    encodedExtraArgs,
 	}
 
 	// Get the original sender address
@@ -1014,6 +1033,16 @@ func mustGenerateMockContractID(deployerAddress, contractName string) string {
 		panic(fmt.Errorf("failed to encode mock contract ID: %w", err))
 	}
 	return encoded
+}
+
+// EncodeExtraArgsV3 converts a GenericExtraArgsV3 to XDR bytes suitable for
+// the OnRamp contract's ExtraArgs field (parsed via GenericExtraArgsV3::from_xdr).
+func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
+	scVal, err := args.ToScVal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extra args to ScVal: %w", err)
+	}
+	return scVal.MarshalBinary()
 }
 
 func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {
