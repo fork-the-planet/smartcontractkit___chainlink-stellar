@@ -1,12 +1,10 @@
 package devenv
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog"
@@ -16,8 +14,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 	"github.com/smartcontractkit/chainlink-ccv/verifier/commit"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
-	"github.com/stellar/go-stellar-sdk/strkey"
 
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 )
@@ -102,7 +100,7 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 			// return nil, fmt.Errorf("no deployed OnRamp address for Stellar chain %s in GeneratedConfig", strSelector)
 			// TODO: should we throw an error here?
 		} else {
-			onrampContractID, err = hexToContractStrkey(onrampHex)
+			onrampContractID, err = scval.HexToContractStrkey(onrampHex)
 			if err != nil {
 				return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
 			}
@@ -110,7 +108,7 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 
 		var rmnRemoteContractID string
 		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok {
-			rmnRemoteContractID, err = hexToContractStrkey(rmnRemoteHex)
+			rmnRemoteContractID, err = scval.HexToContractStrkey(rmnRemoteHex)
 			if err != nil {
 				return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", strSelector, err)
 			}
@@ -131,14 +129,4 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 	}
 
 	return configBytes, nil
-}
-
-// hexToContractStrkey converts a 0x-prefixed hex address (32 bytes) to a Stellar
-// contract strkey (C...).
-func hexToContractStrkey(hexAddr string) (string, error) {
-	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
-	if err != nil {
-		return "", fmt.Errorf("decode hex address %q: %w", hexAddr, err)
-	}
-	return strkey.Encode(strkey.VersionByteContract, raw)
 }

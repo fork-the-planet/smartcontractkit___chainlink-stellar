@@ -11,7 +11,6 @@ import (
 
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/rs/zerolog"
@@ -20,6 +19,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 // Compile-time check to ensure we satisfy the chainaccess.SourceReader interface.
@@ -122,10 +122,7 @@ func (s *SourceReader) FetchMessageSentEvents(ctx context.Context, fromBlock, to
 	}
 
 	// Build topic filter for CCIPMessageSent event
-	topicScVal, err := symbolScVal(s.ccipMessageSentTopic)
-	if err != nil {
-		return nil, fmt.Errorf("invalid topic symbol: %w", err)
-	}
+	topicScVal := scval.SymbolToScValPtr(s.ccipMessageSentTopic)
 
 	// Use wildcard to match events with additional topics
 	zeroOrMore := protocolrpc.WildCardZeroOrMore
@@ -227,7 +224,7 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 				sequenceNumber = uint64(u64)
 			}
 		case "sender":
-			if addr, err := addressFromScVal(entry.Val); err == nil {
+			if addr, err := scval.AddressFromScVal(entry.Val); err == nil {
 				sender = addr
 			}
 		case "message_id":
@@ -235,7 +232,7 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 				copy(messageID[:], b)
 			}
 		case "fee_token":
-			if addr, err := addressFromScVal(entry.Val); err == nil {
+			if addr, err := scval.AddressFromScVal(entry.Val); err == nil {
 				feeToken = addr
 			}
 		case "token_amount_before_fees":
@@ -257,7 +254,7 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 				receipts = parsed
 			}
 		case "verifier_blobs":
-			parsed, err := parseBytesVec(entry.Val)
+			parsed, err := scval.BytesVecFromScVal(entry.Val)
 			if err != nil {
 				s.lggr.Warn().Err(err).Msg("Failed to parse verifier_blobs")
 			} else {
@@ -304,56 +301,6 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 	}, nil
 }
 
-// addressFromScVal extracts a strkey address from an xdr.ScVal.
-func addressFromScVal(val xdr.ScVal) (string, error) {
-	addr, ok := val.GetAddress()
-	if !ok {
-		return "", fmt.Errorf("not an address (type=%s)", val.Type)
-	}
-	switch addr.Type {
-	case xdr.ScAddressTypeScAddressTypeAccount:
-		accountID := addr.MustAccountId()
-		pubKey := accountID.Ed25519
-		if pubKey == nil {
-			return "", fmt.Errorf("account ID has no Ed25519 key")
-		}
-		return strkey.Encode(strkey.VersionByteAccountID, (*pubKey)[:])
-	case xdr.ScAddressTypeScAddressTypeContract:
-		contractID := addr.MustContractId()
-		return strkey.Encode(strkey.VersionByteContract, contractID[:])
-	default:
-		return "", fmt.Errorf("unsupported address type: %s", addr.Type)
-	}
-}
-
-// rawBytesFromAddressScVal extracts the raw 32-byte key from an xdr.ScVal address.
-// This produces the same byte representation used by the datastore (via strkeyToHex),
-// ensuring consistency with the offchain verifier's ReceiptIssuerFilter.
-func rawBytesFromAddressScVal(val xdr.ScVal) ([]byte, error) {
-	addr, ok := val.GetAddress()
-	if !ok {
-		return nil, fmt.Errorf("not an address (type=%s)", val.Type)
-	}
-	switch addr.Type {
-	case xdr.ScAddressTypeScAddressTypeAccount:
-		accountID := addr.MustAccountId()
-		pubKey := accountID.Ed25519
-		if pubKey == nil {
-			return nil, fmt.Errorf("account ID has no Ed25519 key")
-		}
-		raw := make([]byte, 32)
-		copy(raw, (*pubKey)[:])
-		return raw, nil
-	case xdr.ScAddressTypeScAddressTypeContract:
-		contractID := addr.MustContractId()
-		raw := make([]byte, 32)
-		copy(raw, contractID[:])
-		return raw, nil
-	default:
-		return nil, fmt.Errorf("unsupported address type: %s", addr.Type)
-	}
-}
-
 // parseReceipts decodes Vec<Receipt> from an ScVal vector.
 //
 // Each Receipt is a map with fields: issuer (Address), dest_gas_limit (u32),
@@ -389,7 +336,7 @@ func parseReceipt(val xdr.ScVal) (*protocol.ReceiptWithBlob, error) {
 		}
 		switch string(key) {
 		case "issuer":
-			if raw, err := rawBytesFromAddressScVal(entry.Val); err == nil {
+			if raw, err := scval.RawBytesFromAddressScVal(entry.Val); err == nil {
 				r.Issuer = protocol.UnknownAddress(raw)
 			}
 		case "dest_gas_limit":
@@ -414,24 +361,6 @@ func parseReceipt(val xdr.ScVal) (*protocol.ReceiptWithBlob, error) {
 		}
 	}
 	return r, nil
-}
-
-// parseBytesVec decodes Vec<Bytes> from an ScVal vector.
-func parseBytesVec(val xdr.ScVal) ([][]byte, error) {
-	vec, ok := val.GetVec()
-	if !ok || vec == nil {
-		return nil, fmt.Errorf("not a vec")
-	}
-
-	result := make([][]byte, 0, len(*vec))
-	for _, item := range *vec {
-		b, ok := item.GetBytes()
-		if !ok {
-			return nil, fmt.Errorf("vec item is not bytes (type=%s)", item.Type)
-		}
-		result = append(result, []byte(b))
-	}
-	return result, nil
 }
 
 // // RawEvent represents a raw contract event.
@@ -579,23 +508,6 @@ func parseBytesVec(val xdr.ScVal) ([][]byte, error) {
 // 	}
 // }
 
-// func scAddressToStrkey(addr xdr.ScAddress) (string, error) {
-// 	switch addr.Type {
-// 	case xdr.ScAddressTypeScAddressTypeAccount:
-// 		accountID := addr.MustAccountId()
-// 		pubKey := accountID.Ed25519
-// 		if pubKey == nil {
-// 			return "", fmt.Errorf("no Ed25519 key")
-// 		}
-// 		return strkey.Encode(strkey.VersionByteAccountID, (*pubKey)[:])
-// 	case xdr.ScAddressTypeScAddressTypeContract:
-// 		contractID := addr.MustContractId()
-// 		return strkey.Encode(strkey.VersionByteContract, contractID[:])
-// 	default:
-// 		return fmt.Sprintf("unknown(%s)", addr.Type), nil
-// 	}
-// }
-
 // GetBlocksHeaders returns the block headers for the requested ledger sequence numbers.
 func (s *SourceReader) GetBlocksHeaders(ctx context.Context, ledgerNumber []*big.Int) (map[*big.Int]protocol.BlockHeader, error) {
 	headers := make(map[*big.Int]protocol.BlockHeader, len(ledgerNumber))
@@ -740,15 +652,5 @@ func buildBlockHeaderFromMeta(hashHex, metadataB64 string, sequence uint32, clos
 		Hash:       hash,
 		ParentHash: protocol.Bytes32(previousHash),
 		Timestamp:  time.Unix(closeTime, 0).UTC(),
-	}, nil
-}
-
-// symbolScVal builds an ScVal representing a Soroban symbol topic.
-// Soroban symbols are ASCII strings up to 32 bytes.
-func symbolScVal(sym string) (*xdr.ScVal, error) {
-	scSym := xdr.ScSymbol(sym)
-	return &xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &scSym,
 	}, nil
 }

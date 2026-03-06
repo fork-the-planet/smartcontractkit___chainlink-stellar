@@ -4,8 +4,10 @@
 package scval
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -423,4 +425,68 @@ func Bytes16SliceToScVal(items [][16]byte) xdr.ScVal {
 		scVals[i] = Bytes16ToScVal(item)
 	}
 	return VecToScVal(scVals)
+}
+
+// RawBytesFromAddressScVal extracts the raw 32-byte key (contract ID or
+// ed25519 pubkey) from an xdr.ScVal address.
+func RawBytesFromAddressScVal(val xdr.ScVal) ([]byte, error) {
+	addr, ok := val.GetAddress()
+	if !ok {
+		return nil, fmt.Errorf("not an address (type=%s)", val.Type)
+	}
+	switch addr.Type {
+	case xdr.ScAddressTypeScAddressTypeAccount:
+		accountID := addr.MustAccountId()
+		pubKey := accountID.Ed25519
+		if pubKey == nil {
+			return nil, fmt.Errorf("account ID has no Ed25519 key")
+		}
+		raw := make([]byte, 32)
+		copy(raw, (*pubKey)[:])
+		return raw, nil
+	case xdr.ScAddressTypeScAddressTypeContract:
+		contractID := addr.MustContractId()
+		raw := make([]byte, 32)
+		copy(raw, contractID[:])
+		return raw, nil
+	default:
+		return nil, fmt.Errorf("unsupported address type: %s", addr.Type)
+	}
+}
+
+// BytesVecFromScVal decodes a Vec<Bytes> from an xdr.ScVal vector.
+func BytesVecFromScVal(val xdr.ScVal) ([][]byte, error) {
+	vec, ok := val.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("not a vec")
+	}
+
+	result := make([][]byte, 0, len(*vec))
+	for _, item := range *vec {
+		b, ok := item.GetBytes()
+		if !ok {
+			return nil, fmt.Errorf("vec item is not bytes (type=%s)", item.Type)
+		}
+		result = append(result, []byte(b))
+	}
+	return result, nil
+}
+
+// SymbolToScValPtr returns a pointer to a symbol ScVal.
+func SymbolToScValPtr(sym string) *xdr.ScVal {
+	scSym := xdr.ScSymbol(sym)
+	return &xdr.ScVal{
+		Type: xdr.ScValTypeScvSymbol,
+		Sym:  &scSym,
+	}
+}
+
+// HexToContractStrkey converts a 0x-prefixed hex string (32-byte contract ID)
+// to a Stellar contract strkey (C...).
+func HexToContractStrkey(hexAddr string) (string, error) {
+	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
+	if err != nil {
+		return "", fmt.Errorf("decode hex address %q: %w", hexAddr, err)
+	}
+	return strkey.Encode(strkey.VersionByteContract, raw)
 }

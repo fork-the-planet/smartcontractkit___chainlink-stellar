@@ -2,14 +2,11 @@ package e2e_tests
 
 import (
 	"encoding/hex"
-	"fmt"
 	"math/big"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Masterminds/semver/v3"
@@ -26,6 +23,7 @@ import (
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
@@ -77,7 +75,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, onrampRef.Address)
 
-	onrampContractID, err := hexToContractStrkey(onrampRef.Address)
+	onrampContractID, err := scval.HexToContractStrkey(onrampRef.Address)
 	require.NoError(t, err)
 	l.Info().Str("onrampContractID", onrampContractID).Msg("Found OnRamp in CCV datastore")
 
@@ -91,7 +89,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, rmnRemoteRef.Address)
 
-	rmnRemoteAddress, err := hexToContractStrkey(rmnRemoteRef.Address)
+	rmnRemoteAddress, err := scval.HexToContractStrkey(rmnRemoteRef.Address)
 	require.NoError(t, err)
 	l.Info().Str("rmnRemoteAddress", rmnRemoteAddress).Msg("Found RMN Remote in CCV datastore")
 
@@ -120,7 +118,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, feeQuoterRef.Address)
 
-	feeQuoterContractID, err := hexToContractStrkey(feeQuoterRef.Address)
+	feeQuoterContractID, err := scval.HexToContractStrkey(feeQuoterRef.Address)
 	require.NoError(t, err)
 	l.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("Found FeeQuoter in CCV datastore")
 
@@ -136,7 +134,7 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, vvrRef.Address)
 
-	vvrContractID, err := hexToContractStrkey(vvrRef.Address)
+	vvrContractID, err := scval.HexToContractStrkey(vvrRef.Address)
 	require.NoError(t, err)
 	l.Info().Str("vvrContractID", vvrContractID).Msg("Found VVR in CCV datastore")
 
@@ -280,13 +278,4 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		// 	Str("messageID", hex.EncodeToString(messageID[:])).
 		// 	Msg("Message executed successfully on EVM")
 	})
-}
-
-// hexToContractStrkey converts a 0x-prefixed hex address to a Stellar contract strkey (C…).
-func hexToContractStrkey(hexAddr string) (string, error) {
-	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
-	if err != nil {
-		return "", fmt.Errorf("decode hex address: %w", err)
-	}
-	return strkey.Encode(strkey.VersionByteContract, raw)
 }

@@ -390,9 +390,12 @@ impl CcipMessageV1 {
     /// For contract addresses this is the contract ID; for account addresses
     /// it is the ed25519 public key. The raw bytes are the final 32 bytes of
     /// the ScVal XDR encoding, which holds the key for both address types.
-    fn address_raw_bytes(env: &Env, addr: Address) -> Bytes {
+    pub fn address_raw_bytes(env: &Env, addr: Address) -> Bytes {
         let xdr = addr.to_xdr(env);
         let len = xdr.len();
         xdr.slice((len - 32)..len)
     }
 }
+
+#[cfg(test)]
+mod test;

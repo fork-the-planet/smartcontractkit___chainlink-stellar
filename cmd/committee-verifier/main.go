@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	_ "github.com/lib/pq"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"go.uber.org/zap/zapcore"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
@@ -18,6 +15,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/verifier/commit"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/accessors"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
@@ -34,16 +32,6 @@ func loadConfig(path string) (*common.Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-// hexToContractStrkey converts a 0x-prefixed hex address (32 bytes) to a
-// Stellar contract strkey (C...).
-func hexToContractStrkey(hexAddr string) (string, error) {
-	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
-	if err != nil {
-		return "", fmt.Errorf("decode hex address %q: %w", hexAddr, err)
-	}
-	return strkey.Encode(strkey.VersionByteContract, raw)
 }
 
 func main() {
@@ -75,7 +63,7 @@ func main() {
 				for sel, rc := range stellarConfig.ReaderConfigs {
 					if rc.OnRampContractID == "" {
 						if onrampHex, ok := cfg.OnRampAddresses[sel]; ok && onrampHex != "" {
-							addr, err := hexToContractStrkey(onrampHex)
+							addr, err := scval.HexToContractStrkey(onrampHex)
 							if err != nil {
 								return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", sel, err)
 							}
@@ -84,7 +72,7 @@ func main() {
 					}
 					if rc.RMNRemoteContractID == "" {
 						if rmnHex, ok := cfg.RMNRemoteAddresses[sel]; ok && rmnHex != "" {
-							addr, err := hexToContractStrkey(rmnHex)
+							addr, err := scval.HexToContractStrkey(rmnHex)
 							if err != nil {
 								return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", sel, err)
 							}
