@@ -3,18 +3,15 @@ package ccvchain
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/strkey"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
@@ -25,6 +22,7 @@ import (
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -103,7 +101,7 @@ func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deploym
 		)
 		onrampRef, err := env.DataStore.Addresses().Get(onrampKey)
 		if err == nil && onrampRef.Address != "" {
-			onrampContractID, convErr := implHexToStrkey(onrampRef.Address)
+			onrampContractID, convErr := scval.HexToContractStrkey(onrampRef.Address)
 			if convErr == nil {
 				chain.onRampContractID = onrampContractID
 				chain.onRampClient = onrampbindings.NewOnRampClient(deployer, onrampContractID)
@@ -112,14 +110,4 @@ func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deploym
 	}
 
 	return chain, nil
-}
-
-// implHexToStrkey converts a 0x-prefixed hex address (32 bytes) to a Stellar
-// contract strkey (C...).
-func implHexToStrkey(hexAddr string) (string, error) {
-	raw, err := hex.DecodeString(strings.TrimPrefix(hexAddr, "0x"))
-	if err != nil {
-		return "", fmt.Errorf("decode hex address %q: %w", hexAddr, err)
-	}
-	return strkey.Encode(strkey.VersionByteContract, raw)
 }

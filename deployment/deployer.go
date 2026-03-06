@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -169,7 +170,7 @@ func (d *Deployer) InvokeContract(ctx context.Context, contractID string, functi
 	}
 
 	// Build contract address using XDR marshaling for proper type handling
-	contractAddr := buildContractScAddressFromBytes(contractBytes)
+	contractAddr := scval.BuildContractScAddress(contractBytes)
 	if contractAddr == nil {
 		return nil, fmt.Errorf("failed to build contract address")
 	}
@@ -211,7 +212,7 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 	}
 
 	// Build contract address using XDR marshaling for proper type handling
-	contractAddr := buildContractScAddressFromBytes(contractBytes)
+	contractAddr := scval.BuildContractScAddress(contractBytes)
 	if contractAddr == nil {
 		return nil, fmt.Errorf("failed to build contract address")
 	}
@@ -648,7 +649,7 @@ func (d *Deployer) GetEvents(ctx context.Context, contractID string, startLedger
 	// First topic is the symbol, rest use wildcard
 	var topicScVals []*xdr.ScVal
 	for _, topic := range topics {
-		topicScVals = append(topicScVals, symbolToScValPtr(topic))
+		topicScVals = append(topicScVals, scval.SymbolToScValPtr(topic))
 	}
 
 	// Use wildcard to match any remaining topics
@@ -679,39 +680,10 @@ func (d *Deployer) GetEvents(ctx context.Context, contractID string, startLedger
 	return resp.Events, nil
 }
 
-// symbolToScValPtr returns a pointer to an ScVal representing a symbol.
-func symbolToScValPtr(sym string) *xdr.ScVal {
-	scSym := xdr.ScSymbol(sym)
-	return &xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &scSym,
-	}
-}
-
 // GenerateDeterministicSalt generates a deterministic salt for contract deployment.
 func GenerateDeterministicSalt(deployerAddress, contractName string) [32]byte {
 	saltInput := fmt.Sprintf("%s-%s", deployerAddress, contractName)
 	return sha256.Sum256([]byte(saltInput))
-}
-
-// buildContractScAddressFromBytes creates an ScAddress for a contract from raw bytes.
-// Uses XDR marshaling to properly construct the address with correct types.
-func buildContractScAddressFromBytes(contractIDBytes []byte) *xdr.ScAddress {
-	if len(contractIDBytes) != 32 {
-		return nil
-	}
-	// Construct via XDR encoding to handle SDK type requirements
-	// ScAddress union: type (4 bytes) + data (32 bytes for contract)
-	xdrBytes := make([]byte, 0, 36)
-	// Type discriminant for contract: ScAddressTypeScAddressTypeContract = 1
-	xdrBytes = append(xdrBytes, 0, 0, 0, 1) // Big-endian uint32
-	xdrBytes = append(xdrBytes, contractIDBytes...)
-
-	var addr xdr.ScAddress
-	if err := addr.UnmarshalBinary(xdrBytes); err != nil {
-		return nil
-	}
-	return &addr
 }
 
 // getResultXDR attempts to extract the XDR result from SimulateHostFunctionResult.
