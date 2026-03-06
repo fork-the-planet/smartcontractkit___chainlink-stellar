@@ -15,8 +15,8 @@ import (
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
+	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -26,7 +26,7 @@ import (
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
-var _ registry.ImplFactory = &ImplFactory{}
+var _ ccv.ImplFactory = &ImplFactory{}
 
 // ImplFactory creates Stellar CCIP17 chain implementations.
 // It implements [registry.ImplFactory] and is registered with the global factory
@@ -52,7 +52,7 @@ func (f *ImplFactory) NewEmpty() cciptestinterfaces.CCIP17Configuration {
 // Returns a fully initialised Chain for test interactions against an already-deployed
 // network. It reconstructs all necessary state (RPC client, deployer keypair, OnRamp
 // client) from the blockchain.Input output and the deployment datastore.
-func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deployment.Environment, bc *blockchain.Input) (cciptestinterfaces.CCIP17, error) {
+func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger, env *deployment.Environment, bc *blockchain.Input) (cciptestinterfaces.CCIP17, error) {
 	details, err := chainsel.GetChainDetailsByChainIDAndFamily(bc.ChainID, chainsel.FamilyStellar)
 	if err != nil {
 		return nil, fmt.Errorf("get chain details for Stellar chain %s: %w", bc.ChainID, err)
