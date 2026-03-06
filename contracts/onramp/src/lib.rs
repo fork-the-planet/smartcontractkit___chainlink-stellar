@@ -289,7 +289,11 @@ impl OnRampContract {
             execution_gas_limit: extra_args.gas_limit,
             ccip_receive_gas_limit: 0,
             finality: extra_args.block_confirmations as u16,
-            ccv_and_executor_hash: BytesN::from_array(&env, &[0u8; 32]), // TODO: compute from CCV + executor config
+            ccv_and_executor_hash: CcipMessageV1::compute_ccv_and_executor_hash(
+                &env,
+                &extra_args.ccvs,
+                &extra_args.executor,
+            ),
             onramp_address: env.current_contract_address().to_xdr(&env),
             offramp_address: dest_config.off_ramp.clone().to_xdr(&env),
             sender: original_sender.clone().to_xdr(&env),
@@ -300,6 +304,11 @@ impl OnRampContract {
         };
 
         let message_id = ccip_msg.compute_message_id(&env);
+
+        // TODO: check if message ID already exists in storage for idempotency
+
+        // Receipt ordering must match the offchain expectation: [CCV_0, ..., CCV_N, Executor, NetworkFee]
+        // where Executor is at index length-2 and NetworkFee is at length-1.
 
         // Invoke verifiers to get verification blobs and generate receipts
         let (verifier_blobs, mut receipts) = Self::get_ccv_blobs_and_receipts_internal(
@@ -312,7 +321,18 @@ impl OnRampContract {
             fee_token_amount,
         )?;
 
-        // Router's receipt to represent the network's fee
+        // Executor receipt (always before the network fee receipt)
+        receipts.push_back(Receipt {
+            issuer: extra_args.executor.clone(),
+            dest_gas_limit: dest_config
+                .base_execution_gas_cost
+                .saturating_add(extra_args.gas_limit),
+            dest_bytes_overhead: 0,
+            fee_token_amount: 0, // TODO: compute executor fee
+            extra_args: extra_args.executor_args.clone(),
+        });
+
+        // Network fee receipt (always last)
         receipts.push_back(Receipt {
             issuer: dest_config.router.clone(),
             dest_gas_limit: 0,
@@ -320,17 +340,6 @@ impl OnRampContract {
             fee_token_amount: dest_config.token_network_fee_usd_cents as i128,
             extra_args: Bytes::new(&env),
         });
-
-        // TODO: add executor fee to receipts
-        // receipts.push_back(Receipt {
-        //     issuer: extra_args.executor.clone(),
-        //     dest_gas_limit: dest_config
-        //         .base_execution_gas_cost
-        //         .saturating_add(extra_args.gas_limit),
-        //     dest_bytes_overhead: 0,
-        //     fee_token_amount,
-        //     extra_args: extra_args.executor_args.clone(),
-        // });
 
         // Persist updated sequence number
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
@@ -360,10 +369,7 @@ impl OnRampContract {
         // Exit reentrancy guard
         ReentrancyGuard::exit(&env);
 
-        // TODO: Placeholder to use fee_token_amount
-        let _ = fee_token_amount;
-
-        // TODO: do we need to keep track of message IDs in storage for idempotency?
+        // TODO: keep track of message IDs in storage for idempotency?
 
         Ok(message_id)
     }

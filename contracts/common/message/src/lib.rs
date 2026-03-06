@@ -323,3 +323,40 @@ impl ToBytes for CcipMessageV1 {
 }
 
 impl MessageIdCompute for CcipMessageV1 {}
+
+impl CcipMessageV1 {
+    /// Compute the CCV-and-executor hash from CCV addresses and executor address.
+    /// Matches protocol.ComputeCCVAndExecutorHash() in Go.
+    /// Format: keccak256(addressLength(1) || ccv1 || ccv2 || ... || executor)
+    ///
+    /// All addresses must have the same byte length (derived from the executor).
+    pub fn compute_ccv_and_executor_hash(
+        env: &Env,
+        ccv_addresses: &Vec<Address>,
+        executor: &Address,
+    ) -> BytesN<32> {
+        let executor_bytes = Self::address_raw_bytes(env, executor.clone());
+        let addr_len = executor_bytes.len() as u8;
+
+        let mut encoded = Bytes::new(env);
+        encoded.append(&Bytes::from_array(env, &[addr_len]));
+
+        for ccv in ccv_addresses.iter() {
+            encoded.append(&Self::address_raw_bytes(env, ccv));
+        }
+
+        encoded.append(&executor_bytes);
+
+        env.crypto().keccak256(&encoded).into()
+    }
+
+    /// Extract the raw 32-byte key from a Soroban Address.
+    /// For contract addresses this is the contract ID; for account addresses
+    /// it is the ed25519 public key. The raw bytes are the final 32 bytes of
+    /// the ScVal XDR encoding, which holds the key for both address types.
+    fn address_raw_bytes(env: &Env, addr: Address) -> Bytes {
+        let xdr = addr.to_xdr(env);
+        let len = xdr.len();
+        xdr.slice((len - 32)..len)
+    }
+}
