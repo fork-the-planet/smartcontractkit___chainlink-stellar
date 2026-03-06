@@ -83,8 +83,7 @@ func main() {
 				}
 
 				return accessors.NewFactory(lggr, stellarConfig.ReaderConfigs), nil
-			}),
-		bootstrap.WithLogLevel[commit.JobSpec](zapcore.InfoLevel),
+			}), bootstrap.WithLogLevel[commit.JobSpec](zapcore.InfoLevel),
 	); err != nil {
 		panic(fmt.Sprintf("failed to run Stellar committee verifier: %s", err.Error()))
 	}

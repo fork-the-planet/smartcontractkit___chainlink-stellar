@@ -2,6 +2,7 @@ package devenv
 
 import (
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
@@ -32,5 +33,5 @@ func RegisterStellarComponents() {
 	committeeverifier.RegisterModifier(chainsel.FamilyStellar, StellarModifier)
 	chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 	registry.RegisterChainFamilyAdapter(chainsel.FamilyStellar, ccvchain.NewChainFamilyAdapter(evmAdapter))
-	registry.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
+	ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 }
