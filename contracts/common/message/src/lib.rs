@@ -216,19 +216,31 @@ impl ToBytes for CcipTokenTransferV1 {
         buf.append(&Bytes::from_array(env, &[self.version]));
         buf.append(&Bytes::from_slice(env, &self.amount.to_array()));
 
-        buf.append(&Bytes::from_array(env, &[self.source_pool_address.len() as u8]));
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.source_pool_address.len() as u8],
+        ));
         buf.append(&self.source_pool_address);
 
-        buf.append(&Bytes::from_array(env, &[self.source_token_address.len() as u8]));
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.source_token_address.len() as u8],
+        ));
         buf.append(&self.source_token_address);
 
-        buf.append(&Bytes::from_array(env, &[self.dest_token_address.len() as u8]));
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.dest_token_address.len() as u8],
+        ));
         buf.append(&self.dest_token_address);
 
         buf.append(&Bytes::from_array(env, &[self.token_receiver.len() as u8]));
         buf.append(&self.token_receiver);
 
-        buf.append(&Bytes::from_array(env, &(self.extra_data.len() as u16).to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.extra_data.len() as u16).to_be_bytes(),
+        ));
         buf.append(&self.extra_data);
 
         buf
@@ -276,19 +288,34 @@ impl ToBytes for CcipMessageV1 {
         buf.append(&Bytes::from_array(env, &[MESSAGE_V1_VERSION]));
 
         // Chain selectors and sequence number (8 bytes each, big-endian)
-        buf.append(&Bytes::from_array(env, &self.source_chain_selector.to_be_bytes()));
-        buf.append(&Bytes::from_array(env, &self.dest_chain_selector.to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.source_chain_selector.to_be_bytes(),
+        ));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.dest_chain_selector.to_be_bytes(),
+        ));
         buf.append(&Bytes::from_array(env, &self.sequence_number.to_be_bytes()));
 
         // Gas limits (4 bytes each, big-endian)
-        buf.append(&Bytes::from_array(env, &self.execution_gas_limit.to_be_bytes()));
-        buf.append(&Bytes::from_array(env, &self.ccip_receive_gas_limit.to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.execution_gas_limit.to_be_bytes(),
+        ));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.ccip_receive_gas_limit.to_be_bytes(),
+        ));
 
         // Finality (2 bytes, big-endian)
         buf.append(&Bytes::from_array(env, &self.finality.to_be_bytes()));
 
         // CCV and executor hash (32 bytes)
-        buf.append(&Bytes::from_slice(env, &self.ccv_and_executor_hash.to_array()));
+        buf.append(&Bytes::from_slice(
+            env,
+            &self.ccv_and_executor_hash.to_array(),
+        ));
 
         // On-ramp address (1 byte length + bytes)
         buf.append(&Bytes::from_array(env, &[self.onramp_address.len() as u8]));
@@ -307,15 +334,24 @@ impl ToBytes for CcipMessageV1 {
         buf.append(&self.receiver);
 
         // Dest blob (2 bytes length, big-endian + bytes)
-        buf.append(&Bytes::from_array(env, &(self.dest_blob.len() as u16).to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.dest_blob.len() as u16).to_be_bytes(),
+        ));
         buf.append(&self.dest_blob);
 
         // Token transfer (2 bytes length, big-endian + pre-encoded bytes)
-        buf.append(&Bytes::from_array(env, &(self.token_transfer.len() as u16).to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.token_transfer.len() as u16).to_be_bytes(),
+        ));
         buf.append(&self.token_transfer);
 
         // Data (2 bytes length, big-endian + bytes)
-        buf.append(&Bytes::from_array(env, &(self.data.len() as u16).to_be_bytes()));
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.data.len() as u16).to_be_bytes(),
+        ));
         buf.append(&self.data);
 
         buf
