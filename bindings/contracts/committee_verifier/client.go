@@ -635,7 +635,10 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 
 		switch string(key) {
 		case "dynamic_config":
-			// TODO: parse complex type
+			v, err := DynamicConfigFromScVal(entry.Val)
+			if err == nil {
+				result.DynamicConfig = *v
+			}
 		}
 	}
 
@@ -704,9 +707,15 @@ func parseRemoteChainConfigSetEvent(e protocolrpc.EventInfo) (*RemoteChainConfig
 				result.RemoteChainSelector = v
 			}
 		case "router":
-			// TODO: parse complex type
+			v, err := Address > FromScVal(entry.Val)
+			if err == nil {
+				result.Router = *v
+			}
 		case "allowlist_enabled":
-			// TODO: parse complex type
+			v, err := boolFromScVal(entry.Val)
+			if err == nil {
+				result.AllowlistEnabled = *v
+			}
 		}
 	}
 
@@ -847,7 +856,10 @@ func parseAllowListStateChangedEvent(e protocolrpc.EventInfo) (*AllowListStateCh
 				result.DestChainSelector = v
 			}
 		case "allowlist_enabled":
-			// TODO: parse complex type
+			v, err := boolFromScVal(entry.Val)
+			if err == nil {
+				result.AllowlistEnabled = *v
+			}
 		}
 	}
 

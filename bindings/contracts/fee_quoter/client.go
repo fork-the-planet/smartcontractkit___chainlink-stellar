@@ -1053,9 +1053,15 @@ func parseDestChainAddedEvent(e protocolrpc.EventInfo) (*DestChainAddedEvent, er
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
-			// TODO: parse complex type
+			v, err := boolFromScVal(entry.Val)
+			if err == nil {
+				result.IsEnabled = *v
+			}
 		case "max_data_bytes":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.MaxDataBytes = *v
+			}
 		}
 	}
 
@@ -1422,11 +1428,20 @@ func parseTokenFeeConfigUpdatedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigUp
 				result.Token = v
 			}
 		case "fee_usd_cents":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.FeeUsdCents = *v
+			}
 		case "dest_gas_overhead":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.DestGasOverhead = *v
+			}
 		case "dest_bytes_overhead":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.DestBytesOverhead = *v
+			}
 		}
 	}
 
@@ -1495,9 +1510,15 @@ func parseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfig
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
-			// TODO: parse complex type
+			v, err := boolFromScVal(entry.Val)
+			if err == nil {
+				result.IsEnabled = *v
+			}
 		case "max_data_bytes":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.MaxDataBytes = *v
+			}
 		}
 	}
 

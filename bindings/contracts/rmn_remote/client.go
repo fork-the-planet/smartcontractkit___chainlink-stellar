@@ -935,9 +935,15 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 
 		switch string(key) {
 		case "version":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.Version = *v
+			}
 		case "num_signers":
-			// TODO: parse complex type
+			v, err := u32FromScVal(entry.Val)
+			if err == nil {
+				result.NumSigners = *v
+			}
 		case "f_sign":
 			v, err := scval.Uint64FromScVal(entry.Val)
 			if err == nil {
