@@ -375,13 +375,21 @@ func GenericExtraArgsV3FromScVal(val xdr.ScVal) (*GenericExtraArgsV3, error) {
 
 // AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
 type AnyToStellarMessage struct {
-	Placeholder uint64
+	Data                []byte
+	DestTokenAmounts    []TokenAmount
+	MessageId           [32]byte
+	Sender              []byte
+	SourceChainSelector uint64
 }
 
 // ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
 func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"placeholder": scval.Uint64ToScVal(s.Placeholder),
+		"data":                  scval.BytesToScVal(s.Data),
+		"dest_token_amounts":    scval.StructSliceToScVal(s.DestTokenAmounts),
+		"message_id":            scval.Bytes32ToScVal(s.MessageId),
+		"sender":                scval.BytesToScVal(s.Sender),
+		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 	})
 }
 
@@ -400,12 +408,43 @@ func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
 		}
 
 		switch string(key) {
-		case "placeholder":
+		case "data":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("data is not bytes")
+			}
+			result.Data = []byte(v)
+		case "dest_token_amounts":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("dest_token_amounts is not a vec")
+			}
+			result.DestTokenAmounts = make([]TokenAmount, len(*vec))
+			for i, item := range *vec {
+				v, err := TokenAmountFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.DestTokenAmounts[i] = *v
+			}
+		case "message_id":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("message_id: %w", err)
+			}
+			result.MessageId = v
+		case "sender":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("sender is not bytes")
+			}
+			result.Sender = []byte(v)
+		case "source_chain_selector":
 			v, err := scval.Uint64FromScVal(entry.Val)
 			if err != nil {
-				return nil, fmt.Errorf("placeholder: %w", err)
+				return nil, fmt.Errorf("source_chain_selector: %w", err)
 			}
-			result.Placeholder = v
+			result.SourceChainSelector = v
 		}
 	}
 
@@ -1232,6 +1271,20 @@ const (
 	CCIPErrorThresholdNotMet                = 71
 	CCIPErrorUnexpectedSigner               = 72
 	CCIPErrorZeroValueNotAllowed            = 73
+	CCIPErrorSourceChainNotEnabled          = 100
+	CCIPErrorInvalidSourceChainConfig       = 101
+	CCIPErrorInvalidOnRampAddress           = 102
+	CCIPErrorInvalidOffRampAddress          = 103
+	CCIPErrorInvalidMessageDestination      = 104
+	CCIPErrorMessageAlreadyExecuted         = 105
+	CCIPErrorInvalidExecutionState          = 106
+	CCIPErrorCCVLengthMismatch              = 107
+	CCIPErrorCCVQuorumNotMet                = 108
+	CCIPErrorReceiverError                  = 109
+	CCIPErrorGasLimitOverrideTooLow         = 110
+	CCIPErrorInvalidReceiverLength          = 111
+	CCIPErrorTokenHandlingError             = 112
+	CCIPErrorMessageDecodingError           = 113
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -1311,6 +1364,20 @@ var CCIPErrorMessage = map[int]string{
 	71:  "threshold not met",
 	72:  "unexpected signer",
 	73:  "zero value not allowed",
+	100: "source chain not enabled",
+	101: "invalid source chain config",
+	102: "invalid on ramp address",
+	103: "invalid off ramp address",
+	104: "invalid message destination",
+	105: "message already executed",
+	106: "invalid execution state",
+	107: "c c v length mismatch",
+	108: "c c v quorum not met",
+	109: "receiver error",
+	110: "gas limit override too low",
+	111: "invalid receiver length",
+	112: "token handling error",
+	113: "message decoding error",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
