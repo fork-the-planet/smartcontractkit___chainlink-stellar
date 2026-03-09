@@ -32,6 +32,10 @@ clean:
 docker-verifier:
 	docker build -f Dockerfile.verifier -t stellarcommittee-verifier:dev .
 
+# Build the Stellar (standalone) executor Docker image used by E2E tests.
+docker-executor:
+	docker build -f Dockerfile.executor -t stellarexecutor:dev .
+
 up:
 	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv up tests/env/env-stellar-evm.toml
 
