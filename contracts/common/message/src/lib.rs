@@ -3,8 +3,8 @@
 use common_error::CCIPError;
 use soroban_sdk::{
     contracttype,
-    xdr::{FromXdr, ToXdr},
-    Address, Bytes, BytesN, Env, TryFromVal, Vec,
+    xdr::ToXdr,
+    Address, Bytes, BytesN, Env, Vec,
 };
 
 // ============================================================
@@ -15,6 +15,11 @@ use soroban_sdk::{
 /// Unlike `Into<Bytes>`, this takes `&Env` which is required by Soroban's `Bytes` type.
 pub trait ToBytes {
     fn to_bytes(&self, env: &Env) -> Bytes;
+}
+
+/// Trait for deserializing from Bytes.
+pub trait FromBytes: Sized {
+    fn from_bytes(env: &Env, bytes: &Bytes) -> Result<Self, CCIPError>;
 }
 
 /// Trait for computing CCIP message IDs.
@@ -155,27 +160,21 @@ impl MessageIdCompute for StellarToAnyMessage {}
 // AnyToStellarMessage
 // ============================================================
 
+/// Decoded inbound CCIP message for Stellar receivers.
+/// This is the Stellar analog of the EVM's `Client.Any2EVMMessage`.
+/// Built by the OffRamp from the canonical `CcipMessageV1` after verification.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AnyToStellarMessage {
-    // TODO: add fields
-    pub placeholder: u64,
+    pub message_id: BytesN<32>,
+    pub source_chain_selector: u64,
+    /// Sender address on the source chain (raw bytes, chain-family dependent encoding)
+    pub sender: Bytes,
+    /// Arbitrary data payload
+    pub data: Bytes,
+    /// Token amounts released/minted on this chain
+    pub dest_token_amounts: Vec<TokenAmount>,
 }
-
-impl AnyToStellarMessage {
-    pub fn validate(&self) -> Result<(), CCIPError> {
-        // TODO: add validations
-        Ok(())
-    }
-}
-
-impl ToBytes for AnyToStellarMessage {
-    fn to_bytes(&self, env: &Env) -> Bytes {
-        unimplemented!()
-    }
-}
-
-impl MessageIdCompute for AnyToStellarMessage {}
 
 // ============================================================
 // CCIP MessageV1 Canonical Format
@@ -394,6 +393,138 @@ impl CcipMessageV1 {
         let xdr = addr.to_xdr(env);
         let len = xdr.len();
         xdr.slice((len - 32)..len)
+    }
+}
+
+// ============================================================
+// ByteReader — cursor-based decoder for canonical CCIP encoding
+// ============================================================
+
+/// A simple cursor-based reader over `Bytes` for decoding the canonical
+/// CCIP v1.7 wire format. All reads advance the cursor and return
+/// `MessageDecodingError` on underflow.
+struct ByteReader<'a> {
+    data: &'a Bytes,
+    pos: u32,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(data: &'a Bytes) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    fn remaining(&self) -> u32 {
+        self.data.len().saturating_sub(self.pos)
+    }
+
+    fn read_u8(&mut self) -> Result<u8, CCIPError> {
+        if self.remaining() < 1 {
+            return Err(CCIPError::MessageDecodingError);
+        }
+        let val = self.data.get(self.pos).ok_or(CCIPError::MessageDecodingError)?;
+        self.pos += 1;
+        Ok(val)
+    }
+
+    fn read_u16(&mut self) -> Result<u16, CCIPError> {
+        let mut arr = [0u8; 2];
+        for b in &mut arr {
+            *b = self.read_u8()?;
+        }
+        Ok(u16::from_be_bytes(arr))
+    }
+
+    fn read_u32(&mut self) -> Result<u32, CCIPError> {
+        let mut arr = [0u8; 4];
+        for b in &mut arr {
+            *b = self.read_u8()?;
+        }
+        Ok(u32::from_be_bytes(arr))
+    }
+
+    fn read_u64(&mut self) -> Result<u64, CCIPError> {
+        let mut arr = [0u8; 8];
+        for b in &mut arr {
+            *b = self.read_u8()?;
+        }
+        Ok(u64::from_be_bytes(arr))
+    }
+
+    fn read_bytes(&mut self, len: u32) -> Result<Bytes, CCIPError> {
+        if self.remaining() < len {
+            return Err(CCIPError::MessageDecodingError);
+        }
+        let slice = self.data.slice(self.pos..(self.pos + len));
+        self.pos += len;
+        Ok(slice)
+    }
+
+    fn read_bytes32(&mut self, env: &Env) -> Result<BytesN<32>, CCIPError> {
+        let b = self.read_bytes(32)?;
+        let mut arr = [0u8; 32];
+        for i in 0..32u32 {
+            arr[i as usize] = b.get(i).ok_or(CCIPError::MessageDecodingError)?;
+        }
+        Ok(BytesN::from_array(env, &arr))
+    }
+
+    /// Read a 1-byte length-prefixed field.
+    fn read_1lp_field(&mut self) -> Result<Bytes, CCIPError> {
+        let len = self.read_u8()? as u32;
+        self.read_bytes(len)
+    }
+
+    /// Read a 2-byte (big-endian) length-prefixed field.
+    fn read_2lp_field(&mut self) -> Result<Bytes, CCIPError> {
+        let len = self.read_u16()? as u32;
+        self.read_bytes(len)
+    }
+}
+
+impl FromBytes for CcipMessageV1 {
+    /// Decode a `CcipMessageV1` from its canonical wire-format bytes.
+    /// The byte layout is the exact reverse of `ToBytes::to_bytes()`.
+    fn from_bytes(env: &Env, bytes: &Bytes) -> Result<Self, CCIPError> {
+        let mut r = ByteReader::new(bytes);
+
+        let version = r.read_u8()?;
+        if version != MESSAGE_V1_VERSION {
+            return Err(CCIPError::MessageDecodingError);
+        }
+
+        let source_chain_selector = r.read_u64()?;
+        let dest_chain_selector = r.read_u64()?;
+        let sequence_number = r.read_u64()?;
+        let execution_gas_limit = r.read_u32()?;
+        let ccip_receive_gas_limit = r.read_u32()?;
+        let finality = r.read_u16()?;
+        let ccv_and_executor_hash = r.read_bytes32(env)?;
+
+        let onramp_address = r.read_1lp_field()?;
+        let offramp_address = r.read_1lp_field()?;
+        let sender = r.read_1lp_field()?;
+        let receiver = r.read_1lp_field()?;
+
+        let dest_blob = r.read_2lp_field()?;
+        let token_transfer = r.read_2lp_field()?;
+        let data = r.read_2lp_field()?;
+
+        Ok(CcipMessageV1 {
+            source_chain_selector,
+            dest_chain_selector,
+            sequence_number,
+            execution_gas_limit,
+            ccip_receive_gas_limit,
+            finality,
+            ccv_and_executor_hash,
+            onramp_address,
+            offramp_address,
+            sender,
+            receiver,
+            dest_blob,
+            token_transfer,
+            data,
+        })
     }
 }
 

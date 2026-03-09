@@ -99,7 +99,11 @@ pub struct GenericExtraArgsV3 {
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct AnyToStellarMessage {
-    pub placeholder: u64,
+    pub message_id: soroban_sdk::BytesN<32>,
+    pub source_chain_selector: u64,
+    pub sender: soroban_sdk::Bytes,
+    pub data: soroban_sdk::Bytes,
+    pub dest_token_amounts: soroban_sdk::Vec<TokenAmount>,
 }
 
 #[soroban_sdk::contracttype(export = false)]
