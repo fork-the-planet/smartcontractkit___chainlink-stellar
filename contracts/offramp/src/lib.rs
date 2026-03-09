@@ -418,7 +418,7 @@ impl OffRampContract {
                 .ok_or(CCIPError::CCVLengthMismatch)?;
 
             // TODO: is the ccv address here referring to the verifier or resolver contract?
-            
+
             // Resolve the inbound verifier implementation from the CCV resolver
             let vvr = VersionedVerifierResolverClient::new(env, &ccv);
             let verifier_address = vvr.get_inbound_implementation(&result);
