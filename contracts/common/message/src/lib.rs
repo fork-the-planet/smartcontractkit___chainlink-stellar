@@ -1,11 +1,7 @@
 #![no_std]
 
 use common_error::CCIPError;
-use soroban_sdk::{
-    contracttype,
-    xdr::ToXdr,
-    Address, Bytes, BytesN, Env, Vec,
-};
+use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 // ============================================================
 // MessageIdCompute Trait
@@ -30,6 +26,11 @@ pub trait MessageIdCompute: ToBytes {
     fn compute_message_id(&self, env: &Env) -> BytesN<32> {
         let bytes = self.to_bytes(env);
         let hash = env.crypto().keccak256(&bytes);
+        hash.into()
+    }
+
+    fn compute_message_id_from_bytes(env: &Env, bytes: &Bytes) -> BytesN<32> {
+        let hash = env.crypto().keccak256(bytes);
         hash.into()
     }
 }
@@ -421,7 +422,10 @@ impl<'a> ByteReader<'a> {
         if self.remaining() < 1 {
             return Err(CCIPError::MessageDecodingError);
         }
-        let val = self.data.get(self.pos).ok_or(CCIPError::MessageDecodingError)?;
+        let val = self
+            .data
+            .get(self.pos)
+            .ok_or(CCIPError::MessageDecodingError)?;
         self.pos += 1;
         Ok(val)
     }

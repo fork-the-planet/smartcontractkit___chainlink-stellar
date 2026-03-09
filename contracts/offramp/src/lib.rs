@@ -5,20 +5,19 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short,
-    xdr::ToXdr,
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
+    Symbol, Vec,
 };
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
-use common_message::{AnyToStellarMessage, CcipMessageV1, FromBytes, TokenAmount};
-use events::{ExecutionStateChangedEvent, SourceChainConfigSetEvent, StaticConfigSetEvent};
-use types::{
-    MessageExecutionState, SourceChainConfig, SourceChainConfigArgs, StaticConfig,
+use common_message::{
+    AnyToStellarMessage, CcipMessageV1, FromBytes, MessageIdCompute, TokenAmount,
 };
+use events::{ExecutionStateChangedEvent, SourceChainConfigSetEvent, StaticConfigSetEvent};
+use types::{MessageExecutionState, SourceChainConfig, SourceChainConfigArgs, StaticConfig};
 
 // ============================================================
 // Storage Keys
@@ -81,9 +80,7 @@ impl OffRampContract {
             return Err(CCIPError::InvalidConfig);
         }
 
-        env.storage()
-            .instance()
-            .set(&STATIC_CONFIG, &static_config);
+        env.storage().instance().set(&STATIC_CONFIG, &static_config);
 
         // Initialize empty source chains map
         let source_chains: Map<u64, SourceChainConfig> = Map::new(&env);
@@ -95,10 +92,7 @@ impl OffRampContract {
         let exec_states: Map<BytesN<32>, MessageExecutionState> = Map::new(&env);
         env.storage().persistent().set(&EXEC_STATES, &exec_states);
 
-        StaticConfigSetEvent {
-            static_config,
-        }
-        .publish(&env);
+        StaticConfigSetEvent { static_config }.publish(&env);
 
         Ok(())
     }
@@ -171,7 +165,8 @@ impl OffRampContract {
         }
 
         // Compute message ID = keccak256(encoded_message)
-        let message_id: BytesN<32> = env.crypto().keccak256(&encoded_message).into();
+        let message_id: BytesN<32> =
+            CcipMessageV1::compute_message_id_from_bytes(&env, &encoded_message);
 
         // Check execution state: only UNTOUCHED or FAILURE can be (re-)executed
         let current_state = Self::get_execution_state_internal(&env, &message_id);
@@ -418,7 +413,9 @@ impl OffRampContract {
 
         for i in 0..ccvs.len() {
             let ccv = ccvs.get(i).ok_or(CCIPError::CCVLengthMismatch)?;
-            let result = verifier_results.get(i).ok_or(CCIPError::CCVLengthMismatch)?;
+            let result = verifier_results
+                .get(i)
+                .ok_or(CCIPError::CCVLengthMismatch)?;
 
             // Resolve the inbound verifier implementation from the CCV resolver
             let vvr = VersionedVerifierResolverClient::new(env, &ccv);
@@ -518,10 +515,7 @@ impl OffRampContract {
             .ok_or(CCIPError::SourceChainNotEnabled)
     }
 
-    fn get_execution_state_internal(
-        env: &Env,
-        message_id: &BytesN<32>,
-    ) -> MessageExecutionState {
+    fn get_execution_state_internal(env: &Env, message_id: &BytesN<32>) -> MessageExecutionState {
         let exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()
@@ -533,11 +527,7 @@ impl OffRampContract {
             .unwrap_or(MessageExecutionState::Untouched)
     }
 
-    fn set_execution_state(
-        env: &Env,
-        message_id: &BytesN<32>,
-        state: MessageExecutionState,
-    ) {
+    fn set_execution_state(env: &Env, message_id: &BytesN<32>, state: MessageExecutionState) {
         let mut exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()
