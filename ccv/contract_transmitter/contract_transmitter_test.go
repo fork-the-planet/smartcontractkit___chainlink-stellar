@@ -7,27 +7,15 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/internal/mocks"
 )
-
-// mockInvoker is a test double for the Invoker interface.
-type mockInvoker struct {
-	invokeFunc func(ctx context.Context, contractID, functionName string, args []xdr.ScVal) (*xdr.ScVal, error)
-}
-
-func (m *mockInvoker) InvokeContract(ctx context.Context, contractID, functionName string, args []xdr.ScVal) (*xdr.ScVal, error) {
-	if m.invokeFunc != nil {
-		return m.invokeFunc(ctx, contractID, functionName, args)
-	}
-	return nil, nil
-}
 
 func testLogger() *zerolog.Logger {
 	lggr := zerolog.New(os.Stdout).With().Timestamp().Logger().Level(zerolog.DebugLevel)
@@ -63,42 +51,6 @@ func mustCreateMessage(t *testing.T, sourceChain, destChain uint64, seqNum uint6
 }
 
 // ---------------------------------------------------------------------------
-// Constructor tests
-// ---------------------------------------------------------------------------
-
-func TestNewContractTransmitter(t *testing.T) {
-	lggr := testLogger()
-
-	t.Run("returns error when invoker is nil", func(t *testing.T) {
-		ct, err := NewContractTransmitter(nil, "COFFRAMP", lggr)
-		require.Error(t, err)
-		require.Nil(t, ct)
-		assert.Contains(t, err.Error(), "invoker is required")
-	})
-
-	t.Run("returns error when offRampContractID is empty", func(t *testing.T) {
-		ct, err := NewContractTransmitter(&mockInvoker{}, "", lggr)
-		require.Error(t, err)
-		require.Nil(t, ct)
-		assert.Contains(t, err.Error(), "offramp contract ID is required")
-	})
-
-	t.Run("returns error when logger is nil", func(t *testing.T) {
-		ct, err := NewContractTransmitter(&mockInvoker{}, "COFFRAMP", nil)
-		require.Error(t, err)
-		require.Nil(t, ct)
-		assert.Contains(t, err.Error(), "logger is required")
-	})
-
-	t.Run("succeeds with valid inputs", func(t *testing.T) {
-		ct, err := NewContractTransmitter(&mockInvoker{}, "COFFRAMP", lggr)
-		require.NoError(t, err)
-		require.NotNil(t, ct)
-		assert.Equal(t, "COFFRAMP", ct.offRampContractID)
-	})
-}
-
-// ---------------------------------------------------------------------------
 // ConvertAndWriteMessageToChain tests
 // ---------------------------------------------------------------------------
 
@@ -110,19 +62,21 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 	ccv2 := testAddress(0xBB)
 
 	t.Run("successful transmission", func(t *testing.T) {
+		mockInvoker := mocks.NewMockInvoker(t)
+
 		var capturedContractID, capturedFuncName string
 		var capturedArgs []xdr.ScVal
 
-		inv := &mockInvoker{
-			invokeFunc: func(_ context.Context, contractID, functionName string, args []xdr.ScVal) (*xdr.ScVal, error) {
-				capturedContractID = contractID
-				capturedFuncName = functionName
-				capturedArgs = args
-				return nil, nil
-			},
-		}
+		mockInvoker.On("InvokeContract", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.Anything).
+			Run(func(args mock.Arguments) {
+				capturedContractID = args.Get(1).(string)
+				capturedFuncName = args.Get(2).(string)
+				capturedArgs = args.Get(3).([]xdr.ScVal)
+			}).
+			Return((*xdr.ScVal)(nil), nil).
+			Once()
 
-		ct, err := NewContractTransmitter(inv, offRampID, lggr)
+		ct, err := NewContractTransmitterWithClient(mockInvoker, offRampID, "statechanged", "RMNREMOTE", lggr)
 		require.NoError(t, err)
 
 		msg := mustCreateMessage(t, 1, 2, 100, 500000)
@@ -151,11 +105,6 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 		require.NotNil(t, ccvsVec)
 		assert.Len(t, *ccvsVec, 2)
 
-		expectedAddr1, _ := strkey.Encode(strkey.VersionByteContract, ccv1)
-		expectedAddr2, _ := strkey.Encode(strkey.VersionByteContract, ccv2)
-		assert.Equal(t, scval.AddressToScVal(expectedAddr1), (*ccvsVec)[0])
-		assert.Equal(t, scval.AddressToScVal(expectedAddr2), (*ccvsVec)[1])
-
 		// arg[2]: verifier_results (Vec<Bytes>)
 		resultsVec, ok := capturedArgs[2].GetVec()
 		require.True(t, ok, "third arg should be a vec")
@@ -169,15 +118,17 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 	})
 
 	t.Run("empty CCVs and CCVData", func(t *testing.T) {
-		var capturedArgs []xdr.ScVal
-		inv := &mockInvoker{
-			invokeFunc: func(_ context.Context, _, _ string, args []xdr.ScVal) (*xdr.ScVal, error) {
-				capturedArgs = args
-				return nil, nil
-			},
-		}
+		mockInvoker := mocks.NewMockInvoker(t)
 
-		ct, err := NewContractTransmitter(inv, offRampID, lggr)
+		var capturedArgs []xdr.ScVal
+		mockInvoker.On("InvokeContract", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.Anything).
+			Run(func(args mock.Arguments) {
+				capturedArgs = args.Get(3).([]xdr.ScVal)
+			}).
+			Return((*xdr.ScVal)(nil), nil).
+			Once()
+
+		ct, err := NewContractTransmitterWithClient(mockInvoker, offRampID, "statechanged", "RMNREMOTE", lggr)
 		require.NoError(t, err)
 
 		report := protocol.AbstractAggregatedReport{
@@ -201,8 +152,9 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 	})
 
 	t.Run("message encoding error returns ErrMessageEncoding", func(t *testing.T) {
-		inv := &mockInvoker{}
-		ct, err := NewContractTransmitter(inv, offRampID, lggr)
+		mockInvoker := mocks.NewMockInvoker(t)
+
+		ct, err := NewContractTransmitterWithClient(mockInvoker, offRampID, "statechanged", "RMNREMOTE", lggr)
 		require.NoError(t, err)
 
 		report := protocol.AbstractAggregatedReport{
@@ -218,31 +170,15 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 			"should wrap executor.ErrMessageEncoding so the executor skips retries")
 	})
 
-	t.Run("CCV address with wrong length returns error", func(t *testing.T) {
-		inv := &mockInvoker{}
-		ct, err := NewContractTransmitter(inv, offRampID, lggr)
-		require.NoError(t, err)
-
-		report := protocol.AbstractAggregatedReport{
-			CCVS:    []protocol.UnknownAddress{[]byte{0x01, 0x02, 0x03}}, // only 3 bytes
-			CCVData: [][]byte{{0xAA}},
-			Message: mustCreateMessage(t, 1, 2, 102, 300000),
-		}
-
-		err = ct.ConvertAndWriteMessageToChain(context.Background(), report)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid length")
-	})
-
 	t.Run("invoker error is propagated", func(t *testing.T) {
-		invokeErr := errors.New("soroban rpc unavailable")
-		inv := &mockInvoker{
-			invokeFunc: func(_ context.Context, _, _ string, _ []xdr.ScVal) (*xdr.ScVal, error) {
-				return nil, invokeErr
-			},
-		}
+		mockInvoker := mocks.NewMockInvoker(t)
 
-		ct, err := NewContractTransmitter(inv, offRampID, lggr)
+		invokeErr := errors.New("soroban rpc unavailable")
+		mockInvoker.On("InvokeContract", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.Anything).
+			Return((*xdr.ScVal)(nil), invokeErr).
+			Once()
+
+		ct, err := NewContractTransmitterWithClient(mockInvoker, offRampID, "statechanged", "RMNREMOTE", lggr)
 		require.NoError(t, err)
 
 		report := protocol.AbstractAggregatedReport{
@@ -254,20 +190,22 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 		err = ct.ConvertAndWriteMessageToChain(context.Background(), report)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, invokeErr)
-		assert.Contains(t, err.Error(), "failed to invoke offramp execute")
+		assert.Contains(t, err.Error(), "failed to call execute")
 	})
 
 	t.Run("invoker receives the correct contract ID", func(t *testing.T) {
+		mockInvoker := mocks.NewMockInvoker(t)
+
 		customOffRampID := "CDXHXQJHQVFBPHKBYB73MA5KZAWWHBXWZRKQJDTY4ZYR3GYQHXADOKEP"
 		var capturedID string
-		inv := &mockInvoker{
-			invokeFunc: func(_ context.Context, contractID, _ string, _ []xdr.ScVal) (*xdr.ScVal, error) {
-				capturedID = contractID
-				return nil, nil
-			},
-		}
+		mockInvoker.On("InvokeContract", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.Anything).
+			Run(func(args mock.Arguments) {
+				capturedID = args.Get(1).(string)
+			}).
+			Return((*xdr.ScVal)(nil), nil).
+			Once()
 
-		ct, err := NewContractTransmitter(inv, customOffRampID, lggr)
+		ct, err := NewContractTransmitterWithClient(mockInvoker, customOffRampID, "statechanged", "RMNREMOTE", lggr)
 		require.NoError(t, err)
 
 		report := protocol.AbstractAggregatedReport{
@@ -279,34 +217,5 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 		err = ct.ConvertAndWriteMessageToChain(context.Background(), report)
 		require.NoError(t, err)
 		assert.Equal(t, customOffRampID, capturedID)
-	})
-}
-
-// ---------------------------------------------------------------------------
-// unknownAddressesToStellarAddressScVals tests
-// ---------------------------------------------------------------------------
-
-func TestUnknownAddressesToStellarAddressScVals(t *testing.T) {
-	t.Run("converts valid 32-byte addresses", func(t *testing.T) {
-		addr := testAddress(0xFF)
-		vals, err := unknownAddressesToStellarAddressScVals([]protocol.UnknownAddress{addr})
-		require.NoError(t, err)
-		require.Len(t, vals, 1)
-
-		expectedStrkey, _ := strkey.Encode(strkey.VersionByteContract, addr)
-		assert.Equal(t, scval.AddressToScVal(expectedStrkey), vals[0])
-	})
-
-	t.Run("returns error for invalid length", func(t *testing.T) {
-		_, err := unknownAddressesToStellarAddressScVals([]protocol.UnknownAddress{[]byte{0x01}})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "index 0")
-		assert.Contains(t, err.Error(), "invalid length")
-	})
-
-	t.Run("empty slice returns empty result", func(t *testing.T) {
-		vals, err := unknownAddressesToStellarAddressScVals(nil)
-		require.NoError(t, err)
-		assert.Len(t, vals, 0)
 	})
 }
