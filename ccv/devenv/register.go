@@ -34,4 +34,5 @@ func RegisterStellarComponents() {
 	chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 	registry.RegisterChainFamilyAdapter(chainsel.FamilyStellar, ccvchain.NewChainFamilyAdapter(evmAdapter))
 	ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
+	registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
 }
