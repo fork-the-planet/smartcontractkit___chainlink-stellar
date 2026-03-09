@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -20,25 +19,29 @@ import (
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
-	"github.com/smartcontractkit/chainlink-ccv/deployments"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	"github.com/smartcontractkit/chainlink-ccv/deployments"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
@@ -83,6 +86,7 @@ var (
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
 type Chain struct {
+	chainSelector     uint64
 	logger            zerolog.Logger
 	rpcClient         *rpcclient.Client
 	networkPassphrase string
@@ -91,12 +95,14 @@ type Chain struct {
 	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
+	vvrContractID     string
 }
 
 // New creates a new Stellar Chain instance.
-func New(logger zerolog.Logger) *Chain {
+func New(logger zerolog.Logger, selector uint64) *Chain {
 	return &Chain{
-		logger: logger,
+		logger:        logger,
+		chainSelector: selector,
 	}
 }
 
@@ -121,6 +127,12 @@ func (c *Chain) DeployerAddress() string {
 // ChainFamily implements cciptestinterfaces.CCIP17Configuration.
 func (c *Chain) ChainFamily() string {
 	return chainsel.FamilyStellar
+}
+
+// ChainSelector implements cciptestinterfaces.CCIP17.
+// Returns the selector for this chain.
+func (c *Chain) ChainSelector() uint64 {
+	return c.chainSelector
 }
 
 // ConfigureNodes implements cciptestinterfaces.CCIP17Configuration.
@@ -170,7 +182,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 		destChainConfigArgs = append(destChainConfigArgs, onrampbindings.DestChainConfigArgs{
 			AddressBytesLength:        32,
 			BaseExecutionGasCost:      100000,
-			DefaultCcvs:               []string{c.onRampContractID},
+			DefaultCcvs:               []string{c.vvrContractID},
 			DestChainSelector:         remoteSelector,
 			Router:                    c.deployerKeypair.Address(),                                     // deployer acts as router,
 			OffRamp:                   generateContractAddress("stellar-offramp", c.networkPassphrase), // TODO: use the actual OffRamp contract address
@@ -221,16 +233,10 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return hexutil.Encode(raw), nil
 	}
 
-	// Locate the compiled OnRamp WASM
-	origDir, err := os.Getwd()
+	stellarRoot, err := findStellarRoot()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+		return nil, fmt.Errorf("failed to locate chainlink-stellar root: %w", err)
 	}
-	stellarRoot, err := filepath.Abs(filepath.Join(origDir, "../../../chainlink-stellar"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stellar root: %w", err)
-	}
-
 	c.logger.Info().Str("stellarRoot", stellarRoot).Msg("Stellar root")
 
 	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
@@ -298,8 +304,32 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Str("rmnProxyContractID", rmnProxyContractID).Msg("RMN Proxy initialized")
 
+	// Deploy the FeeQuoter contract
+	feeQuoterWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "fee_quoter.wasm")
+	if _, statErr := os.Stat(feeQuoterWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("FeeQuoter WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", feeQuoterWasmPath)
+	}
+
+	c.logger.Info().Str("wasmPath", feeQuoterWasmPath).Msg("Deploying FeeQuoter contract...")
+	feeQuoterSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "fee-quoter")
+	feeQuoterContractID, err := c.deployer.DeployContract(ctx, feeQuoterWasmPath, feeQuoterSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy FeeQuoter contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
+
+	mockLinkToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "link-token")
+	feeQuoterClient := fqbindings.NewFeeQuoterClient(c.deployer, feeQuoterContractID)
+	err = feeQuoterClient.Initialize(ctx, c.deployerKeypair.Address(), fqbindings.StaticConfig{
+		LinkToken:         mockLinkToken,
+		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
+	}, []string{c.deployerKeypair.Address()})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize FeeQuoter: %w", err)
+	}
+	c.logger.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
+
 	// Initialize the OnRamp with dependency contracts
-	mockFeeQuoter := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-quoter")
 	mockFeeAggregator := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
 	mockTokenAdminRegistry := mustGenerateMockContractID(c.deployerKeypair.Address(), "token-admin-registry")
 
@@ -309,7 +339,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		RmnProxy:              rmnProxyContractID,
 		MaxUsdCentsPerMessage: 10000, // $100
 	}, onrampbindings.DynamicConfig{
-		FeeQuoter:     mockFeeQuoter,
+		FeeQuoter:     feeQuoterContractID,
 		FeeAggregator: mockFeeAggregator,
 	})
 	if err != nil {
@@ -334,6 +364,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return nil, fmt.Errorf("failed to deploy VVR contract: %w", err)
 	}
 	c.logger.Info().Str("contractID", vvrContractID).Msg("VVR contract deployed")
+	c.vvrContractID = vvrContractID
 
 	vvrClient := vvrbindings.NewVersionedVerifierResolverClient(c.deployer, vvrContractID)
 
@@ -411,6 +442,58 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return nil, fmt.Errorf("failed to apply remote chain config updates on committee verifier: %w", err)
 	}
 	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
+
+	// Configure FeeQuoter destination chains
+	fqDestChainConfigs := []fqbindings.DestChainConfigArgs{}
+	for _, rs := range remoteSelectors {
+		fqDestChainConfigs = append(fqDestChainConfigs, fqbindings.DestChainConfigArgs{
+			DestChainSelector: rs,
+			Config: fqbindings.DestChainConfig{
+				IsEnabled:             true,
+				MaxDataBytes:          50000,
+				MaxPerMsgGasLimit:     4_000_000,
+				DestGasOverhead:       350_000,
+				DestGasPerPayloadByte: 16,
+				DefaultTokenFeeUsd:    50,
+				DefaultTokenDestGas:   50_000,
+				DefaultTxGasLimit:     200_000,
+				NetworkFeeUsdCents:    100,
+				LinkPremiumPercent:    90,
+			},
+		})
+	}
+	err = feeQuoterClient.ApplyDestChainConfigs(ctx, fqDestChainConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply dest chain configs on FeeQuoter: %w", err)
+	}
+	c.logger.Info().Int("count", len(fqDestChainConfigs)).Msg("FeeQuoter dest chain configs applied")
+
+	// Set token and gas prices on the FeeQuoter so get_message_fee works
+	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
+	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		gasPriceUpdates = append(gasPriceUpdates, fqbindings.GasPriceUpdate{
+			DestChainSelector: rs,
+			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}), // 1e14
+		})
+	}
+	err = feeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
+		TokenPriceUpdates: []fqbindings.TokenPriceUpdate{
+			{
+				Token:       mockLinkToken,
+				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 15_000_000_000_000_000_000}), // $15
+			},
+			{
+				Token:       mockFeeToken,
+				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
+			},
+		},
+		GasPriceUpdates: gasPriceUpdates,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update prices on FeeQuoter: %w", err)
+	}
+	c.logger.Info().Msg("FeeQuoter prices updated")
 
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
@@ -513,6 +596,18 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		ChainSelector: selector,
 	})
 
+	// Add fee quoter refs — use the deployed FeeQuoter contract address
+	feeQuoterHex, err := strkeyToHex(feeQuoterContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert FeeQuoter address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       feeQuoterHex,
+		Type:          datastore.ContractType(fee_quoter.ContractType),
+		Version:       semver.MustParse(fee_quoter.Deploy.Version()),
+		ChainSelector: selector,
+	})
+
 	return ds.Seal(), nil
 }
 
@@ -603,8 +698,18 @@ func (c *Chain) fundViaFriendbot(friendbotURL, address string) error {
 
 // FundAddresses implements cciptestinterfaces.CCIP17Configuration.
 // Funds addresses with native Stellar Lumens (XLM).
+// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently
+// skipped — this handles the case where the framework passes EVM pricer
+// addresses (20 bytes) to every chain implementation.
 func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addresses []protocol.UnknownAddress, nativeAmount *big.Int) error {
 	for _, addr := range addresses {
+		if len(addr) != stellarAddressLen {
+			c.logger.Debug().
+				Int("addressLen", len(addr)).
+				Int("expectedLen", stellarAddressLen).
+				Msg("Skipping non-Stellar address in FundAddresses")
+			continue
+		}
 		addrStr := strkey.MustEncode(strkey.VersionByteAccountID, addr)
 		faucetUrl := fmt.Sprintf("%s?addr=%s", input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL, addrStr)
 
@@ -656,7 +761,6 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 
 	c.logger.Info().
 		Int("numAddresses", len(addresses)).
-		Str("amount", nativeAmount.String()).
 		Msg("Funded Stellar addresses")
 	return nil
 }
@@ -792,13 +896,30 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Str("receiver", fields.Receiver.String()).
 		Msg("Sending CCIP message from Stellar")
 
+	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
+
+	extraArgs := onrampbindings.GenericExtraArgsV3{
+		Ccvs:               []string{c.vvrContractID},
+		CcvArgs:            [][]byte{{}},
+		Executor:           executorContractID,
+		ExecutorArgs:       []byte{},
+		GasLimit:           0,
+		BlockConfirmations: 0,
+		TokenReceiver:      []byte{},
+		TokenArgs:          []byte{},
+	}
+	encodedExtraArgs, err := EncodeExtraArgsV3(extraArgs)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
+	}
+
 	// Build the message
 	message := onrampbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: make([]onrampbindings.TokenAmount, 0), // No token transfers for basic test
-		FeeToken:     c.deployerKeypair.Address(),           // Use deployer as fee token placeholder
-		ExtraArgs:    []byte{},
+		TokenAmounts: make([]onrampbindings.TokenAmount, 0),
+		FeeToken:     c.deployerKeypair.Address(),
+		ExtraArgs:    encodedExtraArgs,
 	}
 
 	// Get the original sender address
@@ -840,7 +961,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 
 // SendMessageWithNonce implements cciptestinterfaces.CCIP17.
 // Sends a CCIP message with a specific nonce.
-func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *atomic.Uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
+func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
 	// TODO: implement - call the Router/OnRamp contract with specific nonce
 	// NOTE: sender *bind.TransactOpts is EVM-specific and will need adaptation for Stellar
 	return cciptestinterfaces.MessageSentEvent{}, nil
@@ -878,6 +999,29 @@ func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, tim
 	return cciptestinterfaces.MessageSentEvent{}, nil
 }
 
+// findStellarRoot locates the chainlink-stellar project root by walking up from
+// CWD looking for go.mod. This works whether the devenv CLI is run from the
+// chainlink-stellar root directly or from a subdirectory.
+func findStellarRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "target")); err == nil {
+				return dir, nil
+			}
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("could not find go.mod in any parent of %s", dir)
+		}
+		dir = parent
+	}
+}
+
 // generateMockContractID generates a deterministic mock contract ID for testing.
 func mustGenerateMockContractID(deployerAddress, contractName string) string {
 	// Generate a deterministic salt
@@ -889,4 +1033,22 @@ func mustGenerateMockContractID(deployerAddress, contractName string) string {
 		panic(fmt.Errorf("failed to encode mock contract ID: %w", err))
 	}
 	return encoded
+}
+
+// EncodeExtraArgsV3 converts a GenericExtraArgsV3 to XDR bytes suitable for
+// the OnRamp contract's ExtraArgs field (parsed via GenericExtraArgsV3::from_xdr).
+func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
+	scVal, err := args.ToScVal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extra args to ScVal: %w", err)
+	}
+	return scVal.MarshalBinary()
+}
+
+func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAddress, amount *big.Int) error {
+	return fmt.Errorf("not implemented")
 }

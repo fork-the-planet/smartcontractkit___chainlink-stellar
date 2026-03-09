@@ -1,6 +1,6 @@
 WASM_DIR := target/wasm32v1-none/release
 
-.PHONY: build test check fmt clean generate-interfaces generate-bindings
+.PHONY: build test check fmt clean generate-interfaces generate-bindings docker-verifier
 
 build:
 	stellar contract build
@@ -27,3 +27,13 @@ lint:
 
 clean:
 	cargo clean
+
+# Build the Stellar committee verifier Docker image used by E2E tests.
+docker-verifier:
+	docker build -f Dockerfile.verifier -t stellarcommittee-verifier:dev .
+
+up:
+	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv up tests/env/env-stellar-evm.toml
+
+down:
+	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv down tests/env/env-stellar-evm.toml

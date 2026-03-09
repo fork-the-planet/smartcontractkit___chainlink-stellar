@@ -164,13 +164,13 @@ execution_interval = 15_000_000_000
 [fake]
   image = "ccv-fakes:dev"
   port = 9111
-  source_code_path = "../build/devenv/fakes"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/build/devenv/fakes"
+  root_path = "../chainlink-ccv"
 
 [pricer]
   image = "pricer:dev"
-  source_code_path = "../pricer"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/pricer"
+  root_path = "../chainlink-ccv"
   [pricer.keystore]
     address = "0x9221E2E83903C731C2927CCd84e5fa02B22Bb1E2"
     file_path = "../pricer/keystore.json"
@@ -179,12 +179,12 @@ execution_interval = 15_000_000_000
 ## Verifier Setup
 [[verifier]]
   chain_family = "stellar"
-  image = "verifier:dev"
+  image = "stellarcommittee-verifier:dev"
   container_name = "default-verifier-1"
   nop_alias = "default-verifier-1"
   port = 8100
-  source_code_path = "../verifier"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/verifier"
+  root_path = "../chainlink-ccv"
   committee_name = "default"
   node_index = 0
   disable_finality_checkers = ["17301180955411967724"] # May not be needed for Stellar
@@ -192,21 +192,15 @@ execution_interval = 15_000_000_000
     image = "postgres:16-alpine"
     name = "default-verifier-1-db"
     port = 8432
-  # Chain-specific configs
-  [verifier.stellar_configs]
-    [verifier.stellar_configs.17301180955411967724.reader_config]
-      network_passphrase = "Standalone Network ; February 2017"
-      onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-      soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 [[verifier]]
   chain_family = "stellar"
-  image = "verifier:dev"
+  image = "stellarcommittee-verifier:dev"
   container_name = "default-verifier-2"
   nop_alias = "default-verifier-2"
   port = 8200
-  source_code_path = "../verifier"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/verifier"
+  root_path = "../chainlink-ccv"
   committee_name = "default"
   node_index = 1
   disable_finality_checkers = ["17301180955411967724"]
@@ -214,21 +208,15 @@ execution_interval = 15_000_000_000
     image = "postgres:16-alpine"
     name = "default-verifier-2-db"
     port = 8433
-  # Chain-specific configs
-  [verifier.stellar_configs]
-    [verifier.stellar_configs.17301180955411967724.reader_config]
-      network_passphrase = "Standalone Network ; February 2017"
-      onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-      soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 # # Secondary Verifier Setup
 # [[verifier]]
-#   image = "verifier:dev"
+#   image = "stellarcommittee-verifier:dev"
 #   container_name = "secondary-verifier-1"
 #   nop_alias = "secondary-verifier-1"
 #   port = 8300
-#   source_code_path = "../verifier"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/verifier"
+#   root_path = "../chainlink-ccv"
 #   committee_name = "secondary"
 #   node_index = 0
 #   disable_finality_checkers = ["17301180955411967724"]
@@ -236,19 +224,14 @@ execution_interval = 15_000_000_000
 #     image = "postgres:16-alpine"
 #     name = "secondary-verifier-1-db"
 #     port = 8434
-#   [verifier.stellar_configs]
-#     [verifier.stellar_configs.17301180955411967724.reader_config]
-#       network_passphrase = "Standalone Network ; February 2017"
-#       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-#       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 # [[verifier]]
-#   image = "verifier:dev"
+#   image = "stellarcommittee-verifier:dev"
 #   container_name = "secondary-verifier-2"
 #   nop_alias = "secondary-verifier-2"
 #   port = 8400
-#   source_code_path = "../verifier"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/verifier"
+#   root_path = "../chainlink-ccv"
 #   committee_name = "secondary"
 #   node_index = 1
 #   disable_finality_checkers = ["17301180955411967724"]
@@ -256,20 +239,15 @@ execution_interval = 15_000_000_000
 #     image = "postgres:16-alpine"
 #     name = "secondary-verifier-2-db"
 #     port = 8435
-#   [verifier.stellar_configs]
-#     [verifier.stellar_configs.17301180955411967724.reader_config]
-#       network_passphrase = "Standalone Network ; February 2017"
-#       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-#       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 # # Tertiary Verifier Setup
 # [[verifier]]
-#   image = "verifier:dev"
+#   image = "stellarcommittee-verifier:dev"
 #   container_name = "tertiary-verifier-1"
 #   nop_alias = "tertiary-verifier-1"
 #   port = 8500
-#   source_code_path = "../verifier"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/verifier"
+#   root_path = "../chainlink-ccv"
 #   committee_name = "tertiary"
 #   node_index = 0
 #   disable_finality_checkers = ["17301180955411967724"]
@@ -277,19 +255,14 @@ execution_interval = 15_000_000_000
 #     image = "postgres:16-alpine"
 #     name = "tertiary-verifier-1-db"
 #     port = 8436
-#   [verifier.stellar_configs]
-#     [verifier.stellar_configs.17301180955411967724.reader_config]
-#       network_passphrase = "Standalone Network ; February 2017"
-#       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-#       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 # [[verifier]]
-#   image = "verifier:dev"
+#   image = "stellarcommittee-verifier:dev"
 #   container_name = "tertiary-verifier-2"
 #   nop_alias = "tertiary-verifier-2"
 #   port = 8600
-#   source_code_path = "../verifier"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/verifier"
+#   root_path = "../chainlink-ccv"
 #   committee_name = "tertiary"
 #   node_index = 1
 #   disable_finality_checkers = ["17301180955411967724"]
@@ -297,17 +270,12 @@ execution_interval = 15_000_000_000
 #     image = "postgres:16-alpine"
 #     name = "tertiary-verifier-2-db"
 #     port = 8437
-#   [verifier.stellar_configs]
-#     [verifier.stellar_configs.17301180955411967724.reader_config]
-#       network_passphrase = "Standalone Network ; February 2017"
-#       onramp_contract_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a"
-#       soroban_rpc_url = "http://blockchain-stellar:8010/rpc"
 
 [[executor]]
   image = "executor:dev"
   port = 8101
-  source_code_path = "../executor"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/executor"
+  root_path = "../chainlink-ccv"
   container_name = "default-executor-1"
   nop_alias = "default-executor-1"
   executor_qualifier = "default"
@@ -315,8 +283,8 @@ execution_interval = 15_000_000_000
 [[executor]]
   image = "executor:dev"
   port = 8102
-  source_code_path = "../executor"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/executor"
+  root_path = "../chainlink-ccv"
   container_name = "default-executor-2"
   nop_alias = "default-executor-2"
   executor_qualifier = "default"
@@ -325,8 +293,8 @@ execution_interval = 15_000_000_000
 [[indexer]]
   image = "indexer:dev"
   port = 8104
-  source_code_path = "../indexer"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/indexer"
+  root_path = "../chainlink-ccv"
   [indexer.db]
     image = "postgres:16-alpine"
 
@@ -415,8 +383,8 @@ URI = "postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable"
   committee_name = "default"
   image = "aggregator:dev"
   host_port = 50051
-  source_code_path = "../aggregator"
-  root_path = "../../"
+  source_code_path = "chainlink-ccv/aggregator"
+  root_path = "../chainlink-ccv"
 
   [aggregator.db]
     image = "postgres:16-alpine"
@@ -461,8 +429,8 @@ URI = "postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable"
 #   committee_name = "secondary"
 #   image = "aggregator:dev"
 #   host_port = 50052
-#   source_code_path = "../aggregator"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/aggregator"
+#   root_path = "../chainlink-ccv"
 
 #   [aggregator.db]
 #     image = "postgres:16-alpine"
@@ -506,8 +474,8 @@ URI = "postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable"
 #   committee_name = "tertiary"
 #   image = "aggregator:dev"
 #   host_port = 50053
-#   source_code_path = "../aggregator"
-#   root_path = "../../"
+#   source_code_path = "chainlink-ccv/aggregator"
+#   root_path = "../chainlink-ccv"
 
 #   [aggregator.db]
 #     image = "postgres:16-alpine"

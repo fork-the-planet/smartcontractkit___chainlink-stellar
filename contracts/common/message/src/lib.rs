@@ -176,3 +176,226 @@ impl ToBytes for AnyToStellarMessage {
 }
 
 impl MessageIdCompute for AnyToStellarMessage {}
+
+// ============================================================
+// CCIP MessageV1 Canonical Format
+// ============================================================
+//
+// These types implement the chain-agnostic CCIP v1.7 canonical message
+// encoding, matching the protocol.Message.Encode() and
+// protocol.TokenTransfer.Encode() formats used by offchain services.
+//
+// The OnRamp constructs a CcipMessageV1 from user message fields plus
+// routing metadata, then calls compute_message_id() to derive the
+// deterministic message ID that matches the offchain computation.
+
+/// Current message format version for CCIP v1.7.
+pub const MESSAGE_V1_VERSION: u8 = 1;
+
+/// Canonical token transfer encoding for CCIP v1.7.
+///
+/// Matches protocol.TokenTransfer.Encode() byte layout:
+///   version(1) | amount(32) | src_pool(1+N) | src_token(1+N) |
+///   dest_token(1+N) | token_receiver(1+N) | extra_data(2+N)
+#[derive(Clone)]
+pub struct CcipTokenTransferV1 {
+    pub version: u8,
+    /// Transfer amount as 32 big-endian bytes (uint256).
+    pub amount: BytesN<32>,
+    pub source_pool_address: Bytes,
+    pub source_token_address: Bytes,
+    pub dest_token_address: Bytes,
+    pub token_receiver: Bytes,
+    pub extra_data: Bytes,
+}
+
+impl ToBytes for CcipTokenTransferV1 {
+    fn to_bytes(&self, env: &Env) -> Bytes {
+        let mut buf = Bytes::new(env);
+
+        buf.append(&Bytes::from_array(env, &[self.version]));
+        buf.append(&Bytes::from_slice(env, &self.amount.to_array()));
+
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.source_pool_address.len() as u8],
+        ));
+        buf.append(&self.source_pool_address);
+
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.source_token_address.len() as u8],
+        ));
+        buf.append(&self.source_token_address);
+
+        buf.append(&Bytes::from_array(
+            env,
+            &[self.dest_token_address.len() as u8],
+        ));
+        buf.append(&self.dest_token_address);
+
+        buf.append(&Bytes::from_array(env, &[self.token_receiver.len() as u8]));
+        buf.append(&self.token_receiver);
+
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.extra_data.len() as u16).to_be_bytes(),
+        ));
+        buf.append(&self.extra_data);
+
+        buf
+    }
+}
+
+/// CCIP MessageV1 canonical encoding, matching protocol.Message.Encode().
+///
+/// This is the chain-agnostic message format used for computing message IDs
+/// and for the `encoded_message` field in CCIPMessageSent events.
+///
+/// Byte layout:
+///   version(1) | src_chain(8) | dst_chain(8) | seq_num(8) |
+///   exec_gas(4) | recv_gas(4) | finality(2) | ccv_exec_hash(32) |
+///   onramp(1+N) | offramp(1+N) | sender(1+N) | receiver(1+N) |
+///   dest_blob(2+N) | token_transfer(2+N) | data(2+N)
+///
+/// All multi-byte integers are big-endian. Address fields use a 1-byte
+/// length prefix (max 255 bytes). Data/blob fields use a 2-byte length
+/// prefix (max 65535 bytes).
+#[derive(Clone)]
+pub struct CcipMessageV1 {
+    pub source_chain_selector: u64,
+    pub dest_chain_selector: u64,
+    pub sequence_number: u64,
+    pub execution_gas_limit: u32,
+    pub ccip_receive_gas_limit: u32,
+    pub finality: u16,
+    pub ccv_and_executor_hash: BytesN<32>,
+    pub onramp_address: Bytes,
+    pub offramp_address: Bytes,
+    pub sender: Bytes,
+    pub receiver: Bytes,
+    pub dest_blob: Bytes,
+    /// Pre-encoded token transfer bytes (from CcipTokenTransferV1::to_bytes).
+    pub token_transfer: Bytes,
+    pub data: Bytes,
+}
+
+impl ToBytes for CcipMessageV1 {
+    fn to_bytes(&self, env: &Env) -> Bytes {
+        let mut buf = Bytes::new(env);
+
+        // Version (1 byte)
+        buf.append(&Bytes::from_array(env, &[MESSAGE_V1_VERSION]));
+
+        // Chain selectors and sequence number (8 bytes each, big-endian)
+        buf.append(&Bytes::from_array(
+            env,
+            &self.source_chain_selector.to_be_bytes(),
+        ));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.dest_chain_selector.to_be_bytes(),
+        ));
+        buf.append(&Bytes::from_array(env, &self.sequence_number.to_be_bytes()));
+
+        // Gas limits (4 bytes each, big-endian)
+        buf.append(&Bytes::from_array(
+            env,
+            &self.execution_gas_limit.to_be_bytes(),
+        ));
+        buf.append(&Bytes::from_array(
+            env,
+            &self.ccip_receive_gas_limit.to_be_bytes(),
+        ));
+
+        // Finality (2 bytes, big-endian)
+        buf.append(&Bytes::from_array(env, &self.finality.to_be_bytes()));
+
+        // CCV and executor hash (32 bytes)
+        buf.append(&Bytes::from_slice(
+            env,
+            &self.ccv_and_executor_hash.to_array(),
+        ));
+
+        // On-ramp address (1 byte length + bytes)
+        buf.append(&Bytes::from_array(env, &[self.onramp_address.len() as u8]));
+        buf.append(&self.onramp_address);
+
+        // Off-ramp address (1 byte length + bytes)
+        buf.append(&Bytes::from_array(env, &[self.offramp_address.len() as u8]));
+        buf.append(&self.offramp_address);
+
+        // Sender (1 byte length + bytes)
+        buf.append(&Bytes::from_array(env, &[self.sender.len() as u8]));
+        buf.append(&self.sender);
+
+        // Receiver (1 byte length + bytes)
+        buf.append(&Bytes::from_array(env, &[self.receiver.len() as u8]));
+        buf.append(&self.receiver);
+
+        // Dest blob (2 bytes length, big-endian + bytes)
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.dest_blob.len() as u16).to_be_bytes(),
+        ));
+        buf.append(&self.dest_blob);
+
+        // Token transfer (2 bytes length, big-endian + pre-encoded bytes)
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.token_transfer.len() as u16).to_be_bytes(),
+        ));
+        buf.append(&self.token_transfer);
+
+        // Data (2 bytes length, big-endian + bytes)
+        buf.append(&Bytes::from_array(
+            env,
+            &(self.data.len() as u16).to_be_bytes(),
+        ));
+        buf.append(&self.data);
+
+        buf
+    }
+}
+
+impl MessageIdCompute for CcipMessageV1 {}
+
+impl CcipMessageV1 {
+    /// Compute the CCV-and-executor hash from CCV addresses and executor address.
+    /// Matches protocol.ComputeCCVAndExecutorHash() in Go.
+    /// Format: keccak256(addressLength(1) || ccv1 || ccv2 || ... || executor)
+    ///
+    /// All addresses must have the same byte length (derived from the executor).
+    pub fn compute_ccv_and_executor_hash(
+        env: &Env,
+        ccv_addresses: &Vec<Address>,
+        executor: &Address,
+    ) -> BytesN<32> {
+        let executor_bytes = Self::address_raw_bytes(env, executor.clone());
+        let addr_len = executor_bytes.len() as u8;
+
+        let mut encoded = Bytes::new(env);
+        encoded.append(&Bytes::from_array(env, &[addr_len]));
+
+        for ccv in ccv_addresses.iter() {
+            encoded.append(&Self::address_raw_bytes(env, ccv));
+        }
+
+        encoded.append(&executor_bytes);
+
+        env.crypto().keccak256(&encoded).into()
+    }
+
+    /// Extract the raw 32-byte key from a Soroban Address.
+    /// For contract addresses this is the contract ID; for account addresses
+    /// it is the ed25519 public key. The raw bytes are the final 32 bytes of
+    /// the ScVal XDR encoding, which holds the key for both address types.
+    pub fn address_raw_bytes(env: &Env, addr: Address) -> Bytes {
+        let xdr = addr.to_xdr(env);
+        let len = xdr.len();
+        xdr.slice((len - 32)..len)
+    }
+}
+
+#[cfg(test)]
+mod test;
