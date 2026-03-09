@@ -6,8 +6,10 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
+	executorsvc "github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
+	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
 )
 
 // RegisterStellarComponents registers all Stellar-specific devenv components with
@@ -16,6 +18,7 @@ import (
 //
 // This registers:
 //   - CommitteeVerifierModifier: customises the verifier Docker container for Stellar.
+//   - ExecutorModifier:          customises the executor Docker container for Stellar.
 //   - ChainConfigLoader:         provides placeholder blockchain info for Stellar chains.
 //   - ChainFamilyAdapter:        adapter wrapping the EVM adapter for Stellar chains.
 //   - ImplFactory:               factory for creating Stellar CCIP17 chain implementations.
@@ -30,8 +33,9 @@ func RegisterStellarComponents() {
 		panic("EVM chain family adapter not registered; ensure chainlink-ccv/build/devenv/registry is initialised before calling RegisterStellarComponents")
 	}
 
-	committeeverifier.RegisterModifier(chainsel.FamilyStellar, StellarModifier)
 	chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
+	committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
+	executorsvc.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
 	registry.RegisterChainFamilyAdapter(chainsel.FamilyStellar, ccvchain.NewChainFamilyAdapter(evmAdapter))
 	ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 }

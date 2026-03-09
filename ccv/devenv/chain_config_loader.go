@@ -16,7 +16,7 @@ import (
 // The committee verifier service calls this to hydrate its per-chain configuration
 // before the verifier container is launched. For Stellar, the real values (network
 // passphrase and Soroban RPC URL) are populated via the bind-mounted config file
-// written by StellarModifier; here we return placeholder values so that the framework
+// written by the Stellar modifier; here we return placeholder values so that the framework
 // knows a Stellar chain entry exists for the given selector.
 func StellarChainConfigLoader(outputs []*blockchain.Output) (map[string]any, error) {
 	ret := make(map[string]any)
@@ -34,7 +34,7 @@ func StellarChainConfigLoader(outputs []*blockchain.Output) (map[string]any, err
 		strSelector := strconv.FormatUint(details.ChainSelector, 10)
 
 		// Return basic node info for the Stellar chain.
-		// Other values are populated by the bind-mounted config file written by StellarModifier.
+		// Other values are populated by the bind-mounted config file written by the Stellar modifier.
 		// TODO: this can be made more generic and not just specific to ReaderConfig values.
 		ret[strSelector] = sourcereader.ReaderConfig{
 			NetworkPassphrase: output.NetworkSpecificData.StellarNetwork.NetworkPassphrase,
