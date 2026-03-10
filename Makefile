@@ -1,9 +1,12 @@
 WASM_DIR := target/wasm32v1-none/release
 
-.PHONY: build test check fmt clean generate-interfaces generate-bindings docker-verifier
+.PHONY: build test test-e2e check fmt clean generate-interfaces generate-bindings docker-verifier
 
 build:
 	stellar contract build
+
+test-e2e:
+	go test -v -timeout 15m ./tests/e2e/...
 
 # Generate Rust interface files for all contracts from their WASM files.
 # This can be run with `--no-build` to skip the build of the contracts.
