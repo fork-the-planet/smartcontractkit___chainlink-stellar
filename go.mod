@@ -11,8 +11,8 @@ require (
 	github.com/smartcontractkit/chain-selectors v1.0.97
 	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260219214941-b6d2149fb063
 	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260219214941-b6d2149fb063
-	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260306153925-83fcc698976f
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260303211149-b95ddd059c72
+	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260309232330-9cc73227b738
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260309232330-9cc73227b738
 	github.com/smartcontractkit/chainlink-ccv/deployments v0.0.0-20260225091500-bd15cccf316a
 	github.com/smartcontractkit/chainlink-common v0.10.1-0.20260217084735-307a5770c4f6
 	github.com/smartcontractkit/chainlink-deployments-framework v0.85.0
@@ -520,10 +520,8 @@ replace (
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/noders-team/go-daml => github.com/stackman27/go-daml v0.0.0-20260204001938-550ee9d8ab10
 
-	github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
-	github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
-	github.com/smartcontractkit/chainlink-ccv/deployments => ../chainlink-ccv/deployments
 	github.com/smartcontractkit/chainlink-stellar/bindings => ./bindings
+
 	// chainlink-evm's generated codec code (internal_types_codecgen.go) uses
 	// codec1978.GenVersion and codec1978.GenHelper which exist in v1.2.12 but
 	// were removed in v1.3.0.  chainlink-ccv/build/devenv transitively requires

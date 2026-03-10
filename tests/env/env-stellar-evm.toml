@@ -272,7 +272,7 @@ execution_interval = 15_000_000_000
 #     port = 8437
 
 [[executor]]
-  image = "executor:dev"
+  image = "stellarexecutor:dev"
   port = 8101
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
@@ -281,7 +281,7 @@ execution_interval = 15_000_000_000
   executor_qualifier = "default"
 
 [[executor]]
-  image = "executor:dev"
+  image = "stellarexecutor:dev"
   port = 8102
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
