@@ -37,6 +37,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
@@ -95,6 +96,8 @@ type Chain struct {
 	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
+	offRampClient     *offrampbindings.OffRampClient
+	offRampContractID string
 	vvrContractID     string
 }
 
@@ -169,13 +172,13 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
 	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
 
-	// TODO: implement contract connection logic for Stellar
-	// This should:
-	// 1. Configure the OnRamp with destination chain selectors
-	// 2. Configure the OffRamp with source chain selectors
-	// 3. Set up CommitteeVerifier signers from the topology
-
 	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
+
+	// Decode the real OffRamp contract address to raw bytes for the OnRamp dest chain config.
+	offRampBytes, err := strkey.Decode(strkey.VersionByteContract, c.offRampContractID)
+	if err != nil {
+		return fmt.Errorf("failed to decode OffRamp contract ID: %w", err)
+	}
 
 	destChainConfigArgs := []onrampbindings.DestChainConfigArgs{}
 	for _, remoteSelector := range remoteSelectors {
@@ -184,9 +187,9 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 			BaseExecutionGasCost:      100000,
 			DefaultCcvs:               []string{c.vvrContractID},
 			DestChainSelector:         remoteSelector,
-			Router:                    c.deployerKeypair.Address(),                                     // deployer acts as router,
-			OffRamp:                   generateContractAddress("stellar-offramp", c.networkPassphrase), // TODO: use the actual OffRamp contract address
-			DefaultExecutor:           executorContractID,                                              // TODO: use the actual Executor contract address
+			Router:                    c.deployerKeypair.Address(),
+			OffRamp:                   offRampBytes,
+			DefaultExecutor:           executorContractID,
 			LaneMandatedCcvs:          []string{},
 			MessageNetworkFeeUsdCents: 0,
 			TokenNetworkFeeUsdCents:   0,
@@ -194,12 +197,47 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 		})
 	}
 
-	err := c.onRampClient.ApplyDestChainConfigUpdates(ctx, destChainConfigArgs)
+	err = c.onRampClient.ApplyDestChainConfigUpdates(ctx, destChainConfigArgs)
 	if err != nil {
 		return fmt.Errorf("failed to apply dest chain config updates: %w", err)
 	}
-
 	c.logger.Info().Uints64("remote selectors", remoteSelectors).Str("onramp contract ID", c.onRampContractID).Str("router address", c.deployerKeypair.Address()).Msg("Dest chain config updates applied")
+
+	// Configure OffRamp source chains for each remote chain
+	if c.offRampClient != nil {
+		sourceChainCfgs := make([]offrampbindings.SourceChainConfigArgs, 0, len(remoteSelectors))
+		for _, rs := range remoteSelectors {
+			onRampKey := datastore.NewAddressRefKey(
+				rs,
+				datastore.ContractType(onrampoperations.ContractType),
+				semver.MustParse(onrampoperations.Deploy.Version()),
+				"",
+			)
+			onRampRef, lookupErr := e.DataStore.Addresses().Get(onRampKey)
+			if lookupErr != nil {
+				c.logger.Warn().Err(lookupErr).Uint64("remoteSelector", rs).Msg("Could not find OnRamp for remote chain, skipping source chain config")
+				continue
+			}
+
+			onRampBytes := hexutil.MustDecode(onRampRef.Address)
+			sourceChainCfgs = append(sourceChainCfgs, offrampbindings.SourceChainConfigArgs{
+				SourceChainSelector: rs,
+				IsEnabled:           true,
+				OnRamps:             [][]byte{onRampBytes},
+				Router:              c.deployerKeypair.Address(),
+				DefaultCcvs:         []string{c.vvrContractID},
+				LaneMandatedCcvs:    []string{},
+			})
+		}
+		if len(sourceChainCfgs) > 0 {
+			err = c.offRampClient.ApplySourceChainCfgUpdates(ctx, sourceChainCfgs)
+			if err != nil {
+				return fmt.Errorf("failed to apply source chain config updates on OffRamp: %w", err)
+			}
+			c.logger.Info().Int("count", len(sourceChainCfgs)).Msg("OffRamp source chain configs applied")
+		}
+	}
+
 	return nil
 }
 
@@ -495,6 +533,33 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Msg("FeeQuoter prices updated")
 
+	// Deploy the OffRamp contract
+	offRampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "offramp.wasm")
+	if _, statErr := os.Stat(offRampWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("OffRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", offRampWasmPath)
+	}
+
+	c.logger.Info().Str("wasmPath", offRampWasmPath).Msg("Deploying OffRamp contract...")
+	offRampSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "offramp")
+	offRampContractID, err := c.deployer.DeployContract(ctx, offRampWasmPath, offRampSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy OffRamp contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", offRampContractID).Msg("OffRamp contract deployed")
+
+	c.offRampContractID = offRampContractID
+	c.offRampClient = offrampbindings.NewOffRampClient(c.deployer, offRampContractID)
+
+	err = c.offRampClient.Initialize(ctx, c.deployerKeypair.Address(), offrampbindings.StaticConfig{
+		ChainSelector:      selector,
+		RmnProxy:           rmnProxyContractID,
+		TokenAdminRegistry: mockTokenAdminRegistry,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize OffRamp: %w", err)
+	}
+	c.logger.Info().Str("offRampContractID", offRampContractID).Msg("OffRamp initialized")
+
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
 	if err != nil {
@@ -507,9 +572,13 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
 	})
 
-	// Add OffRamp
+	// Add OffRamp — use the deployed OffRamp contract address
+	offRampHex, err := strkeyToHex(offRampContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert OffRamp address: %w", err)
+	}
 	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       onrampHex, // TODO: use the actual OffRamp contract address
+		Address:       offRampHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(offrampoperations.ContractType),
 		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
@@ -977,8 +1046,39 @@ func (c *Chain) Uncurse(ctx context.Context, subjects [][16]byte) error {
 // WaitOneExecEventBySeqNo implements cciptestinterfaces.CCIP17.
 // Waits for exactly one execution state change event.
 func (c *Chain) WaitOneExecEventBySeqNo(ctx context.Context, from, seq uint64, timeout time.Duration) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
-	// TODO: implement - poll for execution events from the OffRamp contract
-	return cciptestinterfaces.ExecutionStateChangedEvent{}, nil
+	if c.offRampClient == nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("OffRamp client not initialized")
+	}
+
+	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("sourceChainSelector", from).
+		Uint64("sequenceNumber", seq).
+		Uint32("startLedger", latestLedger.Sequence).
+		Dur("timeout", timeout).
+		Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp")
+
+	event, err := c.offRampClient.WaitForExecutionStateChangedEvent(
+		ctx, latestLedger.Sequence, timeout,
+		func(e *offrampbindings.ExecutionStateChangedEvent) bool {
+			return e.SourceChainSelector == from && e.SequenceNumber == seq
+		},
+	)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed waiting for execution event: %w", err)
+	}
+
+	return cciptestinterfaces.ExecutionStateChangedEvent{
+		SourceChainSelector: protocol.ChainSelector(event.SourceChainSelector),
+		MessageID:           event.MessageId,
+		MessageNumber:       event.SequenceNumber,
+		State:               cciptestinterfaces.MessageExecutionState(event.State),
+		ReturnData:          event.ReturnData,
+	}, nil
 }
 
 // WaitOneSentEventBySeqNo implements cciptestinterfaces.CCIP17.
