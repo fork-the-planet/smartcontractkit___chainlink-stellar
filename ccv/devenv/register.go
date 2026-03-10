@@ -22,6 +22,7 @@ import (
 //   - ChainConfigLoader:         provides placeholder blockchain info for Stellar chains.
 //   - ChainFamilyAdapter:        adapter wrapping the EVM adapter for Stellar chains.
 //   - ImplFactory:               factory for creating Stellar CCIP17 chain implementations.
+//   - CLDFProviderFactory:       factory for creating Stellar CLDF BlockChain providers.
 func RegisterStellarComponents() {
 	// The EVM adapter is registered by the ccv init() function. Retrieve it as the
 	// base for the Stellar adapter (Stellar reuses EVM-compatible chain infrastructure
