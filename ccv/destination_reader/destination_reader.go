@@ -11,6 +11,7 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 var _ chainaccess.DestinationReader = (*DestinationReader)(nil)
@@ -101,9 +102,54 @@ func (d *DestinationReader) GetMessageSuccess(ctx context.Context, message proto
 }
 
 // GetCCVSForMessage returns the cross-chain verification addresses for the message.
-// TODO: implement by querying the OffRamp contract's source chain config for CCV addresses.
-func (d *DestinationReader) GetCCVSForMessage(_ context.Context, _ protocol.Message) (protocol.CCVAddressInfo, error) {
-	return protocol.CCVAddressInfo{}, fmt.Errorf("GetCCVSForMessage not yet implemented for Stellar")
+// It queries the OffRamp's source chain config to determine which CCVs are required
+// (lane-mandated) and which are optional (defaults). The Stellar OffRamp quorum logic
+// requires all lane-mandated CCVs plus at least one default CCV to verify.
+func (d *DestinationReader) GetCCVSForMessage(ctx context.Context, message protocol.Message) (protocol.CCVAddressInfo, error) {
+	sourceSelector := uint64(message.SourceChainSelector)
+
+	sourceConfig, err := d.offrampClient.GetSourceChainConfig(ctx, sourceSelector)
+	if err != nil {
+		return protocol.CCVAddressInfo{}, fmt.Errorf("failed to get source chain config for selector %d: %w", sourceSelector, err)
+	}
+
+	requiredCCVs := make([]protocol.UnknownAddress, len(sourceConfig.LaneMandatedCcvs))
+	for i, addr := range sourceConfig.LaneMandatedCcvs {
+		parsedAddr := scval.ParseAddress(addr)
+		if parsedAddr == nil {
+			return protocol.CCVAddressInfo{}, fmt.Errorf("failed to parse address: %s", addr)
+		}
+		requiredCCVs[i] = protocol.UnknownAddress((*parsedAddr.ContractId)[:])
+	}
+
+	optionalCCVs := make([]protocol.UnknownAddress, len(sourceConfig.DefaultCcvs))
+	for i, addr := range sourceConfig.DefaultCcvs {
+		parsedAddr := scval.ParseAddress(addr)
+		if parsedAddr == nil {
+			return protocol.CCVAddressInfo{}, fmt.Errorf("failed to parse address: %s", addr)
+		}
+		optionalCCVs[i] = protocol.UnknownAddress((*parsedAddr.ContractId)[:])
+	}
+
+	var optionalThreshold uint8
+	if len(optionalCCVs) > 0 {
+		optionalThreshold = 1
+	}
+
+	ccvInfo := protocol.CCVAddressInfo{
+		RequiredCCVs:      requiredCCVs,
+		OptionalCCVs:      optionalCCVs,
+		OptionalThreshold: optionalThreshold,
+	}
+
+	d.lggr.Info().
+		Uint64("sourceChainSelector", sourceSelector).
+		Int("requiredCCVs", len(requiredCCVs)).
+		Int("optionalCCVs", len(optionalCCVs)).
+		Uint8("optionalThreshold", optionalThreshold).
+		Msg("Resolved CCV info for message")
+
+	return ccvInfo, nil
 }
 
 // GetExecutionAttempts returns the execution attempts for a given message.

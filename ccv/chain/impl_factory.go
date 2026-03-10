@@ -14,6 +14,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/keypair"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
@@ -21,6 +22,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -91,7 +93,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		deployer:          deployer,
 	}
 
-	// Look up the deployed OnRamp contract address from the datastore and wire up the client.
+	// Look up deployed contract addresses from the datastore and wire up clients.
 	if env.DataStore != nil {
 		onrampKey := datastore.NewAddressRefKey(
 			details.ChainSelector,
@@ -105,6 +107,21 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			if convErr == nil {
 				chain.onRampContractID = onrampContractID
 				chain.onRampClient = onrampbindings.NewOnRampClient(deployer, onrampContractID)
+			}
+		}
+
+		offrampKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(offrampoperations.ContractType),
+			semver.MustParse(offrampoperations.Deploy.Version()),
+			"",
+		)
+		offrampRef, err := env.DataStore.Addresses().Get(offrampKey)
+		if err == nil && offrampRef.Address != "" {
+			offrampContractID, convErr := scval.HexToContractStrkey(offrampRef.Address)
+			if convErr == nil {
+				chain.offRampContractID = offrampContractID
+				chain.offRampClient = offrampbindings.NewOffRampClient(deployer, offrampContractID)
 			}
 		}
 	}
