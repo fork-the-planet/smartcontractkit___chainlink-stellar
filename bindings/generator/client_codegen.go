@@ -420,6 +420,11 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
+	case f.Type == "u32":
+		b.WriteString("\t\t\tv, ok := entry.Val.GetU32()\n")
+		b.WriteString("\t\t\tif ok {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = uint32(v)\n", target))
+		b.WriteString("\t\t\t}\n")
 	case f.Type == "u128":
 		b.WriteString("\t\t\tv, err := scval.U128FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
@@ -430,8 +435,18 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
+	case f.Type == "bool":
+		b.WriteString("\t\t\tv, ok := entry.Val.GetB()\n")
+		b.WriteString("\t\t\tif ok {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+		b.WriteString("\t\t\t}\n")
 	case f.Type == "soroban_sdk::Address":
 		b.WriteString("\t\t\tv, err := scval.AddressFromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tif err == nil {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+		b.WriteString("\t\t\t}\n")
+	case strings.Contains(f.Type, "Option<") && strings.Contains(f.Type, "soroban_sdk::Address"):
+		b.WriteString("\t\t\tv, err := scval.OptionalAddressFromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")

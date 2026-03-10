@@ -1053,14 +1053,30 @@ func parseDestChainAddedEvent(e protocolrpc.EventInfo) (*DestChainAddedEvent, er
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
+<<<<<<< HEAD
 			v, err := boolFromScVal(entry.Val)
 			if err == nil {
 				result.IsEnabled = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.IsEnabled = v
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "max_data_bytes":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.MaxDataBytes = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.MaxDataBytes = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		}
 	}
@@ -1428,19 +1444,43 @@ func parseTokenFeeConfigUpdatedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigUp
 				result.Token = v
 			}
 		case "fee_usd_cents":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.FeeUsdCents = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.FeeUsdCents = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "dest_gas_overhead":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.DestGasOverhead = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.DestGasOverhead = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "dest_bytes_overhead":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.DestBytesOverhead = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.DestBytesOverhead = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		}
 	}
@@ -1510,14 +1550,30 @@ func parseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfig
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
+<<<<<<< HEAD
 			v, err := boolFromScVal(entry.Val)
 			if err == nil {
 				result.IsEnabled = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.IsEnabled = v
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "max_data_bytes":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.MaxDataBytes = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.MaxDataBytes = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		}
 	}

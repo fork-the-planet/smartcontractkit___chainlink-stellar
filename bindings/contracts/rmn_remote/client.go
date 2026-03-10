@@ -935,14 +935,30 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 
 		switch string(key) {
 		case "version":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.Version = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.Version = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "num_signers":
+<<<<<<< HEAD
 			v, err := u32FromScVal(entry.Val)
 			if err == nil {
 				result.NumSigners = *v
+||||||| d255cb9
+			// TODO: parse complex type
+=======
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.NumSigners = uint32(v)
+>>>>>>> feat/scaffold-contract-transmitter
 			}
 		case "f_sign":
 			v, err := scval.Uint64FromScVal(entry.Val)

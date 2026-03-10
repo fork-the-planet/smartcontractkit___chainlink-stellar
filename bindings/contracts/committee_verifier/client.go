@@ -707,14 +707,14 @@ func parseRemoteChainConfigSetEvent(e protocolrpc.EventInfo) (*RemoteChainConfig
 				result.RemoteChainSelector = v
 			}
 		case "router":
-			v, err := Address > FromScVal(entry.Val)
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
 			if err == nil {
-				result.Router = *v
+				result.Router = v
 			}
 		case "allowlist_enabled":
-			v, err := boolFromScVal(entry.Val)
-			if err == nil {
-				result.AllowlistEnabled = *v
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.AllowlistEnabled = v
 			}
 		}
 	}
@@ -856,9 +856,9 @@ func parseAllowListStateChangedEvent(e protocolrpc.EventInfo) (*AllowListStateCh
 				result.DestChainSelector = v
 			}
 		case "allowlist_enabled":
-			v, err := boolFromScVal(entry.Val)
-			if err == nil {
-				result.AllowlistEnabled = *v
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.AllowlistEnabled = v
 			}
 		}
 	}
