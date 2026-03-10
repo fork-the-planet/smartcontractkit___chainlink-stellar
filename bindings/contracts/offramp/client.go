@@ -968,4 +968,3 @@ func parseExecutionStateChangedEvent(e protocolrpc.EventInfo) (*ExecutionStateCh
 
 	return result, nil
 }
-
