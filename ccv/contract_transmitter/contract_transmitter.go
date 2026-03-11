@@ -2,6 +2,7 @@ package contracttransmitter
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 // DefaultGasLimitOverride is passed to every offramp execute call.
@@ -99,10 +101,18 @@ func (ct *ContractTransmitter) ConvertAndWriteMessageToChain(ctx context.Context
 
 	ccvScVals := make([]string, len(report.CCVS))
 	for i, ccv := range report.CCVS {
-		// TODO: does converting to a string here maintain the correct address?
-		// Cannot use `ccv.String()` because it will convert the address to a hex string which is not currently
-		// handled by the bindings.
-		ccvScVals[i] = string(ccv.Bytes())
+		// CCV addresses from EVM are 32-byte hex values. The OffRamp expects Stellar Address (Vec<Address>),
+		// which requires Stellar strkey format (C...). ParseAddress only accepts C... or G... strings;
+		// passing raw bytes as string causes ParseAddress to return nil, leading to nil pointer panic during XDR encoding.
+		ccvStrkey, convErr := scval.HexToContractStrkey("0x" + hex.EncodeToString(ccv.Bytes()))
+		if convErr != nil {
+			ct.lggr.Error().Err(convErr).
+				Str("messageID", messageID.String()).
+				Msg("Unable to submit txn: invalid CCV address encoding")
+			return errors.Join(executor.ErrMessageEncoding,
+				fmt.Errorf("unable to submit txn: invalid CCV address at index %d: %w", i, convErr))
+		}
+		ccvScVals[i] = ccvStrkey
 	}
 
 	err = ct.offrampClient.Execute(ctx, encodedMsg, ccvScVals, report.CCVData, DefaultGasLimitOverride)
