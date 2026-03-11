@@ -1,34 +1,26 @@
-#![no_std]
+use common_message::AnyToStellarMessage;
 
-use soroban_sdk::contracterror;
+#[soroban_sdk::contractargs(name = "RouterArgs")]
+#[soroban_sdk::contractclient(name = "RouterClient")]
+pub trait RouterInterface {
+    fn is_offramp(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+        offramp: soroban_sdk::Address,
+    ) -> Result<bool, CCIPError>;
 
-/// Derive macro for generating `From<T>` implementations on error enums.
-///
-/// Annotate a unit variant with one or more `#[from(...)]` attributes:
-///
-/// ```ignore
-/// use common_error::ErrorConversions;
-///
-/// #[derive(ErrorConversions)]
-/// enum ContractError {
-///     #[from(common_authorization::AuthError)]
-///     Unauthorized,
-/// }
-/// ```
+    fn route_message(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+        message: AnyToStellarMessage,
+    ) -> Result<(), CCIPError>;
+}
 
-#[contracterror]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
+#[soroban_sdk::contracterror(export = false)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CCIPError {
-    // ============================================================
-    // Initializable errors
-    // ============================================================
     NotInitialized = 1,
     AlreadyInitialized = 2,
-
-    // ============================================================
-    // Authorization errors
-    // ============================================================
     Unauthorized = 3,
     NotOwner = 4,
     NoPendingOwner = 5,
@@ -39,10 +31,6 @@ pub enum CCIPError {
     FeatureNotEnabled = 10,
     RoleAlreadyGranted = 11,
     CannotRenounceRole = 12,
-
-    // ============================================================
-    // Verifier errors
-    // ============================================================
     InvalidVersionTag = 13,
     InvalidSignatureLength = 14,
     InvalidSignature = 15,
@@ -52,10 +40,6 @@ pub enum CCIPError {
     SourceNotConfigured = 19,
     InvalidVerifierResults = 20,
     ReentrantCall = 21,
-
-    // ============================================================
-    // Fee quoter errors
-    // ============================================================
     TokenNotSupported = 22,
     FeeTokenNotSupported = 23,
     NoGasPriceAvailable = 24,
@@ -71,10 +55,6 @@ pub enum CCIPError {
     InvalidTokenReceiver = 34,
     SourceTokenDataTooLarge = 35,
     InvalidDestBytesOverhead = 36,
-
-    // ============================================================
-    // Onramp errors
-    // ============================================================
     DestinationChainNotSupported = 37,
     MustBeCalledByRouter = 38,
     RouterMustSetOriginalSender = 39,
@@ -88,37 +68,20 @@ pub enum CCIPError {
     CursedByRMN = 47,
     RemoteChainNotSupported = 48,
     SenderNotAllowed = 49,
-
-    // ============================================================
-    // Common errors
-    // ============================================================
     InvalidTokenAmount = 50,
     InvalidReceiverAddress = 51,
     InvalidConfig = 52,
-    /// Verifier results data is too short (must be at least 4 bytes for version prefix)
     InvalidVerifierResultsLength = 53,
-    /// No inbound implementation found for the given version
     InboundImplementationNotFound = 54,
-    /// No outbound implementation found for the given destination chain
     OutboundImplementationNotFound = 55,
-    /// Invalid configuration: zero address not allowed
     InvalidAddress = 56,
-    /// Invalid configuration: zero chain selector not allowed
     InvalidChainSelector = 57,
     InvalidVersion = 58,
     InvalidCCVVersion = 59,
-
-    // ============================================================
-    // More Onramp errors (continued to maintain increasing order)
-    // ============================================================
     OffRampAlreadyExists = 60,
     OffRampMismatch = 61,
     BadRMNSignal = 62,
     UnsupportedDestinationChain = 63,
-
-    // ============================================================
-    // RMN Remote errors (mirrors RMNRemote.sol error set)
-    // ============================================================
     AlreadyCursed = 64,
     ConfigNotSet = 65,
     DuplicateOnchainPublicKey = 66,
@@ -129,10 +92,6 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
-
-    // ============================================================
-    // OffRamp errors
-    // ============================================================
     SourceChainNotEnabled = 100,
     InvalidSourceChainConfig = 101,
     InvalidOnRampAddress = 102,
@@ -147,10 +106,13 @@ pub enum CCIPError {
     InvalidReceiverLength = 111,
     TokenHandlingError = 112,
     MessageDecodingError = 113,
-
-    // ============================================================
-    // Calculation errors
-    // ============================================================
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
+}
+
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TokenAmount {
+    pub amount: i128,
+    pub token: soroban_sdk::Address,
 }
