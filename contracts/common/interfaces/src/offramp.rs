@@ -1,65 +1,52 @@
-#[soroban_sdk::contractargs(name = "RouterArgs")]
-#[soroban_sdk::contractclient(name = "RouterClient")]
-pub trait RouterInterface {
-    fn get_fee(
+#[soroban_sdk::contractargs(name = "OffRampArgs")]
+#[soroban_sdk::contractclient(name = "OffRampClient")]
+pub trait OffRampInterface {
+    fn init(env: soroban_sdk::Env, rmn_proxy: soroban_sdk::Address) -> Result<(), CCIPError>;
+    fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn execute(
         env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        message: StellarToAnyMessage,
-    ) -> Result<i128, CCIPError>;
-    fn ccip_send(
-        env: soroban_sdk::Env,
-        sender: soroban_sdk::Address,
-        dest_chain_selector: u64,
-        message: StellarToAnyMessage,
-        fee_token_amount: i128,
-    ) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
-    fn get_config(env: soroban_sdk::Env) -> Result<RouterConfig, CCIPError>;
-    fn get_onramp(
-        env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-    ) -> Result<soroban_sdk::Address, CCIPError>;
+        encoded_message: soroban_sdk::Bytes,
+        ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+        verifier_results: soroban_sdk::Vec<soroban_sdk::Bytes>,
+        gas_limit_override: u32,
+    ) -> Result<(), CCIPError>;
+    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
+    fn is_cursed(env: soroban_sdk::Env) -> Result<bool, CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
-        rmn_proxy: soroban_sdk::Address,
+        static_config: StaticConfig,
     ) -> Result<(), CCIPError>;
-    fn is_offramp(
+    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn set_new_owner(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_static_config(env: soroban_sdk::Env) -> Result<StaticConfig, CCIPError>;
+    fn require_not_cursed(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn transfer_ownership(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn get_execution_state(
+        env: soroban_sdk::Env,
+        message_id: soroban_sdk::BytesN<32>,
+    ) -> Result<MessageExecutionState, CCIPError>;
+    fn get_source_chain_config(
         env: soroban_sdk::Env,
         source_chain_selector: u64,
-        offramp: soroban_sdk::Address,
-    ) -> Result<bool, CCIPError>;
-    fn set_onramp(
+    ) -> Result<SourceChainConfig, CCIPError>;
+    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_all_source_chain_configs(
         env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        onramp: soroban_sdk::Address,
+    ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<SourceChainConfig>), CCIPError>;
+    fn apply_source_chain_cfg_updates(
+        env: soroban_sdk::Env,
+        source_chain_config_args: soroban_sdk::Vec<SourceChainConfigArgs>,
     ) -> Result<(), CCIPError>;
-    fn add_offramp(
-        env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        offramp: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn get_onramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OnRampEntry>, CCIPError>;
-    fn get_offramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OffRampEntry>, CCIPError>;
-    fn route_message(
-        env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        message: AnyToStellarMessage,
-    ) -> Result<(), CCIPError>;
-    fn remove_offramp(
-        env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        offramp: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn apply_ramp_updates(
-        env: soroban_sdk::Env,
-        onramp_updates: soroban_sdk::Vec<OnRampEntry>,
-        offramp_removes: soroban_sdk::Vec<OffRampEntry>,
-        offramp_adds: soroban_sdk::Vec<OffRampEntry>,
-    ) -> Result<(), CCIPError>;
-    fn is_chain_supported(
-        env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-    ) -> Result<bool, CCIPError>;
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -113,20 +100,37 @@ pub struct StellarToAnyMessage {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OnRampEntry {
-    pub dest_chain_selector: u64,
-    pub onramp: soroban_sdk::Address,
+pub struct StaticConfig {
+    pub chain_selector: u64,
+    pub rmn_proxy: soroban_sdk::Address,
+    pub token_admin_registry: soroban_sdk::Address,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OffRampEntry {
-    pub offramp: soroban_sdk::Address,
+pub struct SourceChainConfig {
+    pub default_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub is_enabled: bool,
+    pub lane_mandated_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub on_ramps: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub router: soroban_sdk::Address,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct SourceChainConfigArgs {
+    pub default_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub is_enabled: bool,
+    pub lane_mandated_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub on_ramps: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub router: soroban_sdk::Address,
     pub source_chain_selector: u64,
 }
 #[soroban_sdk::contracttype(export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct RouterConfig {
-    pub rmn_proxy: soroban_sdk::Address,
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MessageExecutionState {
+    Untouched = 0,
+    InProgress = 1,
+    Success = 2,
+    Failure = 3,
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -251,35 +255,23 @@ pub struct OwnershipTransferStartedEvent {
     pub previous_owner: soroban_sdk::Address,
     pub new_owner: soroban_sdk::Address,
 }
-#[soroban_sdk::contractevent(topics = ["router_OnRampSet"], export = false)]
+#[soroban_sdk::contractevent(topics = ["offramp_1_7_StaticConfigSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OnRampSetEvent {
-    pub dest_chain_selector: u64,
-    pub onramp: soroban_sdk::Address,
+pub struct StaticConfigSetEvent {
+    pub static_config: StaticConfig,
 }
-#[soroban_sdk::contractevent(topics = ["router_OffRampAdded"], export = false)]
+#[soroban_sdk::contractevent(topics = ["offramp_1_7_SrcChainCfgSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OffRampAddedEvent {
+pub struct SourceChainConfigSetEvent {
     pub source_chain_selector: u64,
-    pub offramp: soroban_sdk::Address,
+    pub source_config: SourceChainConfig,
 }
-#[soroban_sdk::contractevent(topics = ["router_OffRampRemoved"], export = false)]
+#[soroban_sdk::contractevent(topics = ["offramp_1_7_ExecStateChanged"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OffRampRemovedEvent {
+pub struct ExecutionStateChangedEvent {
     pub source_chain_selector: u64,
-    pub offramp: soroban_sdk::Address,
-}
-#[soroban_sdk::contractevent(topics = ["router_MessageExecuted"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct MessageExecutedEvent {
+    pub sequence_number: u64,
     pub message_id: soroban_sdk::BytesN<32>,
-    pub source_chain_selector: u64,
-    pub offramp: soroban_sdk::Address,
-}
-#[soroban_sdk::contractevent(topics = ["router_CCIPSendRequested"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct CCIPSendRequestedEvent {
-    pub message_id: soroban_sdk::BytesN<32>,
-    pub dest_chain_selector: u64,
-    pub sender: soroban_sdk::Address,
+    pub state: MessageExecutionState,
+    pub return_data: soroban_sdk::Bytes,
 }

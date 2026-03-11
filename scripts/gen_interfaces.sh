@@ -41,6 +41,8 @@ CONTRACTS=(
   "onramp|onramp|OnRamp|1"
   "rmn_proxy|rmn_proxy|RmnProxy|0"
   "rmn_remote|rmn_remote|RmnRemote|0"
+  "offramp|offramp|OffRamp|0"
+  "router|router|Router|0"
 )
 
 # Remove the WASM const block from generated output (interfaces don't need it)

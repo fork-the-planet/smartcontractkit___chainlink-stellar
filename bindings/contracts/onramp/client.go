@@ -903,9 +903,15 @@ func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 
 		switch string(key) {
 		case "static_config":
-			// TODO: parse complex type
+			v, err := StaticConfigFromScVal(entry.Val)
+			if err == nil {
+				result.StaticConfig = *v
+			}
 		case "dynamic_config":
-			// TODO: parse complex type
+			v, err := DynamicConfigFromScVal(entry.Val)
+			if err == nil {
+				result.DynamicConfig = *v
+			}
 		}
 	}
 
@@ -1100,7 +1106,10 @@ func parseDestChainConfigSetEvent(e protocolrpc.EventInfo) (*DestChainConfigSetE
 				result.MessageNumber = v
 			}
 		case "config":
-			// TODO: parse complex type
+			v, err := DestChainConfigFromScVal(entry.Val)
+			if err == nil {
+				result.Config = *v
+			}
 		}
 	}
 
