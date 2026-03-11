@@ -490,3 +490,21 @@ func HexToContractStrkey(hexAddr string) (string, error) {
 	}
 	return strkey.Encode(strkey.VersionByteContract, raw)
 }
+
+// AddressVecFromScVal extracts raw 32-byte addresses from a Vec<Address> ScVal.
+func AddressVecFromScVal(val xdr.ScVal) ([][]byte, error) {
+	vec, ok := val.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("not a vec type: %v", val.Type)
+	}
+
+	addresses := make([][]byte, 0, len(*vec))
+	for i, item := range *vec {
+		raw, err := RawBytesFromAddressScVal(item)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode address at index %d: %w", i, err)
+		}
+		addresses = append(addresses, raw)
+	}
+	return addresses, nil
+}

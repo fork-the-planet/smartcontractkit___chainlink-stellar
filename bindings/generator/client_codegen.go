@@ -364,7 +364,7 @@ func generateEventHelpers(b *strings.Builder, contract *Contract) {
 		b.WriteString("\t\t\t\tcontinue\n")
 		b.WriteString("\t\t\t}\n\n")
 		b.WriteString("\t\t\tfor _, e := range events {\n")
-		b.WriteString(fmt.Sprintf("\t\t\t\tparsed, err := parse%s(e)\n", event.Name))
+		b.WriteString(fmt.Sprintf("\t\t\t\tparsed, err := Parse%s(e)\n", event.Name))
 		b.WriteString("\t\t\t\tif err != nil {\n")
 		b.WriteString("\t\t\t\t\tcontinue\n")
 		b.WriteString("\t\t\t\t}\n")
@@ -382,7 +382,7 @@ func generateEventHelpers(b *strings.Builder, contract *Contract) {
 }
 
 func generateEventParser(b *strings.Builder, event Event) {
-	b.WriteString(fmt.Sprintf("func parse%s(e protocolrpc.EventInfo) (*%s, error) {\n", event.Name, event.Name))
+	b.WriteString(fmt.Sprintf("func Parse%s(e protocolrpc.EventInfo) (*%s, error) {\n", event.Name, event.Name))
 	b.WriteString("\tvar eventVal xdr.ScVal\n")
 	b.WriteString("\tif err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {\n")
 	b.WriteString("\t\treturn nil, fmt.Errorf(\"failed to decode event: %w\", err)\n")

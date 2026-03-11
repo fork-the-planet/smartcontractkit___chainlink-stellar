@@ -154,7 +154,7 @@ func main() {
 						}
 					}
 
-					dr, err := destinationreader.New(invoker, offRampID, rmnRemoteID, &zerologLogger)
+					dr, err := destinationreader.New(invoker, rpcClient, offRampID, rmnRemoteID, &zerologLogger, cfg.MaxRetryDuration)
 					if err != nil {
 						return nil, fmt.Errorf("failed to create destination reader for chain %s: %w", strSel, err)
 					}

@@ -903,7 +903,7 @@ func (c *OffRampClient) WaitForExecutionStateChangedEvent(ctx context.Context, s
 			}
 
 			for _, e := range events {
-				parsed, err := parseExecutionStateChangedEvent(e)
+				parsed, err := ParseExecutionStateChangedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -915,7 +915,7 @@ func (c *OffRampClient) WaitForExecutionStateChangedEvent(ctx context.Context, s
 	}
 }
 
-func parseExecutionStateChangedEvent(e protocolrpc.EventInfo) (*ExecutionStateChangedEvent, error) {
+func ParseExecutionStateChangedEvent(e protocolrpc.EventInfo) (*ExecutionStateChangedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)

@@ -518,6 +518,8 @@ impl OffRampContract {
     }
 
     fn get_execution_state_internal(env: &Env, message_id: &BytesN<32>) -> MessageExecutionState {
+        // TODO: the key used for storage here should be the message ID 
+        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()
@@ -530,6 +532,8 @@ impl OffRampContract {
     }
 
     fn set_execution_state(env: &Env, message_id: &BytesN<32>, state: MessageExecutionState) {
+        // TODO: the key used for storage here should be the message ID 
+        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let mut exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()
