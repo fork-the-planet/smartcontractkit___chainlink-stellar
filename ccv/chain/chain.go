@@ -3,11 +3,13 @@ package ccvchain
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -499,12 +501,20 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
 
-	signatureQuorumConfigs := []cvbindings.SignatureQuorumConfig{}
+	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(remoteSelectors))
 	for _, rs := range remoteSelectors {
+		signers, threshold := resolveSignersFromTopology(committees, rs, chainsel.FamilyStellar)
+		if len(signers) == 0 {
+			c.logger.Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
+			// TODO: should we keep this or fail the deployment?
+			// This is a placeholder to avoid panic but will cause the Committee Verifier to fail verification.
+			signers = [][32]byte{{1}}
+			threshold = 1
+		}
 		signatureQuorumConfigs = append(signatureQuorumConfigs, cvbindings.SignatureQuorumConfig{
 			SourceChainSelector: rs,
-			Threshold:           1,
-			Signers:             [][32]byte{},
+			Threshold:           threshold,
+			Signers:             signers,
 		})
 	}
 	err = cvClient.ApplySignatureConfigs(ctx, []uint64{}, signatureQuorumConfigs)
@@ -1183,4 +1193,48 @@ func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddre
 
 func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAddress, amount *big.Int) error {
 	return fmt.Errorf("not implemented")
+}
+
+// resolveSignersFromTopology extracts signer public keys and threshold for a
+// given source chain selector from the environment topology. It searches all
+// committees for a chain config matching sourceChainSelector, then looks up
+// each NOP's signer address for the specified chain family.
+func resolveSignersFromTopology(topology *deployments.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
+	if topology == nil || topology.NOPTopology == nil {
+		return nil, 0
+	}
+
+	selectorStr := strconv.FormatUint(sourceChainSelector, 10)
+
+	for _, committee := range topology.NOPTopology.Committees {
+		chainCfg, ok := committee.ChainConfigs[selectorStr]
+		if !ok {
+			continue
+		}
+
+		var signers [][32]byte
+		for _, alias := range chainCfg.NOPAliases {
+			nop, found := topology.NOPTopology.GetNOP(alias)
+			if !found {
+				continue
+			}
+			addrHex := nop.SignerAddressByFamily[family]
+			if addrHex == "" {
+				continue
+			}
+			decoded, decErr := hex.DecodeString(addrHex)
+			if decErr != nil || len(decoded) != 32 {
+				continue
+			}
+			var signer [32]byte
+			copy(signer[:], decoded)
+			signers = append(signers, signer)
+		}
+
+		if len(signers) > 0 {
+			return signers, uint32(chainCfg.Threshold)
+		}
+	}
+
+	return nil, 0
 }
