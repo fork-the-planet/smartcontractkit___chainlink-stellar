@@ -84,8 +84,10 @@ impl AllowListable for CommitteeVerifierContract {
     }
 }
 
-#[contractimpl]
-impl SignatureQuorum for CommitteeVerifierContract {}
+#[contractimpl(contracttrait)]
+impl SignatureQuorum for CommitteeVerifierContract {
+    const SIGNATURE_CONFIGS: Symbol = SIGNATURE_CONFIGS;
+}
 
 // #[contractimpl]
 impl BaseVerifier for CommitteeVerifierContract {

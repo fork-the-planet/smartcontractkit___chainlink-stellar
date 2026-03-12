@@ -499,6 +499,20 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
 
+	signatureQuorumConfigs := []cvbindings.SignatureQuorumConfig{}
+	for _, rs := range remoteSelectors {
+		signatureQuorumConfigs = append(signatureQuorumConfigs, cvbindings.SignatureQuorumConfig{
+			SourceChainSelector: rs,
+			Threshold:           1,
+			Signers:             [][32]byte{},
+		})
+	}
+	err = cvClient.ApplySignatureConfigs(ctx, []uint64{}, signatureQuorumConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply signature quorum configs: %w", err)
+	}
+	c.logger.Info().Int("count", len(signatureQuorumConfigs)).Msg("Signature quorum configs applied")
+
 	// Configure FeeQuoter destination chains
 	fqDestChainConfigs := []fqbindings.DestChainConfigArgs{}
 	for _, rs := range remoteSelectors {

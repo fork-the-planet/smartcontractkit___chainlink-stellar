@@ -1,7 +1,7 @@
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
-use soroban_sdk::{contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec};
+use soroban_sdk::{contracttrait, contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,6 +20,7 @@ pub struct SignatureQuorumConfig {
 //     fn signers(&self) -> Vec<BytesN<32>>;
 // }
 
+#[contracttrait]
 pub trait SignatureQuorum: Initializable + Ownable {
     const SIGNATURE_CONFIGS: Symbol = symbol_short!("SIGCFGS");
 
@@ -27,7 +28,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
     const SIGNATURE_LENGTH_BYTES: u32 = 2;
     const SIGNATURE_THRESHOLD_BYTES: u32 = 2;
 
-    fn extract_signature_length(signatures: &Bytes) -> Result<u16, CCIPError> {
+    fn extract_signature_length(signatures: &Bytes) -> Result<u32, CCIPError> {
         unimplemented!()
     }
 
@@ -35,7 +36,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
         unimplemented!()
     }
 
-    fn extract_signature_threshold(signatures: &Bytes) -> Result<u16, CCIPError> {
+    fn extract_signature_threshold(signatures: &Bytes) -> Result<u32, CCIPError> {
         unimplemented!()
     }
 
@@ -85,10 +86,10 @@ pub trait SignatureQuorum: Initializable + Ownable {
 
         let cfg = sig_cfgs
             .get(source_chain_selector)
-            .ok_or(CCIPError::SourceNotConfigured)?;
+            .ok_or(CCIPError::SourceSignersNotConfigured)?;
 
         if cfg.threshold == 0 {
-            return Err(CCIPError::SourceNotConfigured);
+            return Err(CCIPError::SourceSignersNotConfigured);
         }
 
         // TODO: implement native Soroban Ed25519 quorum validation:
@@ -114,7 +115,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
             .unwrap_or(Map::new(&env));
         sig_cfgs
             .get(source_chain_selector)
-            .ok_or(CCIPError::SourceNotConfigured)
+            .ok_or(CCIPError::SourceSignersNotConfigured)
     }
 
     fn get_all_signature_configs(env: Env) -> Result<Vec<SignatureQuorumConfig>, CCIPError> {
