@@ -626,6 +626,7 @@ func isStructType(rustType string) bool {
 	return true
 }
 
+// TODO: remove this function and use getToScValConverter instead
 func getArgConverter(rustType, varName string) string {
 	switch rustType {
 	case "u64":
@@ -655,6 +656,12 @@ func getArgConverter(rustType, varName string) string {
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
 		innerType := extractVecInnerType(rustType)
+		if innerType == "u64" {
+			return fmt.Sprintf("scval.Uint64SliceToScVal(%s)", varName)
+		}
+		if innerType == "u32" {
+			return fmt.Sprintf("scval.Uint32SliceToScVal(%s)", varName)
+		}
 		if innerType == "soroban_sdk::Address" {
 			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", varName)
 		}

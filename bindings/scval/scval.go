@@ -427,6 +427,22 @@ func Bytes16SliceToScVal(items [][16]byte) xdr.ScVal {
 	return VecToScVal(scVals)
 }
 
+func Uint64SliceToScVal(items []uint64) xdr.ScVal {
+	scVals := make([]xdr.ScVal, len(items))
+	for i, item := range items {
+		scVals[i] = Uint64ToScVal(item)
+	}
+	return VecToScVal(scVals)
+}
+
+func Uint32SliceToScVal(items []uint32) xdr.ScVal {
+	scVals := make([]xdr.ScVal, len(items))
+	for i, item := range items {
+		scVals[i] = Uint32ToScVal(item)
+	}
+	return VecToScVal(scVals)
+}
+
 // RawBytesFromAddressScVal extracts the raw 32-byte key (contract ID or
 // ed25519 pubkey) from an xdr.ScVal address.
 func RawBytesFromAddressScVal(val xdr.ScVal) ([]byte, error) {

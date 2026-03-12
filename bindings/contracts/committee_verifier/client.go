@@ -561,7 +561,7 @@ func (c *CommitteeVerifierClient) ApplyAllowlistUpdates(ctx context.Context, upd
 // ApplySignatureConfigs calls the apply_signature_configs function on the contract.
 func (c *CommitteeVerifierClient) ApplySignatureConfigs(ctx context.Context, sourceChainsToRemove []uint64, signatureConfigs []SignatureQuorumConfig) error {
 	args := []xdr.ScVal{
-		scval.StructSliceToScVal(sourceChainsToRemove),
+		scval.Uint64SliceToScVal(sourceChainsToRemove),
 		scval.StructSliceToScVal(signatureConfigs),
 	}
 
