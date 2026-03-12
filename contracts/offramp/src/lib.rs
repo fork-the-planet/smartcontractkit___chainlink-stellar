@@ -5,8 +5,7 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
-    Symbol, Vec,
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec, contract, contractimpl, symbol_short, xdr::ToXdr
 };
 
 use common_authorization::Ownable;
@@ -143,9 +142,13 @@ impl OffRampContract {
             &source_config,
         )?;
 
-        // OffRamp address in the message must match this contract
+        // OffRamp address in the message must match this contract.
+        // We compare only the 32-byte hash of the contract address and leave
+        // out the discriminant bytes.
         let self_xdr = env.current_contract_address().to_xdr(&env);
-        if message.offramp_address != self_xdr {
+        // TODO: is there a better way to do this rather than slicing bytes?
+        let self_hash = self_xdr.slice(self_xdr.len() - 32..);
+        if message.offramp_address != self_hash {
             return Err(CCIPError::InvalidOffRampAddress);
         }
 

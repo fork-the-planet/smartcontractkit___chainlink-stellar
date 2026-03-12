@@ -336,7 +336,7 @@ func (c *RouterClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger 
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -348,7 +348,7 @@ func (c *RouterClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger 
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -413,7 +413,7 @@ func (c *RouterClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger 
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -425,7 +425,7 @@ func (c *RouterClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger 
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -490,7 +490,7 @@ func (c *RouterClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, st
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -502,7 +502,7 @@ func (c *RouterClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, st
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -557,7 +557,7 @@ func (c *RouterClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, 
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -569,7 +569,7 @@ func (c *RouterClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, 
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -624,7 +624,7 @@ func (c *RouterClient) WaitForOwnershipTransferStartedEvent(ctx context.Context,
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -636,7 +636,7 @@ func (c *RouterClient) WaitForOwnershipTransferStartedEvent(ctx context.Context,
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -696,7 +696,7 @@ func (c *RouterClient) WaitForOnRampSetEvent(ctx context.Context, startLedger ui
 			}
 
 			for _, e := range events {
-				parsed, err := parseOnRampSetEvent(e)
+				parsed, err := ParseOnRampSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -708,7 +708,7 @@ func (c *RouterClient) WaitForOnRampSetEvent(ctx context.Context, startLedger ui
 	}
 }
 
-func parseOnRampSetEvent(e protocolrpc.EventInfo) (*OnRampSetEvent, error) {
+func ParseOnRampSetEvent(e protocolrpc.EventInfo) (*OnRampSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -768,7 +768,7 @@ func (c *RouterClient) WaitForOffRampAddedEvent(ctx context.Context, startLedger
 			}
 
 			for _, e := range events {
-				parsed, err := parseOffRampAddedEvent(e)
+				parsed, err := ParseOffRampAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -780,7 +780,7 @@ func (c *RouterClient) WaitForOffRampAddedEvent(ctx context.Context, startLedger
 	}
 }
 
-func parseOffRampAddedEvent(e protocolrpc.EventInfo) (*OffRampAddedEvent, error) {
+func ParseOffRampAddedEvent(e protocolrpc.EventInfo) (*OffRampAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -840,7 +840,7 @@ func (c *RouterClient) WaitForOffRampRemovedEvent(ctx context.Context, startLedg
 			}
 
 			for _, e := range events {
-				parsed, err := parseOffRampRemovedEvent(e)
+				parsed, err := ParseOffRampRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -852,7 +852,7 @@ func (c *RouterClient) WaitForOffRampRemovedEvent(ctx context.Context, startLedg
 	}
 }
 
-func parseOffRampRemovedEvent(e protocolrpc.EventInfo) (*OffRampRemovedEvent, error) {
+func ParseOffRampRemovedEvent(e protocolrpc.EventInfo) (*OffRampRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -912,7 +912,7 @@ func (c *RouterClient) WaitForMessageExecutedEvent(ctx context.Context, startLed
 			}
 
 			for _, e := range events {
-				parsed, err := parseMessageExecutedEvent(e)
+				parsed, err := ParseMessageExecutedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -924,7 +924,7 @@ func (c *RouterClient) WaitForMessageExecutedEvent(ctx context.Context, startLed
 	}
 }
 
-func parseMessageExecutedEvent(e protocolrpc.EventInfo) (*MessageExecutedEvent, error) {
+func ParseMessageExecutedEvent(e protocolrpc.EventInfo) (*MessageExecutedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -989,7 +989,7 @@ func (c *RouterClient) WaitForCCIPSendRequestedEvent(ctx context.Context, startL
 			}
 
 			for _, e := range events {
-				parsed, err := parseCCIPSendRequestedEvent(e)
+				parsed, err := ParseCCIPSendRequestedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1001,7 +1001,7 @@ func (c *RouterClient) WaitForCCIPSendRequestedEvent(ctx context.Context, startL
 	}
 }
 
-func parseCCIPSendRequestedEvent(e protocolrpc.EventInfo) (*CCIPSendRequestedEvent, error) {
+func ParseCCIPSendRequestedEvent(e protocolrpc.EventInfo) (*CCIPSendRequestedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)

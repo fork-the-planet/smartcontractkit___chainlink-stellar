@@ -172,6 +172,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
 	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
 
+	// TODO: what's the correct executor contract ID?
 	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
 
 	// Decode the real OffRamp contract address to raw bytes for the OnRamp dest chain config.
@@ -187,7 +188,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 			BaseExecutionGasCost:      100000,
 			DefaultCcvs:               []string{c.vvrContractID},
 			DestChainSelector:         remoteSelector,
-			Router:                    c.deployerKeypair.Address(),
+			Router:                    c.deployerKeypair.Address(), // TODO: use correct address
 			OffRamp:                   offRampBytes,
 			DefaultExecutor:           executorContractID,
 			LaneMandatedCcvs:          []string{},
@@ -220,10 +221,13 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 			}
 
 			onRampBytes := hexutil.MustDecode(onRampRef.Address)
+			paddedOnRampBytes := make([]byte, 32)
+			copy(paddedOnRampBytes[32-len(onRampBytes):], onRampBytes)
+
 			sourceChainCfgs = append(sourceChainCfgs, offrampbindings.SourceChainConfigArgs{
 				SourceChainSelector: rs,
 				IsEnabled:           true,
-				OnRamps:             [][]byte{onRampBytes},
+				OnRamps:             [][]byte{paddedOnRampBytes},
 				Router:              c.deployerKeypair.Address(),
 				DefaultCcvs:         []string{c.vvrContractID},
 				LaneMandatedCcvs:    []string{},
@@ -246,6 +250,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, committees *deployments.EnvironmentTopology) (datastore.DataStore, error) {
 	c.logger.Info().Uint64("selector", selector).Msg("Deploying Stellar CCIP contracts")
 
+	// TODO: can we just use env.DataStore instead of creating a new one?
 	ds := datastore.NewMemoryDataStore()
 
 	// Helper to generate a hex-encoded contract address (used for mock/placeholder contracts)
@@ -462,6 +467,19 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply outbound implementation updates: %w", err)
 	}
+
+	inboundImplUpdates := []vvrbindings.InboundImplementationUpdate{
+		{
+			Version:  [4]byte{0x49, 0xff, 0x34, 0xed}, // VERSION_TAG_V1_7_0
+			Verifier: &cvContractID,
+		},
+	}
+	err = vvrClient.ApplyInboundImplUpdates(ctx, inboundImplUpdates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply inbound implementation updates: %w", err)
+	}
+
+	c.logger.Info().Msg("Inbound implementation and outbound updates applied")
 
 	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(remoteSelectors))
 	for _, rs := range remoteSelectors {

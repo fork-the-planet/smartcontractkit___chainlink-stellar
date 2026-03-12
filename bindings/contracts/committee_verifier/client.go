@@ -599,7 +599,7 @@ func (c *CommitteeVerifierClient) WaitForConfigSetEvent(ctx context.Context, sta
 			}
 
 			for _, e := range events {
-				parsed, err := parseConfigSetEvent(e)
+				parsed, err := ParseConfigSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -611,7 +611,7 @@ func (c *CommitteeVerifierClient) WaitForConfigSetEvent(ctx context.Context, sta
 	}
 }
 
-func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+func ParseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -666,7 +666,7 @@ func (c *CommitteeVerifierClient) WaitForRemoteChainConfigSetEvent(ctx context.C
 			}
 
 			for _, e := range events {
-				parsed, err := parseRemoteChainConfigSetEvent(e)
+				parsed, err := ParseRemoteChainConfigSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -678,7 +678,7 @@ func (c *CommitteeVerifierClient) WaitForRemoteChainConfigSetEvent(ctx context.C
 	}
 }
 
-func parseRemoteChainConfigSetEvent(e protocolrpc.EventInfo) (*RemoteChainConfigSetEvent, error) {
+func ParseRemoteChainConfigSetEvent(e protocolrpc.EventInfo) (*RemoteChainConfigSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -743,7 +743,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListSendersAddedEvent(ctx context.
 			}
 
 			for _, e := range events {
-				parsed, err := parseAllowListSendersAddedEvent(e)
+				parsed, err := ParseAllowListSendersAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -755,7 +755,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListSendersAddedEvent(ctx context.
 	}
 }
 
-func parseAllowListSendersAddedEvent(e protocolrpc.EventInfo) (*AllowListSendersAddedEvent, error) {
+func ParseAllowListSendersAddedEvent(e protocolrpc.EventInfo) (*AllowListSendersAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -815,7 +815,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListStateChangedEvent(ctx context.
 			}
 
 			for _, e := range events {
-				parsed, err := parseAllowListStateChangedEvent(e)
+				parsed, err := ParseAllowListStateChangedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -827,7 +827,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListStateChangedEvent(ctx context.
 	}
 }
 
-func parseAllowListStateChangedEvent(e protocolrpc.EventInfo) (*AllowListStateChangedEvent, error) {
+func ParseAllowListStateChangedEvent(e protocolrpc.EventInfo) (*AllowListStateChangedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -887,7 +887,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListSendersRemovedEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseAllowListSendersRemovedEvent(e)
+				parsed, err := ParseAllowListSendersRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -899,7 +899,7 @@ func (c *CommitteeVerifierClient) WaitForAllowListSendersRemovedEvent(ctx contex
 	}
 }
 
-func parseAllowListSendersRemovedEvent(e protocolrpc.EventInfo) (*AllowListSendersRemovedEvent, error) {
+func ParseAllowListSendersRemovedEvent(e protocolrpc.EventInfo) (*AllowListSendersRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -959,7 +959,7 @@ func (c *CommitteeVerifierClient) WaitForStorageAdminTransferredEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseStorageAdminTransferredEvent(e)
+				parsed, err := ParseStorageAdminTransferredEvent(e)
 				if err != nil {
 					continue
 				}
@@ -971,7 +971,7 @@ func (c *CommitteeVerifierClient) WaitForStorageAdminTransferredEvent(ctx contex
 	}
 }
 
-func parseStorageAdminTransferredEvent(e protocolrpc.EventInfo) (*StorageAdminTransferredEvent, error) {
+func ParseStorageAdminTransferredEvent(e protocolrpc.EventInfo) (*StorageAdminTransferredEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1031,7 +1031,7 @@ func (c *CommitteeVerifierClient) WaitForStorageAdminTransferReqEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseStorageAdminTransferReqEvent(e)
+				parsed, err := ParseStorageAdminTransferReqEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1043,7 +1043,7 @@ func (c *CommitteeVerifierClient) WaitForStorageAdminTransferReqEvent(ctx contex
 	}
 }
 
-func parseStorageAdminTransferReqEvent(e protocolrpc.EventInfo) (*StorageAdminTransferReqEvent, error) {
+func ParseStorageAdminTransferReqEvent(e protocolrpc.EventInfo) (*StorageAdminTransferReqEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1103,7 +1103,7 @@ func (c *CommitteeVerifierClient) WaitForStorageLocationsUpdatedEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseStorageLocationsUpdatedEvent(e)
+				parsed, err := ParseStorageLocationsUpdatedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1115,7 +1115,7 @@ func (c *CommitteeVerifierClient) WaitForStorageLocationsUpdatedEvent(ctx contex
 	}
 }
 
-func parseStorageLocationsUpdatedEvent(e protocolrpc.EventInfo) (*StorageLocationsUpdatedEvent, error) {
+func ParseStorageLocationsUpdatedEvent(e protocolrpc.EventInfo) (*StorageLocationsUpdatedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1189,7 +1189,7 @@ func (c *CommitteeVerifierClient) WaitForRoleGrantedEvent(ctx context.Context, s
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1201,7 +1201,7 @@ func (c *CommitteeVerifierClient) WaitForRoleGrantedEvent(ctx context.Context, s
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1266,7 +1266,7 @@ func (c *CommitteeVerifierClient) WaitForRoleRevokedEvent(ctx context.Context, s
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1278,7 +1278,7 @@ func (c *CommitteeVerifierClient) WaitForRoleRevokedEvent(ctx context.Context, s
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1343,7 +1343,7 @@ func (c *CommitteeVerifierClient) WaitForAuthorizedCallerAddedEvent(ctx context.
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1355,7 +1355,7 @@ func (c *CommitteeVerifierClient) WaitForAuthorizedCallerAddedEvent(ctx context.
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1410,7 +1410,7 @@ func (c *CommitteeVerifierClient) WaitForAuthorizedCallerRemovedEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1422,7 +1422,7 @@ func (c *CommitteeVerifierClient) WaitForAuthorizedCallerRemovedEvent(ctx contex
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1477,7 +1477,7 @@ func (c *CommitteeVerifierClient) WaitForOwnershipTransferStartedEvent(ctx conte
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1489,7 +1489,7 @@ func (c *CommitteeVerifierClient) WaitForOwnershipTransferStartedEvent(ctx conte
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)

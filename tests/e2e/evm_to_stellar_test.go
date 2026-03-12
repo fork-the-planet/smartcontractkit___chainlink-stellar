@@ -12,6 +12,7 @@ import (
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
@@ -19,6 +20,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
@@ -146,6 +149,26 @@ func TestEVMToStellarExecution(t *testing.T) {
 		l.Info().
 			Str("messageID", hex.EncodeToString(messageID[:])).
 			Msg("Message verified and aggregated successfully")
+
+		// Get the source chain config from the Stellar OffRamp contract.
+		offRampKey := datastore.NewAddressRefKey(
+			stellarDetails.ChainSelector,
+			datastore.ContractType(offramp.ContractType),
+			semver.MustParse(offramp.Deploy.Version()),
+			"",
+		)
+		offrampRef, err := env.DataStore.Addresses().Get(offRampKey)
+		require.NoError(t, err)
+		require.NotEmpty(t, offrampRef.Address)
+		offrampContractID, err := scval.HexToContractStrkey(offrampRef.Address)
+		require.NoError(t, err)
+		l.Info().Str("offrampContractID", offrampContractID).Msg("Found OffRamp in CCV datastore")
+
+		offrampClient := offrampbindings.NewOffRampClient(env.Deployer, offrampContractID)
+		sourceChainConfig, err := offrampClient.GetSourceChainConfig(ctx, evmDetails.ChainSelector)
+		require.NoError(t, err)
+
+		l.Info().Interface("sourceChainConfig", sourceChainConfig).Msg("Source chain config in OffRamp contract")
 
 		// Wait for execution on the Stellar destination chain.
 		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)

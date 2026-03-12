@@ -276,7 +276,7 @@ func (c *RmnProxyClient) WaitForRoleGrantedEvent(ctx context.Context, startLedge
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -288,7 +288,7 @@ func (c *RmnProxyClient) WaitForRoleGrantedEvent(ctx context.Context, startLedge
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -353,7 +353,7 @@ func (c *RmnProxyClient) WaitForRoleRevokedEvent(ctx context.Context, startLedge
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -365,7 +365,7 @@ func (c *RmnProxyClient) WaitForRoleRevokedEvent(ctx context.Context, startLedge
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -430,7 +430,7 @@ func (c *RmnProxyClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, 
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -442,7 +442,7 @@ func (c *RmnProxyClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, 
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -497,7 +497,7 @@ func (c *RmnProxyClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -509,7 +509,7 @@ func (c *RmnProxyClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -564,7 +564,7 @@ func (c *RmnProxyClient) WaitForOwnershipTransferStartedEvent(ctx context.Contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -576,7 +576,7 @@ func (c *RmnProxyClient) WaitForOwnershipTransferStartedEvent(ctx context.Contex
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -636,7 +636,7 @@ func (c *RmnProxyClient) WaitForRmnSetEvent(ctx context.Context, startLedger uin
 			}
 
 			for _, e := range events {
-				parsed, err := parseRmnSetEvent(e)
+				parsed, err := ParseRmnSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -648,7 +648,7 @@ func (c *RmnProxyClient) WaitForRmnSetEvent(ctx context.Context, startLedger uin
 	}
 }
 
-func parseRmnSetEvent(e protocolrpc.EventInfo) (*RmnSetEvent, error) {
+func ParseRmnSetEvent(e protocolrpc.EventInfo) (*RmnSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
