@@ -62,6 +62,9 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	evmDetails := env.DestChainDetails
 	destChain := env.DestChain
 
+	// Fund the deployer account via Friendbot
+	helpers.FundViaFriendbot(env.FriendbotURL, deployerKP.Address())
+
 	// Look up the OnRamp contract address from the CCV datastore.
 	// It was deployed and configured during NewE2ETestEnv → ccv.NewEnvironment()
 	// via chain.go DeployContractsForSelector.

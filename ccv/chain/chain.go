@@ -262,6 +262,20 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 		}
 	}
 
+	// Configure the Router's OnRamp and OffRamp mappings
+	routerClient := routerbindings.NewRouterClient(c.deployer, routerAddress)
+	for _, rs := range remoteSelectors {
+		err = routerClient.SetOnramp(ctx, rs, c.onRampContractID)
+		if err != nil {
+			return fmt.Errorf("failed to set onramp on router for dest chain %d: %w", rs, err)
+		}
+		err = routerClient.AddOfframp(ctx, rs, c.offRampContractID)
+		if err != nil {
+			return fmt.Errorf("failed to add offramp on router for source chain %d: %w", rs, err)
+		}
+	}
+	c.logger.Info().Int("count", len(remoteSelectors)).Msg("Router OnRamp/OffRamp mappings configured")
+
 	return nil
 }
 
