@@ -485,6 +485,7 @@ impl OffRampContract {
         args.push_back(source_chain_selector.into_val(env));
         args.push_back(message.clone().into_val(env));
 
+        // TODO: use router's interface instead of directly calling the function
         let _result = env.invoke_contract::<Result<(), CCIPError>>(
             router,
             &Symbol::new(env, "route_message"),
