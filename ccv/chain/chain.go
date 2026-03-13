@@ -99,9 +99,12 @@ type Chain struct {
 	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
-	offRampClient     *offrampbindings.OffRampClient
-	offRampContractID string
-	vvrContractID     string
+	offRampClient      *offrampbindings.OffRampClient
+	offRampContractID  string
+	routerClient       *routerbindings.RouterClient
+	routerContractID   string
+	vvrContractID      string
+	cvContractID       string
 }
 
 // New creates a new Stellar Chain instance.
@@ -481,6 +484,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		return nil, fmt.Errorf("failed to initialize Committee Verifier: %w", err)
 	}
 
+	c.cvContractID = cvContractID
 	c.logger.Info().
 		Str("cvContractID", cvContractID).
 		Msg("Committee Verifier client initialized")
@@ -653,6 +657,8 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Router: %w", err)
 	}
+	c.routerContractID = routerContractID
+	c.routerClient = routerClient
 	c.logger.Info().Str("routerContractID", routerContractID).Msg("Router initialized")
 
 	// Add OnRamp to datastore
@@ -730,6 +736,19 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 			ChainSelector: selector,
 		})
 	}
+
+	// Add Committee Verifier refs (the actual verifier, used for outbound fee queries)
+	cvHex, err := strkeyToHex(cvContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert Committee Verifier address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       cvHex,
+		Type:          datastore.ContractType(committee_verifier.ContractType),
+		Version:       semver.MustParse(committee_verifier.Deploy.Version()),
+		Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
+		ChainSelector: selector,
+	})
 
 	// Add executor refs
 	ds.AddressRefStore.Add(datastore.AddressRef{
@@ -1049,16 +1068,16 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 }
 
 // SendMessage implements cciptestinterfaces.CCIP17.
-// Sends a CCIP message to the specified destination chain.
+// Sends a CCIP message to the specified destination chain via the Router's ccip_send.
 func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
-	if c.onRampClient == nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("OnRamp client not initialized")
+	if c.routerClient == nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("Router client not initialized")
 	}
 
 	c.logger.Info().
 		Uint64("destChainSelector", dest).
-		Str("receiver", fields.Receiver.String()).
-		Msg("Sending CCIP message from Stellar")
+		Str("receiver", hex.EncodeToString(fields.Receiver)).
+		Msg("Sending CCIP message from Stellar via Router")
 
 	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
 
@@ -1077,50 +1096,36 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
 	}
 
-	// Build the message
-	message := onrampbindings.StellarToAnyMessage{
+	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
+	sender := c.deployerKeypair.Address()
+
+	routerMsg := routerbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: make([]onrampbindings.TokenAmount, 0),
-		FeeToken:     c.deployerKeypair.Address(),
+		TokenAmounts: []routerbindings.TokenAmount{},
+		FeeToken:     mockFeeToken,
 		ExtraArgs:    encodedExtraArgs,
 	}
 
-	// Get the original sender address
-	originalSender := c.deployerKeypair.Address()
+	requiredFee, err := c.routerClient.GetFee(ctx, dest, routerMsg)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get fee from Router: %w", err)
+	}
+	c.logger.Info().Int64("requiredFee", requiredFee).Msg("Fee quote from Router")
 
-	// TODO: re-enable this to be called via the router instead of directly on the OnRamp
-	// // Call forward_from_router on the OnRamp
-	// result, err := c.onRampClient.ForwardFromRouter(ctx, dest, message, 0, originalSender)
-	// if err != nil {
-	// 	return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message: %w", err)
-	// }
-
-	// c.logger.Info().
-	// 	Str("messageID", hexutil.Encode(result[:])).
-	// 	Msg("CCIP message sent from Stellar")
-
-	// // Build the response
-	// return cciptestinterfaces.MessageSentEvent{
-	// 	MessageID: result,
-	// 	Sender:    protocol.UnknownAddress([]byte(originalSender)),
-	// 	Message: &protocol.Message{
-	// 		Sender:         protocol.UnknownAddress([]byte(originalSender)),
-	// 		SenderLength:   uint8(len(originalSender)),
-	// 		Receiver:       protocol.UnknownAddress(fields.Receiver),
-	// 		ReceiverLength: uint8(len(fields.Receiver)),
-	// 		Data:           protocol.ByteSlice(fields.Data),
-	// 		DataLength:     uint16(len(fields.Data)),
-	// 		Version:        protocol.MessageVersion,
-	// 	},
-	// }, nil
+	messageID, err := c.routerClient.CcipSend(ctx, sender, dest, routerMsg, requiredFee)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message via Router: %w", err)
+	}
 
 	c.logger.Info().
-		Str("message", fmt.Sprintf("%+v", message)).
-		Str("originalSender", originalSender).
-		Msg("CCIP message built")
+		Str("messageID", hexutil.Encode(messageID[:])).
+		Msg("CCIP message sent from Stellar via Router")
 
-	return cciptestinterfaces.MessageSentEvent{}, nil
+	return cciptestinterfaces.MessageSentEvent{
+		MessageID: messageID,
+		Sender:    protocol.UnknownAddress([]byte(sender)),
+	}, nil
 }
 
 // SendMessageWithNonce implements cciptestinterfaces.CCIP17.
@@ -1177,21 +1182,38 @@ func (c *Chain) WaitOneExecEventBySeqNo(ctx context.Context, from, seq uint64, t
 }
 
 // WaitOneSentEventBySeqNo implements cciptestinterfaces.CCIP17.
-// Waits for exactly one message sent event.
+// Waits for exactly one CCIPMessageSent event matching the destination selector and sequence number.
 func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, timeout time.Duration) (cciptestinterfaces.MessageSentEvent, error) {
 	if c.onRampClient == nil {
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("OnRamp client not initialized")
 	}
 
+	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
+	}
+
 	c.logger.Info().
 		Uint64("destChainSelector", to).
 		Uint64("sequenceNumber", seq).
+		Uint32("startLedger", latestLedger.Sequence).
 		Dur("timeout", timeout).
 		Msg("Waiting for CCIPMessageSent event from Stellar OnRamp")
 
-	// TODO: implement - poll for the event
+	event, err := c.onRampClient.WaitForCCIPMessageSentEvent(
+		ctx, latestLedger.Sequence, timeout,
+		func(e *onrampbindings.CCIPMessageSentEvent) bool {
+			return e.DestChainSelector == to && e.SequenceNumber == seq
+		},
+	)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed waiting for sent event: %w", err)
+	}
 
-	return cciptestinterfaces.MessageSentEvent{}, nil
+	return cciptestinterfaces.MessageSentEvent{
+		MessageID: event.MessageId,
+		Sender:    protocol.UnknownAddress([]byte(event.Sender)),
+	}, nil
 }
 
 // findStellarRoot locates the chainlink-stellar project root by walking up from

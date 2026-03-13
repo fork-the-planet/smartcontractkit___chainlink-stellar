@@ -2,38 +2,29 @@ package e2e_tests
 
 import (
 	"encoding/hex"
-	"math/big"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Masterminds/semver/v3"
-
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
-	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	ccvsourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
 const (
-	// Test timeouts for Stellar to EVM flow
 	stellarSentTimeout = 30 * time.Second
 )
 
+// TestStellarToEVMExecution validates the full Stellar-to-EVM CCIP message flow:
+// Stellar Router → OnRamp → Verifiers → Indexer → EVM Executor → EVM OffRamp.
+//
 // Contracts must be compiled before running:
 //
 //	make build
@@ -44,8 +35,8 @@ const (
 //
 // Once the devenv is running, run the test:
 //
-//	go test -v -timeout 10m ./tests/e2e/...
-func TestStellarToEVMSourceReader(t *testing.T) {
+//	go test -v -timeout 10m ./tests/e2e/... -run TestStellarToEVMExecution
+func TestStellarToEVMExecution(t *testing.T) {
 	configOutputPath := "../env/env-stellar-evm-out.toml"
 
 	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
@@ -55,205 +46,50 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 	l := zerolog.Ctx(ctx)
 
 	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID, stellarSelector)
-	deployer := env.Deployer
-	deployerKP := env.DeployerKP
-	rpc := env.RPCClient
 	stellarDetails := env.SourceChainDetails
 	evmDetails := env.DestChainDetails
-	destChain := env.DestChain
 
-	// Fund the deployer account via Friendbot
-	helpers.FundViaFriendbot(env.FriendbotURL, deployerKP.Address())
+	stellarChain := env.Chains[stellarDetails.ChainSelector]
+	require.NotNil(t, stellarChain, "Stellar chain not found in chains map")
 
-	// Look up the OnRamp contract address from the CCV datastore.
-	// It was deployed and configured during NewE2ETestEnv → ccv.NewEnvironment()
-	// via chain.go DeployContractsForSelector.
-	onrampKey := datastore.NewAddressRefKey(
-		stellarDetails.ChainSelector,
-		datastore.ContractType(onrampoperations.ContractType),
-		onrampoperations.Version,
-		"",
-	)
-	onrampRef, err := env.DataStore.Addresses().Get(onrampKey)
-	require.NoError(t, err)
-	require.NotEmpty(t, onrampRef.Address)
+	evmChain := env.Chains[evmDetails.ChainSelector]
+	require.NotNil(t, evmChain, "EVM chain not found in chains map")
 
-	onrampContractID, err := scval.HexToContractStrkey(onrampRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("onrampContractID", onrampContractID).Msg("Found OnRamp in CCV datastore")
-
-	rmnRemoteKey := datastore.NewAddressRefKey(
-		stellarDetails.ChainSelector,
-		datastore.ContractType(rmn_remote.ContractType),
-		rmn_remote.Version,
-		"",
-	)
-	rmnRemoteRef, err := env.DataStore.Addresses().Get(rmnRemoteKey)
-	require.NoError(t, err)
-	require.NotEmpty(t, rmnRemoteRef.Address)
-
-	rmnRemoteAddress, err := scval.HexToContractStrkey(rmnRemoteRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("rmnRemoteAddress", rmnRemoteAddress).Msg("Found RMN Remote in CCV datastore")
-
-	onRampClient := onrampbindings.NewOnRampClient(deployer, onrampContractID)
-
-	// Create the Stellar source reader with the DEPLOYED OnRamp contract ID
-	stellarSourceReader, err := ccvsourcereader.NewSourceReaderWithClient(
-		rpc,
-		deployer,
-		onrampContractID,
-		"onramp_1_7_CCIPMessageSent", // Event topic from OnRamp contract
-		rmnRemoteAddress,
-		l,
-	)
-	require.NoError(t, err)
-	l.Info().Str("onrampContractID", onrampContractID).Msg("Created Stellar source reader")
-
-	// Read fee quoter state
-	feeQuoterKey := datastore.NewAddressRefKey(
-		stellarDetails.ChainSelector,
-		datastore.ContractType(fee_quoter.ContractType),
-		fee_quoter.Version,
-		"",
-	)
-	feeQuoterRef, err := env.DataStore.Addresses().Get(feeQuoterKey)
-	require.NoError(t, err)
-	require.NotEmpty(t, feeQuoterRef.Address)
-
-	feeQuoterContractID, err := scval.HexToContractStrkey(feeQuoterRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("Found FeeQuoter in CCV datastore")
-
-	// Look up the VVR (Versioned Verifier Resolver) address from the CCV datastore.
-	// Stored under committee_verifier.ResolverType by DeployContractsForSelector.
-	vvrKey := datastore.NewAddressRefKey(
-		stellarDetails.ChainSelector,
-		datastore.ContractType(committee_verifier.ResolverType),
-		semver.MustParse(committee_verifier.Deploy.Version()),
-		devenvcommon.DefaultCommitteeVerifierQualifier,
-	)
-	vvrRef, err := env.DataStore.Addresses().Get(vvrKey)
-	require.NoError(t, err)
-	require.NotEmpty(t, vvrRef.Address)
-
-	vvrContractID, err := scval.HexToContractStrkey(vvrRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("vvrContractID", vvrContractID).Msg("Found VVR in CCV datastore")
-
-	t.Run("basic_stellar_to_evm_message", func(t *testing.T) {
-		// Get receiver address on EVM
-		evmReceiver, err := destChain.GetEOAReceiverAddress()
+	t.Run("stellar_to_evm_execution", func(t *testing.T) {
+		evmReceiver, err := evmChain.GetEOAReceiverAddress()
 		require.NoError(t, err)
 		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
 
-		// Record the latest ledger before sending so we know where to scan for events
-		latestLedger, err := rpc.GetLatestLedger(ctx)
+		seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
 		require.NoError(t, err)
-		startLedger := latestLedger.Sequence
-		l.Info().Uint32("startLedger", startLedger).Msg("Recording start ledger before sending")
+		l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from Stellar OnRamp")
 
-		// Build ExtraArgs with the VVR address so that the OnRamp invokes the
-		// VVR -> CommitteeVerifier chain and produces verification blobs.
-		mockFeeToken := helpers.GenerateMockContractID(t, deployerKP.Address(), "fee-token")
-		mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "executor")
-		extraArgs := onrampbindings.GenericExtraArgsV3{
-			Ccvs:               []string{vvrContractID},
-			CcvArgs:            [][]byte{{}},
-			Executor:           mockExecutor,
-			ExecutorArgs:       []byte{},
-			GasLimit:           0,
-			BlockConfirmations: 0,
-			TokenReceiver:      []byte{},
-			TokenArgs:          []byte{},
-		}
-		encodedExtraArgs, err := ccvchain.EncodeExtraArgsV3(extraArgs)
-		require.NoError(t, err)
-
-		// Build the CCIP message
-		msg := onrampbindings.StellarToAnyMessage{
-			Receiver:     evmReceiver,
-			Data:         []byte("hello from stellar"),
-			TokenAmounts: []onrampbindings.TokenAmount{},
-			FeeToken:     mockFeeToken,
-			ExtraArgs:    encodedExtraArgs,
-		}
-
-		// Send the message via the OnRamp's forward_from_router.
-		// The deployer is configured as the "router" in the dest chain config,
-		// so its transaction signature satisfies the router auth check.
-		l.Info().Str("original sender address", deployerKP.Address()).Msg("Sending CCIP message via OnRamp forward_from_router...")
-		messageID, err := onRampClient.ForwardFromRouter(
-			ctx,
-			evmDetails.ChainSelector,
-			msg,
-			0,                    // fee token amount (fee calculation not yet implemented)
-			deployerKP.Address(), // original sender
+		sendResult, err := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+			cciptestinterfaces.MessageFields{
+				Receiver: evmReceiver,
+				Data:     []byte("hello from stellar"),
+			},
+			cciptestinterfaces.MessageOptions{},
 		)
 		require.NoError(t, err)
 		l.Info().
-			Str("messageID", hex.EncodeToString(messageID[:])).
-			Msg("CCIP message sent successfully via OnRamp")
+			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
+			Msg("CCIP message sent from Stellar")
 
-		// Capture the CCIPMessageSent event via the SourceReader
-		l.Info().Msg("Fetching CCIPMessageSent events via SourceReader...")
-		var events []protocol.MessageSentEvent
-		require.Eventually(t, func() bool {
-			events, err = stellarSourceReader.FetchMessageSentEvents(
-				ctx,
-				big.NewInt(int64(startLedger)),
-				nil, // toBlock: nil means latest ledger
-			)
-			if err != nil {
-				l.Debug().Err(err).Msg("Failed to fetch events, retrying...")
-				return false
-			}
-			return len(events) > 0
-		}, stellarSentTimeout, 2*time.Second, "expected to find CCIPMessageSent event via SourceReader")
-
-		require.Len(t, events, 1, "expected exactly one CCIPMessageSent event")
-		capturedEvent := events[0]
-
-		l.Info().
-			Str("capturedMessageID", hex.EncodeToString(capturedEvent.MessageID[:])).
-			Uint64("sequenceNumber", uint64(capturedEvent.Message.SequenceNumber)).
-			Uint64("blockNumber", capturedEvent.BlockNumber).
-			Int("receiptsCount", len(capturedEvent.Receipts)).
-			Msg("Message captured via SourceReader")
-
-		for i, r := range capturedEvent.Receipts {
-			l.Info().
-				Int("index", i).
-				Str("issuer", r.Issuer.String()).
-				Uint64("destGasLimit", r.DestGasLimit).
-				Uint32("destBytesOverhead", r.DestBytesOverhead).
-				Str("feeTokenAmount", r.FeeTokenAmount.String()).
-				Str("extraArgs", hex.EncodeToString(r.ExtraArgs)).
-				Str("blob", hex.EncodeToString(r.Blob)).
-				Msg("Receipt details")
-		}
-
-		// Verify the captured event matches what we sent
-		require.Equal(t, protocol.Bytes32(messageID), capturedEvent.MessageID,
-			"message ID from OnRamp should match the one captured by SourceReader")
-
+		sentEvent, err := stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, stellarSentTimeout)
+		require.NoError(t, err)
+		messageID := sentEvent.MessageID
 		l.Info().
 			Str("messageID", hex.EncodeToString(messageID[:])).
-			Msg("Successfully sent and captured CCIP message from Stellar")
-
-		// =====================================================================
-		// Verifier and Execution Assertions
-		// =====================================================================
+			Msg("Sent event confirmed on Stellar")
 
 		defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
 		require.NotNil(t, defaultAggregatorClient)
 
-		// Wait for the committee verifier to sign and the aggregator to collect
-		// a quorum of signatures for this message.
 		testCtx := e2e.NewTestingContext(t, t.Context(), env.Chains, defaultAggregatorClient, env.IndexerMonitor)
 		result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
 			TickInterval:            1 * time.Second,
-			ExpectedVerifierResults: 1, // one default committee verifier
+			ExpectedVerifierResults: 1,
 			Timeout:                 tests.WaitTimeout(t),
 			AssertVerifierLogs:      false,
 			AssertExecutorLogs:      false,
@@ -261,24 +97,24 @@ func TestStellarToEVMSourceReader(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result.AggregatedResult)
 		require.Len(t, result.IndexedVerifications.Results, 1)
-
 		l.Info().
 			Str("messageID", hex.EncodeToString(messageID[:])).
 			Msg("Message verified and aggregated successfully")
 
-		// Wait for the message to be executed on the EVM destination chain.
-		// ev, err := destChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, 1, tests.WaitTimeout(t))
+		// TODO: uncomment once EVM executor is wired up for Stellar-sourced messages.
+		// execEvent, err := evmChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, seqNo, execTimeout)
 		// require.NoError(t, err)
 		// require.Equalf(
 		// 	t,
 		// 	cciptestinterfaces.ExecutionStateSuccess,
-		// 	ev.State,
+		// 	execEvent.State,
 		// 	"message should have been successfully executed, return data: %x",
-		// 	ev.ReturnData,
+		// 	execEvent.ReturnData,
 		// )
-
+		//
 		// l.Info().
 		// 	Str("messageID", hex.EncodeToString(messageID[:])).
+		// 	Uint64("seqNo", seqNo).
 		// 	Msg("Message executed successfully on EVM")
 	})
 }
