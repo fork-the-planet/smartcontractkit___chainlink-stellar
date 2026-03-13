@@ -8,8 +8,8 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_helpers::curse_checkable::CurseCheckable;
-use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use common_helpers::validation::Validatable;
+use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
@@ -111,9 +111,7 @@ impl CommitteeVerifierContract {
             .set(&STORAGE_LOCATIONS, &storage_locations);
 
         let remote_chains: Map<u64, RemoteChainConfig> = Map::new(&env);
-        env.storage()
-            .instance()
-            .set(&REMOTE_CHAINS, &remote_chains);
+        env.storage().instance().set(&REMOTE_CHAINS, &remote_chains);
 
         env.storage()
             .instance()
@@ -255,7 +253,7 @@ impl CommitteeVerifierContract {
             update.validate()?;
 
             remote_chains.set(update.remote_chain_selector, update.clone());
-            
+
             events::RemoteChainConfigSetEvent {
                 remote_chain_selector: update.remote_chain_selector,
                 router: update.router.clone(),
@@ -264,9 +262,7 @@ impl CommitteeVerifierContract {
             .publish(&env);
         }
 
-        env.storage()
-            .instance()
-            .set(&REMOTE_CHAINS, &remote_chains);
+        env.storage().instance().set(&REMOTE_CHAINS, &remote_chains);
 
         Ok(())
     }

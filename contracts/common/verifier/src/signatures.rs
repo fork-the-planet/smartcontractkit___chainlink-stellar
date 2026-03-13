@@ -1,7 +1,9 @@
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
-use soroban_sdk::{contracttrait, contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec};
+use soroban_sdk::{
+    contracttrait, contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

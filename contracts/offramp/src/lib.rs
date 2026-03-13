@@ -5,7 +5,8 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec, contract, contractimpl, symbol_short, xdr::ToXdr
+    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
+    Symbol, Vec,
 };
 
 use common_authorization::Ownable;
@@ -522,7 +523,7 @@ impl OffRampContract {
     }
 
     fn get_execution_state_internal(env: &Env, message_id: &BytesN<32>) -> MessageExecutionState {
-        // TODO: the key used for storage here should be the message ID 
+        // TODO: the key used for storage here should be the message ID
         // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
@@ -536,7 +537,7 @@ impl OffRampContract {
     }
 
     fn set_execution_state(env: &Env, message_id: &BytesN<32>, state: MessageExecutionState) {
-        // TODO: the key used for storage here should be the message ID 
+        // TODO: the key used for storage here should be the message ID
         // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let mut exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
