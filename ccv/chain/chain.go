@@ -43,6 +43,7 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -174,6 +175,23 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
 	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
 
+	// Get the router's address from the datastore
+	// TODO: move this to a re-usable method, repeated code (getting a hex address and converting to strkey)
+	routerKey := datastore.NewAddressRefKey(
+		selector,
+		datastore.ContractType(routeroperations.ContractType),
+		semver.MustParse(routeroperations.Deploy.Version()),
+		"",
+	)
+	routerRef, lookupErr := e.DataStore.Addresses().Get(routerKey)
+	if lookupErr != nil {
+		return fmt.Errorf("failed to get router address: %w", lookupErr)
+	}
+	routerAddress, err := scval.HexToContractStrkey(routerRef.Address)
+	if err != nil {
+		return fmt.Errorf("failed to convert router address: %w", err)
+	}
+
 	// TODO: what's the correct executor contract ID?
 	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
 
@@ -190,7 +208,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 			BaseExecutionGasCost:      100000,
 			DefaultCcvs:               []string{c.vvrContractID},
 			DestChainSelector:         remoteSelector,
-			Router:                    c.deployerKeypair.Address(), // TODO: use correct address
+			Router:                    routerAddress,
 			OffRamp:                   offRampBytes,
 			DefaultExecutor:           executorContractID,
 			LaneMandatedCcvs:          []string{},
@@ -230,7 +248,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 				SourceChainSelector: rs,
 				IsEnabled:           true,
 				OnRamps:             [][]byte{paddedOnRampBytes},
-				Router:              c.deployerKeypair.Address(),
+				Router:              routerAddress,
 				DefaultCcvs:         []string{c.vvrContractID},
 				LaneMandatedCcvs:    []string{},
 			})
@@ -602,6 +620,27 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Str("offRampContractID", offRampContractID).Msg("OffRamp initialized")
 
+	// Deploy the Router contract
+	routerWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "router.wasm")
+	if _, statErr := os.Stat(routerWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("Router WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", routerWasmPath)
+	}
+
+	c.logger.Info().Str("wasmPath", routerWasmPath).Msg("Deploying Router contract...")
+	routerSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "router")
+	routerContractID, err := c.deployer.DeployContract(ctx, routerWasmPath, routerSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy Router contract: %w", err)
+	}
+	c.logger.Info().Str("contractID", routerContractID).Msg("Router contract deployed")
+
+	routerClient := routerbindings.NewRouterClient(c.deployer, routerContractID)
+	err = routerClient.Initialize(ctx, c.deployerKeypair.Address(), rmnProxyContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Router: %w", err)
+	}
+	c.logger.Info().Str("routerContractID", routerContractID).Msg("Router initialized")
+
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
 	if err != nil {
@@ -627,7 +666,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	})
 
 	// Add Router
-	routerHex, err := strkeyToHex(c.deployerKeypair.Address()) // TODO: use the actual Router contract address
+	routerHex, err := strkeyToHex(routerContractID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert Router address: %w", err)
 	}

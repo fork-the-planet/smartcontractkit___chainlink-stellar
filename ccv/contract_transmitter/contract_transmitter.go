@@ -116,5 +116,13 @@ func (ct *ContractTransmitter) ConvertAndWriteMessageToChain(ctx context.Context
 	}
 
 	err = ct.offrampClient.Execute(ctx, encodedMsg, ccvScVals, report.CCVData, DefaultGasLimitOverride)
+
+	if err != nil {
+		ct.lggr.Error().
+			Err(err).
+			Str("messageID", messageID.String()).
+			Msg("Unable to submit txn: offramp client execute failed")
+	}
+
 	return err
 }
