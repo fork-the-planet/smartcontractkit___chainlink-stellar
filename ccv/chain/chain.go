@@ -99,12 +99,12 @@ type Chain struct {
 	deployer          *stellardeployment.Deployer
 	onRampClient      *onrampbindings.OnRampClient
 	onRampContractID  string
-	offRampClient      *offrampbindings.OffRampClient
-	offRampContractID  string
-	routerClient       *routerbindings.RouterClient
-	routerContractID   string
-	vvrContractID      string
-	cvContractID       string
+	offRampClient     *offrampbindings.OffRampClient
+	offRampContractID string
+	routerClient      *routerbindings.RouterClient
+	routerContractID  string
+	vvrContractID     string
+	cvContractID      string
 }
 
 // New creates a new Stellar Chain instance.
