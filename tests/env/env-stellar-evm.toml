@@ -20,23 +20,33 @@ TraceBatchTimeout = 10
 
 # NOPs for Stellar-EVM lanes
 [[environment_topology.nop_topology.nops]]
-alias = "default-verifier-1"
-name = "default-verifier-1"
+alias = "stellar-verifier-1"
+name = "stellar-verifier-1"
 mode = "standalone"
 
 [[environment_topology.nop_topology.nops]]
-alias = "default-verifier-2"
-name = "default-verifier-2"
+alias = "stellar-verifier-2"
+name = "stellar-verifier-2"
 mode = "standalone"
 
 [[environment_topology.nop_topology.nops]]
-alias = "default-executor-1"
-name = "default-executor-1"
+alias = "evm-verifier-1"
+name = "evm-verifier-1"
 mode = "standalone"
 
 [[environment_topology.nop_topology.nops]]
-alias = "default-executor-2"
-name = "default-executor-2"
+alias = "evm-verifier-2"
+name = "evm-verifier-2"
+mode = "standalone"
+
+[[environment_topology.nop_topology.nops]]
+alias = "stellar-executor-1"
+name = "stellar-executor-1"
+mode = "standalone"
+
+[[environment_topology.nop_topology.nops]]
+alias = "evm-executor-1"
+name = "evm-executor-1"
 mode = "standalone"
 
 # [[environment_topology.nop_topology.nops]]
@@ -69,18 +79,18 @@ name = "default"
 address = "default-aggregator:50051"
 insecure_connection = true
 
-# EVM chain configs
+# EVM chain configs (verified by EVM verifiers)
 [environment_topology.nop_topology.committees.default.chain_configs.3379446385462418246]
-nop_aliases = ["default-verifier-1", "default-verifier-2"]
+nop_aliases = ["evm-verifier-1", "evm-verifier-2"]
 threshold = 2
 
 [environment_topology.nop_topology.committees.default.chain_configs.12922642891491394802]
-nop_aliases = ["default-verifier-1", "default-verifier-2"]
+nop_aliases = ["evm-verifier-1", "evm-verifier-2"]
 threshold = 2
 
-# Stellar chain config
+# Stellar chain config (verified by Stellar verifiers)
 [environment_topology.nop_topology.committees.default.chain_configs.17301180955411967724]
-nop_aliases = ["default-verifier-1", "default-verifier-2"]
+nop_aliases = ["stellar-verifier-1", "stellar-verifier-2"]
 threshold = 2
 
 # # Secondary committee
@@ -128,7 +138,7 @@ threshold = 2
 # threshold = 2
 
 [environment_topology.executor_pools.default]
-nop_aliases = ["default-executor-1", "default-executor-2"]
+nop_aliases = ["stellar-executor-1", "evm-executor-1"]
 execution_interval = 15_000_000_000
 
 [cldf]
@@ -176,28 +186,28 @@ execution_interval = 15_000_000_000
     file_path = "../pricer/keystore.json"
     password = "keystore_test_password"
 
-## Verifier Setup
+## Stellar Verifier Setup
 [[verifier]]
   chain_family = "stellar"
   image = "stellarcommittee-verifier:dev"
-  container_name = "default-verifier-1"
-  nop_alias = "default-verifier-1"
+  container_name = "stellar-verifier-1"
+  nop_alias = "stellar-verifier-1"
   port = 8100
   source_code_path = "chainlink-ccv/verifier"
   root_path = "../chainlink-ccv"
   committee_name = "default"
   node_index = 0
-  disable_finality_checkers = ["17301180955411967724"] # May not be needed for Stellar
+  disable_finality_checkers = ["17301180955411967724"]
   [verifier.db]
     image = "postgres:16-alpine"
-    name = "default-verifier-1-db"
+    name = "stellar-verifier-1-db"
     port = 8432
 
 [[verifier]]
   chain_family = "stellar"
   image = "stellarcommittee-verifier:dev"
-  container_name = "default-verifier-2"
-  nop_alias = "default-verifier-2"
+  container_name = "stellar-verifier-2"
+  nop_alias = "stellar-verifier-2"
   port = 8200
   source_code_path = "chainlink-ccv/verifier"
   root_path = "../chainlink-ccv"
@@ -206,8 +216,39 @@ execution_interval = 15_000_000_000
   disable_finality_checkers = ["17301180955411967724"]
   [verifier.db]
     image = "postgres:16-alpine"
-    name = "default-verifier-2-db"
+    name = "stellar-verifier-2-db"
     port = 8433
+
+## EVM Verifier Setup
+[[verifier]]
+  # chain_family = "evm"
+  image = "verifier:dev"
+  container_name = "evm-verifier-1"
+  nop_alias = "evm-verifier-1"
+  port = 8300
+  source_code_path = "chainlink-ccv/verifier"
+  root_path = "../chainlink-ccv"
+  committee_name = "default"
+  node_index = 0
+  [verifier.db]
+    image = "postgres:16-alpine"
+    name = "evm-verifier-1-db"
+    port = 8434
+
+[[verifier]]
+  # chain_family = "evm"
+  image = "verifier:dev"
+  container_name = "evm-verifier-2"
+  nop_alias = "evm-verifier-2"
+  port = 8400
+  source_code_path = "chainlink-ccv/verifier"
+  root_path = "../chainlink-ccv"
+  committee_name = "default"
+  node_index = 1
+  [verifier.db]
+    image = "postgres:16-alpine"
+    name = "evm-verifier-2-db"
+    port = 8435
 
 # # Secondary Verifier Setup
 # [[verifier]]
@@ -272,23 +313,23 @@ execution_interval = 15_000_000_000
 #     port = 8437
 
 [[executor]]
-  image = "executor:dev"
+  chain_family = "stellar"
+  image = "stellarexecutor:dev"
   port = 8101
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
-  container_name = "default-executor-1"
-  nop_alias = "default-executor-1"
+  container_name = "stellar-executor-1"
+  nop_alias = "stellar-executor-1"
   executor_qualifier = "default"
 
 [[executor]]
   image = "executor:dev"
-  port = 8102
+  port = 8201
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
-  container_name = "default-executor-2"
-  nop_alias = "default-executor-2"
+  container_name = "evm-executor-1"
+  nop_alias = "evm-executor-1"
   executor_qualifier = "default"
-
 
 [[indexer]]
   image = "indexer:dev"
@@ -395,14 +436,26 @@ URI = "postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable"
     host_port  = 6379
 
   [[aggregator.api_clients]]
-  client_id = "default-verifier-1"
-  description = "Development default verifier 1"
+  client_id = "stellar-verifier-1"
+  description = "Stellar verifier 1"
   enabled = true
   groups = ["verifiers"]
 
   [[aggregator.api_clients]]
-  client_id = "default-verifier-2"
-  description = "Development default verifier 2"
+  client_id = "stellar-verifier-2"
+  description = "Stellar verifier 2"
+  enabled = true
+  groups = ["verifiers"]
+
+  [[aggregator.api_clients]]
+  client_id = "evm-verifier-1"
+  description = "EVM verifier 1"
+  enabled = true
+  groups = ["verifiers"]
+
+  [[aggregator.api_clients]]
+  client_id = "evm-verifier-2"
+  description = "EVM verifier 2"
   enabled = true
   groups = ["verifiers"]
 
@@ -417,6 +470,30 @@ URI = "postgresql://indexer:indexer@indexer-db:5432/indexer?sslmode=disable"
   description = "Development Indexer"
   enabled = true
   groups = ["indexer"]
+
+  [[aggregator.api_clients]]
+  client_id = "evm-executor-1"
+  description = "EVM executor 1"
+  enabled = true
+  groups = ["executors"]
+
+  [[aggregator.api_clients]]
+  client_id = "evm-executor-2"
+  description = "EVM executor 2"
+  enabled = true
+  groups = ["executors"]
+
+  [[aggregator.api_clients]]
+  client_id = "stellar-executor-1"
+  description = "Stellar executor 1"
+  enabled = true
+  groups = ["executors"]
+
+  [[aggregator.api_clients]]
+  client_id = "stellar-executor-2"
+  description = "Stellar executor 2"
+  enabled = true
+  groups = ["executors"]
 
   # Environment variables for sensitive configuration
   [aggregator.env]

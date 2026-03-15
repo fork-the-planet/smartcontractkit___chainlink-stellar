@@ -1,4 +1,4 @@
-package devenv
+package modifier
 
 import (
 	"fmt"
@@ -22,17 +22,17 @@ import (
 
 const defaultStellarVerifierImage = "stellarcommittee-verifier:dev"
 
-// StellarModifier is a committeeverifier.ReqModifier that configures the container
+// StellarVerifierModifier is a committeeverifier.ReqModifier that configures the container
 // request for the Stellar committee verifier:
 //  1. Switches the image from the default EVM verifier to stellarcommittee-verifier:dev.
 //  2. Builds a stellar.toml from real deployed addresses (via verifierInput.GeneratedConfig)
 //     and Stellar network info (passphrase + internal RPC URL from blockchain outputs), then
 //     bind-mounts it at DefaultStellarConfigPath so the binary reads it on startup.
-func StellarModifier(req testcontainers.ContainerRequest, verifierInput *committeeverifier.Input, outputs []*blockchain.Output) (testcontainers.ContainerRequest, error) {
+func StellarVerifierModifier(req testcontainers.ContainerRequest, verifierInput *committeeverifier.Input, outputs []*blockchain.Output) (testcontainers.ContainerRequest, error) {
 	req.Image = defaultStellarVerifierImage
 	req.Name = fmt.Sprintf("stellar-%s", verifierInput.ContainerName)
 
-	configBytes, err := buildStellarConfig(verifierInput, outputs)
+	configBytes, err := buildVerifierStellarConfig(verifierInput, outputs)
 	if err != nil {
 		return req, fmt.Errorf("building stellar config for %s: %w", verifierInput.ContainerName, err)
 	}
@@ -51,15 +51,8 @@ func StellarModifier(req testcontainers.ContainerRequest, verifierInput *committ
 	return req, nil
 }
 
-// buildStellarConfig constructs a common.Config and serialises it as TOML.
-//
-// For each Stellar chain in outputs:
-//   - Network passphrase: output.NetworkSpecificData.StellarNetwork.NetworkPassphrase
-//   - Soroban RPC URL: output.Nodes[0].InternalHTTPUrl (Docker-internal, reachable from the container)
-//   - OnRamp and RMN Remote addresses: verifierInput.GeneratedConfig (commit.Config),
-//     which contains the real deployed addresses from the CLDF datastore, stored as
-//     0x-prefixed hex; we convert them to Stellar contract strkeys (C...) here.
-func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*blockchain.Output) ([]byte, error) {
+// buildVerifierStellarConfig constructs a common.Config with ReaderConfigs and serialises it as TOML.
+func buildVerifierStellarConfig(verifierInput *committeeverifier.Input, outputs []*blockchain.Output) ([]byte, error) {
 	var deployedCfg commit.Config
 	if verifierInput.GeneratedConfig != "" {
 		if _, err := toml.Decode(verifierInput.GeneratedConfig, &deployedCfg); err != nil {
@@ -67,8 +60,7 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 		}
 	}
 
-	// TODO: remove this after debugging
-	l := zerolog.New(os.Stderr).Level(zerolog.DebugLevel).With().Fields(map[string]any{"component": "stellar-modifier"}).Logger()
+	l := zerolog.New(os.Stderr).Level(zerolog.DebugLevel).With().Fields(map[string]any{"component": "stellar-verifier-modifier"}).Logger()
 	l.Info().Msgf("Deployed config: %+v", deployedCfg)
 
 	readerConfigs := make(map[string]sourcereader.ReaderConfig)
@@ -97,7 +89,6 @@ func buildStellarConfig(verifierInput *committeeverifier.Input, outputs []*block
 		var onrampContractID string
 		onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]
 		if !ok {
-			// return nil, fmt.Errorf("no deployed OnRamp address for Stellar chain %s in GeneratedConfig", strSelector)
 			// TODO: should we throw an error here?
 		} else {
 			onrampContractID, err = scval.HexToContractStrkey(onrampHex)
