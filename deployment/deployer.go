@@ -422,7 +422,7 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 	case "ERROR":
 		// Transaction was rejected - decode the error
 		if submitResult.ErrorResultXDR != "" {
-			return nil, fmt.Errorf("transaction rejected: %s (diagnostics: %v)", submitResult.ErrorResultXDR, submitResult.DiagnosticEventsXDR)
+			return nil, fmt.Errorf("transaction rejected: %v (diagnostics: %v)", submitResult.ErrorResultXDR, submitResult.DiagnosticEventsXDR)
 		}
 		return nil, fmt.Errorf("transaction rejected with status ERROR")
 	default:

@@ -143,9 +143,13 @@ impl OffRampContract {
             &source_config,
         )?;
 
-        // OffRamp address in the message must match this contract
+        // OffRamp address in the message must match this contract.
+        // We compare only the 32-byte hash of the contract address and leave
+        // out the discriminant bytes.
         let self_xdr = env.current_contract_address().to_xdr(&env);
-        if message.offramp_address != self_xdr {
+        // TODO: is there a better way to do this rather than slicing bytes?
+        let self_hash = self_xdr.slice(self_xdr.len() - 32..);
+        if message.offramp_address != self_hash {
             return Err(CCIPError::InvalidOffRampAddress);
         }
 
@@ -482,6 +486,7 @@ impl OffRampContract {
         args.push_back(source_chain_selector.into_val(env));
         args.push_back(message.clone().into_val(env));
 
+        // TODO: use router's interface instead of directly calling the function
         let _result = env.invoke_contract::<Result<(), CCIPError>>(
             router,
             &Symbol::new(env, "route_message"),
@@ -518,6 +523,8 @@ impl OffRampContract {
     }
 
     fn get_execution_state_internal(env: &Env, message_id: &BytesN<32>) -> MessageExecutionState {
+        // TODO: the key used for storage here should be the message ID
+        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()
@@ -530,6 +537,8 @@ impl OffRampContract {
     }
 
     fn set_execution_state(env: &Env, message_id: &BytesN<32>, state: MessageExecutionState) {
+        // TODO: the key used for storage here should be the message ID
+        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
         let mut exec_states: Map<BytesN<32>, MessageExecutionState> = env
             .storage()
             .persistent()

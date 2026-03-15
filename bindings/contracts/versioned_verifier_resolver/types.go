@@ -659,7 +659,7 @@ const (
 	CCIPErrorInvalidSignatureCount          = 16
 	CCIPErrorInvalidSignatureThreshold      = 17
 	CCIPErrorInvalidSignaturePubkey         = 18
-	CCIPErrorSourceNotConfigured            = 19
+	CCIPErrorSourceSignersNotConfigured     = 19
 	CCIPErrorInvalidVerifierResults         = 20
 	CCIPErrorReentrantCall                  = 21
 	CCIPErrorTokenNotSupported              = 22
@@ -752,7 +752,7 @@ var CCIPErrorMessage = map[int]string{
 	16:  "invalid signature count",
 	17:  "invalid signature threshold",
 	18:  "invalid signature pubkey",
-	19:  "source not configured",
+	19:  "source signers not configured",
 	20:  "invalid verifier results",
 	21:  "reentrant call",
 	22:  "token not supported",

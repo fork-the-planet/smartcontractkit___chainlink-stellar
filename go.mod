@@ -12,7 +12,7 @@ require (
 	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260219214941-b6d2149fb063
 	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260219214941-b6d2149fb063
 	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260309232330-9cc73227b738
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260310024353-f907444f2fd0
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260310220308-c4ffc357820c
 	github.com/smartcontractkit/chainlink-ccv/deployments v0.0.0-20260225091500-bd15cccf316a
 	github.com/smartcontractkit/chainlink-common v0.10.1-0.20260217084735-307a5770c4f6
 	github.com/smartcontractkit/chainlink-deployments-framework v0.85.0
@@ -312,7 +312,7 @@ require (
 	github.com/hashicorp/go-bexpr v0.1.10 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/hasura/go-graphql-client v0.14.5 // indirect
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect

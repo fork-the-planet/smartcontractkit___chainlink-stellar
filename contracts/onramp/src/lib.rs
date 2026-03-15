@@ -172,15 +172,20 @@ impl OnRampContract {
 
         // TODO: add the defualt ccv from dest config if no user-specified CCVs
 
-        // Query each CCV for fees
+        // Query each CCV (via VVR resolution) for fees
         let ccv_fees_usd_cents = extra_args
             .ccvs
             .iter()
             .zip(extra_args.ccv_args.iter())
             .try_fold(0u128, |acc, (ccv, ccv_args)| {
+                // TODO: are these addresses meant to be the VVR addresses or the verifier addresses?
+                let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
+                let verifier_address =
+                    vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
+
                 let ccv_fee_response = Self::get_ccv_fee_internal(
                     &env,
-                    &ccv,
+                    &verifier_address,
                     dest_chain_selector,
                     &message_bytes,
                     &ccv_args,

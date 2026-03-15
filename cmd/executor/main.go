@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"os"
@@ -105,8 +106,9 @@ func main() {
 						continue
 					}
 
-					// TODO: get deployer keypair from env or keystore
-					deployerKeypair, err := keypair.Random()
+					// TODO: get deployer keypair from env instead of generating a random one
+					deployerSeed := sha256.Sum256(fmt.Appendf(nil, "deployer-%s", tc.NetworkPassphrase))
+					deployerKeypair, err := keypair.FromRawSeed(deployerSeed)
 					if err != nil {
 						return nil, fmt.Errorf("failed to create deployer keypair for chain %s: %w", strSel, err)
 					}
@@ -154,7 +156,7 @@ func main() {
 						}
 					}
 
-					dr, err := destinationreader.New(invoker, offRampID, rmnRemoteID, &zerologLogger)
+					dr, err := destinationreader.New(invoker, rpcClient, offRampID, rmnRemoteID, &zerologLogger, cfg.MaxRetryDuration)
 					if err != nil {
 						return nil, fmt.Errorf("failed to create destination reader for chain %s: %w", strSel, err)
 					}

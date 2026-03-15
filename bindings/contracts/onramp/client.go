@@ -507,7 +507,7 @@ func (c *OnRampClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger 
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -519,7 +519,7 @@ func (c *OnRampClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger 
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -584,7 +584,7 @@ func (c *OnRampClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger 
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -596,7 +596,7 @@ func (c *OnRampClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger 
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -661,7 +661,7 @@ func (c *OnRampClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, st
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -673,7 +673,7 @@ func (c *OnRampClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, st
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -728,7 +728,7 @@ func (c *OnRampClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, 
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -740,7 +740,7 @@ func (c *OnRampClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, 
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -795,7 +795,7 @@ func (c *OnRampClient) WaitForOwnershipTransferStartedEvent(ctx context.Context,
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -807,7 +807,7 @@ func (c *OnRampClient) WaitForOwnershipTransferStartedEvent(ctx context.Context,
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -867,7 +867,7 @@ func (c *OnRampClient) WaitForConfigSetEvent(ctx context.Context, startLedger ui
 			}
 
 			for _, e := range events {
-				parsed, err := parseConfigSetEvent(e)
+				parsed, err := ParseConfigSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -879,7 +879,7 @@ func (c *OnRampClient) WaitForConfigSetEvent(ctx context.Context, startLedger ui
 	}
 }
 
-func parseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+func ParseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -939,7 +939,7 @@ func (c *OnRampClient) WaitForCCIPMessageSentEvent(ctx context.Context, startLed
 			}
 
 			for _, e := range events {
-				parsed, err := parseCCIPMessageSentEvent(e)
+				parsed, err := ParseCCIPMessageSentEvent(e)
 				if err != nil {
 					continue
 				}
@@ -951,7 +951,7 @@ func (c *OnRampClient) WaitForCCIPMessageSentEvent(ctx context.Context, startLed
 	}
 }
 
-func parseCCIPMessageSentEvent(e protocolrpc.EventInfo) (*CCIPMessageSentEvent, error) {
+func ParseCCIPMessageSentEvent(e protocolrpc.EventInfo) (*CCIPMessageSentEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1060,7 +1060,7 @@ func (c *OnRampClient) WaitForDestChainConfigSetEvent(ctx context.Context, start
 			}
 
 			for _, e := range events {
-				parsed, err := parseDestChainConfigSetEvent(e)
+				parsed, err := ParseDestChainConfigSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1072,7 +1072,7 @@ func (c *OnRampClient) WaitForDestChainConfigSetEvent(ctx context.Context, start
 	}
 }
 
-func parseDestChainConfigSetEvent(e protocolrpc.EventInfo) (*DestChainConfigSetEvent, error) {
+func ParseDestChainConfigSetEvent(e protocolrpc.EventInfo) (*DestChainConfigSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1137,7 +1137,7 @@ func (c *OnRampClient) WaitForOwnershipTransferredEvent(ctx context.Context, sta
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferredEvent(e)
+				parsed, err := ParseOwnershipTransferredEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1149,7 +1149,7 @@ func (c *OnRampClient) WaitForOwnershipTransferredEvent(ctx context.Context, sta
 	}
 }
 
-func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransferredEvent, error) {
+func ParseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransferredEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)

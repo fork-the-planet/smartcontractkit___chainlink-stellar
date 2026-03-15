@@ -153,7 +153,7 @@ pub enum CCIPError {
     InvalidSignatureCount = 16,
     InvalidSignatureThreshold = 17,
     InvalidSignaturePubkey = 18,
-    SourceNotConfigured = 19,
+    SourceSignersNotConfigured = 19,
     InvalidVerifierResults = 20,
     ReentrantCall = 21,
     TokenNotSupported = 22,

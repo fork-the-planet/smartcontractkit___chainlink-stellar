@@ -3,14 +3,17 @@ package destinationreader
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 var _ chainaccess.DestinationReader = (*DestinationReader)(nil)
@@ -25,21 +28,27 @@ type Config struct {
 
 // DestinationReader reads execution state and CCV data from the Stellar OffRamp contract.
 type DestinationReader struct {
-	lggr             *zerolog.Logger
-	invoker          bindings.Invoker
-	offrampClient    *offrampbindings.OffRampClient
-	rmnRemoteAddress string
+	lggr                   *zerolog.Logger
+	invoker                bindings.Invoker
+	offrampClient          *offrampbindings.OffRampClient
+	rmnRemoteAddress       string
+	executionAttemptPoller *StellarExecutionAttemptPoller
 }
 
 // New creates a new Stellar DestinationReader.
 func New(
 	invoker bindings.Invoker,
+	rpcClient *rpcclient.Client,
 	offRampContractID string,
 	rmnRemoteContractID string,
 	lggr *zerolog.Logger,
+	attemptCacheExpiration time.Duration,
 ) (*DestinationReader, error) {
 	if invoker == nil {
 		return nil, fmt.Errorf("invoker is required")
+	}
+	if rpcClient == nil {
+		return nil, fmt.Errorf("rpc client is required")
 	}
 	if offRampContractID == "" {
 		return nil, fmt.Errorf("offramp contract ID is required")
@@ -51,22 +60,34 @@ func New(
 		return nil, fmt.Errorf("logger is required")
 	}
 
+	poller, err := NewStellarExecutionAttemptPoller(rpcClient, offRampContractID, lggr, attemptCacheExpiration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create execution attempt poller: %w", err)
+	}
+
 	return &DestinationReader{
-		lggr:             lggr,
-		invoker:          invoker,
-		offrampClient:    offrampbindings.NewOffRampClient(invoker, offRampContractID),
-		rmnRemoteAddress: rmnRemoteContractID,
+		lggr:                   lggr,
+		invoker:                invoker,
+		offrampClient:          offrampbindings.NewOffRampClient(invoker, offRampContractID),
+		rmnRemoteAddress:       rmnRemoteContractID,
+		executionAttemptPoller: poller,
 	}, nil
 }
 
 // Start implements services.Service.
-func (d *DestinationReader) Start(_ context.Context) error {
+func (d *DestinationReader) Start(ctx context.Context) error {
+	if err := d.executionAttemptPoller.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start execution attempt poller: %w", err)
+	}
 	d.lggr.Info().Msg("Stellar DestinationReader started")
 	return nil
 }
 
 // Close implements services.Service.
 func (d *DestinationReader) Close() error {
+	if err := d.executionAttemptPoller.Close(); err != nil {
+		d.lggr.Error().Err(err).Msg("Failed to stop execution attempt poller")
+	}
 	d.lggr.Info().Msg("Stellar DestinationReader stopped")
 	return nil
 }
@@ -78,7 +99,11 @@ func (d *DestinationReader) Ready() error {
 
 // HealthReport implements services.Service.
 func (d *DestinationReader) HealthReport() map[string]error {
-	return map[string]error{"StellarDestinationReader": nil}
+	report := map[string]error{"StellarDestinationReader": nil}
+	for k, v := range d.executionAttemptPoller.HealthReport() {
+		report[k] = v
+	}
+	return report
 }
 
 // Name implements services.Service.
@@ -101,15 +126,59 @@ func (d *DestinationReader) GetMessageSuccess(ctx context.Context, message proto
 }
 
 // GetCCVSForMessage returns the cross-chain verification addresses for the message.
-// TODO: implement by querying the OffRamp contract's source chain config for CCV addresses.
-func (d *DestinationReader) GetCCVSForMessage(_ context.Context, _ protocol.Message) (protocol.CCVAddressInfo, error) {
-	return protocol.CCVAddressInfo{}, fmt.Errorf("GetCCVSForMessage not yet implemented for Stellar")
+// It queries the OffRamp's source chain config to determine which CCVs are required
+// (lane-mandated) and which are optional (defaults). The Stellar OffRamp quorum logic
+// requires all lane-mandated CCVs plus at least one default CCV to verify.
+func (d *DestinationReader) GetCCVSForMessage(ctx context.Context, message protocol.Message) (protocol.CCVAddressInfo, error) {
+	sourceSelector := uint64(message.SourceChainSelector)
+
+	sourceConfig, err := d.offrampClient.GetSourceChainConfig(ctx, sourceSelector)
+	if err != nil {
+		return protocol.CCVAddressInfo{}, fmt.Errorf("failed to get source chain config for selector %d: %w", sourceSelector, err)
+	}
+
+	requiredCCVs := make([]protocol.UnknownAddress, len(sourceConfig.LaneMandatedCcvs))
+	for i, addr := range sourceConfig.LaneMandatedCcvs {
+		parsedAddr := scval.ParseAddress(addr)
+		if parsedAddr == nil {
+			return protocol.CCVAddressInfo{}, fmt.Errorf("failed to parse address: %s", addr)
+		}
+		requiredCCVs[i] = protocol.UnknownAddress((*parsedAddr.ContractId)[:])
+	}
+
+	optionalCCVs := make([]protocol.UnknownAddress, len(sourceConfig.DefaultCcvs))
+	for i, addr := range sourceConfig.DefaultCcvs {
+		parsedAddr := scval.ParseAddress(addr)
+		if parsedAddr == nil {
+			return protocol.CCVAddressInfo{}, fmt.Errorf("failed to parse address: %s", addr)
+		}
+		optionalCCVs[i] = protocol.UnknownAddress((*parsedAddr.ContractId)[:])
+	}
+
+	var optionalThreshold uint8
+	if len(optionalCCVs) > 0 {
+		optionalThreshold = 1
+	}
+
+	ccvInfo := protocol.CCVAddressInfo{
+		RequiredCCVs:      requiredCCVs,
+		OptionalCCVs:      optionalCCVs,
+		OptionalThreshold: optionalThreshold,
+	}
+
+	d.lggr.Info().
+		Uint64("sourceChainSelector", sourceSelector).
+		Int("requiredCCVs", len(requiredCCVs)).
+		Int("optionalCCVs", len(optionalCCVs)).
+		Uint8("optionalThreshold", optionalThreshold).
+		Msg("Resolved CCV info for message")
+
+	return ccvInfo, nil
 }
 
-// GetExecutionAttempts returns the execution attempts for a given message.
-// TODO: implement by querying OffRamp execution events or state for the message.
-func (d *DestinationReader) GetExecutionAttempts(_ context.Context, _ protocol.Message) ([]protocol.ExecutionAttempt, error) {
-	return nil, fmt.Errorf("GetExecutionAttempts not yet implemented for Stellar")
+// GetExecutionAttempts retrieves execution attempts for the given message from the poller cache.
+func (d *DestinationReader) GetExecutionAttempts(ctx context.Context, message protocol.Message) ([]protocol.ExecutionAttempt, error) {
+	return d.executionAttemptPoller.GetExecutionAttempts(ctx, message)
 }
 
 // GetRMNCursedSubjects queries the RMN Remote contract for cursed subjects.

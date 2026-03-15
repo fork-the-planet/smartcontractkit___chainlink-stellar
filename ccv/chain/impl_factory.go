@@ -14,14 +14,20 @@ import (
 	"github.com/stellar/go-stellar-sdk/keypair"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
+	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
@@ -91,7 +97,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		deployer:          deployer,
 	}
 
-	// Look up the deployed OnRamp contract address from the datastore and wire up the client.
+	// Look up deployed contract addresses from the datastore and wire up clients.
 	if env.DataStore != nil {
 		onrampKey := datastore.NewAddressRefKey(
 			details.ChainSelector,
@@ -105,6 +111,64 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			if convErr == nil {
 				chain.onRampContractID = onrampContractID
 				chain.onRampClient = onrampbindings.NewOnRampClient(deployer, onrampContractID)
+			}
+		}
+
+		offrampKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(offrampoperations.ContractType),
+			semver.MustParse(offrampoperations.Deploy.Version()),
+			"",
+		)
+		offrampRef, err := env.DataStore.Addresses().Get(offrampKey)
+		if err == nil && offrampRef.Address != "" {
+			offrampContractID, convErr := scval.HexToContractStrkey(offrampRef.Address)
+			if convErr == nil {
+				chain.offRampContractID = offrampContractID
+				chain.offRampClient = offrampbindings.NewOffRampClient(deployer, offrampContractID)
+			}
+		}
+
+		routerKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(routeroperations.ContractType),
+			semver.MustParse(routeroperations.Deploy.Version()),
+			"",
+		)
+		routerRef, err := env.DataStore.Addresses().Get(routerKey)
+		if err == nil && routerRef.Address != "" {
+			routerContractID, convErr := scval.HexToContractStrkey(routerRef.Address)
+			if convErr == nil {
+				chain.routerContractID = routerContractID
+				chain.routerClient = routerbindings.NewRouterClient(deployer, routerContractID)
+			}
+		}
+
+		vvrKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(committee_verifier.ResolverType),
+			semver.MustParse(committee_verifier.Deploy.Version()),
+			devenvcommon.DefaultCommitteeVerifierQualifier,
+		)
+		vvrRef, err := env.DataStore.Addresses().Get(vvrKey)
+		if err == nil && vvrRef.Address != "" {
+			vvrContractID, convErr := scval.HexToContractStrkey(vvrRef.Address)
+			if convErr == nil {
+				chain.vvrContractID = vvrContractID
+			}
+		}
+
+		cvKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(committee_verifier.ContractType),
+			semver.MustParse(committee_verifier.Deploy.Version()),
+			devenvcommon.DefaultCommitteeVerifierQualifier,
+		)
+		cvRef, err := env.DataStore.Addresses().Get(cvKey)
+		if err == nil && cvRef.Address != "" {
+			cvContractID, convErr := scval.HexToContractStrkey(cvRef.Address)
+			if convErr == nil {
+				chain.cvContractID = cvContractID
 			}
 		}
 	}

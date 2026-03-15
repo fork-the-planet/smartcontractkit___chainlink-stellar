@@ -364,7 +364,7 @@ func generateEventHelpers(b *strings.Builder, contract *Contract) {
 		b.WriteString("\t\t\t\tcontinue\n")
 		b.WriteString("\t\t\t}\n\n")
 		b.WriteString("\t\t\tfor _, e := range events {\n")
-		b.WriteString(fmt.Sprintf("\t\t\t\tparsed, err := parse%s(e)\n", event.Name))
+		b.WriteString(fmt.Sprintf("\t\t\t\tparsed, err := Parse%s(e)\n", event.Name))
 		b.WriteString("\t\t\t\tif err != nil {\n")
 		b.WriteString("\t\t\t\t\tcontinue\n")
 		b.WriteString("\t\t\t\t}\n")
@@ -382,7 +382,7 @@ func generateEventHelpers(b *strings.Builder, contract *Contract) {
 }
 
 func generateEventParser(b *strings.Builder, event Event) {
-	b.WriteString(fmt.Sprintf("func parse%s(e protocolrpc.EventInfo) (*%s, error) {\n", event.Name, event.Name))
+	b.WriteString(fmt.Sprintf("func Parse%s(e protocolrpc.EventInfo) (*%s, error) {\n", event.Name, event.Name))
 	b.WriteString("\tvar eventVal xdr.ScVal\n")
 	b.WriteString("\tif err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {\n")
 	b.WriteString("\t\treturn nil, fmt.Errorf(\"failed to decode event: %w\", err)\n")
@@ -626,6 +626,7 @@ func isStructType(rustType string) bool {
 	return true
 }
 
+// TODO: remove this function and use getToScValConverter instead
 func getArgConverter(rustType, varName string) string {
 	switch rustType {
 	case "u64":
@@ -655,6 +656,12 @@ func getArgConverter(rustType, varName string) string {
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
 		innerType := extractVecInnerType(rustType)
+		if innerType == "u64" {
+			return fmt.Sprintf("scval.Uint64SliceToScVal(%s)", varName)
+		}
+		if innerType == "u32" {
+			return fmt.Sprintf("scval.Uint32SliceToScVal(%s)", varName)
+		}
 		if innerType == "soroban_sdk::Address" {
 			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", varName)
 		}

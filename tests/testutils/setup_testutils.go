@@ -237,6 +237,7 @@ type E2ETestEnv struct {
 	Chains             map[uint64]cciptestinterfaces.CCIP17
 	AggregatorClients  map[string]*ccv.AggregatorClient
 	IndexerMonitor     *ccv.IndexerMonitor
+	FriendbotURL       string
 }
 
 func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string, stellarSelector uint64) *E2ETestEnv {
@@ -334,7 +335,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	// Derive the same deployer keypair that chain.go uses in DeployLocalNetwork.
 	// This must match the deterministic derivation: sha256("deployer-" + networkPassphrase).
-	deployerSeed := sha256.Sum256([]byte(fmt.Sprintf("deployer-%s", networkPassphrase)))
+	deployerSeed := sha256.Sum256(fmt.Appendf(nil, "deployer-%s", networkPassphrase))
 	deployerKP, err := keypair.FromRawSeed(deployerSeed)
 	require.NoError(t, err)
 	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Derived deployer keypair (matches chain.go)")
@@ -361,5 +362,6 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		DestChainDetails:   &evmDetails,
 		AggregatorClients:  aggregatorClients,
 		IndexerMonitor:     indexerMonitor,
+		FriendbotURL:       friendbotURL,
 	}
 }

@@ -396,6 +396,12 @@ func getToScValConverter(rustType, expr string) string {
 
 	if strings.HasPrefix(rustType, "soroban_sdk::Vec<") {
 		inner := extractVecInnerType(rustType)
+		if inner == "u64" {
+			return fmt.Sprintf("scval.Uint64SliceToScVal(%s)", expr)
+		}
+		if inner == "u32" {
+			return fmt.Sprintf("scval.Uint32SliceToScVal(%s)", expr)
+		}
 		if inner == "soroban_sdk::Address" {
 			return fmt.Sprintf("scval.AddressSliceToScVal(%s)", expr)
 		}
@@ -405,7 +411,7 @@ func getToScValConverter(rustType, expr string) string {
 		if n := extractBytesNSize(inner); n > 0 {
 			return fmt.Sprintf("scval.Bytes%dSliceToScVal(%s)", n, expr)
 		}
-		// u128 and structs have ToScVal
+		// otherwise assume it's a slice of structs
 		return fmt.Sprintf("scval.StructSliceToScVal(%s)", expr)
 	}
 
