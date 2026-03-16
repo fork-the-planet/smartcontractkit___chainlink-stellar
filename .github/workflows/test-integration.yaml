@@ -49,16 +49,33 @@ jobs:
       - name: Run integration tests
         run: go test -v -race -tags integration -fullpath -shuffle on -coverpkg=./bindings/contracts/... -coverprofile=coverage-integration.out ./tests/integration/...
 
-      - name: Generate coverage summary
+      - name: Write full coverage to job summary
         if: github.event_name == 'pull_request'
         run: |
-          echo '## Integration Test Coverage' > coverage-summary.md
-          echo '' >> coverage-summary.md
-          echo '```' >> coverage-summary.md
-          go tool cover -func=coverage-integration.out >> coverage-summary.md
-          echo '```' >> coverage-summary.md
+          echo '## Integration Test Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage-integration.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TOTAL_LINE=$(go tool cover -func=coverage-integration.out | grep -i 'total' | tail -1 || echo 'No coverage summary found')
+          cat > coverage-summary.md <<EOF
+          ## Integration Test Coverage
+
+          \`\`\`
+          ${TOTAL_LINE}
+          \`\`\`
+
+          [Full coverage report](${RUN_URL})
+          EOF
+          sed -i 's/^          //' coverage-summary.md
+
+      - name: Post sticky comment
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
         with:
