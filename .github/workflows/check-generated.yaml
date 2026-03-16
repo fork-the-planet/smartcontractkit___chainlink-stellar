@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Check Generated Code
 
 on:
   merge_group:
@@ -14,24 +14,14 @@ concurrency:
 permissions: {}
 
 jobs:
-  test-e2e:
-    name: E2E Tests
+  check-generated:
+    name: Check Generated Code
     permissions:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - name: Clone chainlink-ccv
-        run: git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
@@ -51,22 +41,12 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version-file: bindings/go.mod
 
-      - name: Generate bindings
+      - name: Regenerate interfaces and bindings
         run: make generate-bindings
 
-      - name: Build Docker images
+      - name: Check for uncommitted changes
         run: |
-          make docker-verifier
-          make docker-executor
-
-      - name: Start devenv
-        run: make up
-
-      - name: Run E2E tests
-        run: go test -v -timeout 5m ./tests/e2e/...
-
-      - name: Tear down devenv
-        if: always()
-        run: make down
+          git diff --exit-code -- contracts/common/interfaces/ bindings/contracts/ || \
+            (echo "Generated code is out of date. Run 'make generate-bindings' and commit the result." && exit 1)
