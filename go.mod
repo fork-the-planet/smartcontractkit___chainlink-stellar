@@ -513,7 +513,7 @@ require (
 
 // Replace directives needed for CCV devenv dependencies
 replace (
-	// Repeat replaces from chainlink-canton / chainlink-ccv devenv
+	// Repeat replaces from chainlink-ccv devenv
 	github.com/digital-asset/dazl-client/v8 => github.com/noders-team/dazl-client/v8 v8.7.1-2
 	// Gotron-sdk fork required by chainlink-deployments-framework
 	github.com/fbsobreira/gotron-sdk => github.com/smartcontractkit/chainlink-tron/relayer/gotron-sdk v0.0.5-0.20251014124537-af6b1684fe15
