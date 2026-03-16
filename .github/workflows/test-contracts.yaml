@@ -45,7 +45,10 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Run contract tests with coverage
-        run: cargo llvm-cov --workspace --target $(rustc -vV | grep host | awk '{print $2}') --text --output-path coverage.txt
+        run: cargo llvm-cov --no-report --workspace --target $(rustc -vV | grep host | awk '{print $2}')
+
+      - name: Generate coverage report
+        run: cargo llvm-cov report --output-path coverage.txt
 
       - name: Write full coverage to job summary
         if: github.event_name == 'pull_request'
@@ -61,7 +64,7 @@ jobs:
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TOTAL_LINE=$(grep 'TOTAL' coverage.txt | grep '%' | tail -1 || echo 'No coverage summary found')
+          TOTAL_LINE=$(grep 'TOTAL' coverage.txt | tail -1 || echo 'No coverage summary found')
           cat > coverage-summary.md <<EOF
           ## Soroban Contract Test Coverage
 
