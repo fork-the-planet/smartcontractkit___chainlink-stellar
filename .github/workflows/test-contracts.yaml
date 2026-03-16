@@ -48,7 +48,7 @@ jobs:
         run: cargo llvm-cov --no-report --workspace --target $(rustc -vV | grep host | awk '{print $2}')
 
       - name: Generate coverage report
-        run: cargo llvm-cov report --output-path coverage.txt
+        run: cargo llvm-cov report --target $(rustc -vV | grep host | awk '{print $2}') --output-path coverage.txt
 
       - name: Write full coverage to job summary
         if: github.event_name == 'pull_request'
