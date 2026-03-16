@@ -56,7 +56,20 @@ jobs:
       - name: Generate bindings
         run: make generate-bindings
 
-      - name: Build Docker images
+      - name: Clean Cargo artifacts
+        run: cargo clean
+
+      - name: Build CCV Docker images
+        working-directory: ../chainlink-ccv
+        run: |
+          docker build -f build/devenv/fakes/Dockerfile.dev -t ccv-fakes:dev .
+          docker build -f pricer/Dockerfile.dev -t pricer:dev .
+          docker build -f verifier/Dockerfile.dev -t verifier:dev .
+          docker build -f executor/Dockerfile.dev -t executor:dev .
+          docker build -f indexer/Dockerfile.dev -t indexer:dev .
+          docker build -f aggregator/Dockerfile.dev -t aggregator:dev .
+
+      - name: Build Stellar Docker images
         run: |
           make docker-verifier
           make docker-executor
