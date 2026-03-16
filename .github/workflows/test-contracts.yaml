@@ -61,7 +61,7 @@ jobs:
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TOTAL_LINE=$(grep -i 'TOTAL' coverage.txt | tail -1 || echo 'No coverage summary found')
+          TOTAL_LINE=$(grep 'TOTAL' coverage.txt | grep '%' | tail -1 || echo 'No coverage summary found')
           cat > coverage-summary.md <<EOF
           ## Soroban Contract Test Coverage
 
