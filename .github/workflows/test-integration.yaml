@@ -18,6 +18,7 @@ jobs:
     name: Integration Tests
     permissions:
       contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,3 +48,19 @@ jobs:
 
       - name: Run integration tests
         run: go test -v -race -tags integration -fullpath -shuffle on -coverprofile=coverage-integration.out ./tests/integration/...
+
+      - name: Generate coverage summary
+        if: github.event_name == 'pull_request'
+        run: |
+          echo '## Integration Test Coverage' > coverage-summary.md
+          echo '' >> coverage-summary.md
+          echo '```' >> coverage-summary.md
+          go tool cover -func=coverage-integration.out >> coverage-summary.md
+          echo '```' >> coverage-summary.md
+
+      - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        with:
+          header: integration-coverage
+          path: coverage-summary.md
