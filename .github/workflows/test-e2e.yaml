@@ -83,6 +83,9 @@ jobs:
           registry-type: private
           registries: ${{ secrets.JD_REGISTRY }}
 
+      - name: Build contracts
+        run: make build
+
       - name: Start devenv
         env:
           JD_IMAGE: ${{ secrets.JD_IMAGE }}
