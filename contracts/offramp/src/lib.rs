@@ -325,9 +325,7 @@ impl OffRampContract {
             .publish(&env);
         }
 
-        env.storage()
-            .instance()
-            .set(&SOURCE_CHAINS, &source_chains);
+        env.storage().instance().set(&SOURCE_CHAINS, &source_chains);
 
         Ok(())
     }
