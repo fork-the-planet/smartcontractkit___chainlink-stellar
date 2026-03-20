@@ -1,0 +1,110 @@
+name: E2E Tests
+
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test-e2e:
+    name: E2E Tests
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: runs-on=${{ github.run_id }}/family=c6i/cpu=32+48/ram=64+96/spot=false/image=ubuntu24-full-x64/extras=s3-cache+tmpfs
+    env:
+      CCV_BRANCH: feature/setup-stellar
+    steps:
+      - name: Enable S3 Cache for Self-Hosted Runners
+        uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Clone chainlink-ccv
+        run: git clone --depth 1 -b ${{ env.CCV_BRANCH }} https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+          components: rustfmt
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sL https://github.com/stellar/stellar-cli/releases/download/v25.1.0/stellar-cli-25.1.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          mv stellar /usr/local/bin/stellar
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: Generate bindings
+        run: make generate-bindings
+
+      - name: Clean Cargo artifacts
+        run: cargo clean
+
+      - name: Build CCV Docker images
+        working-directory: ../chainlink-ccv
+        run: |
+          docker build -f build/devenv/fakes/Dockerfile.dev -t ccv-fakes:dev .
+          docker build -f pricer/Dockerfile.dev -t pricer:dev .
+          docker build -f verifier/Dockerfile.dev -t verifier:dev .
+          docker build -f executor/Dockerfile.dev -t executor:dev .
+          docker build -f indexer/Dockerfile.dev -t indexer:dev .
+          docker build -f aggregator/Dockerfile.dev -t aggregator:dev .
+
+      - name: Build Stellar Docker images
+        run: |
+          make docker-verifier
+          make docker-executor
+
+      - name: Authenticate to AWS ECR (JD)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.JD_IAM_ROLE }}
+          aws-region: us-west-2
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+        with:
+          registry-type: private
+          registries: ${{ secrets.JD_REGISTRY }}
+
+      - name: Build contracts
+        run: make build
+
+      - name: Start devenv
+        env:
+          JD_IMAGE: ${{ secrets.JD_IMAGE }}
+        run: make up
+
+      - name: Run E2E tests
+        run: go test -v -timeout 5m ./tests/e2e/...
+
+      - name: Dump container logs
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            echo "=== $c ==="
+            docker logs "$c" 2>&1 | tail -50
+          done
+
+      - name: Tear down devenv
+        if: always()
+        run: make down

@@ -11,8 +11,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   test-contracts:
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -34,5 +39,46 @@ jobs:
       - name: Check formatting
         run: just fmt-contracts-check
 
-      - name: Run contract tests
-        run: just test-contracts
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@de6bbd1333b8f331563d54a051e542c7dfef81c3 # v2.68.34
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Run contract tests with coverage
+        run: cargo llvm-cov --no-report --workspace --target $(rustc -vV | grep host | awk '{print $2}')
+
+      - name: Generate coverage report
+        run: cargo llvm-cov report --target $(rustc -vV | grep host | awk '{print $2}') --output-path coverage.txt
+
+      - name: Write full coverage to job summary
+        if: github.event_name == 'pull_request'
+        run: |
+          echo '## Soroban Contract Test Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TOTAL_LINE=$(grep 'TOTAL' coverage.txt | tail -1 || echo 'No coverage summary found')
+          cat > coverage-summary.md <<EOF
+          ## Soroban Contract Test Coverage
+
+          \`\`\`
+          ${TOTAL_LINE}
+          \`\`\`
+
+          [Full coverage report](${RUN_URL})
+          EOF
+          sed -i 's/^          //' coverage-summary.md
+
+      - name: Post sticky comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        with:
+          header: contract-coverage
+          path: coverage-summary.md
