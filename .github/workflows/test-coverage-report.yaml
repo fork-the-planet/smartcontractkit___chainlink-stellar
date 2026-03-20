@@ -70,7 +70,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Remove previous coverage comments
-        uses: actions/github-script@62c3794a3eb6788d9a2a1b0e6ef6fafba6672535 # v7.0.1
+        uses: actions/github-script@v6
         if: github.event_name == 'pull_request'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +93,7 @@ jobs:
             }
 
       - name: Display coverage in PR comment
-        uses: actions/github-script@62c3794a3eb6788d9a2a1b0e6ef6fafba6672535 # v7.0.1
+        uses: actions/github-script@v6
         if: github.event_name == 'pull_request'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
