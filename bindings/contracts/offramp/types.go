@@ -990,6 +990,25 @@ type ExecutionStateChangedEvent struct {
 // ExecutionStateChangedEventTopic is the event topic identifier.
 const ExecutionStateChangedEventTopic = "offramp_1_7_ExecStateChanged"
 
+// DataKey represents the DataKey enum.
+type DataKey uint32
+
+const ()
+
+// ToScVal converts DataKey to an xdr.ScVal.
+func (e DataKey) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// DataKeyFromScVal parses an xdr.ScVal into DataKey.
+func DataKeyFromScVal(val xdr.ScVal) (DataKey, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for DataKey enum")
+	}
+	return DataKey(v), nil
+}
+
 // MessageExecutionState represents the MessageExecutionState enum.
 type MessageExecutionState uint32
 

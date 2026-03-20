@@ -125,6 +125,11 @@ pub struct SourceChainConfigArgs {
     pub source_chain_selector: u64,
 }
 #[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum DataKey {
+    ExecState(soroban_sdk::BytesN<32>),
+}
+#[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum MessageExecutionState {
     Untouched = 0,
