@@ -240,6 +240,24 @@ impl OffRampContract {
         Ok(Self::get_execution_state_internal(&env, &message_id))
     }
 
+    /// Extends the persistent TTL of the execution-state entry for `message_id`, using the same
+    /// threshold and target as writes from [`Self::execute`]. Permissionless so keepers can bump rent.
+    ///
+    /// Soroban does not expose reading a persistent entry's `live_until_ledger_seq` from guest
+    /// code, and rent can also be extended outside this contract (same ledger entry). So there is
+    /// no authoritative on-chain "get TTL" — use RPC / ledger APIs on the contract-data entry instead.
+    pub fn extend_execution_state_ttl(env: Env, message_id: BytesN<32>) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        let state_key = DataKey::ExecState(message_id.clone());
+        if !env.storage().persistent().has(&state_key) {
+            return Err(CCIPError::InvalidExecutionState);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&state_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        Ok(())
+    }
+
     /// Get the static configuration.
     pub fn get_static_config(env: Env) -> Result<StaticConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;

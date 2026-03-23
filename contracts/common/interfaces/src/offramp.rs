@@ -40,6 +40,10 @@ pub trait OffRampInterface {
         source_chain_selector: u64,
     ) -> Result<SourceChainConfig, CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn extend_execution_state_ttl(
+        env: soroban_sdk::Env,
+        message_id: soroban_sdk::BytesN<32>,
+    ) -> Result<(), CCIPError>;
     fn get_all_source_chain_configs(
         env: soroban_sdk::Env,
     ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<SourceChainConfig>), CCIPError>;
