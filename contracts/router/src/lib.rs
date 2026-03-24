@@ -3,7 +3,9 @@
 mod events;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
+};
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
@@ -197,41 +199,44 @@ impl RouterContract {
 
     /// Route a verified inbound message to its receiver contract.
     ///
-    /// Called by a registered OffRamp after CCV verification. The Router
-    /// checks that the caller is a valid OffRamp for the source chain,
-    /// then invokes `ccip_receive` on the receiver.
+    /// Soroban analogue of EVM [`Router.routeMessage`](https://github.com/smartcontractkit/chainlink-ccip/blob/develop/chains/evm/contracts/Router.sol):
+    /// only a registered OffRamp for `source_chain_selector` may call this entrypoint,
+    /// and the Router performs the privileged `ccip_receive` call on `receiver`.
     ///
     /// # Arguments
-    /// * `source_chain_selector` - The source chain the message came from
-    /// * `message` - The decoded inbound message for the Stellar receiver
+    /// * `offramp` — Address of the OffRamp invoking this function (must be registered for `source_chain_selector`)
+    /// * `source_chain_selector` — Source chain the message came from
+    /// * `receiver` — Stellar contract that implements `ccip_receive(AnyToStellarMessage)` (32-byte contract id in CCIP payload)
+    /// * `message` — Inbound application payload (`AnyToStellarMessage`, analogous to `Client.Any2EVMMessage`)
     pub fn route_message(
         env: Env,
+        offramp: Address,
         source_chain_selector: u64,
+        receiver: Address,
         message: AnyToStellarMessage,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
+        Self::require_not_cursed(&env)?;
 
-        // Verify the caller is a registered OffRamp for this source chain
-        let caller = env.current_contract_address();
-        // The actual caller is the invoking contract — we use require_auth
-        // pattern indirectly: the OffRamp invokes this via cross-contract call,
-        // so we verify the OffRamp is in our registered set.
-        // In Soroban, the invoker is checked via is_offramp.
-        // TODO: Soroban doesn't expose msg.sender directly in cross-contract;
-        // the OffRamp should pass its own address and we verify it.
-        // For now, this function trusts the call chain and emits the event.
+        if !Self::is_offramp_internal(&env, source_chain_selector, offramp.clone()) {
+            return Err(CCIPError::CallerNotAuthorized);
+        }
 
         let message_id = message.message_id.clone();
 
-        // TODO: Decode receiver address from message and call ccip_receive
-        // once the receiver interface is defined.
-        // let receiver = Address::from_xdr(&env, &message.receiver_bytes);
-        // receiver_client.ccip_receive(&message);
+        let mut recv_args = Vec::new(&env);
+        recv_args.push_back(message.into_val(&env));
+
+        env.invoke_contract::<Result<(), CCIPError>>(
+            &receiver,
+            &Symbol::new(&env, "ccip_receive"),
+            recv_args,
+        )?;
 
         MessageExecutedEvent {
             message_id,
             source_chain_selector,
-            offramp: caller,
+            offramp,
         }
         .publish(&env);
 
@@ -287,23 +292,7 @@ impl RouterContract {
         offramp: Address,
     ) -> Result<bool, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-
-        let offramps: Map<u64, Vec<Address>> = env
-            .storage()
-            .persistent()
-            .get(&OFFRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        if let Some(chain_offramps) = offramps.get(source_chain_selector) {
-            // Check if offramp is in the list
-            for i in 0..chain_offramps.len() {
-                if chain_offramps.get(i) == Some(offramp.clone()) {
-                    return Ok(true);
-                }
-            }
-        }
-
-        Ok(false)
+        Ok(Self::is_offramp_internal(&env, source_chain_selector, offramp))
     }
 
     /// Get all configured OffRamps.
@@ -650,6 +639,25 @@ impl RouterContract {
         onramps
             .get(dest_chain_selector)
             .ok_or(CCIPError::UnsupportedDestinationChain)
+    }
+
+    /// Returns true if `offramp` is registered for `source_chain_selector`.
+    fn is_offramp_internal(env: &Env, source_chain_selector: u64, offramp: Address) -> bool {
+        let offramps: Map<u64, Vec<Address>> = env
+            .storage()
+            .persistent()
+            .get(&OFFRAMPS)
+            .unwrap_or(Map::new(env));
+
+        if let Some(chain_offramps) = offramps.get(source_chain_selector) {
+            for i in 0..chain_offramps.len() {
+                if chain_offramps.get(i) == Some(offramp.clone()) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }
 

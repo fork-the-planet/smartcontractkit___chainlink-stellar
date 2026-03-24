@@ -1,5 +1,5 @@
 [package]
-name = "offramp"
+name = "ccip_receiver_example"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -10,13 +10,8 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-stellar-strkey = { workspace = true }
 common-message = { workspace = true }
-common-guard = { workspace = true }
 common-error = { workspace = true }
-common-authorization = { workspace = true }
-common-interfaces = { workspace = true }
-common-helpers = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

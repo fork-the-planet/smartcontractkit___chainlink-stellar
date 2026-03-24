@@ -42,7 +42,9 @@ pub trait RouterInterface {
     fn get_offramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OffRampEntry>, CCIPError>;
     fn route_message(
         env: soroban_sdk::Env,
+        offramp: soroban_sdk::Address,
         source_chain_selector: u64,
+        receiver: soroban_sdk::Address,
         message: AnyToStellarMessage,
     ) -> Result<(), CCIPError>;
     fn remove_offramp(
