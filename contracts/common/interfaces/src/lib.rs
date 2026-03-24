@@ -15,6 +15,7 @@
 //! ```
 #![no_std]
 
+pub mod ccip_receiver;
 pub mod committee_verifier;
 pub mod fee_quoter;
 pub mod offramp;
