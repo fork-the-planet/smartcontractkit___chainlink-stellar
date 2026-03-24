@@ -314,6 +314,8 @@ pub enum CCIPError {
     InvalidReceiverLength = 111,
     TokenHandlingError = 112,
     MessageDecodingError = 113,
+    ReceiverDoesNotExist = 114,
+    ReceiverNotWasmContract = 115,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

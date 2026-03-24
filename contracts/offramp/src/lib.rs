@@ -5,8 +5,8 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
-    Symbol, Vec,
+    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, Executable,
+    IntoVal, Map, Symbol, Vec,
 };
 use stellar_strkey::Contract as StrkeyContract;
 
@@ -372,8 +372,17 @@ impl OffRampContract {
         let has_receive_gas = message.ccip_receive_gas_limit > 0;
 
         if has_data || has_receive_gas {
-            let receiver_contract =
-                Self::ccip_receiver_contract_address(env, &message.receiver)?;
+            let receiver_contract = Self::ccip_receiver_contract_address(env, &message.receiver)?;
+
+            // Fail before touching the Router: receiver must exist on-ledger and be a Wasm contract
+            // (plain accounts / Stellar asset contracts cannot implement `ccip_receive`).
+            match receiver_contract.executable() {
+                Some(Executable::Wasm(_)) => {}
+                None => return Err(CCIPError::ReceiverDoesNotExist),
+                Some(Executable::Account) | Some(Executable::StellarAsset) => {
+                    return Err(CCIPError::ReceiverNotWasmContract);
+                }
+            }
 
             let any2stellar = AnyToStellarMessage {
                 message_id: message_id.clone(),
@@ -407,9 +416,7 @@ impl OffRampContract {
         }
         let mut hash = [0u8; 32];
         for i in 0..STELLAR_CONTRACT_ID_LEN {
-            hash[i as usize] = receiver
-                .get(i)
-                .ok_or(CCIPError::InvalidReceiverLength)?;
+            hash[i as usize] = receiver.get(i).ok_or(CCIPError::InvalidReceiverLength)?;
         }
         // `TryFromVal<Env, ScAddress>` for `Address` is not available on the Wasm target; build a
         // contract strkey (C...) and parse it via the host, matching off-chain tooling.

@@ -1,5 +1,7 @@
 #![no_std]
 
+mod events;
+
 /// Minimal Stellar CCIP **application** receiver — analogue of Solidity [`CCIPReceiver`](https://github.com/smartcontractkit/chainlink-ccip/blob/develop/chains/evm/contracts/applications/CCIPReceiver.sol).
 ///
 /// - The CCIP **Router** is the only address allowed to call `ccip_receive` (enforced via
@@ -11,6 +13,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, In
 
 use common_error::CCIPError;
 use common_message::AnyToStellarMessage;
+use events::CcipMessageReceivedEvent;
 
 const INIT: Symbol = symbol_short!("INIT");
 const ROUTER: Symbol = symbol_short!("ROUTER");
@@ -48,10 +51,17 @@ impl ExampleCcipReceiver {
 
         router.require_auth_for_args(soroban_sdk::vec![&env, message.clone().into_val(&env)]);
 
+        CcipMessageReceivedEvent {
+            message_id: message.message_id.clone(),
+            source_chain_selector: message.source_chain_selector,
+            data_len: message.data.len(),
+            sender_len: message.sender.len(),
+            dest_token_transfers: message.dest_token_amounts.len(),
+        }
+        .publish(&env);
+
         // Demo: persist last message id for integration tests / debugging.
-        env.storage()
-            .instance()
-            .set(&LAST_MID, &message.message_id);
+        env.storage().instance().set(&LAST_MID, &message.message_id);
 
         Ok(())
     }

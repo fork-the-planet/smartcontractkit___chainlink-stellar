@@ -4,7 +4,8 @@ mod events;
 mod types;
 
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, InvokeError, Map, Symbol,
+    Vec,
 };
 
 use common_authorization::Ownable;
@@ -208,6 +209,13 @@ impl RouterContract {
     /// * `source_chain_selector` — Source chain the message came from
     /// * `receiver` — Stellar contract that implements `ccip_receive(AnyToStellarMessage)` (32-byte contract id in CCIP payload)
     /// * `message` — Inbound application payload (`AnyToStellarMessage`, analogous to `Client.Any2EVMMessage`)
+    ///
+    /// # Note
+    /// OffRamp validates the receiver is a live Wasm contract before calling this; callers should
+    /// do the same if they invoke `route_message` from elsewhere.
+    ///
+    /// Uses [`Env::try_invoke_contract`] so traps, resource limits, and other host-level failures
+    /// surface as [`CCIPError::ReceiverError`] instead of aborting the whole transaction.
     pub fn route_message(
         env: Env,
         offramp: Address,
@@ -222,16 +230,25 @@ impl RouterContract {
             return Err(CCIPError::CallerNotAuthorized);
         }
 
+        // Bind `offramp` to the invoker's authorization (EVM: msg.sender must be the registered off-ramp).
+        // `require_auth` uses the full `route_message` argument list; callers cannot spoof a registered address.
+        offramp.require_auth();
+
         let message_id = message.message_id.clone();
 
         let mut recv_args = Vec::new(&env);
         recv_args.push_back(message.into_val(&env));
 
-        env.invoke_contract::<Result<(), CCIPError>>(
+        match env.try_invoke_contract::<Result<(), CCIPError>, InvokeError>(
             &receiver,
             &Symbol::new(&env, "ccip_receive"),
             recv_args,
-        )?;
+        ) {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => return Err(e),
+            Ok(Err(_)) => return Err(CCIPError::ReceiverError),
+            Err(_) => return Err(CCIPError::ReceiverError),
+        }
 
         MessageExecutedEvent {
             message_id,
@@ -292,7 +309,11 @@ impl RouterContract {
         offramp: Address,
     ) -> Result<bool, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Ok(Self::is_offramp_internal(&env, source_chain_selector, offramp))
+        Ok(Self::is_offramp_internal(
+            &env,
+            source_chain_selector,
+            offramp,
+        ))
     }
 
     /// Get all configured OffRamps.
