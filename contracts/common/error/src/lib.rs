@@ -147,6 +147,10 @@ pub enum CCIPError {
     InvalidReceiverLength = 111,
     TokenHandlingError = 112,
     MessageDecodingError = 113,
+    /// Inbound receiver address has no ledger entry (see `Address::executable()`).
+    ReceiverDoesNotExist = 114,
+    /// `ccip_receive` may only be invoked on a Soroban Wasm contract, not a plain account / SAC.
+    ReceiverNotWasmContract = 115,
 
     // ============================================================
     // Calculation errors

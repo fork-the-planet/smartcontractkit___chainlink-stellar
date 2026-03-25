@@ -1285,6 +1285,8 @@ const (
 	CCIPErrorInvalidReceiverLength          = 111
 	CCIPErrorTokenHandlingError             = 112
 	CCIPErrorMessageDecodingError           = 113
+	CCIPErrorReceiverDoesNotExist           = 114
+	CCIPErrorReceiverNotWasmContract        = 115
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -1378,6 +1380,8 @@ var CCIPErrorMessage = map[int]string{
 	111: "invalid receiver length",
 	112: "token handling error",
 	113: "message decoding error",
+	114: "receiver does not exist",
+	115: "receiver not wasm contract",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }

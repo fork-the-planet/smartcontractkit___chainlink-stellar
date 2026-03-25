@@ -229,6 +229,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ccip_receiver_example"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "common-message",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ccvs-committee-verifier"
 version = "0.0.0"
 dependencies = [
@@ -1019,6 +1028,7 @@ dependencies = [
  "common-interfaces",
  "common-message",
  "soroban-sdk",
+ "stellar-strkey 0.0.16",
 ]
 
 [[package]]

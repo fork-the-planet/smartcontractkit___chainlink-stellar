@@ -245,9 +245,11 @@ func (c *RouterClient) GetOfframps(ctx context.Context) ([]OffRampEntry, error) 
 }
 
 // RouteMessage calls the route_message function on the contract.
-func (c *RouterClient) RouteMessage(ctx context.Context, sourceChainSelector uint64, message AnyToStellarMessage) error {
+func (c *RouterClient) RouteMessage(ctx context.Context, offramp string, sourceChainSelector uint64, receiver string, message AnyToStellarMessage) error {
 	args := []xdr.ScVal{
+		scval.AddressToScVal(offramp),
 		scval.Uint64ToScVal(sourceChainSelector),
+		scval.AddressToScVal(receiver),
 		scval.MustToScVal(message.ToScVal()),
 	}
 

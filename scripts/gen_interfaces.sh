@@ -43,6 +43,7 @@ CONTRACTS=(
   "rmn_remote|rmn_remote|RmnRemote|0"
   "offramp|offramp|OffRamp|0"
   "router|router|Router|0"
+  "ccip_receiver_example|ccip_receiver|ExampleCcipReceiver|0"
 )
 
 # Remove the WASM const block from generated output (interfaces don't need it)

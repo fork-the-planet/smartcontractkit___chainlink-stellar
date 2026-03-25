@@ -5,9 +5,10 @@ pub mod types;
 
 use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
-    Symbol, Vec,
+    contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, Executable,
+    IntoVal, Map, Symbol, Vec,
 };
+use stellar_strkey::Contract as StrkeyContract;
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
@@ -385,11 +386,23 @@ impl OffRampContract {
         let dest_token_amounts: Vec<TokenAmount> = Vec::new(env);
 
         // --- Message Routing ---
-        // Only route to receiver if there is data to deliver (not token-only)
+        // EVM skips `_callReceiver` for token-only (no data and ccipReceiveGasLimit == 0).
         let has_data = message.data.len() > 0;
         let has_receive_gas = message.ccip_receive_gas_limit > 0;
 
         if has_data || has_receive_gas {
+            let receiver_contract = Self::ccip_receiver_contract_address(env, &message.receiver)?;
+
+            // Fail before touching the Router: receiver must exist on-ledger and be a Wasm contract
+            // (plain accounts / Stellar asset contracts cannot implement `ccip_receive`).
+            match receiver_contract.executable() {
+                Some(Executable::Wasm(_)) => {}
+                None => return Err(CCIPError::ReceiverDoesNotExist),
+                Some(Executable::Account) | Some(Executable::StellarAsset) => {
+                    return Err(CCIPError::ReceiverNotWasmContract);
+                }
+            }
+
             let any2stellar = AnyToStellarMessage {
                 message_id: message_id.clone(),
                 source_chain_selector: message.source_chain_selector,
@@ -398,17 +411,37 @@ impl OffRampContract {
                 dest_token_amounts,
             };
 
-            // Route message through the Router to the receiver
             Self::route_message(
                 env,
                 &source_config.router,
+                &env.current_contract_address(),
                 message.source_chain_selector,
-                &message.receiver,
+                &receiver_contract,
                 &any2stellar,
             )?;
         }
 
         Ok(())
+    }
+
+    /// Decode `CcipMessageV1.receiver` bytes as a Soroban **contract** [`Address`].
+    ///
+    /// Stellar CCIP payloads use the 32-byte contract identifier hash (same as EVM using 20-byte
+    /// `message.receiver` for `address`). Account-only receivers are not supported here.
+    fn ccip_receiver_contract_address(env: &Env, receiver: &Bytes) -> Result<Address, CCIPError> {
+        const STELLAR_CONTRACT_ID_LEN: u32 = 32;
+        if receiver.len() != STELLAR_CONTRACT_ID_LEN {
+            return Err(CCIPError::InvalidReceiverLength);
+        }
+        let mut hash = [0u8; 32];
+        for i in 0..STELLAR_CONTRACT_ID_LEN {
+            hash[i as usize] = receiver.get(i).ok_or(CCIPError::InvalidReceiverLength)?;
+        }
+        // `TryFromVal<Env, ScAddress>` for `Address` is not available on the Wasm target; build a
+        // contract strkey (C...) and parse it via the host, matching off-chain tooling.
+        let sk = StrkeyContract(hash);
+        let encoded = sk.to_string();
+        Ok(Address::from_str(env, encoded.as_str()))
     }
 
     /// Verify that the CCV quorum is met for a message.
@@ -482,36 +515,26 @@ impl OffRampContract {
         Ok(())
     }
 
-    /// Route a verified message through the Router to the receiver contract.
-    ///
-    /// The Router verifies this OffRamp is registered, then calls
-    /// `ccip_receive` on the receiver.
+    /// Route a verified message through the Router to the receiver contract (EVM `_callReceiver` analogue).
     fn route_message(
         env: &Env,
         router: &Address,
+        offramp: &Address,
         source_chain_selector: u64,
-        _receiver_bytes: &Bytes,
+        receiver: &Address,
         message: &AnyToStellarMessage,
     ) -> Result<(), CCIPError> {
-        // TODO: Full implementation once Router.route_message is available.
-        // The Router will:
-        // 1. Verify caller is a registered OffRamp for source_chain_selector
-        // 2. Decode receiver address from receiver_bytes
-        // 3. Call receiver.ccip_receive(message)
-        //
-        // For now, invoke Router.route_message with the message data.
-        // This will be connected once the Router interface is extended.
         let mut args = soroban_sdk::Vec::new(env);
+        args.push_back(offramp.into_val(env));
         args.push_back(source_chain_selector.into_val(env));
+        args.push_back(receiver.into_val(env));
         args.push_back(message.clone().into_val(env));
 
-        // TODO: use router's interface instead of directly calling the function
-        let _result = env.invoke_contract::<Result<(), CCIPError>>(
+        env.invoke_contract::<Result<(), CCIPError>>(
             router,
             &Symbol::new(env, "route_message"),
             args,
-        );
-
+        )?;
         Ok(())
     }
 

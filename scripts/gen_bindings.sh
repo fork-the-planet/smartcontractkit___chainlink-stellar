@@ -32,6 +32,7 @@ CONTRACTS=(
   "rmn_remote|RmnRemote|rmn_remote|0"
   "offramp|OffRamp|offramp|0"
   "router|Router|router|0"
+  "ccip_receiver|ExampleCcipReceiver|ccip_receiver|0"
 )
 
 # Extract TokenAmount and StellarToAnyMessage structs from committee_verifier for contracts that use common_message
