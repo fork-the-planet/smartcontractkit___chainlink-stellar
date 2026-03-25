@@ -8,7 +8,7 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_helpers::curse_checkable::CurseCheckable;
-use common_verifier::base_verifier::BaseVerifier;
+use common_helpers::validation::Validatable;
 use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
@@ -84,27 +84,9 @@ impl AllowListable for CommitteeVerifierContract {
     }
 }
 
-#[contractimpl]
-impl SignatureQuorum for CommitteeVerifierContract {}
-
-// #[contractimpl]
-impl BaseVerifier for CommitteeVerifierContract {
-    type RemoteChainConfig = RemoteChainConfig;
-
-    const STORAGE_LOCATIONS: Symbol = STORAGE_LOC_ADMIN;
-    const REMOTE_CHAINS: Symbol = REMOTE_CHAINS;
-
-    fn emit_remote_chain_config_set_event(
-        env: &Env,
-        remote_chain_config: &Self::RemoteChainConfig,
-    ) {
-        events::RemoteChainConfigSetEvent {
-            remote_chain_selector: remote_chain_config.remote_chain_selector,
-            router: remote_chain_config.router.clone(),
-            allowlist_enabled: remote_chain_config.allowlist_enabled,
-        }
-        .publish(env);
-    }
+#[contractimpl(contracttrait)]
+impl SignatureQuorum for CommitteeVerifierContract {
+    const SIGNATURE_CONFIGS: Symbol = SIGNATURE_CONFIGS;
 }
 
 #[contractimpl]
@@ -123,7 +105,13 @@ impl CommitteeVerifierContract {
         <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as CurseCheckable>::init(&env, &rmn_proxy)?;
         <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
-        <Self as BaseVerifier>::init(&env, &storage_locations)?;
+
+        env.storage()
+            .instance()
+            .set(&STORAGE_LOCATIONS, &storage_locations);
+
+        let remote_chains: Map<u64, RemoteChainConfig> = Map::new(&env);
+        env.storage().instance().set(&REMOTE_CHAINS, &remote_chains);
 
         env.storage()
             .instance()
@@ -254,7 +242,28 @@ impl CommitteeVerifierContract {
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
-        <Self as BaseVerifier>::apply_remote_chain_config_updates(&env, &remote_chain_config_args)?;
+
+        let mut remote_chains: Map<u64, RemoteChainConfig> = env
+            .storage()
+            .instance()
+            .get(&REMOTE_CHAINS)
+            .unwrap_or(Map::new(&env));
+
+        for update in remote_chain_config_args.iter() {
+            update.validate()?;
+
+            remote_chains.set(update.remote_chain_selector, update.clone());
+
+            events::RemoteChainConfigSetEvent {
+                remote_chain_selector: update.remote_chain_selector,
+                router: update.router.clone(),
+                allowlist_enabled: update.allowlist_enabled,
+            }
+            .publish(&env);
+        }
+
+        env.storage().instance().set(&REMOTE_CHAINS, &remote_chains);
+
         Ok(())
     }
 
@@ -263,8 +272,15 @@ impl CommitteeVerifierContract {
         remote_chain_selector: u64,
     ) -> Result<RemoteChainConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as BaseVerifier>::get_remote_chain_config(&env, remote_chain_selector)
-            .map_err(Into::into)
+        let remote_chains: Map<u64, RemoteChainConfig> = env
+            .storage()
+            .instance()
+            .get(&REMOTE_CHAINS)
+            .unwrap_or(Map::new(&env));
+
+        remote_chains
+            .get(remote_chain_selector)
+            .ok_or(CCIPError::RemoteChainNotSupported)
     }
 
     /// EVM-equivalent fee quote shape.
@@ -276,13 +292,13 @@ impl CommitteeVerifierContract {
         _block_confirmations: u32,
     ) -> Result<FeeResponse, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as BaseVerifier>::get_fee(&env, dest_chain_selector)
-            .map_err(Into::into)
-            .map(|fee| FeeResponse {
-                fee: fee.0,
-                dest_gas_limit: fee.1,
-                dest_bytes_overhead: fee.2,
-            })
+
+        let cfg = Self::get_remote_chain_config(env, dest_chain_selector)?;
+        Ok(FeeResponse {
+            fee: cfg.fee_usd_cents,
+            dest_gas_limit: cfg.gas_for_verification,
+            dest_bytes_overhead: cfg.payload_size_bytes,
+        })
     }
 
     // ========================================

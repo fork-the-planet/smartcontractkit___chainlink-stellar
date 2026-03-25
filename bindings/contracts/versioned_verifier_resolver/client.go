@@ -387,7 +387,7 @@ func (c *VersionedVerifierResolverClient) WaitForInboundImplSetEvent(ctx context
 			}
 
 			for _, e := range events {
-				parsed, err := parseInboundImplSetEvent(e)
+				parsed, err := ParseInboundImplSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -399,7 +399,7 @@ func (c *VersionedVerifierResolverClient) WaitForInboundImplSetEvent(ctx context
 	}
 }
 
-func parseInboundImplSetEvent(e protocolrpc.EventInfo) (*InboundImplSetEvent, error) {
+func ParseInboundImplSetEvent(e protocolrpc.EventInfo) (*InboundImplSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -459,7 +459,7 @@ func (c *VersionedVerifierResolverClient) WaitForOutboundImplSetEvent(ctx contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseOutboundImplSetEvent(e)
+				parsed, err := ParseOutboundImplSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -471,7 +471,7 @@ func (c *VersionedVerifierResolverClient) WaitForOutboundImplSetEvent(ctx contex
 	}
 }
 
-func parseOutboundImplSetEvent(e protocolrpc.EventInfo) (*OutboundImplSetEvent, error) {
+func ParseOutboundImplSetEvent(e protocolrpc.EventInfo) (*OutboundImplSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -531,7 +531,7 @@ func (c *VersionedVerifierResolverClient) WaitForFeeAggregatorSetEvent(ctx conte
 			}
 
 			for _, e := range events {
-				parsed, err := parseFeeAggregatorSetEvent(e)
+				parsed, err := ParseFeeAggregatorSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -543,7 +543,7 @@ func (c *VersionedVerifierResolverClient) WaitForFeeAggregatorSetEvent(ctx conte
 	}
 }
 
-func parseFeeAggregatorSetEvent(e protocolrpc.EventInfo) (*FeeAggregatorSetEvent, error) {
+func ParseFeeAggregatorSetEvent(e protocolrpc.EventInfo) (*FeeAggregatorSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -598,7 +598,7 @@ func (c *VersionedVerifierResolverClient) WaitForInboundImplRemovedEvent(ctx con
 			}
 
 			for _, e := range events {
-				parsed, err := parseInboundImplRemovedEvent(e)
+				parsed, err := ParseInboundImplRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -610,7 +610,7 @@ func (c *VersionedVerifierResolverClient) WaitForInboundImplRemovedEvent(ctx con
 	}
 }
 
-func parseInboundImplRemovedEvent(e protocolrpc.EventInfo) (*InboundImplRemovedEvent, error) {
+func ParseInboundImplRemovedEvent(e protocolrpc.EventInfo) (*InboundImplRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -665,7 +665,7 @@ func (c *VersionedVerifierResolverClient) WaitForOutboundImplRemovedEvent(ctx co
 			}
 
 			for _, e := range events {
-				parsed, err := parseOutboundImplRemovedEvent(e)
+				parsed, err := ParseOutboundImplRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -677,7 +677,7 @@ func (c *VersionedVerifierResolverClient) WaitForOutboundImplRemovedEvent(ctx co
 	}
 }
 
-func parseOutboundImplRemovedEvent(e protocolrpc.EventInfo) (*OutboundImplRemovedEvent, error) {
+func ParseOutboundImplRemovedEvent(e protocolrpc.EventInfo) (*OutboundImplRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -732,7 +732,7 @@ func (c *VersionedVerifierResolverClient) WaitForOwnershipTransferredEvent(ctx c
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferredEvent(e)
+				parsed, err := ParseOwnershipTransferredEvent(e)
 				if err != nil {
 					continue
 				}
@@ -744,7 +744,7 @@ func (c *VersionedVerifierResolverClient) WaitForOwnershipTransferredEvent(ctx c
 	}
 }
 
-func parseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransferredEvent, error) {
+func ParseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransferredEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -799,7 +799,7 @@ func (c *VersionedVerifierResolverClient) WaitForRoleGrantedEvent(ctx context.Co
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -811,7 +811,7 @@ func (c *VersionedVerifierResolverClient) WaitForRoleGrantedEvent(ctx context.Co
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -876,7 +876,7 @@ func (c *VersionedVerifierResolverClient) WaitForRoleRevokedEvent(ctx context.Co
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -888,7 +888,7 @@ func (c *VersionedVerifierResolverClient) WaitForRoleRevokedEvent(ctx context.Co
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -953,7 +953,7 @@ func (c *VersionedVerifierResolverClient) WaitForAuthorizedCallerAddedEvent(ctx 
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -965,7 +965,7 @@ func (c *VersionedVerifierResolverClient) WaitForAuthorizedCallerAddedEvent(ctx 
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1020,7 +1020,7 @@ func (c *VersionedVerifierResolverClient) WaitForAuthorizedCallerRemovedEvent(ct
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1032,7 +1032,7 @@ func (c *VersionedVerifierResolverClient) WaitForAuthorizedCallerRemovedEvent(ct
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1087,7 +1087,7 @@ func (c *VersionedVerifierResolverClient) WaitForOwnershipTransferStartedEvent(c
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1099,7 +1099,7 @@ func (c *VersionedVerifierResolverClient) WaitForOwnershipTransferStartedEvent(c
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)

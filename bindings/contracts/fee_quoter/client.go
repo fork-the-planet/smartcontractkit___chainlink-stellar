@@ -585,7 +585,7 @@ func (c *FeeQuoterClient) WaitForRoleGrantedEvent(ctx context.Context, startLedg
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleGrantedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -597,7 +597,7 @@ func (c *FeeQuoterClient) WaitForRoleGrantedEvent(ctx context.Context, startLedg
 	}
 }
 
-func parseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -662,7 +662,7 @@ func (c *FeeQuoterClient) WaitForRoleRevokedEvent(ctx context.Context, startLedg
 			}
 
 			for _, e := range events {
-				parsed, err := parseRoleRevokedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -674,7 +674,7 @@ func (c *FeeQuoterClient) WaitForRoleRevokedEvent(ctx context.Context, startLedg
 	}
 }
 
-func parseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -739,7 +739,7 @@ func (c *FeeQuoterClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context,
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerAddedEvent(e)
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -751,7 +751,7 @@ func (c *FeeQuoterClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context,
 	}
 }
 
-func parseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -806,7 +806,7 @@ func (c *FeeQuoterClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Contex
 			}
 
 			for _, e := range events {
-				parsed, err := parseAuthorizedCallerRemovedEvent(e)
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -818,7 +818,7 @@ func (c *FeeQuoterClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Contex
 	}
 }
 
-func parseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -873,7 +873,7 @@ func (c *FeeQuoterClient) WaitForOwnershipTransferStartedEvent(ctx context.Conte
 			}
 
 			for _, e := range events {
-				parsed, err := parseOwnershipTransferStartedEvent(e)
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -885,7 +885,7 @@ func (c *FeeQuoterClient) WaitForOwnershipTransferStartedEvent(ctx context.Conte
 	}
 }
 
-func parseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -945,7 +945,7 @@ func (c *FeeQuoterClient) WaitForFeeTokenAddedEvent(ctx context.Context, startLe
 			}
 
 			for _, e := range events {
-				parsed, err := parseFeeTokenAddedEvent(e)
+				parsed, err := ParseFeeTokenAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -957,7 +957,7 @@ func (c *FeeQuoterClient) WaitForFeeTokenAddedEvent(ctx context.Context, startLe
 	}
 }
 
-func parseFeeTokenAddedEvent(e protocolrpc.EventInfo) (*FeeTokenAddedEvent, error) {
+func ParseFeeTokenAddedEvent(e protocolrpc.EventInfo) (*FeeTokenAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1012,7 +1012,7 @@ func (c *FeeQuoterClient) WaitForDestChainAddedEvent(ctx context.Context, startL
 			}
 
 			for _, e := range events {
-				parsed, err := parseDestChainAddedEvent(e)
+				parsed, err := ParseDestChainAddedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1024,7 +1024,7 @@ func (c *FeeQuoterClient) WaitForDestChainAddedEvent(ctx context.Context, startL
 	}
 }
 
-func parseDestChainAddedEvent(e protocolrpc.EventInfo) (*DestChainAddedEvent, error) {
+func ParseDestChainAddedEvent(e protocolrpc.EventInfo) (*DestChainAddedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1053,9 +1053,15 @@ func parseDestChainAddedEvent(e protocolrpc.EventInfo) (*DestChainAddedEvent, er
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.IsEnabled = v
+			}
 		case "max_data_bytes":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.MaxDataBytes = uint32(v)
+			}
 		}
 	}
 
@@ -1083,7 +1089,7 @@ func (c *FeeQuoterClient) WaitForFeeTokenRemovedEvent(ctx context.Context, start
 			}
 
 			for _, e := range events {
-				parsed, err := parseFeeTokenRemovedEvent(e)
+				parsed, err := ParseFeeTokenRemovedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1095,7 +1101,7 @@ func (c *FeeQuoterClient) WaitForFeeTokenRemovedEvent(ctx context.Context, start
 	}
 }
 
-func parseFeeTokenRemovedEvent(e protocolrpc.EventInfo) (*FeeTokenRemovedEvent, error) {
+func ParseFeeTokenRemovedEvent(e protocolrpc.EventInfo) (*FeeTokenRemovedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1150,7 +1156,7 @@ func (c *FeeQuoterClient) WaitForUsdPerTokenUpdatedEvent(ctx context.Context, st
 			}
 
 			for _, e := range events {
-				parsed, err := parseUsdPerTokenUpdatedEvent(e)
+				parsed, err := ParseUsdPerTokenUpdatedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1162,7 +1168,7 @@ func (c *FeeQuoterClient) WaitForUsdPerTokenUpdatedEvent(ctx context.Context, st
 	}
 }
 
-func parseUsdPerTokenUpdatedEvent(e protocolrpc.EventInfo) (*UsdPerTokenUpdatedEvent, error) {
+func ParseUsdPerTokenUpdatedEvent(e protocolrpc.EventInfo) (*UsdPerTokenUpdatedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1227,7 +1233,7 @@ func (c *FeeQuoterClient) WaitForUsdPerUnitGasUpdatedEvent(ctx context.Context, 
 			}
 
 			for _, e := range events {
-				parsed, err := parseUsdPerUnitGasUpdatedEvent(e)
+				parsed, err := ParseUsdPerUnitGasUpdatedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1239,7 +1245,7 @@ func (c *FeeQuoterClient) WaitForUsdPerUnitGasUpdatedEvent(ctx context.Context, 
 	}
 }
 
-func parseUsdPerUnitGasUpdatedEvent(e protocolrpc.EventInfo) (*UsdPerUnitGasUpdatedEvent, error) {
+func ParseUsdPerUnitGasUpdatedEvent(e protocolrpc.EventInfo) (*UsdPerUnitGasUpdatedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1304,7 +1310,7 @@ func (c *FeeQuoterClient) WaitForTokenFeeConfigDeletedEvent(ctx context.Context,
 			}
 
 			for _, e := range events {
-				parsed, err := parseTokenFeeConfigDeletedEvent(e)
+				parsed, err := ParseTokenFeeConfigDeletedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1316,7 +1322,7 @@ func (c *FeeQuoterClient) WaitForTokenFeeConfigDeletedEvent(ctx context.Context,
 	}
 }
 
-func parseTokenFeeConfigDeletedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigDeletedEvent, error) {
+func ParseTokenFeeConfigDeletedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigDeletedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1376,7 +1382,7 @@ func (c *FeeQuoterClient) WaitForTokenFeeConfigUpdatedEvent(ctx context.Context,
 			}
 
 			for _, e := range events {
-				parsed, err := parseTokenFeeConfigUpdatedEvent(e)
+				parsed, err := ParseTokenFeeConfigUpdatedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1388,7 +1394,7 @@ func (c *FeeQuoterClient) WaitForTokenFeeConfigUpdatedEvent(ctx context.Context,
 	}
 }
 
-func parseTokenFeeConfigUpdatedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigUpdatedEvent, error) {
+func ParseTokenFeeConfigUpdatedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigUpdatedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1422,11 +1428,20 @@ func parseTokenFeeConfigUpdatedEvent(e protocolrpc.EventInfo) (*TokenFeeConfigUp
 				result.Token = v
 			}
 		case "fee_usd_cents":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.FeeUsdCents = uint32(v)
+			}
 		case "dest_gas_overhead":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.DestGasOverhead = uint32(v)
+			}
 		case "dest_bytes_overhead":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.DestBytesOverhead = uint32(v)
+			}
 		}
 	}
 
@@ -1454,7 +1469,7 @@ func (c *FeeQuoterClient) WaitForDestChainConfigUpdatedEvent(ctx context.Context
 			}
 
 			for _, e := range events {
-				parsed, err := parseDestChainConfigUpdatedEvent(e)
+				parsed, err := ParseDestChainConfigUpdatedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1466,7 +1481,7 @@ func (c *FeeQuoterClient) WaitForDestChainConfigUpdatedEvent(ctx context.Context
 	}
 }
 
-func parseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfigUpdatedEvent, error) {
+func ParseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfigUpdatedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1495,9 +1510,15 @@ func parseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfig
 				result.DestChainSelector = v
 			}
 		case "is_enabled":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.IsEnabled = v
+			}
 		case "max_data_bytes":
-			// TODO: parse complex type
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.MaxDataBytes = uint32(v)
+			}
 		}
 	}
 

@@ -49,7 +49,7 @@ pub enum CCIPError {
     InvalidSignatureCount = 16,
     InvalidSignatureThreshold = 17,
     InvalidSignaturePubkey = 18,
-    SourceNotConfigured = 19,
+    SourceSignersNotConfigured = 19,
     InvalidVerifierResults = 20,
     ReentrantCall = 21,
 
@@ -129,6 +129,24 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+
+    // ============================================================
+    // OffRamp errors
+    // ============================================================
+    SourceChainNotEnabled = 100,
+    InvalidSourceChainConfig = 101,
+    InvalidOnRampAddress = 102,
+    InvalidOffRampAddress = 103,
+    InvalidMessageDestination = 104,
+    MessageAlreadyExecuted = 105,
+    InvalidExecutionState = 106,
+    CCVLengthMismatch = 107,
+    CCVQuorumNotMet = 108,
+    ReceiverError = 109,
+    GasLimitOverrideTooLow = 110,
+    InvalidReceiverLength = 111,
+    TokenHandlingError = 112,
+    MessageDecodingError = 113,
 
     // ============================================================
     // TokenAdminRegistry errors

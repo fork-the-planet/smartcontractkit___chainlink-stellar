@@ -1,4 +1,0 @@
-A set of self-contained services that can be run independently.
-
-Create a main.go (ref. ccv) so each service. Inject deps into constructors and enable running each service as a stand-alone / set of docker images.
-

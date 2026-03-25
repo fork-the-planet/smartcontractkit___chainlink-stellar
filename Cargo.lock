@@ -1012,6 +1012,12 @@ dependencies = [
 name = "offramp"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-helpers",
+ "common-interfaces",
+ "common-message",
  "soroban-sdk",
 ]
 

@@ -11,7 +11,7 @@ import (
 
 func TestNewChain(t *testing.T) {
 	logger := zerolog.Nop()
-	chain := New(logger)
+	chain := New(logger, 1)
 	require.NotNil(t, chain)
 	assert.Equal(t, chainsel.FamilyStellar, chain.ChainFamily())
 }

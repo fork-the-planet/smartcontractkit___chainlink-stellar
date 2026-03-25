@@ -166,6 +166,14 @@
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "STORLOC"
+                      },
+                      "val": {
+                        "vec": []
+                      }
                     }
                   ]
                 }

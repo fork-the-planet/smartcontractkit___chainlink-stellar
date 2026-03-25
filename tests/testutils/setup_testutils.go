@@ -3,7 +3,6 @@ package helpers
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,24 +13,19 @@ import (
 	"github.com/rs/zerolog"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	stellar "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/modifier"
+	stellardevenv "github.com/smartcontractkit/chainlink-stellar/ccv/devenv"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -62,10 +56,11 @@ func getFreePortErr() (string, error) {
 }
 
 func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
-	// Deploy local Stellar network using devenv
-	chain := chain.New(zerolog.New(os.Stdout))
+	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
+	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
-	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
+	// Deploy local Stellar network using devenv
+	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port := getFreePort(t)
 	containerName := fmt.Sprintf("blockchain-stellar-%s", t.Name())
@@ -143,9 +138,10 @@ type SharedTestEnv struct {
 // It returns the blockchain Output for teardown. Use containerName for a stable container name
 // when sharing across tests (e.g. "blockchain-stellar-integration-shared").
 func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestEnv, error) {
-	chain := chain.New(zerolog.New(os.Stdout))
+	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
+	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
-	chainID := network.ID(STELLAR_LOCALNET_PASSPHRASE)
+	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port, err := getFreePortErr()
 	if err != nil {
@@ -241,51 +237,28 @@ type E2ETestEnv struct {
 	Chains             map[uint64]cciptestinterfaces.CCIP17
 	AggregatorClients  map[string]*ccv.AggregatorClient
 	IndexerMonitor     *ccv.IndexerMonitor
+	FriendbotURL       string
 }
 
-func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string) *E2ETestEnv {
-	// Register the Stellar chain adapter by using the EVM adapter as a base
-	global_family_registry := registry.GetGlobalChainFamilyAdapterRegistry()
-	evm_adapter, ok := global_family_registry.GetChainFamily(chain_selectors.FamilyEVM)
-	require.True(t, ok)
-	require.NotNil(t, evm_adapter)
+func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string, stellarSelector uint64) *E2ETestEnv {
+	// Register all Stellar devenv components: modifier, chain config loader,
+	// chain family adapter, and ImplFactory.
+	stellardevenv.RegisterStellarComponents()
 
-	stellar_adapter := ccvchain.NewChainFamilyAdapter(evm_adapter)
-	global_family_registry.RegisterChainFamily(chain_selectors.FamilyStellar, stellar_adapter)
-
-	// Register the Stellar chain implementation
-	registry.GetGlobalChainImplRegistry().
-		Register(stellarChainID, chain_selectors.FamilyStellar, stellar.New(zerolog.New(os.Stdout)))
-
-	committeeverifier.RegisterModifier(
-		chain_selectors.FamilyStellar,
-		modifier.StellarModifier,
-	)
-
-	in, err := ccv.NewEnvironment()
+	// Load the output config written by the devenv CLI (pre-started separately).
+	// LoadOutput also populates CLDF.DataStore from the serialised addresses.
+	in, err := ccv.LoadOutput[ccv.Cfg](configOutputPath)
 	require.NoError(t, err)
+	require.NotNil(t, in)
 
-	// Reconstruct the DataStore from CLDF addresses.
-	// in.CLDF.DataStore is empty (Init() creates an empty sealed store);
-	// the real addresses are JSON-serialized in in.CLDF.Addresses.
-	ds := datastore.NewMemoryDataStore()
-	for _, addrJSON := range in.CLDF.Addresses {
-		var refs []datastore.AddressRef
-		err := json.Unmarshal([]byte(addrJSON), &refs)
-		require.NoError(t, err)
-		for _, ref := range refs {
-			ds.AddressRefStore.Add(ref)
-		}
-	}
-
-	// Load EVM chain for destination interactions
-	lib, err := ccv.NewLib(l, configOutputPath, chain_selectors.FamilyEVM)
+	// Load both EVM and Stellar chains; the ImplFactory handles Stellar chain construction.
+	lib, err := ccv.NewLib(l, configOutputPath, chain_selectors.FamilyEVM, chain_selectors.FamilyStellar)
 	require.NoError(t, err)
 	chains, err := lib.ChainsMap(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, chains)
 
-	// Set up aggregator client
+	// Set up indexer monitor
 	var indexerMonitor *ccv.IndexerMonitor
 	indexerClient, err := lib.Indexer()
 	require.NoError(t, err)
@@ -310,13 +283,9 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	defaultAggregatorClient := aggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
 	require.NotNil(t, defaultAggregatorClient)
 
-	configsOutput, err := ccv.LoadOutput[ccv.Cfg](configOutputPath)
-	require.NoError(t, err)
-	require.NotNil(t, configsOutput)
-
 	// Find Stellar chain
 	var stellarChain *blockchain.Input
-	for _, bc := range configsOutput.Blockchains {
+	for _, bc := range in.Blockchains {
 		if bc.Type == blockchain.TypeStellar {
 			stellarChain = bc
 			break
@@ -326,7 +295,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	// Find EVM chain
 	var evmChain *blockchain.Input
-	for _, bc := range configsOutput.Blockchains {
+	for _, bc := range in.Blockchains {
 		if bc.Type == blockchain.TypeAnvil {
 			evmChain = bc
 			break
@@ -345,10 +314,11 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	destChain := chains[evmDetails.ChainSelector]
 	require.NotNil(t, destChain)
 
+	// sourceChain is constructed by ImplFactory.New() when ChainsMap() is called.
 	sourceChain := chains[stellarDetails.ChainSelector]
 	require.NotNil(t, sourceChain)
 
-	// Get Stellar network configuration from the environment output
+	// Get Stellar network configuration from the environment output.
 	require.NotEmpty(t, stellarChain.Out.Nodes, "stellar chain output must have nodes")
 	stellarRPCURL := stellarChain.Out.Nodes[0].ExternalHTTPUrl
 	require.NotEmpty(t, stellarRPCURL, "stellar RPC URL is required")
@@ -365,7 +335,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	// Derive the same deployer keypair that chain.go uses in DeployLocalNetwork.
 	// This must match the deterministic derivation: sha256("deployer-" + networkPassphrase).
-	deployerSeed := sha256.Sum256([]byte(fmt.Sprintf("deployer-%s", networkPassphrase)))
+	deployerSeed := sha256.Sum256(fmt.Appendf(nil, "deployer-%s", networkPassphrase))
 	deployerKP, err := keypair.FromRawSeed(deployerSeed)
 	require.NoError(t, err)
 	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Derived deployer keypair (matches chain.go)")
@@ -374,10 +344,9 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
 	t.Cleanup(func() { rpc.Close() })
 
-	// No Friendbot funding needed here -- this deployer was already funded
-	// by chain.go DeployLocalNetwork during ccv.NewEnvironment().
-
-	// Create the Deployer (implements bindings.Invoker) for contract interactions
+	// Create the Deployer (implements bindings.Invoker) for contract interactions.
+	// No Friendbot funding is needed here: the deployer was already funded by
+	// chain.go DeployLocalNetwork during ccv.NewEnvironment().
 	deployer := stellardeployment.NewDeployer(rpc, networkPassphrase, deployerKP)
 
 	return &E2ETestEnv{
@@ -385,7 +354,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		Deployer:           deployer,
 		RPCClient:          rpc,
 		NetworkPassphrase:  networkPassphrase,
-		DataStore:          ds.Seal(),
+		DataStore:          in.CLDF.DataStore,
 		Chains:             chains,
 		SourceChain:        sourceChain,
 		DestChain:          destChain,
@@ -393,5 +362,6 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		DestChainDetails:   &evmDetails,
 		AggregatorClients:  aggregatorClients,
 		IndexerMonitor:     indexerMonitor,
+		FriendbotURL:       friendbotURL,
 	}
 }

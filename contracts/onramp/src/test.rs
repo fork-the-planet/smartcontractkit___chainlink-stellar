@@ -259,3 +259,162 @@ fn test_invalid_dest_chain_config_same_as_local() {
 
     client.apply_dest_chain_config_updates(&vec![&env, dest_config]);
 }
+
+// ============================================================
+// Helper for fully-initialized OnRamp with a dest chain
+// ============================================================
+
+fn init_onramp_with_dest(
+    env: &Env,
+) -> (
+    OnRampContractClient<'_>,
+    u64,
+    DestChainConfigArgs,
+    StaticConfig,
+) {
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(env, &contract_id);
+
+    let owner = Address::generate(env);
+    let static_config = create_test_static_config(env);
+    let dynamic_config = create_test_dynamic_config(env);
+
+    client.initialize(&owner, &static_config, &dynamic_config);
+
+    let dest_selector: u64 = 67890;
+    let dest_config = create_test_dest_chain_config_args(env, dest_selector);
+    client.apply_dest_chain_config_updates(&vec![env, dest_config.clone()]);
+
+    (client, dest_selector, dest_config, static_config)
+}
+
+// ============================================================
+// Test cases for forward_from_router validation & config
+// ============================================================
+
+#[test]
+#[should_panic(expected = "Error(Contract, #37)")] // DestinationChainNotSupported
+fn test_dest_chain_not_configured_fails() {
+    let env = Env::default();
+    let (client, _, _, _) = init_onramp_with_dest(&env);
+
+    // Calling get_dest_chain_config for an unconfigured chain should fail
+    let unconfigured_selector: u64 = 999999;
+    client.get_dest_chain_config(&unconfigured_selector);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")] // NotInitialized
+fn test_not_initialized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    let msg = common_message::StellarToAnyMessage {
+        receiver: Bytes::from_array(&env, &[0u8; 20]),
+        data: Bytes::new(&env),
+        token_amounts: Vec::new(&env),
+        fee_token: Address::generate(&env),
+        extra_args: Bytes::new(&env),
+    };
+
+    client.forward_from_router(&67890, &msg, &0_i128, &Address::generate(&env));
+}
+
+#[test]
+fn test_multiple_dest_chain_configs() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let static_config = create_test_static_config(&env);
+    let dynamic_config = create_test_dynamic_config(&env);
+    client.initialize(&owner, &static_config, &dynamic_config);
+
+    let dest1 = create_test_dest_chain_config_args(&env, 100);
+    let dest2 = create_test_dest_chain_config_args(&env, 200);
+    let dest3 = create_test_dest_chain_config_args(&env, 300);
+
+    client.apply_dest_chain_config_updates(&vec![
+        &env,
+        dest1.clone(),
+        dest2.clone(),
+        dest3.clone(),
+    ]);
+
+    let (selectors, configs) = client.get_all_dest_chain_configs();
+    assert_eq!(selectors.len(), 3);
+    assert_eq!(configs.len(), 3);
+
+    // Verify each chain starts at message_number 0 (next = 1)
+    assert_eq!(client.get_expected_next_message_number(&100), 1);
+    assert_eq!(client.get_expected_next_message_number(&200), 1);
+    assert_eq!(client.get_expected_next_message_number(&300), 1);
+}
+
+#[test]
+fn test_update_dest_chain_config() {
+    let env = Env::default();
+    let (client, dest_selector, _, _) = init_onramp_with_dest(&env);
+
+    // Update the config with new values (off_ramp length must match address_bytes_length)
+    let mut updated = create_test_dest_chain_config_args(&env, dest_selector);
+    updated.base_execution_gas_cost = 500_000;
+
+    client.apply_dest_chain_config_updates(&vec![&env, updated.clone()]);
+
+    let stored = client.get_dest_chain_config(&dest_selector);
+    assert_eq!(stored.base_execution_gas_cost, 500_000);
+}
+
+#[test]
+fn test_dynamic_config_update() {
+    let env = Env::default();
+    let (client, _, _, _) = init_onramp_with_dest(&env);
+
+    let new_fee_quoter = Address::generate(&env);
+    let new_fee_aggregator = Address::generate(&env);
+    let new_config = DynamicConfig {
+        fee_quoter: new_fee_quoter.clone(),
+        fee_aggregator: new_fee_aggregator.clone(),
+    };
+
+    client.set_dynamic_config(&new_config);
+
+    let stored = client.get_dynamic_config();
+    assert_eq!(stored.fee_quoter, new_fee_quoter);
+    assert_eq!(stored.fee_aggregator, new_fee_aggregator);
+}
+
+#[test]
+fn test_validate_message_too_many_tokens() {
+    let env = Env::default();
+    let ta1 = common_message::TokenAmount {
+        token: Address::generate(&env),
+        amount: 10,
+    };
+    let ta2 = common_message::TokenAmount {
+        token: Address::generate(&env),
+        amount: 20,
+    };
+
+    let msg = common_message::StellarToAnyMessage {
+        receiver: Bytes::from_array(&env, &[0u8; 20]),
+        data: Bytes::new(&env),
+        token_amounts: vec![&env, ta1, ta2],
+        fee_token: Address::generate(&env),
+        extra_args: Bytes::new(&env),
+    };
+
+    assert_eq!(
+        msg.validate(),
+        Err(common_error::CCIPError::CanOnlySendOneTokenPerMessage)
+    );
+}

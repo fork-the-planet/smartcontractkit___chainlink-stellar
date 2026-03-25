@@ -37,6 +37,10 @@ pub trait CommitteeVerifierInterface {
     fn is_in_allowlist(env: soroban_sdk::Env, key: u64, addr: soroban_sdk::Address) -> bool;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn extract_signatures(
+        env: soroban_sdk::Env,
+        signatures: soroban_sdk::Bytes,
+    ) -> Result<soroban_sdk::Vec<soroban_sdk::BytesN<32>>, CCIPError>;
     fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
     fn set_dynamic_config(
         env: soroban_sdk::Env,
@@ -46,6 +50,10 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn extract_version_tag(
+        env: soroban_sdk::Env,
+        verifier_results: soroban_sdk::Bytes,
+    ) -> Result<soroban_sdk::BytesN<4>, CCIPError>;
     fn forward_to_verifier(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
@@ -56,16 +64,30 @@ pub trait CommitteeVerifierInterface {
         verifier_args: soroban_sdk::Bytes,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn get_allowlist_entry(env: soroban_sdk::Env, key: u64) -> Option<AllowListEntry>;
+    fn validate_signatures(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+        signed_hash: soroban_sdk::BytesN<32>,
+        signatures: soroban_sdk::Bytes,
+    ) -> Result<(), CCIPError>;
     fn withdraw_fee_tokens(
         env: soroban_sdk::Env,
         fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
     ) -> Result<(), CCIPError>;
+    fn get_signature_config(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+    ) -> Result<SignatureQuorumConfig, CCIPError>;
     fn is_allowlist_enabled(env: soroban_sdk::Env, key: u64) -> bool;
     fn require_in_allowlist(
         env: soroban_sdk::Env,
         key: u64,
         address: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn extract_signature_len(
+        env: soroban_sdk::Env,
+        verifier_results: soroban_sdk::Bytes,
+    ) -> Result<u32, CCIPError>;
     fn get_storage_locations(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<soroban_sdk::Bytes>, CCIPError>;
@@ -73,15 +95,35 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         updates: soroban_sdk::Vec<AllowListUpdate>,
     ) -> Result<(), CCIPError>;
+    fn apply_signature_configs(
+        env: soroban_sdk::Env,
+        source_chains_to_remove: soroban_sdk::Vec<u64>,
+        signature_configs: soroban_sdk::Vec<SignatureQuorumConfig>,
+    ) -> Result<(), CCIPError>;
     fn get_remote_chain_config(
         env: soroban_sdk::Env,
         remote_chain_selector: u64,
     ) -> Result<RemoteChainConfig, CCIPError>;
+    fn extract_signature_length(
+        env: soroban_sdk::Env,
+        signatures: soroban_sdk::Bytes,
+    ) -> Result<u32, CCIPError>;
+    fn extract_signature_pubkey(
+        env: soroban_sdk::Env,
+        signatures: soroban_sdk::Bytes,
+    ) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
     fn update_storage_locations(
         env: soroban_sdk::Env,
         new_locations: soroban_sdk::Vec<soroban_sdk::Bytes>,
     ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_all_signature_configs(
+        env: soroban_sdk::Env,
+    ) -> Result<soroban_sdk::Vec<SignatureQuorumConfig>, CCIPError>;
+    fn extract_signature_threshold(
+        env: soroban_sdk::Env,
+        signatures: soroban_sdk::Bytes,
+    ) -> Result<u32, CCIPError>;
     fn get_storage_locations_admin(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Address, CCIPError>;
@@ -162,7 +204,11 @@ pub struct GenericExtraArgsV3 {
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct AnyToStellarMessage {
-    pub placeholder: u64,
+    pub data: soroban_sdk::Bytes,
+    pub dest_token_amounts: soroban_sdk::Vec<TokenAmount>,
+    pub message_id: soroban_sdk::BytesN<32>,
+    pub sender: soroban_sdk::Bytes,
+    pub source_chain_selector: u64,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -201,7 +247,7 @@ pub enum CCIPError {
     InvalidSignatureCount = 16,
     InvalidSignatureThreshold = 17,
     InvalidSignaturePubkey = 18,
-    SourceNotConfigured = 19,
+    SourceSignersNotConfigured = 19,
     InvalidVerifierResults = 20,
     ReentrantCall = 21,
     TokenNotSupported = 22,
@@ -256,6 +302,20 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+    SourceChainNotEnabled = 100,
+    InvalidSourceChainConfig = 101,
+    InvalidOnRampAddress = 102,
+    InvalidOffRampAddress = 103,
+    InvalidMessageDestination = 104,
+    MessageAlreadyExecuted = 105,
+    InvalidExecutionState = 106,
+    CCVLengthMismatch = 107,
+    CCVQuorumNotMet = 108,
+    ReceiverError = 109,
+    GasLimitOverrideTooLow = 110,
+    InvalidReceiverLength = 111,
+    TokenHandlingError = 112,
+    MessageDecodingError = 113,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,

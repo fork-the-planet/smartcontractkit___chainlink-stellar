@@ -17,7 +17,9 @@
 
 pub mod committee_verifier;
 pub mod fee_quoter;
+pub mod offramp;
 pub mod onramp;
 pub mod rmn_proxy;
 pub mod rmn_remote;
+pub mod router;
 pub mod versioned_verifier_resolver;

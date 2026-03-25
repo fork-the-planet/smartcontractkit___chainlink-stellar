@@ -124,7 +124,11 @@ pub struct GenericExtraArgsV3 {
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct AnyToStellarMessage {
-    pub placeholder: u64,
+    pub data: soroban_sdk::Bytes,
+    pub dest_token_amounts: soroban_sdk::Vec<TokenAmount>,
+    pub message_id: soroban_sdk::BytesN<32>,
+    pub sender: soroban_sdk::Bytes,
+    pub source_chain_selector: u64,
 }
 
 #[soroban_sdk::contracttype(export = false)]
@@ -241,7 +245,7 @@ pub enum CCIPError {
     InvalidSignatureCount = 16,
     InvalidSignatureThreshold = 17,
     InvalidSignaturePubkey = 18,
-    SourceNotConfigured = 19,
+    SourceSignersNotConfigured = 19,
     InvalidVerifierResults = 20,
     ReentrantCall = 21,
     TokenNotSupported = 22,
@@ -296,6 +300,20 @@ pub enum CCIPError {
     ThresholdNotMet = 71,
     UnexpectedSigner = 72,
     ZeroValueNotAllowed = 73,
+    SourceChainNotEnabled = 100,
+    InvalidSourceChainConfig = 101,
+    InvalidOnRampAddress = 102,
+    InvalidOffRampAddress = 103,
+    InvalidMessageDestination = 104,
+    MessageAlreadyExecuted = 105,
+    InvalidExecutionState = 106,
+    CCVLengthMismatch = 107,
+    CCVQuorumNotMet = 108,
+    ReceiverError = 109,
+    GasLimitOverrideTooLow = 110,
+    InvalidReceiverLength = 111,
+    TokenHandlingError = 112,
+    MessageDecodingError = 113,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,

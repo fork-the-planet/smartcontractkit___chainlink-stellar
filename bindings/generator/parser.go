@@ -13,6 +13,7 @@ type Contract struct {
 	Functions []Function
 	Errors    []ErrorEnum
 	Events    []Event
+	Enums     []Enum
 }
 
 // Struct represents a Soroban struct type.
@@ -38,6 +39,16 @@ type Function struct {
 type ErrorEnum struct {
 	Name     string
 	Variants []ErrorVariant
+}
+
+type Enum struct {
+	Name     string
+	Variants []EnumVariant
+}
+
+type EnumVariant struct {
+	Name  string
+	Value int // TODO: do we need to handle advanced Rust enums?
 }
 
 // ErrorVariant represents an error enum variant.
@@ -69,7 +80,42 @@ func ParseRustBindings(input string) (*Contract, error) {
 	// Parse events
 	contract.Events = parseEvents(input)
 
+	// Parse enums
+	contract.Enums = parseEnums(input)
+
 	return contract, nil
+}
+
+func parseEnums(input string) []Enum {
+	// Match: #[soroban_sdk::contracttype] pub enum Name { ... }
+	enumRe := regexp.MustCompile(`(?s)#\[soroban_sdk::contracttype[^\]]*\]\s*(?:#\[derive[^\]]*\]\s*)*pub enum (\w+)\s*\{([^}]+)\}`)
+	variantRe := regexp.MustCompile(`(\w+)\s*=\s*(\d+)`)
+
+	var enums []Enum
+	matches := enumRe.FindAllStringSubmatch(input, -1)
+
+	for _, match := range matches {
+		name := match[1]
+		body := match[2]
+
+		var variants []EnumVariant
+		variantMatches := variantRe.FindAllStringSubmatch(body, -1)
+		for _, vm := range variantMatches {
+			val := 0
+			fmt.Sscanf(vm[2], "%d", &val)
+			variants = append(variants, EnumVariant{
+				Name:  vm[1],
+				Value: val,
+			})
+		}
+
+		enums = append(enums, Enum{
+			Name:     name,
+			Variants: variants,
+		})
+	}
+
+	return enums
 }
 
 func parseStructs(input string) []Struct {

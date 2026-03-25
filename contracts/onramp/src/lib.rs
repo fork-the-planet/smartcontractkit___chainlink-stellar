@@ -9,15 +9,18 @@ use common_interfaces::{
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, xdr::FromXdr, Address, Bytes, BytesN, Env, IntoVal, Map,
-    Symbol, Vec,
+    contract, contractimpl, symbol_short,
+    xdr::{FromXdr, ToXdr},
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
-use common_message::{GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes};
+use common_message::{
+    CcipMessageV1, GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes,
+};
 use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
 
@@ -169,15 +172,20 @@ impl OnRampContract {
 
         // TODO: add the defualt ccv from dest config if no user-specified CCVs
 
-        // Query each CCV for fees
+        // Query each CCV (via VVR resolution) for fees
         let ccv_fees_usd_cents = extra_args
             .ccvs
             .iter()
             .zip(extra_args.ccv_args.iter())
             .try_fold(0u128, |acc, (ccv, ccv_args)| {
+                // TODO: are these addresses meant to be the VVR addresses or the verifier addresses?
+                let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
+                let verifier_address =
+                    vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
+
                 let ccv_fee_response = Self::get_ccv_fee_internal(
                     &env,
-                    &ccv,
+                    &verifier_address,
                     dest_chain_selector,
                     &message_bytes,
                     &ccv_args,
@@ -251,16 +259,16 @@ impl OnRampContract {
         // Enter reentrancy guard (uses temporary storage)
         ReentrancyGuard::enter(&env)?;
 
-        // Get destination chain config
+        // Get configs
         let mut dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
         let dynamic_config = Self::get_dynamic_config_internal(&env)?;
+        let static_config = Self::get_static_config_internal(&env)?;
 
         // Verify caller is the router
         dest_config.router.require_auth();
 
         // Parse extra args; use default when empty (common for simple messages)
         let extra_args = if message.extra_args.len() == 0 {
-            // TODO: is a completely empty extra args value a valid case?
             GenericExtraArgsV3::new(&env, dest_config.default_executor.clone())
         } else {
             GenericExtraArgsV3::from_xdr(&env, &message.extra_args.clone())
@@ -274,8 +282,38 @@ impl OnRampContract {
         // Get pool CCVs if token transfer
         // Merge CCV lists
 
-        // Generate message ID (keccak256(messageBytes))
-        let message_id = message.compute_message_id(&env);
+        // Compute sequence number before building the canonical message
+        dest_config.message_number += 1;
+        let sequence_number = dest_config.message_number;
+
+        // Build canonical MessageV1 for message ID computation and event encoding
+        let ccip_msg = CcipMessageV1 {
+            source_chain_selector: static_config.chain_selector,
+            dest_chain_selector,
+            sequence_number,
+            execution_gas_limit: extra_args.gas_limit,
+            ccip_receive_gas_limit: 0,
+            finality: extra_args.block_confirmations as u16,
+            ccv_and_executor_hash: CcipMessageV1::compute_ccv_and_executor_hash(
+                &env,
+                &extra_args.ccvs,
+                &extra_args.executor,
+            ),
+            onramp_address: env.current_contract_address().to_xdr(&env),
+            offramp_address: dest_config.off_ramp.clone().to_xdr(&env),
+            sender: original_sender.clone().to_xdr(&env),
+            receiver: message.receiver.clone(),
+            dest_blob: Bytes::new(&env),
+            token_transfer: Bytes::new(&env), // TODO: encode token transfers
+            data: message.data.clone(),
+        };
+
+        let message_id = ccip_msg.compute_message_id(&env);
+
+        // TODO: check if message ID already exists in storage for idempotency
+
+        // Receipt ordering must match the offchain expectation: [CCV_0, ..., CCV_N, Executor, NetworkFee]
+        // where Executor is at index length-2 and NetworkFee is at length-1.
 
         // Invoke verifiers to get verification blobs and generate receipts
         let (verifier_blobs, mut receipts) = Self::get_ccv_blobs_and_receipts_internal(
@@ -288,7 +326,18 @@ impl OnRampContract {
             fee_token_amount,
         )?;
 
-        // Router's receipt to represent the network's fee
+        // Executor receipt (always before the network fee receipt)
+        receipts.push_back(Receipt {
+            issuer: extra_args.executor.clone(),
+            dest_gas_limit: dest_config
+                .base_execution_gas_cost
+                .saturating_add(extra_args.gas_limit),
+            dest_bytes_overhead: 0,
+            fee_token_amount: 0, // TODO: compute executor fee
+            extra_args: extra_args.executor_args.clone(),
+        });
+
+        // Network fee receipt (always last)
         receipts.push_back(Receipt {
             issuer: dest_config.router.clone(),
             dest_gas_limit: 0,
@@ -297,27 +346,14 @@ impl OnRampContract {
             extra_args: Bytes::new(&env),
         });
 
-        // TODO: add executor fee to receipts
-        // receipts.push_back(Receipt {
-        //     issuer: extra_args.executor.clone(),
-        //     dest_gas_limit: dest_config
-        //         .base_execution_gas_cost
-        //         .saturating_add(extra_args.gas_limit),
-        //     dest_bytes_overhead: 0,
-        //     fee_token_amount,
-        //     extra_args: extra_args.executor_args.clone(),
-        // });
-
-        // Increment message number (sequence number for this destination)
-        dest_config.message_number += 1;
-        let sequence_number = dest_config.message_number;
+        // Persist updated sequence number
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
 
         // TODO: sum all fees and validate
         // TODO: Distribute fees
         // TODO: Lock or burn tokens
 
-        // Emit CCIPMessageSent event
+        // Emit CCIPMessageSent event with canonical MessageV1 encoding
         CCIPMessageSentEvent {
             dest_chain_selector,
             sequence_number,
@@ -329,7 +365,7 @@ impl OnRampContract {
                 .get(0)
                 .map(|token_amount| token_amount.amount)
                 .unwrap_or(0),
-            encoded_message: message.to_bytes(&env),
+            encoded_message: ccip_msg.to_bytes(&env),
             receipts,
             verifier_blobs,
         }
@@ -338,10 +374,7 @@ impl OnRampContract {
         // Exit reentrancy guard
         ReentrancyGuard::exit(&env);
 
-        // TODO: Placeholder to use fee_token_amount
-        let _ = fee_token_amount;
-
-        // TODO: do we need to keep track of message IDs in storage for idempotency?
+        // TODO: keep track of message IDs in storage for idempotency?
 
         Ok(message_id)
     }

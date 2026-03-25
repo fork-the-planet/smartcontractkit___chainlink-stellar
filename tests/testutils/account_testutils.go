@@ -101,3 +101,31 @@ func WaitForFriendbot(ctx context.Context, friendbotBaseURL string, timeout time
 
 	return fmt.Errorf("friendbot not ready after %v: %w", timeout, lastErr)
 }
+
+func FundViaFriendbot(friendbotURL, address string) error {
+	faucetURL := fmt.Sprintf("%s?addr=%s", friendbotURL, address)
+
+	var lastErr error
+	maxRetries := 9
+	retryInterval := 20 * time.Second
+
+	for range maxRetries {
+		resp, err := http.Get(faucetURL)
+		if err != nil {
+			lastErr = fmt.Errorf("friendbot request failed: %w", err)
+			time.Sleep(retryInterval)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return nil
+		}
+
+		resp.Body.Close()
+		lastErr = fmt.Errorf("friendbot returned status %s", resp.Status)
+		time.Sleep(retryInterval)
+	}
+
+	return fmt.Errorf("friendbot not ready after %d attempts: %w", maxRetries, lastErr)
+}
