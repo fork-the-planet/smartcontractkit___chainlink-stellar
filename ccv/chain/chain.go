@@ -33,7 +33,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	"github.com/smartcontractkit/chainlink-ccv/deployments"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
@@ -175,7 +175,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 
 // ConnectContractsWithSelectors implements cciptestinterfaces.CCIP17Configuration.
 // Connects this chain's OnRamp to OffRamps on remote chains and configures CommitteeVerifiers.
-func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
+func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *offchain.EnvironmentTopology) error {
 	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
 
 	// Get the router's address from the datastore
@@ -284,7 +284,7 @@ func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment
 
 // DeployContractsForSelector implements cciptestinterfaces.CCIP17Configuration.
 // Deploys CCIP contracts for the given chain selector.
-func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, committees *deployments.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, committees *offchain.EnvironmentTopology) (datastore.DataStore, error) {
 	c.logger.Info().Uint64("selector", selector).Msg("Deploying Stellar CCIP contracts")
 
 	// TODO: can we just use env.DataStore instead of creating a new one?
@@ -1274,7 +1274,7 @@ func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAdd
 // given source chain selector from the environment topology. It searches all
 // committees for a chain config matching sourceChainSelector, then looks up
 // each NOP's signer address for the specified chain family.
-func resolveSignersFromTopology(topology *deployments.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
+func resolveSignersFromTopology(topology *offchain.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}

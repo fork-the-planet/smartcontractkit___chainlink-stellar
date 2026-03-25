@@ -6,7 +6,6 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
-	executorsvc "github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
@@ -36,7 +35,7 @@ func RegisterStellarComponents() {
 
 	chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 	committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
-	executorsvc.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
+	// TODO: executor modifier registration was removed upstream; re-add when the pattern is restored
 	ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 	registry.RegisterChainFamilyAdapter(chainsel.FamilyStellar, ccvchain.NewChainFamilyAdapter(evmAdapter))
 	registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())

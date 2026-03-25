@@ -11,9 +11,9 @@ import (
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
-	cmd "github.com/smartcontractkit/chainlink-ccv/cmd/verifier"
+	cmd "github.com/smartcontractkit/chainlink-ccv/verifier/cmd"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
-	"github.com/smartcontractkit/chainlink-ccv/verifier/commit"
+	"github.com/smartcontractkit/chainlink-ccv/verifier/pkg/commit"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/accessors"
