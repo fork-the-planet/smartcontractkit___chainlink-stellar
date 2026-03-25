@@ -17,7 +17,9 @@ use common_message::{
     AnyToStellarMessage, CcipMessageV1, FromBytes, MessageIdCompute, TokenAmount,
 };
 use events::{ExecutionStateChangedEvent, SourceChainConfigSetEvent, StaticConfigSetEvent};
-use types::{MessageExecutionState, SourceChainConfig, SourceChainConfigArgs, StaticConfig};
+use types::{
+    DataKey, MessageExecutionState, SourceChainConfig, SourceChainConfigArgs, StaticConfig,
+};
 
 // ============================================================
 // Storage Keys
@@ -28,8 +30,12 @@ const OWNER: Symbol = symbol_short!("OWNER");
 const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
 const STATIC_CONFIG: Symbol = symbol_short!("STATIC");
 const SOURCE_CHAINS: Symbol = symbol_short!("SRCCHNS");
-const EXEC_STATES: Symbol = symbol_short!("EXSTATES");
 const RMN_PROXY: Symbol = symbol_short!("RMN_PROXY");
+
+// Extend persistent entry TTL if it drops below ~30 days (at 5s/ledger)
+const TTL_THRESHOLD: u32 = 518_400;
+// Extend to ~180 days (at 5s/ledger)
+const TTL_EXTEND_TO: u32 = 3_110_400;
 
 // ============================================================
 // Contract
@@ -82,15 +88,8 @@ impl OffRampContract {
 
         env.storage().instance().set(&STATIC_CONFIG, &static_config);
 
-        // Initialize empty source chains map
         let source_chains: Map<u64, SourceChainConfig> = Map::new(&env);
-        env.storage()
-            .persistent()
-            .set(&SOURCE_CHAINS, &source_chains);
-
-        // Initialize empty execution states map
-        let exec_states: Map<BytesN<32>, MessageExecutionState> = Map::new(&env);
-        env.storage().persistent().set(&EXEC_STATES, &exec_states);
+        env.storage().instance().set(&SOURCE_CHAINS, &source_chains);
 
         StaticConfigSetEvent { static_config }.publish(&env);
 
@@ -221,6 +220,10 @@ impl OffRampContract {
 
         ReentrancyGuard::exit(&env);
 
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
         Ok(())
     }
 
@@ -235,6 +238,24 @@ impl OffRampContract {
     ) -> Result<MessageExecutionState, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         Ok(Self::get_execution_state_internal(&env, &message_id))
+    }
+
+    /// Extends the persistent TTL of the execution-state entry for `message_id`, using the same
+    /// threshold and target as writes from [`Self::execute`]. Permissionless so keepers can bump rent.
+    ///
+    /// Soroban does not expose reading a persistent entry's `live_until_ledger_seq` from guest
+    /// code, and rent can also be extended outside this contract (same ledger entry). So there is
+    /// no authoritative on-chain "get TTL" — use RPC / ledger APIs on the contract-data entry instead.
+    pub fn extend_execution_state_ttl(env: Env, message_id: BytesN<32>) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        let state_key = DataKey::ExecState(message_id.clone());
+        if !env.storage().persistent().has(&state_key) {
+            return Err(CCIPError::InvalidExecutionState);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&state_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        Ok(())
     }
 
     /// Get the static configuration.
@@ -260,7 +281,7 @@ impl OffRampContract {
 
         let source_chains: Map<u64, SourceChainConfig> = env
             .storage()
-            .persistent()
+            .instance()
             .get(&SOURCE_CHAINS)
             .unwrap_or(Map::new(&env));
 
@@ -294,7 +315,7 @@ impl OffRampContract {
 
         let mut source_chains: Map<u64, SourceChainConfig> = env
             .storage()
-            .persistent()
+            .instance()
             .get(&SOURCE_CHAINS)
             .unwrap_or(Map::new(&env));
 
@@ -322,9 +343,7 @@ impl OffRampContract {
             .publish(&env);
         }
 
-        env.storage()
-            .persistent()
-            .set(&SOURCE_CHAINS, &source_chains);
+        env.storage().instance().set(&SOURCE_CHAINS, &source_chains);
 
         Ok(())
     }
@@ -513,7 +532,7 @@ impl OffRampContract {
     ) -> Result<SourceChainConfig, CCIPError> {
         let source_chains: Map<u64, SourceChainConfig> = env
             .storage()
-            .persistent()
+            .instance()
             .get(&SOURCE_CHAINS)
             .ok_or(CCIPError::SourceChainNotEnabled)?;
 
@@ -523,30 +542,19 @@ impl OffRampContract {
     }
 
     fn get_execution_state_internal(env: &Env, message_id: &BytesN<32>) -> MessageExecutionState {
-        // TODO: the key used for storage here should be the message ID
-        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
-        let exec_states: Map<BytesN<32>, MessageExecutionState> = env
-            .storage()
+        let key = DataKey::ExecState(message_id.clone());
+        env.storage()
             .persistent()
-            .get(&EXEC_STATES)
-            .unwrap_or(Map::new(env));
-
-        exec_states
-            .get(message_id.clone())
+            .get(&key)
             .unwrap_or(MessageExecutionState::Untouched)
     }
 
     fn set_execution_state(env: &Env, message_id: &BytesN<32>, state: MessageExecutionState) {
-        // TODO: the key used for storage here should be the message ID
-        // not just a general EXEC_STATES key to avoid having to read the entire (growing) map.
-        let mut exec_states: Map<BytesN<32>, MessageExecutionState> = env
-            .storage()
+        let key = DataKey::ExecState(message_id.clone());
+        env.storage().persistent().set(&key, &state);
+        env.storage()
             .persistent()
-            .get(&EXEC_STATES)
-            .unwrap_or(Map::new(env));
-
-        exec_states.set(message_id.clone(), state);
-        env.storage().persistent().set(&EXEC_STATES, &exec_states);
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 
     /// Verify the onramp address is in the allowed set for the source chain.

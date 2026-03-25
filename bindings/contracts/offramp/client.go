@@ -318,6 +318,21 @@ func (c *OffRampClient) CancelOwnershipTransfer(ctx context.Context) error {
 	return nil
 }
 
+// ExtendExecutionStateTtl calls the extend_execution_state_ttl function on the contract.
+func (c *OffRampClient) ExtendExecutionStateTtl(ctx context.Context, messageId [32]byte) error {
+	args := []xdr.ScVal{
+		scval.Bytes32ToScVal(messageId),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extend_execution_state_ttl", args)
+	if err != nil {
+		return fmt.Errorf("failed to call extend_execution_state_ttl: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // GetAllSourceChainConfigs calls the get_all_source_chain_configs function on the contract.
 func (c *OffRampClient) GetAllSourceChainConfigs(ctx context.Context) ([]uint64, []SourceChainConfig, error) {
 	args := []xdr.ScVal{}

@@ -2,7 +2,7 @@
 
 use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, Vec};
 
-use crate::types::{MessageExecutionState, SourceChainConfigArgs, StaticConfig};
+use crate::types::{DataKey, MessageExecutionState, SourceChainConfigArgs, StaticConfig};
 use crate::{OffRampContract, OffRampContractClient};
 
 fn setup_env() -> (Env, Address, OffRampContractClient<'static>) {
@@ -54,6 +54,42 @@ fn test_get_execution_state_untouched() {
     let message_id = BytesN::from_array(&env, &[0u8; 32]);
     let state = client.get_execution_state(&message_id);
     assert_eq!(state, MessageExecutionState::Untouched);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #106)")]
+fn test_extend_execution_state_ttl_requires_storage_entry() {
+    let (env, owner, client) = setup_env();
+    let static_config = default_static_config(&env);
+    client.initialize(&owner, &static_config);
+
+    let message_id = BytesN::from_array(&env, &[9u8; 32]);
+    let _ = client.extend_execution_state_ttl(&message_id);
+}
+
+#[test]
+fn test_extend_execution_state_ttl_ok() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(OffRampContract, ());
+    let client = OffRampContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let static_config = default_static_config(&env);
+    client.initialize(&owner, &static_config);
+
+    let message_id = BytesN::from_array(&env, &[7u8; 32]);
+    let state_key = DataKey::ExecState(message_id.clone());
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&state_key, &MessageExecutionState::Failure);
+        env.storage()
+            .persistent()
+            .extend_ttl(&state_key, 518_400, 3_110_400);
+    });
+
+    client.extend_execution_state_ttl(&message_id);
 }
 
 #[test]
