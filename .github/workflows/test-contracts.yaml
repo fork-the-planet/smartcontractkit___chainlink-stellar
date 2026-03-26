@@ -63,18 +63,79 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          TOTAL_LINE=$(grep 'TOTAL' coverage.txt | tail -1 || echo 'No coverage summary found')
-          cat > coverage-summary.md <<EOF
-          ## Soroban Contract Test Coverage
+          if ! grep -q '^TOTAL' coverage.txt; then
+            printf '## Soroban Contract Test Coverage\n\nNo coverage data available.\n' > coverage-summary.md
+            exit 0
+          fi
 
-          \`\`\`
-          ${TOTAL_LINE}
-          \`\`\`
+          REGIONS=$(awk '/^TOTAL/{print $2}' coverage.txt)
+          MISSED_REGIONS=$(awk '/^TOTAL/{print $3}' coverage.txt)
+          REGION_PCT=$(awk '/^TOTAL/{print $4}' coverage.txt)
+          FUNCTIONS=$(awk '/^TOTAL/{print $5}' coverage.txt)
+          MISSED_FUNCTIONS=$(awk '/^TOTAL/{print $6}' coverage.txt)
+          FUNC_PCT=$(awk '/^TOTAL/{print $7}' coverage.txt)
+          LINES=$(awk '/^TOTAL/{print $8}' coverage.txt)
+          MISSED_LINES=$(awk '/^TOTAL/{print $9}' coverage.txt)
+          LINE_PCT=$(awk '/^TOTAL/{print $10}' coverage.txt)
 
-          [Full coverage report](${RUN_URL})
-          EOF
-          sed -i 's/^          //' coverage-summary.md
+          HIT_LINES=$((LINES - MISSED_LINES))
+          HIT_FUNCTIONS=$((FUNCTIONS - MISSED_FUNCTIONS))
+          HIT_REGIONS=$((REGIONS - MISSED_REGIONS))
+
+          CONTRACT_TABLE=$(awk '
+            /^---/ || /^Filename/ || /^$/ || /^TOTAL/ { next }
+            {
+              file = $1; lines = $8 + 0; missed = $9 + 0
+              funcs = $5 + 0; mfuncs = $6 + 0
+              if (lines > 0) {
+                n = split(file, p, "/")
+                c = (p[1] == "contracts") ? p[2] : "other"
+                if (c == "common" || c == "ccvs" || c == "pools" || c == "examples") c = c "/" p[3]
+                L[c] += lines; ML[c] += missed
+                F[c] += funcs; MF[c] += mfuncs
+              }
+            }
+            END {
+              for (c in L) {
+                hit = L[c] - ML[c]; pct = (L[c] > 0) ? hit / L[c] * 100 : 0
+                fhit = F[c] - MF[c]; fpct = (F[c] > 0) ? fhit / F[c] * 100 : 0
+                printf "| \x60%s\x60 | %d / %d | **%.1f%%** | %d / %d | %.1f%% |\n", c, hit, L[c], pct, fhit, F[c], fpct
+              }
+            }
+          ' coverage.txt | sort)
+
+          SHORT_SHA=${COMMIT_SHA::8}
+
+          {
+            echo '## Soroban Contract Test Coverage'
+            echo ''
+            echo "**${LINE_PCT} line coverage** — ${HIT_LINES} / ${LINES} lines hit"
+            echo ''
+            echo '| Metric | Hit | Total | Coverage |'
+            echo '|--------|-----|-------|----------|'
+            echo "| Lines | ${HIT_LINES} | ${LINES} | ${LINE_PCT} |"
+            echo "| Functions | ${HIT_FUNCTIONS} | ${FUNCTIONS} | ${FUNC_PCT} |"
+            echo "| Regions | ${HIT_REGIONS} | ${REGIONS} | ${REGION_PCT} |"
+            echo ''
+            echo '### Per-Contract Breakdown'
+            echo ''
+            echo '| Contract | Lines (Hit / Total) | Line Cov | Funcs (Hit / Total) | Func Cov |'
+            echo '|----------|---------------------|----------|---------------------|----------|'
+            echo "${CONTRACT_TABLE}"
+            echo ''
+            echo '<details>'
+            echo '<summary>Full file-level coverage report</summary>'
+            echo ''
+            echo '```'
+            cat coverage.txt
+            echo '```'
+            echo ''
+            echo '</details>'
+            echo ''
+            echo "> Commit \`${SHORT_SHA}\` | [Full CI run](${RUN_URL})"
+          } > coverage-summary.md
 
       - name: Post sticky comment
         if: github.event_name == 'pull_request'
