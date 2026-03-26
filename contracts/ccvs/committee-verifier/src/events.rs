@@ -1,12 +1,22 @@
 //! Events emitted by the CommitteeVerifier contract.
 
-use soroban_sdk::{contractevent, Address, Bytes, Vec};
+use soroban_sdk::{contractevent, Address, Bytes, BytesN, Vec};
 
 use crate::types::DynamicConfig;
 
 // ============================================================
 // CommitteeVerifier-specific events
 // ============================================================
+
+/// Emitted when signature signer configuration is set for a source chain.
+/// Mirrors `ConfigSet(uint64 indexed sourceChainSelector, address[] signers, uint8 f)`.
+#[contractevent(topics = ["ccv_SignatureConfigSet"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SignatureConfigSetEvent {
+    pub source_chain_selector: u64,
+    pub signers: Vec<BytesN<32>>,
+    pub threshold: u32,
+}
 
 /// Emitted when the dynamic configuration is set.
 /// Mirrors `ConfigSet(DynamicConfig dynamicConfig)` from CommitteeVerifier.sol.

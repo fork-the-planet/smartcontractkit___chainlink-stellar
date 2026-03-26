@@ -5,22 +5,39 @@ use soroban_sdk::{
     contracttrait, contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
+pub const PUBKEY_BYTES: u32 = 32;
+pub const ED25519_SIG_BYTES: u32 = 64;
+/// Each entry in the signature payload is [32-byte pubkey][64-byte Ed25519 signature].
+pub const PER_SIGNATURE_BYTES: u32 = PUBKEY_BYTES + ED25519_SIG_BYTES;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignatureQuorumConfig {
     pub source_chain_selector: u64,
     pub threshold: u32,
-    /// TODO: confirm signer encoding from offchain verifier signer set format.
-    /// Using 32-byte Ed25519 pubkeys as scaffold.
+    /// Ed25519 public keys (32 bytes each), stored in ascending byte-lexicographic order.
     pub signers: Vec<BytesN<32>>,
 }
 
-// TODO: re-enable this when the config types needed are beyond `SignatureConfig`
-// pub trait SignatureConfigStateGetters: TryFromVal<Env, Val> + IntoVal<Env, Val> + PartialEq {
-//     fn new(source_chain_selector: u64, threshold: u32, signers: Vec<BytesN<32>>) -> Self;
-//     fn threshold(&self) -> u32;
-//     fn signers(&self) -> Vec<BytesN<32>>;
-// }
+fn read_pubkey(env: &Env, data: &Bytes, offset: u32) -> Result<BytesN<32>, CCIPError> {
+    let mut out = [0u8; 32];
+    let mut i = 0u32;
+    while i < PUBKEY_BYTES {
+        out[i as usize] = data.get(offset + i).ok_or(CCIPError::InvalidSignature)?;
+        i += 1;
+    }
+    Ok(BytesN::from_array(env, &out))
+}
+
+fn read_ed25519_sig(env: &Env, data: &Bytes, offset: u32) -> Result<BytesN<64>, CCIPError> {
+    let mut out = [0u8; 64];
+    let mut i = 0u32;
+    while i < ED25519_SIG_BYTES {
+        out[i as usize] = data.get(offset + i).ok_or(CCIPError::InvalidSignature)?;
+        i += 1;
+    }
+    Ok(BytesN::from_array(env, &out))
+}
 
 #[contracttrait]
 pub trait SignatureQuorum: Initializable + Ownable {
@@ -28,23 +45,6 @@ pub trait SignatureQuorum: Initializable + Ownable {
 
     const VERIFIER_VERSION_BYTES: u32 = 4;
     const SIGNATURE_LENGTH_BYTES: u32 = 2;
-    const SIGNATURE_THRESHOLD_BYTES: u32 = 2;
-
-    fn extract_signature_length(signatures: &Bytes) -> Result<u32, CCIPError> {
-        unimplemented!()
-    }
-
-    fn extract_signatures(signatures: &Bytes) -> Result<Vec<BytesN<32>>, CCIPError> {
-        unimplemented!()
-    }
-
-    fn extract_signature_threshold(signatures: &Bytes) -> Result<u32, CCIPError> {
-        unimplemented!()
-    }
-
-    fn extract_signature_pubkey(signatures: &Bytes) -> Result<BytesN<32>, CCIPError> {
-        unimplemented!()
-    }
 
     fn extract_version_tag(env: &Env, verifier_results: &Bytes) -> Result<BytesN<4>, CCIPError> {
         if verifier_results.len() < Self::VERIFIER_VERSION_BYTES {
@@ -74,6 +74,14 @@ pub trait SignatureQuorum: Initializable + Ownable {
         Ok(((b0 as u32) << 8) | (b1 as u32))
     }
 
+    /// Verify that `signatures` contains at least `threshold` valid Ed25519 signatures
+    /// over `signed_hash`, produced by distinct signers from the configured set for
+    /// `source_chain_selector`.
+    ///
+    /// Signature payload format: `[pubkey_0 (32B)][sig_0 (64B)][pubkey_1 (32B)][sig_1 (64B)]...`
+    ///
+    /// Signers must appear in strictly ascending byte-lexicographic order of their public
+    /// keys. This prevents duplicates and makes the ordering deterministic.
     fn validate_signatures(
         env: &Env,
         source_chain_selector: u64,
@@ -94,13 +102,58 @@ pub trait SignatureQuorum: Initializable + Ownable {
             return Err(CCIPError::SourceSignersNotConfigured);
         }
 
-        // TODO: implement native Soroban Ed25519 quorum validation:
-        // 1) Define signature serialization format in verifier_results.
-        // 2) Recover/parse per-signature public keys and signature bytes.
-        // 3) Enforce ordering/uniqueness semantics to match EVM invariants.
-        // 4) Call env.crypto().ed25519_verify(pubkey, signed_hash, signature).
-        let _ = (cfg, signatures, signed_hash);
+        if signatures.len() % PER_SIGNATURE_BYTES != 0 {
+            return Err(CCIPError::InvalidSignatureLength);
+        }
+
+        let sig_count = signatures.len() / PER_SIGNATURE_BYTES;
+        if sig_count < cfg.threshold {
+            return Err(CCIPError::ThresholdNotMet);
+        }
+
+        let message = Bytes::from_slice(env, &signed_hash.to_array());
+        let mut prev_pubkey: Option<BytesN<32>> = None;
+
+        let mut i = 0u32;
+        while i < sig_count {
+            let offset = i * PER_SIGNATURE_BYTES;
+            let pubkey = read_pubkey(env, &signatures, offset)?;
+            let sig = read_ed25519_sig(env, &signatures, offset + PUBKEY_BYTES)?;
+
+            if let Some(ref prev) = prev_pubkey {
+                if *prev >= pubkey {
+                    return Err(CCIPError::OutOfOrderSignatures);
+                }
+            }
+
+            let mut found = false;
+            for signer in cfg.signers.iter() {
+                if signer == pubkey {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err(CCIPError::UnexpectedSigner);
+            }
+
+            env.crypto().ed25519_verify(&pubkey, &message, &sig);
+
+            prev_pubkey = Some(pubkey);
+            i += 1;
+        }
+
         Ok(())
+    }
+
+    /// Hook for implementors to emit a contract event when signature configs change.
+    /// Default is a no-op; override in the concrete contract to publish events.
+    fn emit_signature_config_set(
+        _env: &Env,
+        _source_chain_selector: u64,
+        _signers: &Vec<BytesN<32>>,
+        _threshold: u32,
+    ) {
     }
 
     fn get_signature_config(
@@ -108,7 +161,6 @@ pub trait SignatureQuorum: Initializable + Ownable {
         source_chain_selector: u64,
     ) -> Result<SignatureQuorumConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        // TODO: auth guard?
 
         let sig_cfgs: Map<u64, SignatureQuorumConfig> = env
             .storage()
@@ -156,7 +208,8 @@ pub trait SignatureQuorum: Initializable + Ownable {
 
         for source_chain_selector in source_chains_to_remove.iter() {
             sig_cfgs.remove(source_chain_selector);
-            // TODO: publish SignatureConfigSet(source_chain_selector, [], 0).
+            let empty: Vec<BytesN<32>> = Vec::new(&env);
+            Self::emit_signature_config_set(&env, source_chain_selector, &empty, 0);
         }
 
         for update in signature_configs.iter() {
@@ -164,16 +217,35 @@ pub trait SignatureQuorum: Initializable + Ownable {
                 return Err(CCIPError::InvalidSignatureThreshold);
             }
 
+            let signers = &update.signers;
+            let mut j = 1u32;
+            while j < signers.len() {
+                let prev = signers.get(j - 1).ok_or(CCIPError::InvalidSignaturePubkey)?;
+                let curr = signers.get(j).ok_or(CCIPError::InvalidSignaturePubkey)?;
+                if prev == curr {
+                    return Err(CCIPError::DuplicateOnchainPublicKey);
+                }
+                if prev > curr {
+                    return Err(CCIPError::InvalidSignerOrder);
+                }
+                j += 1;
+            }
+
             sig_cfgs.set(
                 update.source_chain_selector,
                 SignatureQuorumConfig {
                     source_chain_selector: update.source_chain_selector,
                     threshold: update.threshold,
-                    signers: update.signers,
+                    signers: update.signers.clone(),
                 },
             );
 
-            // TODO: publish SignatureConfigSet.
+            Self::emit_signature_config_set(
+                &env,
+                update.source_chain_selector,
+                &update.signers,
+                update.threshold,
+            );
         }
 
         env.storage()

@@ -58,7 +58,7 @@ func loadConfig(path string) (*common.Config, error) {
 }
 
 func loadExecutorConfig(filepath string) (*executor.Configuration, error) {
-	var config executor.ConfigWithBlockchainInfo
+	var config executor.ConfigWithBlockchainInfo[any]
 	if _, err := toml.DecodeFile(filepath, &config); err != nil {
 		return nil, err
 	}

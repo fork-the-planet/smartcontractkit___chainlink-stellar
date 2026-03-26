@@ -246,6 +246,7 @@ dependencies = [
  "common-guard",
  "common-helpers",
  "common-verifier",
+ "ed25519-dalek",
  "rmn_proxy",
  "rmn_remote",
  "soroban-sdk",

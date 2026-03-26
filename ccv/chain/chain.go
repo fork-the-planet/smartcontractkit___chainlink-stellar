@@ -151,7 +151,7 @@ func (c *Chain) ChainSelector() uint64 {
 // GetConnectionProfile implements cciptestinterfaces.OnChainConfigurable.
 // Returns a ChainDefinition describing this Stellar chain as a lane endpoint,
 // plus the default committee verifier config to apply for each remote chain.
-func (c *Chain) GetConnectionProfile(selector uint64) (lanes.ChainDefinition, ccipChangesets.CommitteeVerifierRemoteChainConfig, error) {
+func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64) (lanes.ChainDefinition, ccipChangesets.CommitteeVerifierRemoteChainConfig, error) {
 	chainDef := lanes.ChainDefinition{
 		Selector:             selector,
 		AddressBytesLength:   stellarAddressLen,

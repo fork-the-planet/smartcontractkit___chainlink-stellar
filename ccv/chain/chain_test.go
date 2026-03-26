@@ -65,7 +65,7 @@ func TestGetConnectionProfile(t *testing.T) {
 	selector := uint64(12345)
 	chain := New(logger, selector)
 
-	chainDef, cvConfig, err := chain.GetConnectionProfile(selector)
+	chainDef, cvConfig, err := chain.GetConnectionProfile(nil, selector)
 	require.NoError(t, err)
 
 	t.Run("chain definition has correct selector and address length", func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestGetConnectionProfile(t *testing.T) {
 
 	t.Run("uses the provided selector, not the chain's own", func(t *testing.T) {
 		otherSelector := uint64(99999)
-		def, _, err := chain.GetConnectionProfile(otherSelector)
+		def, _, err := chain.GetConnectionProfile(nil, otherSelector)
 		require.NoError(t, err)
 		assert.Equal(t, otherSelector, def.Selector)
 		assert.Equal(t, otherSelector, def.DefaultInboundCCVs[0].ChainSelector)

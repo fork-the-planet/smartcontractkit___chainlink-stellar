@@ -87,6 +87,20 @@ impl AllowListable for CommitteeVerifierContract {
 #[contractimpl(contracttrait)]
 impl SignatureQuorum for CommitteeVerifierContract {
     const SIGNATURE_CONFIGS: Symbol = SIGNATURE_CONFIGS;
+
+    fn emit_signature_config_set(
+        env: &Env,
+        source_chain_selector: u64,
+        signers: &Vec<BytesN<32>>,
+        threshold: u32,
+    ) {
+        events::SignatureConfigSetEvent {
+            source_chain_selector,
+            signers: signers.clone(),
+            threshold,
+        }
+        .publish(env);
+    }
 }
 
 #[contractimpl]
