@@ -10,11 +10,32 @@ RUN apk --no-cache add git
 COPY go.mod go.sum ./
 COPY bindings/go.mod bindings/go.sum ./bindings/
 
+# TODO: remove when chainlink-ccv is published with latest updates
+# Drop local replace directives that point to ../chainlink-ccv (not available
+# in the Docker build context). The require block already pins published
+# pseudo-versions for these modules, so they'll resolve from the module proxy.
+RUN go mod edit \
+    -dropreplace=github.com/smartcontractkit/chainlink-ccv \
+    -dropreplace=github.com/smartcontractkit/chainlink-ccv/build/devenv \
+    -dropreplace=github.com/smartcontractkit/chainlink-ccv/deployments
+
 RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
     go mod download
 
 # Copy the rest of the source; build layer invalidated when source changes.
 COPY . .
+
+# TODO: remove when chainlink-ccv is published with latest updates
+# Re-apply the dropreplace after COPY overwrites go.mod AND go.sum with
+# the host versions, then run go mod tidy to add the missing go.sum
+# checksums for the now-remote ccv modules (go mod download alone does not
+# update go.sum in Go 1.21+).
+RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
+    go mod edit \
+      -dropreplace=github.com/smartcontractkit/chainlink-ccv \
+      -dropreplace=github.com/smartcontractkit/chainlink-ccv/build/devenv \
+      -dropreplace=github.com/smartcontractkit/chainlink-ccv/deployments && \
+    go mod tidy
 
 RUN --mount=type=cache,target=/root/.cache/go-build,id=stellar-go-build \
     --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
