@@ -24,6 +24,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      - name: Clone chainlink-ccv
+        run: git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
         with:
