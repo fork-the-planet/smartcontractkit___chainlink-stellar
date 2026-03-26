@@ -253,6 +253,24 @@ fn test_update_storage_locations() {
     assert_eq!(stored.len(), 2);
 }
 
+#[test]
+fn test_storage_locations_admin_two_step_transfer() {
+    let (env, client, owner, ..) = setup();
+    let new_admin = Address::generate(&env);
+
+    assert_eq!(client.get_storage_locations_admin(), owner);
+
+    client.transfer_storage_locations_admin(&new_admin);
+    assert_eq!(
+        client.get_pending_storage_loc_admin(),
+        Some(new_admin.clone())
+    );
+
+    client.accept_storage_locations_admin();
+    assert_eq!(client.get_storage_locations_admin(), new_admin);
+    assert_eq!(client.get_pending_storage_loc_admin(), None);
+}
+
 // ============================================================
 // Ownership Tests
 // ============================================================

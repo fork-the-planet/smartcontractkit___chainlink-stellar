@@ -54,7 +54,9 @@ pub trait AllowListable: Ownable {
     /// * `env` - The environment
     /// * `initial_callers` - Initial list of authorized addresses
     fn init_allowlist(env: &Env, initial_allowlist: Map<u64, Vec<Address>>) {
-        // TODO: add a guard here to make sure this method is only called once during initialization.
+        if env.storage().instance().has(&Self::ALLOW_LIST) {
+            return;
+        }
 
         let mut allowlist_map: Map<u64, AllowListEntry> = Map::new(env);
 

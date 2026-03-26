@@ -1,0 +1,70 @@
+package accessors
+
+import (
+	"context"
+	"strconv"
+	"testing"
+
+	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	"github.com/smartcontractkit/chainlink-common/pkg/logger"
+	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestFactory_GetAccessor_validation(t *testing.T) {
+	ctx := context.Background()
+	lggr := logger.Test(t)
+	stellarSel := chainsel.STELLAR_LOCALNET.Selector
+	stellarKey := strconv.FormatUint(stellarSel, 10)
+
+	t.Run("nil config map", func(t *testing.T) {
+		f := NewFactory(lggr, nil)
+		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
+		require.Error(t, err)
+		require.Nil(t, acc)
+		assert.Contains(t, err.Error(), "stellar ccip config is not set")
+	})
+
+	t.Run("non-stellar chain is rejected", func(t *testing.T) {
+		evmSel, err := chainsel.SelectorFromChainId(1)
+		require.NoError(t, err)
+
+		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{
+			stellarKey: {SorobanRPCURL: "http://localhost:8000", NetworkPassphrase: "p"},
+		})
+		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(evmSel))
+		require.Error(t, err)
+		require.Nil(t, acc)
+		assert.Contains(t, err.Error(), "only stellar is supported")
+	})
+
+	t.Run("missing config for stellar selector", func(t *testing.T) {
+		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{})
+		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
+		require.Error(t, err)
+		require.Nil(t, acc)
+		assert.Contains(t, err.Error(), "stellar config not found")
+	})
+
+	t.Run("empty soroban rpc url", func(t *testing.T) {
+		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{
+			stellarKey: {NetworkPassphrase: "pass", SorobanRPCURL: ""},
+		})
+		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
+		require.Error(t, err)
+		require.Nil(t, acc)
+		assert.Contains(t, err.Error(), "soroban rpc url is required")
+	})
+
+	t.Run("empty network passphrase", func(t *testing.T) {
+		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{
+			stellarKey: {SorobanRPCURL: "http://localhost:8000", NetworkPassphrase: ""},
+		})
+		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
+		require.Error(t, err)
+		require.Nil(t, acc)
+		assert.Contains(t, err.Error(), "network passphrase is required")
+	})
+}

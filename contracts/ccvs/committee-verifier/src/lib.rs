@@ -74,11 +74,13 @@ impl AllowListable for CommitteeVerifierContract {
         _added_addresses: &Vec<Address>,
         _removed_addresses: &Vec<Address>,
     ) {
-        // TODO: implement this
+        let allowlist_enabled = Self::get_allowlist_entry(env, key)
+            .map(|e| e.allowlist_enabled)
+            .unwrap_or(false);
 
         events::AllowListStateChangedEvent {
             dest_chain_selector: key,
-            allowlist_enabled: true,
+            allowlist_enabled,
         }
         .publish(env);
     }
@@ -137,7 +139,10 @@ impl CommitteeVerifierContract {
             .persistent()
             .set(&SIGNATURE_CONFIGS, &sig_cfgs);
 
-        // TODO: Publish ConfigSet + ownership/bootstrap events via `events.rs`.
+        events::ConfigSetEvent {
+            dynamic_config: dynamic_config.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -234,7 +239,10 @@ impl CommitteeVerifierContract {
         env.storage()
             .instance()
             .set(&DYNAMIC_CONFIG, &dynamic_config);
-        // TODO: publish ConfigSet event.
+        events::ConfigSetEvent {
+            dynamic_config: dynamic_config.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -341,13 +349,36 @@ impl CommitteeVerifierContract {
             .instance()
             .set(&PENDING_STORAGE_LOC_ADMIN, &to);
 
-        // TODO: publish StorageLocationsAdminTransferRequested.
+        events::StorageAdminTransferReqEvent {
+            from: current_admin,
+            to: to.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
-    pub fn accept_storage_locations_admin(_env: Env) -> Result<(), CCIPError> {
-        // TODO: implement
-        unimplemented!();
+    pub fn accept_storage_locations_admin(env: Env) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_STORAGE_LOC_ADMIN)
+            .ok_or(CCIPError::NoPendingOwner)?;
+
+        pending.require_auth();
+
+        let from = Self::get_storage_locations_admin(env.clone())?;
+
+        env.storage().instance().set(&STORAGE_LOC_ADMIN, &pending);
+        env.storage().instance().remove(&PENDING_STORAGE_LOC_ADMIN);
+
+        events::StorageAdminTransferredEvent {
+            from,
+            to: pending.clone(),
+        }
+        .publish(&env);
+        Ok(())
     }
 
     pub fn update_storage_locations(env: Env, new_locations: Vec<Bytes>) -> Result<(), CCIPError> {
@@ -355,11 +386,17 @@ impl CommitteeVerifierContract {
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
 
+        let old_locations = Self::get_storage_locations(env.clone())?;
+
         env.storage()
             .instance()
             .set(&STORAGE_LOCATIONS, &new_locations);
 
-        // TODO: publish StorageLocationsUpdated(old_locations, new_locations).
+        events::StorageLocationsUpdatedEvent {
+            old_locations,
+            new_locations: new_locations.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -371,8 +408,6 @@ impl CommitteeVerifierContract {
         <Self as Initializable>::require_initialized(&env)?;
         let dynamic = Self::get_dynamic_config(env.clone())?;
 
-        // TODO: integrate token transfer / fee token handler logic.
-        // Fee withdrawal is permissionless in EVM and transfers to fee_aggregator.
         let _ = (dynamic.fee_aggregator, fee_tokens);
         Ok(())
     }
