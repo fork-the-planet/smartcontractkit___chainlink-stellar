@@ -17,6 +17,7 @@ import (
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	contracttransmitter "github.com/smartcontractkit/chainlink-stellar/ccv/contract_transmitter"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
@@ -173,13 +174,26 @@ func TestOffRamp(t *testing.T) {
 	// ========================================
 
 	t.Run("apply source chain config", func(t *testing.T) {
-		mockRouter := helpers.GenerateMockContractID(t, deployerKP.Address(), "router-offramp-cfg")
+		// The OffRamp contract validates the router address is a deployed contract,
+		// so we deploy a real Router for this config test.
+		routerSalt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "router-for-offramp-cfg")
+		routerWasm := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "router.wasm")
+		routerID, err := deployer.DeployContract(ctx, routerWasm, routerSalt)
+		if err != nil {
+			t.Fatalf("Failed to deploy Router for source chain config: %v", err)
+		}
+
+		routerClient := routerbindings.NewRouterClient(deployer, routerID)
+		if err := routerClient.Initialize(ctx, deployerKP.Address(), rmnProxyID); err != nil {
+			t.Fatalf("Failed to initialize Router: %v", err)
+		}
+
 		mockOnRamp := bytes.Repeat([]byte{0xDE}, 32)
 
-		err := offrampClient.ApplySourceChainCfgUpdates(ctx, []offrampbindings.SourceChainConfigArgs{
+		err = offrampClient.ApplySourceChainCfgUpdates(ctx, []offrampbindings.SourceChainConfigArgs{
 			{
 				SourceChainSelector: remoteSourceChain,
-				Router:              mockRouter,
+				Router:              routerID,
 				IsEnabled:           true,
 				OnRamps:             [][]byte{mockOnRamp},
 				DefaultCcvs:         nil,
@@ -198,8 +212,8 @@ func TestOffRamp(t *testing.T) {
 		if !cfg.IsEnabled {
 			t.Error("Expected source chain to be enabled")
 		}
-		if cfg.Router != mockRouter {
-			t.Errorf("Router mismatch: expected %s, got %s", mockRouter, cfg.Router)
+		if cfg.Router != routerID {
+			t.Errorf("Router mismatch: expected %s, got %s", routerID, cfg.Router)
 		}
 		t.Logf("Source chain config verified: enabled=%v, router=%s", cfg.IsEnabled, cfg.Router)
 	})
@@ -356,9 +370,9 @@ func TestOffRampExecute(t *testing.T) {
 	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec")
 
 	t.Run("execute valid message succeeds", func(t *testing.T) {
-		encoded, msgID := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
 
-		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
@@ -374,9 +388,9 @@ func TestOffRampExecute(t *testing.T) {
 	})
 
 	t.Run("execute already-executed message fails", func(t *testing.T) {
-		encoded, _ := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+		encoded, _, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
 
-		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err == nil {
 			t.Fatal("Expected error on duplicate execute, got nil")
 		}
@@ -387,7 +401,7 @@ func TestOffRampExecute(t *testing.T) {
 	})
 
 	t.Run("get execution state after successful execute", func(t *testing.T) {
-		_, msgID := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+		_, msgID, _ := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
 		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
 		if err != nil {
 			t.Fatalf("GetExecutionState: %v", err)
@@ -407,8 +421,8 @@ func TestOffRampExecute(t *testing.T) {
 			t.Fatalf("Failed to curse: %v", err)
 		}
 
-		encoded, _ := stack.buildValidMessage(t, localChainSelector, 2, []byte("cursed-test"))
-		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		encoded, _, verifierBlob := stack.buildValidMessage(t, localChainSelector, 2, []byte("cursed-test"))
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err == nil {
 			t.Fatal("Expected error executing on cursed offramp, got nil")
 		}
@@ -426,9 +440,9 @@ func TestOffRampExecute(t *testing.T) {
 
 	t.Run("execute with wrong destination chain fails", func(t *testing.T) {
 		wrongDest := uint64(99998)
-		encoded, _ := stack.buildValidMessage(t, wrongDest, 3, []byte("wrong-dest"))
+		encoded, _, verifierBlob := stack.buildValidMessage(t, wrongDest, 3, []byte("wrong-dest"))
 
-		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err == nil {
 			t.Fatal("Expected error for wrong destination chain, got nil")
 		}
@@ -441,7 +455,7 @@ func TestOffRampExecute(t *testing.T) {
 	t.Run("execute with invalid onramp address fails", func(t *testing.T) {
 		sender := bytes.Repeat([]byte{0xcd}, 20)
 		var ccvHashZero [32]byte
-		badOnRamp := bytes.Repeat([]byte{0xFF}, 32) // not in the configured on_ramps list
+		badOnRamp := bytes.Repeat([]byte{0xFF}, 32)
 		encoded, err := encodeCcipMessageV1(ccipV1Wire{
 			SourceChainSelector: remoteSourceChain,
 			DestChainSelector:   localChainSelector,
@@ -462,7 +476,9 @@ func TestOffRampExecute(t *testing.T) {
 			t.Fatalf("encodeCcipMessageV1: %v", err)
 		}
 
-		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		msgID := keccak256MessageID(encoded)
+		verifierBlob := stack.signVerifierBlob(t, msgID)
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err == nil {
 			t.Fatal("Expected error for invalid onramp, got nil")
 		}
@@ -473,9 +489,9 @@ func TestOffRampExecute(t *testing.T) {
 	})
 
 	t.Run("execute with second valid message succeeds", func(t *testing.T) {
-		encoded, msgID := stack.buildValidMessage(t, localChainSelector, 5, []byte("second-message"))
+		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 5, []byte("second-message"))
 
-		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{stack.VerifierBlob}, 0)
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}

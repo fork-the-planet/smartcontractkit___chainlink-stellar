@@ -5,8 +5,13 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/binary"
 	"path/filepath"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/crypto"
 
 	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	ccvsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
@@ -45,10 +50,12 @@ type fullStack struct {
 	CcvClient       *ccvsbindings.CommitteeVerifierClient
 	VvrClient       *vvrbindings.VersionedVerifierResolverClient
 
-	OnRampWire     []byte
-	OffRampSuffix  []byte
-	ReceiverRaw    []byte
-	VerifierBlob   []byte
+	OnRampWire  []byte
+	OffRampSuffix []byte
+	ReceiverRaw []byte
+
+	signerPrivKey ed25519.PrivateKey
+	signerPubKey  ed25519.PublicKey
 }
 
 // deployFullStack deploys and wires the complete contract stack needed for
@@ -111,11 +118,17 @@ func deployFullStack(
 		t.Fatalf("CommitteeVerifier Initialize: %v", err)
 	}
 
-	// 4. Signature quorum for remote source chain (stub signer, threshold=1)
-	var dummySigner [32]byte
-	copy(dummySigner[:], []byte("integration-test-dummy-signer-32"))
+	// 4. Signature quorum for remote source chain with real Ed25519 keypair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	s.signerPubKey = pubKey
+	s.signerPrivKey = privKey
+	var signerPubKeyArr [32]byte
+	copy(signerPubKeyArr[:], pubKey)
 	if err := s.CcvClient.ApplySignatureConfigs(ctx, nil, []ccvsbindings.SignatureQuorumConfig{
-		{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{dummySigner}},
+		{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{signerPubKeyArr}},
 	}); err != nil {
 		t.Fatalf("ApplySignatureConfigs: %v", err)
 	}
@@ -178,7 +191,6 @@ func deployFullStack(
 	}
 
 	// Pre-compute commonly needed byte representations
-	var err error
 	s.OffRampSuffix, err = contractAddressScValSuffix32(s.OfframpID)
 	if err != nil {
 		t.Fatalf("offramp scval suffix: %v", err)
@@ -188,22 +200,46 @@ func deployFullStack(
 		t.Fatalf("decode receiver contract: %v", err)
 	}
 
-	s.VerifierBlob = []byte{
-		ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3,
-		0x00, 0x00, // signature payload length = 0
-	}
-
 	return s
+}
+
+// signVerifierBlob builds a verifier result blob containing a real Ed25519 signature
+// over the message hash, matching the on-chain verify_message expectations:
+//
+//	signed_hash = keccak256(VERSION_TAG || message_hash)
+//	blob = [4B version_tag][2B sig_payload_len][32B pubkey][64B ed25519_sig]
+func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte {
+	t.Helper()
+
+	versionTag := [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3}
+
+	var signedPayload []byte
+	signedPayload = append(signedPayload, versionTag[:]...)
+	signedPayload = append(signedPayload, messageHash[:]...)
+	signedHash := crypto.Keccak256(signedPayload)
+
+	sig := ed25519.Sign(s.signerPrivKey, signedHash)
+
+	const perSigBytes = 32 + 64
+	var blob []byte
+	blob = append(blob, versionTag[:]...)
+	blob = binary.BigEndian.AppendUint16(blob, perSigBytes)
+	blob = append(blob, s.signerPubKey...)
+	blob = append(blob, sig...)
+
+	return blob
 }
 
 // buildValidMessage constructs an encoded CCIP v1 message targeting the fullStack's
 // receiver, using the given sequence number and data payload.
-func (s *fullStack) buildValidMessage(t *testing.T, destChainSelector uint64, seqNo uint64, data []byte) ([]byte, [32]byte) {
+// Returns the encoded message, its keccak256 ID, and a signed verifier blob.
+func (s *fullStack) buildValidMessage(t *testing.T, destChainSelector uint64, seqNo uint64, data []byte) (encoded []byte, msgID [32]byte, verifierBlob []byte) {
 	t.Helper()
 
 	sender := bytes.Repeat([]byte{0xcd}, 20)
 	var ccvHashZero [32]byte
-	encoded, err := encodeCcipMessageV1(ccipV1Wire{
+	var err error
+	encoded, err = encodeCcipMessageV1(ccipV1Wire{
 		SourceChainSelector: remoteSourceChain,
 		DestChainSelector:   destChainSelector,
 		SequenceNumber:      seqNo,
@@ -222,6 +258,8 @@ func (s *fullStack) buildValidMessage(t *testing.T, destChainSelector uint64, se
 	if err != nil {
 		t.Fatalf("encodeCcipMessageV1: %v", err)
 	}
-	return encoded, keccak256MessageID(encoded)
+	msgID = keccak256MessageID(encoded)
+	verifierBlob = s.signVerifierBlob(t, msgID)
+	return encoded, msgID, verifierBlob
 }
 
