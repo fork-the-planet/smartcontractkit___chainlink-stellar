@@ -220,7 +220,9 @@ pub trait SignatureQuorum: Initializable + Ownable {
             let signers = &update.signers;
             let mut j = 1u32;
             while j < signers.len() {
-                let prev = signers.get(j - 1).ok_or(CCIPError::InvalidSignaturePubkey)?;
+                let prev = signers
+                    .get(j - 1)
+                    .ok_or(CCIPError::InvalidSignaturePubkey)?;
                 let curr = signers.get(j).ok_or(CCIPError::InvalidSignaturePubkey)?;
                 if prev == curr {
                     return Err(CCIPError::DuplicateOnchainPublicKey);

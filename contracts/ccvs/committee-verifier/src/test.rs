@@ -37,7 +37,10 @@ fn sorted_signers_from_seeds(seeds: &[u8]) -> HostVec<(SigningKey, [u8; 32])> {
     v
 }
 
-fn signers_to_soroban_vec(env: &Env, pairs: &HostVec<(SigningKey, [u8; 32])>) -> SorobanVec<BytesN<32>> {
+fn signers_to_soroban_vec(
+    env: &Env,
+    pairs: &HostVec<(SigningKey, [u8; 32])>,
+) -> SorobanVec<BytesN<32>> {
     let mut out = SorobanVec::new(env);
     for (_, pk) in pairs {
         out.push_back(BytesN::from_array(env, pk));
@@ -441,8 +444,10 @@ fn test_get_all_signature_configs() {
 
     let c0 = all.get(0).unwrap();
     let c1 = all.get(1).unwrap();
-    assert!((c0.source_chain_selector == 200 && c1.source_chain_selector == 201)
-        || (c0.source_chain_selector == 201 && c1.source_chain_selector == 200));
+    assert!(
+        (c0.source_chain_selector == 200 && c1.source_chain_selector == 201)
+            || (c0.source_chain_selector == 201 && c1.source_chain_selector == 200)
+    );
 
     let mut saw_200 = false;
     let mut saw_201 = false;
