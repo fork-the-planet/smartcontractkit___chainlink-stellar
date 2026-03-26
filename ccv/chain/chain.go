@@ -24,16 +24,20 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/fee_quoter"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/executor"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/proxy"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
+	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/changesets"
+	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	"github.com/smartcontractkit/chainlink-ccv/deployments"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
@@ -144,6 +148,46 @@ func (c *Chain) ChainSelector() uint64 {
 	return c.chainSelector
 }
 
+// GetConnectionProfile implements cciptestinterfaces.OnChainConfigurable.
+// Returns a ChainDefinition describing this Stellar chain as a lane endpoint,
+// plus the default committee verifier config to apply for each remote chain.
+func (c *Chain) GetConnectionProfile(selector uint64) (lanes.ChainDefinition, ccipChangesets.CommitteeVerifierRemoteChainConfig, error) {
+	chainDef := lanes.ChainDefinition{
+		Selector:             selector,
+		AddressBytesLength:   stellarAddressLen,
+		BaseExecutionGasCost: 100_000,
+		DefaultInboundCCVs: []datastore.AddressRef{
+			{
+				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+				Version:       versioned_verifier_resolver.Version,
+				ChainSelector: selector,
+				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
+			},
+		},
+		DefaultOutboundCCVs: []datastore.AddressRef{
+			{
+				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+				Version:       versioned_verifier_resolver.Version,
+				ChainSelector: selector,
+				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
+			},
+		},
+	}
+
+	cvConfig := ccipChangesets.CommitteeVerifierRemoteChainConfig{
+		GasForVerification: 10_000,
+	}
+
+	return chainDef, cvConfig, nil
+}
+
+// PostConnect implements cciptestinterfaces.OnChainConfigurable.
+// Runs Stellar-specific setup after the centralized lane configuration changeset
+// has connected all chains (e.g. Router onramp/offramp mappings).
+func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remoteSelectors []uint64) error {
+	return nil
+}
+
 // ConfigureNodes implements cciptestinterfaces.CCIP17Configuration.
 // Returns TOML configuration for Chainlink nodes to connect to Stellar.
 func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (string, error) {
@@ -173,118 +217,9 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 	), nil
 }
 
-// ConnectContractsWithSelectors implements cciptestinterfaces.CCIP17Configuration.
-// Connects this chain's OnRamp to OffRamps on remote chains and configures CommitteeVerifiers.
-func (c *Chain) ConnectContractsWithSelectors(ctx context.Context, e *deployment.Environment, selector uint64, remoteSelectors []uint64, committees *deployments.EnvironmentTopology) error {
-	c.logger.Info().Uint64("selector", selector).Interface("remoteSelectors", remoteSelectors).Msg("Connecting contracts with selectors")
-
-	// Get the router's address from the datastore
-	// TODO: move this to a re-usable method, repeated code (getting a hex address and converting to strkey)
-	routerKey := datastore.NewAddressRefKey(
-		selector,
-		datastore.ContractType(routeroperations.ContractType),
-		semver.MustParse(routeroperations.Deploy.Version()),
-		"",
-	)
-	routerRef, lookupErr := e.DataStore.Addresses().Get(routerKey)
-	if lookupErr != nil {
-		return fmt.Errorf("failed to get router address: %w", lookupErr)
-	}
-	routerAddress, err := scval.HexToContractStrkey(routerRef.Address)
-	if err != nil {
-		return fmt.Errorf("failed to convert router address: %w", err)
-	}
-
-	// TODO: what's the correct executor contract ID?
-	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
-
-	// Decode the real OffRamp contract address to raw bytes for the OnRamp dest chain config.
-	offRampBytes, err := strkey.Decode(strkey.VersionByteContract, c.offRampContractID)
-	if err != nil {
-		return fmt.Errorf("failed to decode OffRamp contract ID: %w", err)
-	}
-
-	destChainConfigArgs := []onrampbindings.DestChainConfigArgs{}
-	for _, remoteSelector := range remoteSelectors {
-		destChainConfigArgs = append(destChainConfigArgs, onrampbindings.DestChainConfigArgs{
-			AddressBytesLength:        32,
-			BaseExecutionGasCost:      100000,
-			DefaultCcvs:               []string{c.vvrContractID},
-			DestChainSelector:         remoteSelector,
-			Router:                    routerAddress,
-			OffRamp:                   offRampBytes,
-			DefaultExecutor:           executorContractID,
-			LaneMandatedCcvs:          []string{},
-			MessageNetworkFeeUsdCents: 0,
-			TokenNetworkFeeUsdCents:   0,
-			TokenReceiverAllowed:      false,
-		})
-	}
-
-	err = c.onRampClient.ApplyDestChainConfigUpdates(ctx, destChainConfigArgs)
-	if err != nil {
-		return fmt.Errorf("failed to apply dest chain config updates: %w", err)
-	}
-	c.logger.Info().Uints64("remote selectors", remoteSelectors).Str("onramp contract ID", c.onRampContractID).Str("router address", c.deployerKeypair.Address()).Msg("Dest chain config updates applied")
-
-	// Configure OffRamp source chains for each remote chain
-	if c.offRampClient != nil {
-		sourceChainCfgs := make([]offrampbindings.SourceChainConfigArgs, 0, len(remoteSelectors))
-		for _, rs := range remoteSelectors {
-			onRampKey := datastore.NewAddressRefKey(
-				rs,
-				datastore.ContractType(onrampoperations.ContractType),
-				semver.MustParse(onrampoperations.Deploy.Version()),
-				"",
-			)
-			onRampRef, lookupErr := e.DataStore.Addresses().Get(onRampKey)
-			if lookupErr != nil {
-				c.logger.Warn().Err(lookupErr).Uint64("remoteSelector", rs).Msg("Could not find OnRamp for remote chain, skipping source chain config")
-				continue
-			}
-
-			onRampBytes := hexutil.MustDecode(onRampRef.Address)
-			paddedOnRampBytes := make([]byte, 32)
-			copy(paddedOnRampBytes[32-len(onRampBytes):], onRampBytes)
-
-			sourceChainCfgs = append(sourceChainCfgs, offrampbindings.SourceChainConfigArgs{
-				SourceChainSelector: rs,
-				IsEnabled:           true,
-				OnRamps:             [][]byte{paddedOnRampBytes},
-				Router:              routerAddress,
-				DefaultCcvs:         []string{c.vvrContractID},
-				LaneMandatedCcvs:    []string{},
-			})
-		}
-		if len(sourceChainCfgs) > 0 {
-			err = c.offRampClient.ApplySourceChainCfgUpdates(ctx, sourceChainCfgs)
-			if err != nil {
-				return fmt.Errorf("failed to apply source chain config updates on OffRamp: %w", err)
-			}
-			c.logger.Info().Int("count", len(sourceChainCfgs)).Msg("OffRamp source chain configs applied")
-		}
-	}
-
-	// Configure the Router's OnRamp and OffRamp mappings
-	routerClient := routerbindings.NewRouterClient(c.deployer, routerAddress)
-	for _, rs := range remoteSelectors {
-		err = routerClient.SetOnramp(ctx, rs, c.onRampContractID)
-		if err != nil {
-			return fmt.Errorf("failed to set onramp on router for dest chain %d: %w", rs, err)
-		}
-		err = routerClient.AddOfframp(ctx, rs, c.offRampContractID)
-		if err != nil {
-			return fmt.Errorf("failed to add offramp on router for source chain %d: %w", rs, err)
-		}
-	}
-	c.logger.Info().Int("count", len(remoteSelectors)).Msg("Router OnRamp/OffRamp mappings configured")
-
-	return nil
-}
-
 // DeployContractsForSelector implements cciptestinterfaces.CCIP17Configuration.
 // Deploys CCIP contracts for the given chain selector.
-func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, committees *deployments.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
 	c.logger.Info().Uint64("selector", selector).Msg("Deploying Stellar CCIP contracts")
 
 	// TODO: can we just use env.DataStore instead of creating a new one?
@@ -539,7 +474,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(remoteSelectors))
 	for _, rs := range remoteSelectors {
-		signers, threshold := resolveSignersFromTopology(committees, rs, chainsel.FamilyStellar)
+		signers, threshold := resolveSignersFromTopology(topology, rs, chainsel.FamilyStellar)
 		if len(signers) == 0 {
 			c.logger.Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
 			// TODO: should we keep this or fail the deployment?
@@ -724,20 +659,16 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	for _, qualifier := range []string{
 		devenvcommon.DefaultCommitteeVerifierQualifier,
-		// devenvcommon.SecondaryCommitteeVerifierQualifier,
-		// devenvcommon.TertiaryCommitteeVerifierQualifier,
-		// devenvcommon.QuaternaryReceiverQualifier,
 	} {
 		ds.AddressRefStore.Add(datastore.AddressRef{
 			Address:       vvrHex,
-			Type:          datastore.ContractType(committee_verifier.ResolverType),
-			Version:       semver.MustParse(committee_verifier.Deploy.Version()),
+			Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+			Version:       versioned_verifier_resolver.Version,
 			Qualifier:     qualifier,
 			ChainSelector: selector,
 		})
 	}
 
-	// Add Committee Verifier refs (the actual verifier, used for outbound fee queries)
 	cvHex, err := strkeyToHex(cvContractID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert Committee Verifier address: %w", err)
@@ -745,7 +676,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       cvHex,
 		Type:          datastore.ContractType(committee_verifier.ContractType),
-		Version:       semver.MustParse(committee_verifier.Deploy.Version()),
+		Version:       committee_verifier.Version,
 		Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
 		ChainSelector: selector,
 	})
@@ -754,15 +685,15 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       contractHexAddr("stellar-executor"),
 		Type:          datastore.ContractType(executor.ContractType),
-		Version:       semver.MustParse(executor.Deploy.Version()),
+		Version:       executor.Version,
 		Qualifier:     devenvcommon.DefaultExecutorQualifier,
 		ChainSelector: selector,
 	})
 
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       contractHexAddr("stellar-executor-proxy"),
-		Type:          datastore.ContractType(executor.ProxyType),
-		Version:       semver.MustParse(executor.DeployProxy.Version()),
+		Type:          datastore.ContractType(proxy.ContractType),
+		Version:       proxy.Version,
 		Qualifier:     devenvcommon.DefaultExecutorQualifier,
 		ChainSelector: selector,
 	})
@@ -1274,7 +1205,7 @@ func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAdd
 // given source chain selector from the environment topology. It searches all
 // committees for a chain config matching sourceChainSelector, then looks up
 // each NOP's signer address for the specified chain family.
-func resolveSignersFromTopology(topology *deployments.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
+func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}

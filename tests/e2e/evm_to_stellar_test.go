@@ -5,14 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/proxy"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
@@ -66,8 +65,8 @@ func TestEVMToStellarExecution(t *testing.T) {
 	// Look up executor proxy address on the EVM source chain.
 	executorKey := datastore.NewAddressRefKey(
 		evmDetails.ChainSelector,
-		datastore.ContractType(executor.ProxyType),
-		semver.MustParse(executor.DeployProxy.Version()),
+		datastore.ContractType(proxy.ContractType),
+		proxy.Version,
 		devenvcommon.DefaultExecutorQualifier,
 	)
 	executorRef, err := env.DataStore.Addresses().Get(executorKey)
@@ -79,8 +78,8 @@ func TestEVMToStellarExecution(t *testing.T) {
 	// Look up CCV (VVR) address on the EVM source chain.
 	ccvKey := datastore.NewAddressRefKey(
 		evmDetails.ChainSelector,
-		datastore.ContractType(committee_verifier.ResolverType),
-		semver.MustParse(committee_verifier.Deploy.Version()),
+		datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+		versioned_verifier_resolver.Version,
 		devenvcommon.DefaultCommitteeVerifierQualifier,
 	)
 	ccvRef, err := env.DataStore.Addresses().Get(ccvKey)
@@ -154,7 +153,7 @@ func TestEVMToStellarExecution(t *testing.T) {
 		offRampKey := datastore.NewAddressRefKey(
 			stellarDetails.ChainSelector,
 			datastore.ContractType(offramp.ContractType),
-			semver.MustParse(offramp.Deploy.Version()),
+			offramp.Version,
 			"",
 		)
 		offrampRef, err := env.DataStore.Addresses().Get(offRampKey)

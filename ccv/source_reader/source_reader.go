@@ -509,8 +509,8 @@ func parseReceipt(val xdr.ScVal) (*protocol.ReceiptWithBlob, error) {
 // }
 
 // GetBlocksHeaders returns the block headers for the requested ledger sequence numbers.
-func (s *SourceReader) GetBlocksHeaders(ctx context.Context, ledgerNumber []*big.Int) (map[*big.Int]protocol.BlockHeader, error) {
-	headers := make(map[*big.Int]protocol.BlockHeader, len(ledgerNumber))
+func (s *SourceReader) GetBlocksHeaders(ctx context.Context, ledgerNumber []*big.Int) (map[uint64]protocol.BlockHeader, error) {
+	headers := make(map[uint64]protocol.BlockHeader, len(ledgerNumber))
 
 	for _, n := range ledgerNumber {
 		seq := n.Uint64()
@@ -541,7 +541,7 @@ func (s *SourceReader) GetBlocksHeaders(ctx context.Context, ledgerNumber []*big
 		if err != nil {
 			return nil, fmt.Errorf("failed to build header for ledger %d: %w", seq, err)
 		}
-		headers[n] = blockHeader
+		headers[seq] = blockHeader
 	}
 
 	return headers, nil
@@ -562,6 +562,12 @@ func (s *SourceReader) LatestAndFinalizedBlock(ctx context.Context) (latest, fin
 
 	// Stellar ledgers are finalized on close; latest == finalized.
 	return &header, &header, nil
+}
+
+// LatestSafeBlock returns nil because Stellar has no "safe" head concept — all
+// closed ledgers are immediately final.
+func (s *SourceReader) LatestSafeBlock(_ context.Context) (*protocol.BlockHeader, error) {
+	return nil, nil
 }
 
 // GetRMNCursedSubjects gets the cursed subjects from the RMN Remote contract.
