@@ -1,10 +1,12 @@
 package ccvchain
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -21,6 +23,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
@@ -107,6 +110,7 @@ type Chain struct {
 	offRampContractID string
 	routerClient      *routerbindings.RouterClient
 	routerContractID  string
+	feeQuoterClient   *fqbindings.FeeQuoterClient
 	vvrContractID     string
 	cvContractID      string
 }
@@ -335,6 +339,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	mockLinkToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "link-token")
 	feeQuoterClient := fqbindings.NewFeeQuoterClient(c.deployer, feeQuoterContractID)
+	c.feeQuoterClient = feeQuoterClient
 	err = feeQuoterClient.Initialize(ctx, c.deployerKeypair.Address(), fqbindings.StaticConfig{
 		LinkToken:         mockLinkToken,
 		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
@@ -950,8 +955,14 @@ func (c *Chain) GetExpectedNextSequenceNumber(ctx context.Context, to uint64) (u
 // GetMaxDataBytes implements cciptestinterfaces.CCIP17.
 // Gets the maximum data size for a CCIP message to the specified remote chain.
 func (c *Chain) GetMaxDataBytes(ctx context.Context, remoteChainSelector uint64) (uint32, error) {
-	// TODO: implement - query the OnRamp contract for max data bytes
-	return 0, nil
+	if c.feeQuoterClient == nil {
+		return 0, fmt.Errorf("FeeQuoter client not initialized")
+	}
+	cfg, err := c.feeQuoterClient.GetDestChainConfig(ctx, remoteChainSelector)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get fee quoter dest chain config: %w", err)
+	}
+	return cfg.MaxDataBytes, nil
 }
 
 // GetRoundRobinUser implements cciptestinterfaces.CCIP17.
@@ -980,22 +991,72 @@ func (c *Chain) GetSenderAddress() (protocol.UnknownAddress, error) {
 // GetTokenBalance implements cciptestinterfaces.CCIP17.
 // Gets the balance of a token for an address.
 func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
-	// TODO: implement - query the token balance using Soroban RPC
-	return nil, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // GetUserNonce implements cciptestinterfaces.CCIP17.
 // Returns the nonce for the given user address on this chain.
 func (c *Chain) GetUserNonce(ctx context.Context, userAddress protocol.UnknownAddress) (uint64, error) {
-	// TODO: implement - query the user's sequence number from the Stellar network
-	return 0, nil
+	if c.deployer == nil {
+		return 0, fmt.Errorf("deployer not initialized")
+	}
+	_, seq, exists, err := c.deployer.NativeAccountState(ctx, []byte(userAddress))
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	return seq, nil
 }
 
 // ManuallyExecuteMessage implements cciptestinterfaces.CCIP17.
 // Manually executes a CCIP message on this chain.
 func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Message, gasLimit uint64, ccvs []protocol.UnknownAddress, verifierResults [][]byte) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
-	// TODO: implement - call the OffRamp contract to execute a message manually
-	return cciptestinterfaces.ExecutionStateChangedEvent{}, nil
+	if c.offRampClient == nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("OffRamp client not initialized")
+	}
+	if c.rpcClient == nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("RPC client not initialized")
+	}
+	if gasLimit > math.MaxUint32 {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("gas limit overflows uint32")
+	}
+	encoded, err := message.Encode()
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("encode message: %w", err)
+	}
+	ccvStrs := make([]string, 0, len(ccvs))
+	for _, a := range ccvs {
+		s, err := strkey.Encode(strkey.VersionByteContract, []byte(a))
+		if err != nil {
+			return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("encode ccv address: %w", err)
+		}
+		ccvStrs = append(ccvStrs, s)
+	}
+	if err := c.offRampClient.Execute(ctx, encoded, ccvStrs, verifierResults, uint32(gasLimit)); err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("offramp execute: %w", err)
+	}
+	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
+	}
+	event, err := c.offRampClient.WaitForExecutionStateChangedEvent(
+		ctx, latestLedger.Sequence, 2*time.Minute,
+		func(e *offrampbindings.ExecutionStateChangedEvent) bool {
+			return e.SourceChainSelector == uint64(message.SourceChainSelector) && e.SequenceNumber == uint64(message.SequenceNumber)
+		},
+	)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed waiting for execution event: %w", err)
+	}
+	return cciptestinterfaces.ExecutionStateChangedEvent{
+		SourceChainSelector: protocol.ChainSelector(event.SourceChainSelector),
+		MessageID:           event.MessageId,
+		MessageNumber:       event.SequenceNumber,
+		State:               cciptestinterfaces.MessageExecutionState(event.State),
+		ReturnData:          event.ReturnData,
+	}, nil
 }
 
 // SendMessage implements cciptestinterfaces.CCIP17.
@@ -1062,9 +1123,10 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 // SendMessageWithNonce implements cciptestinterfaces.CCIP17.
 // Sends a CCIP message with a specific nonce.
 func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
-	// TODO: implement - call the Router/OnRamp contract with specific nonce
-	// NOTE: sender *bind.TransactOpts is EVM-specific and will need adaptation for Stellar
-	return cciptestinterfaces.MessageSentEvent{}, nil
+	if sender != nil || nonce != nil || disableTokenAmountCheck {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("SendMessageWithNonce: explicit sender, nonce, or token amount check override is not supported on Stellar")
+	}
+	return c.SendMessage(ctx, dest, fields, opts)
 }
 
 // Uncurse implements cciptestinterfaces.CCIP17.
@@ -1194,11 +1256,62 @@ func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
 }
 
 func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {
-	return nil, fmt.Errorf("not implemented")
+	if c.deployer == nil {
+		return nil, fmt.Errorf("deployer not initialized")
+	}
+	bal, _, _, err := c.deployer.NativeAccountState(ctx, []byte(address))
+	if err != nil {
+		return nil, err
+	}
+	return bal, nil
 }
 
 func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAddress, amount *big.Int) error {
-	return fmt.Errorf("not implemented")
+	if c.deployer == nil || c.deployerKeypair == nil {
+		return fmt.Errorf("deployer not initialized")
+	}
+	deployerRaw, err := strkey.Decode(strkey.VersionByteAccountID, c.deployerKeypair.Address())
+	if err != nil {
+		return fmt.Errorf("decode deployer account: %w", err)
+	}
+	if !bytes.Equal(deployerRaw, []byte(from)) {
+		return fmt.Errorf("address %x is not a configured account in this environment", []byte(from))
+	}
+	toStr, err := strkey.Encode(strkey.VersionByteAccountID, []byte(to))
+	if err != nil {
+		return fmt.Errorf("encode destination account: %w", err)
+	}
+	var stroops int64
+	if amount == nil {
+		bal, _, exists, err := c.deployer.NativeAccountState(ctx, deployerRaw)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("%w: account has no ledger entry", cciptestinterfaces.ErrInsufficientNativeBalance)
+		}
+		reserve := big.NewInt(int64(txnbuild.MinBaseFee) * 10)
+		if bal.Cmp(reserve) <= 0 {
+			return fmt.Errorf("%w: balance %s stroops, reserve %s stroops", cciptestinterfaces.ErrInsufficientNativeBalance, bal.String(), reserve.String())
+		}
+		send := new(big.Int).Sub(bal, reserve)
+		if !send.IsInt64() || send.Int64() <= 0 {
+			return fmt.Errorf("%w: spendable amount does not fit transfer", cciptestinterfaces.ErrInsufficientNativeBalance)
+		}
+		stroops = send.Int64()
+	} else {
+		if amount.Sign() <= 0 {
+			return fmt.Errorf("transfer amount must be positive")
+		}
+		if !amount.IsInt64() {
+			return fmt.Errorf("amount must fit int64 stroops")
+		}
+		stroops = amount.Int64()
+	}
+	if err := c.deployer.SendNativePayment(ctx, toStr, stroops); err != nil {
+		return err
+	}
+	return nil
 }
 
 // resolveSignersFromTopology extracts signer public keys and threshold for a

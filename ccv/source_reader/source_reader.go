@@ -270,7 +270,7 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 		}
 	}
 
-	s.lggr.Info().
+	ev := s.lggr.Info().
 		Uint64("destChainSelector", destChainSelector).
 		Uint64("sequenceNumber", sequenceNumber).
 		Str("sender", sender).
@@ -278,11 +278,11 @@ func (s *SourceReader) decodeCCIPMessageSentEvent(e protocolrpc.EventInfo) (*pro
 		Str("messageId", hex.EncodeToString(messageID[:])).
 		Int("receiptsCount", len(receipts)).
 		Int("verifierBlobsCount", len(verifierBlobs)).
-		Int("ledger", int(e.Ledger)).
-		Msg("Decoded CCIPMessageSent event")
-
-	_ = feeToken              // TODO: map to Message when fee token field is added
-	_ = tokenAmountBeforeFees // TODO: map to Message when token transfer fields are populated
+		Int("ledger", int(e.Ledger))
+	if tokenAmountBeforeFees != nil {
+		ev = ev.Str("tokenAmountBeforeFees", tokenAmountBeforeFees.String())
+	}
+	ev.Msg("Decoded CCIPMessageSent event")
 
 	// Decode the canonical MessageV1 encoding emitted by the OnRamp.
 	// This reconstructs the full protocol.Message so that MessageID()

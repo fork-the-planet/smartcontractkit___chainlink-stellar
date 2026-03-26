@@ -86,15 +86,13 @@ func buildVerifierStellarConfig(verifierInput *committeeverifier.Input, outputs 
 		}
 		sorobanRPCURL := output.Nodes[0].InternalHTTPUrl
 
-		var onrampContractID string
 		onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]
-		if !ok {
-			// TODO: should we throw an error here?
-		} else {
-			onrampContractID, err = scval.HexToContractStrkey(onrampHex)
-			if err != nil {
-				return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
-			}
+		if !ok || onrampHex == "" {
+			return nil, fmt.Errorf("missing OnRamp address in deployed config for Stellar chain selector %s", strSelector)
+		}
+		onrampContractID, err := scval.HexToContractStrkey(onrampHex)
+		if err != nil {
+			return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
 		}
 
 		var rmnRemoteContractID string

@@ -137,7 +137,15 @@ threshold = 2
 # nop_aliases = ["tertiary-verifier-1", "tertiary-verifier-2"]
 # threshold = 2
 
-[environment_topology.executor_pools.default]
+[environment_topology.executor_pools.default.chain_configs.3379446385462418246]
+nop_aliases = ["stellar-executor-1", "evm-executor-1"]
+execution_interval = 15_000_000_000
+
+[environment_topology.executor_pools.default.chain_configs.12922642891491394802]
+nop_aliases = ["stellar-executor-1", "evm-executor-1"]
+execution_interval = 15_000_000_000
+
+[environment_topology.executor_pools.default.chain_configs.17301180955411967724]
 nop_aliases = ["stellar-executor-1", "evm-executor-1"]
 execution_interval = 15_000_000_000
 
@@ -313,7 +321,6 @@ execution_interval = 15_000_000_000
 #     port = 8437
 
 [[executor]]
-  chain_family = "stellar"
   image = "stellarexecutor:dev"
   port = 8101
   source_code_path = "chainlink-ccv/executor"

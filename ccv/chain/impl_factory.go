@@ -16,6 +16,7 @@ import (
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
@@ -26,6 +27,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
@@ -142,6 +144,20 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			if convErr == nil {
 				chain.routerContractID = routerContractID
 				chain.routerClient = routerbindings.NewRouterClient(deployer, routerContractID)
+			}
+		}
+
+		fqKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(fee_quoter.ContractType),
+			semver.MustParse(fee_quoter.Deploy.Version()),
+			"",
+		)
+		fqRef, err := env.DataStore.Addresses().Get(fqKey)
+		if err == nil && fqRef.Address != "" {
+			fqContractID, convErr := scval.HexToContractStrkey(fqRef.Address)
+			if convErr == nil {
+				chain.feeQuoterClient = fqbindings.NewFeeQuoterClient(deployer, fqContractID)
 			}
 		}
 
