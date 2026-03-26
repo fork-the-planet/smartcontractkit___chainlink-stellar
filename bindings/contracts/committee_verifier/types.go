@@ -896,6 +896,20 @@ type ConfigSetEvent struct {
 // ConfigSetEventTopic is the event topic identifier.
 const ConfigSetEventTopic = "ccv_ConfigSet"
 
+// SignatureConfigSetEvent represents the SignatureConfigSetEvent event.
+// Topics: [ccv_SignatureConfigSet]
+type SignatureConfigSetEvent struct {
+	SourceChainSelector uint64
+	Signers             [][32]byte
+	Threshold           uint32
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// SignatureConfigSetEventTopic is the event topic identifier.
+const SignatureConfigSetEventTopic = "ccv_SignatureConfigSet"
+
 // RemoteChainConfigSetEvent represents the RemoteChainConfigSetEvent event.
 // Topics: [ccv_RemoteChainConfigSet]
 type RemoteChainConfigSetEvent struct {
