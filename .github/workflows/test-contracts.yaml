@@ -28,16 +28,9 @@ jobs:
         with:
           toolchain: "1.93.1"
           targets: wasm32v1-none
-          components: rustfmt
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
-
-      - name: Install Just
-        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
-
-      - name: Check formatting
-        run: just fmt-contracts-check
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@de6bbd1333b8f331563d54a051e542c7dfef81c3 # v2.68.34
