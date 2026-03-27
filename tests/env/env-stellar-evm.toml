@@ -72,7 +72,7 @@ mode = "standalone"
 # Committee configuration
 [environment_topology.nop_topology.committees.default]
 qualifier = "default"
-verifier_version = "1.7.0"
+verifier_version = "2.0.0"
 
 [[environment_topology.nop_topology.committees.default.aggregators]]
 name = "default"
@@ -96,7 +96,7 @@ threshold = 2
 # # Secondary committee
 # [environment_topology.nop_topology.committees.secondary]
 # qualifier = "secondary"
-# verifier_version = "1.7.0"
+# verifier_version = "2.0.0"
 
 # [[environment_topology.nop_topology.committees.secondary.aggregators]]
 # name = "default"
@@ -118,7 +118,7 @@ threshold = 2
 # # Tertiary committee
 # [environment_topology.nop_topology.committees.tertiary]
 # qualifier = "tertiary"
-# verifier_version = "1.7.0"
+# verifier_version = "2.0.0"
 
 # [[environment_topology.nop_topology.committees.tertiary.aggregators]]
 # name = "default"
@@ -176,6 +176,7 @@ execution_interval = 15_000_000_000
 [[blockchains]]
   container_name = "blockchain-stellar"
   chain_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a" 
+  image = "stellar/quickstart:testing"
   port = "8010"
   type = "stellar"
 

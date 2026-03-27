@@ -62,9 +62,9 @@ func TestEVMToStellarExecution(t *testing.T) {
 	stellarChain := env.Chains[stellarDetails.ChainSelector]
 	require.NotNil(t, stellarChain, "Stellar chain not found in chains map")
 
-	// Look up executor proxy address on the EVM source chain.
+	// Look up executor proxy address on the Stellar destination chain.
 	executorKey := datastore.NewAddressRefKey(
-		evmDetails.ChainSelector,
+		stellarDetails.ChainSelector,
 		datastore.ContractType(proxy.ContractType),
 		proxy.Version,
 		devenvcommon.DefaultExecutorQualifier,
@@ -73,7 +73,7 @@ func TestEVMToStellarExecution(t *testing.T) {
 	require.NoError(t, err, "executor proxy address must exist in datastore")
 	executorAddr, err := protocol.NewUnknownAddressFromHex(executorRef.Address)
 	require.NoError(t, err)
-	l.Info().Str("executorAddr", hex.EncodeToString(executorAddr)).Msg("Resolved EVM executor proxy address")
+	l.Info().Str("executorAddr", hex.EncodeToString(executorAddr)).Msg("Resolved Stellar executor proxy address")
 
 	// Look up CCV (VVR) address on the EVM source chain.
 	ccvKey := datastore.NewAddressRefKey(

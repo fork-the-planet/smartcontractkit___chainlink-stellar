@@ -1,7 +1,13 @@
 package devenv
 
 import (
+	"sync"
+
+	"github.com/Masterminds/semver/v3"
+
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
+	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
@@ -11,9 +17,10 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
 )
 
+var registerOnce sync.Once
+
 // RegisterStellarComponents registers all Stellar-specific devenv components with
-// the global registries. Call this in init() of any entry point (CLI command or E2E test)
-// that needs to operate on Stellar chains.
+// the global registries. Safe to call multiple times (idempotent via sync.Once).
 //
 // This registers:
 //   - CommitteeVerifierModifier: customises the verifier Docker container for Stellar.
@@ -21,8 +28,17 @@ import (
 //   - ImplFactory:               factory for creating Stellar CCIP17 chain implementations.
 //   - CLDFProviderFactory:       factory for creating Stellar CLDF BlockChain providers.
 func RegisterStellarComponents() {
-	chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
-	committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
-	ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
-	registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
+	registerOnce.Do(func() {
+		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
+		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
+		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
+		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
+		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &StellarCommitteeVerifierContractAdapter{})
+		lanes.GetLaneAdapterRegistry().RegisterLaneAdapter(chainsel.FamilyStellar, semver.MustParse("2.0.0"), &StellarLaneAdapter{})
+		ccvadapters.GetAggregatorConfigRegistry().Register(chainsel.FamilyStellar, &StellarAggregatorConfigAdapter{})
+		ccvadapters.GetIndexerConfigRegistry().Register(chainsel.FamilyStellar, &StellarIndexerConfigAdapter{})
+		ccvadapters.GetVerifierJobConfigRegistry().Register(chainsel.FamilyStellar, &StellarVerifierConfigAdapter{})
+		ccvadapters.GetExecutorConfigRegistry().Register(chainsel.FamilyStellar, &StellarExecutorConfigAdapter{})
+		ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &StellarTokenVerifierConfigAdapter{})
+	})
 }

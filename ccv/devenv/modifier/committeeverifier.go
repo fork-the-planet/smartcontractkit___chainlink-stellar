@@ -86,17 +86,21 @@ func buildVerifierStellarConfig(verifierInput *committeeverifier.Input, outputs 
 		}
 		sorobanRPCURL := output.Nodes[0].InternalHTTPUrl
 
-		onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]
-		if !ok || onrampHex == "" {
-			return nil, fmt.Errorf("missing OnRamp address in deployed config for Stellar chain selector %s", strSelector)
-		}
-		onrampContractID, err := scval.HexToContractStrkey(onrampHex)
-		if err != nil {
-			return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
+		// Contract addresses may not be available yet: the modifier runs
+		// when verifiers are launched early (before contract deployment)
+		// so that signing keys can be discovered. The verifier binary
+		// back-fills missing addresses from the job-spec commit.Config
+		// which IS generated after deployment.
+		var onrampContractID string
+		if onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]; ok && onrampHex != "" {
+			onrampContractID, err = scval.HexToContractStrkey(onrampHex)
+			if err != nil {
+				return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
+			}
 		}
 
 		var rmnRemoteContractID string
-		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok {
+		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok && rmnRemoteHex != "" {
 			rmnRemoteContractID, err = scval.HexToContractStrkey(rmnRemoteHex)
 			if err != nil {
 				return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", strSelector, err)

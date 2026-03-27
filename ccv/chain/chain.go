@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -175,6 +176,15 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 				ChainSelector: selector,
 				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
 			},
+		},
+		DefaultExecutor: datastore.AddressRef{
+			Type:          datastore.ContractType(proxy.ContractType),
+			Version:       proxy.Version,
+			ChainSelector: selector,
+			Qualifier:     devenvcommon.DefaultExecutorQualifier,
+		},
+		ExecutorDestChainConfig: lanes.ExecutorDestChainConfig{
+			Enabled: true,
 		},
 	}
 
@@ -1351,6 +1361,9 @@ func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sour
 		}
 
 		if len(signers) > 0 {
+			sort.Slice(signers, func(i, j int) bool {
+				return bytes.Compare(signers[i][:], signers[j][:]) < 0
+			})
 			return signers, uint32(chainCfg.Threshold)
 		}
 	}
