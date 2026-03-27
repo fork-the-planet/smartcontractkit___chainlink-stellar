@@ -324,6 +324,7 @@ execution_interval = 15_000_000_000
 [[executor]]
   image = "stellarexecutor:dev"
   port = 8101
+  chain_family = "stellar"
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
   container_name = "stellar-executor-1"

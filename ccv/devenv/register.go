@@ -10,6 +10,7 @@ import (
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 
@@ -24,6 +25,7 @@ var registerOnce sync.Once
 //
 // This registers:
 //   - CommitteeVerifierModifier: customises the verifier Docker container for Stellar.
+//   - ExecutorModifier:          customises the executor Docker container for Stellar.
 //   - ChainConfigLoader:         provides placeholder blockchain info for Stellar chains.
 //   - ImplFactory:               factory for creating Stellar CCIP17 chain implementations.
 //   - CLDFProviderFactory:       factory for creating Stellar CLDF BlockChain providers.
@@ -31,6 +33,7 @@ func RegisterStellarComponents() {
 	registerOnce.Do(func() {
 		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
+		services.RegisterExecutorModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
 		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
 		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &StellarCommitteeVerifierContractAdapter{})
