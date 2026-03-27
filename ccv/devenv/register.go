@@ -10,9 +10,9 @@ import (
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
@@ -33,7 +33,7 @@ func RegisterStellarComponents() {
 	registerOnce.Do(func() {
 		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
-		services.RegisterExecutorModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
+		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
 		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
 		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &StellarCommitteeVerifierContractAdapter{})
