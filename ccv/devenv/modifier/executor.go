@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
@@ -78,6 +80,15 @@ func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput 
 
 	//nolint:staticcheck
 	req.Mounts = append(req.Mounts, testcontainers.BindMount(configFilePath, common.DefaultStellarConfigPath))
+
+	// The bootstrapped launch path sets WaitingFor to poll the bootstrap
+	// /health endpoint on port 9988. The Stellar executor binary does not
+	// use bootstrap.Run, so that endpoint never appears. Override with a
+	// log-based readiness check that matches the line emitted by
+	// cmd/executor/main.go once the coordinator is running.
+	req.WaitingFor = wait.ForLog("Stellar executor started successfully").
+		WithStartupTimeout(120 * time.Second).
+		WithPollInterval(3 * time.Second)
 
 	return req, nil
 }
