@@ -38,7 +38,6 @@ import (
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
-	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/changesets"
 	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
@@ -156,7 +155,7 @@ func (c *Chain) ChainSelector() uint64 {
 // GetConnectionProfile implements cciptestinterfaces.OnChainConfigurable.
 // Returns a ChainDefinition describing this Stellar chain as a lane endpoint,
 // plus the default committee verifier config to apply for each remote chain.
-func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64) (lanes.ChainDefinition, ccipChangesets.CommitteeVerifierRemoteChainConfig, error) {
+func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64) (lanes.ChainDefinition, lanes.CommitteeVerifierRemoteChainInput, error) {
 	chainDef := lanes.ChainDefinition{
 		Selector:             selector,
 		AddressBytesLength:   stellarAddressLen,
@@ -188,7 +187,7 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 		},
 	}
 
-	cvConfig := ccipChangesets.CommitteeVerifierRemoteChainConfig{
+	cvConfig := lanes.CommitteeVerifierRemoteChainInput{
 		GasForVerification: 10_000,
 	}
 
@@ -199,6 +198,65 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 // Runs Stellar-specific setup after the centralized lane configuration changeset
 // has connected all chains (e.g. Router onramp/offramp mappings).
 func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remoteSelectors []uint64) error {
+	if env == nil {
+		return fmt.Errorf("environment is nil")
+	}
+	if env.DataStore == nil {
+		return fmt.Errorf("environment datastore is nil")
+	}
+
+	remoteSelectors = filterRemoteSelectors(remoteSelectors, selector)
+	if len(remoteSelectors) == 0 {
+		return nil
+	}
+	if err := c.ensureLocalContracts(env.DataStore, selector); err != nil {
+		return fmt.Errorf("ensure local stellar contracts: %w", err)
+	}
+
+	defaultExecutor, err := lookupStellarContractID(
+		env.DataStore,
+		selector,
+		datastore.ContractType(proxy.ContractType),
+		proxy.Version,
+		devenvcommon.DefaultExecutorQualifier,
+	)
+	if err != nil {
+		return fmt.Errorf("resolve default executor proxy: %w", err)
+	}
+
+	onRampDestConfigs, err := c.buildOnRampDestConfigs(env.DataStore, remoteSelectors, defaultExecutor, true)
+	if err != nil {
+		return fmt.Errorf("build onramp dest configs: %w", err)
+	}
+	if err := c.onRampClient.ApplyDestChainConfigUpdates(context.Background(), onRampDestConfigs); err != nil {
+		return fmt.Errorf("apply onramp dest configs in post-connect: %w", err)
+	}
+
+	offRampSourceConfigs, err := c.buildOffRampSourceConfigs(env.DataStore, remoteSelectors, true)
+	if err != nil {
+		return fmt.Errorf("build offramp source configs: %w", err)
+	}
+	if err := c.offRampClient.ApplySourceChainCfgUpdates(context.Background(), offRampSourceConfigs); err != nil {
+		return fmt.Errorf("apply offramp source configs in post-connect: %w", err)
+	}
+
+	onRampEntries := make([]routerbindings.OnRampEntry, 0, len(remoteSelectors))
+	offRampEntries := make([]routerbindings.OffRampEntry, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		onRampEntries = append(onRampEntries, routerbindings.OnRampEntry{
+			DestChainSelector: rs,
+			Onramp:            c.onRampContractID,
+		})
+		offRampEntries = append(offRampEntries, routerbindings.OffRampEntry{
+			SourceChainSelector: rs,
+			Offramp:             c.offRampContractID,
+		})
+	}
+
+	if err := c.routerClient.ApplyRampUpdates(context.Background(), onRampEntries, []routerbindings.OffRampEntry{}, offRampEntries); err != nil {
+		return fmt.Errorf("apply router ramp updates in post-connect: %w", err)
+	}
+
 	return nil
 }
 
@@ -439,12 +497,10 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Str("cvContractID", cvContractID).
 		Msg("Committee Verifier client initialized")
 
-	remoteSelectors := []uint64{}
-	for selector := range env.BlockChains.All() {
-		remoteSelectors = append(remoteSelectors, selector)
-	}
+	allSelectors := selectorsFromEnvironment(env)
+	remoteSelectors := filterRemoteSelectors(allSelectors, selector)
 	outboundImplUpdates := []vvrbindings.OutboundImplementationUpdate{}
-	for _, remoteSelector := range remoteSelectors {
+	for _, remoteSelector := range allSelectors {
 		outboundImplUpdates = append(outboundImplUpdates, vvrbindings.OutboundImplementationUpdate{
 			DestChainSelector: remoteSelector,
 			Verifier:          &cvContractID,
@@ -469,8 +525,8 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	c.logger.Info().Msg("Inbound implementation and outbound updates applied")
 
-	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
+	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(allSelectors))
+	for _, rs := range allSelectors {
 		router := c.deployerKeypair.Address()
 		remoteChainConfigs = append(remoteChainConfigs, cvbindings.RemoteChainConfig{
 			RemoteChainSelector: rs,
@@ -487,8 +543,8 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
 
-	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
+	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(allSelectors))
+	for _, rs := range allSelectors {
 		signers, threshold := resolveSignersFromTopology(topology, rs, chainsel.FamilyStellar)
 		if len(signers) == 0 {
 			c.logger.Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
@@ -511,7 +567,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Configure FeeQuoter destination chains
 	fqDestChainConfigs := []fqbindings.DestChainConfigArgs{}
-	for _, rs := range remoteSelectors {
+	for _, rs := range allSelectors {
 		fqDestChainConfigs = append(fqDestChainConfigs, fqbindings.DestChainConfigArgs{
 			DestChainSelector: rs,
 			Config: fqbindings.DestChainConfig{
@@ -536,8 +592,8 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 
 	// Set token and gas prices on the FeeQuoter so get_message_fee works
 	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
-	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
+	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(allSelectors))
+	for _, rs := range allSelectors {
 		gasPriceUpdates = append(gasPriceUpdates, fqbindings.GasPriceUpdate{
 			DestChainSelector: rs,
 			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}), // 1e14
@@ -610,6 +666,61 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	c.routerContractID = routerContractID
 	c.routerClient = routerClient
 	c.logger.Info().Str("routerContractID", routerContractID).Msg("Router initialized")
+
+	// Configure OnRamp with provisional destination chain entries so that
+	// GetExpectedNextMessageNumber and ccip_send don't revert with
+	// DestinationChainNotSupported. Remote ramp addresses are patched with
+	// their real values in PostConnect after all chains have been deployed.
+	executorProxyHex := contractHexAddr("stellar-executor-proxy")
+	executorContractID, err := scval.HexToContractStrkey(executorProxyHex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert executor proxy placeholder address: %w", err)
+	}
+	onRampDestConfigs, err := c.buildOnRampDestConfigs(nil, remoteSelectors, executorContractID, false)
+	if err != nil {
+		return nil, fmt.Errorf("build provisional onramp dest configs: %w", err)
+	}
+	err = c.onRampClient.ApplyDestChainConfigUpdates(ctx, onRampDestConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply dest chain config updates on OnRamp: %w", err)
+	}
+	c.logger.Info().Int("count", len(onRampDestConfigs)).Msg("OnRamp dest chain configs applied")
+
+	// Configure OffRamp with supported source chains so inbound messages are
+	// accepted rather than rejected as unknown sources.
+	offRampSourceConfigs, err := c.buildOffRampSourceConfigs(nil, remoteSelectors, false)
+	if err != nil {
+		return nil, fmt.Errorf("build provisional offramp source configs: %w", err)
+	}
+	err = c.offRampClient.ApplySourceChainCfgUpdates(ctx, offRampSourceConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply source chain config updates on OffRamp: %w", err)
+	}
+	c.logger.Info().Int("count", len(offRampSourceConfigs)).Msg("OffRamp source chain configs applied")
+
+	// Configure Router with OnRamp/OffRamp mappings so that ccip_send can
+	// look up the correct OnRamp for each destination, and inbound messages
+	// can be routed through the correct OffRamp for each source.
+	onRampEntries := make([]routerbindings.OnRampEntry, 0, len(remoteSelectors))
+	offRampEntries := make([]routerbindings.OffRampEntry, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		onRampEntries = append(onRampEntries, routerbindings.OnRampEntry{
+			DestChainSelector: rs,
+			Onramp:            onrampContractID,
+		})
+		offRampEntries = append(offRampEntries, routerbindings.OffRampEntry{
+			SourceChainSelector: rs,
+			Offramp:             offRampContractID,
+		})
+	}
+	err = routerClient.ApplyRampUpdates(ctx, onRampEntries, []routerbindings.OffRampEntry{}, offRampEntries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply ramp updates on Router: %w", err)
+	}
+	c.logger.Info().
+		Int("onRampEntries", len(onRampEntries)).
+		Int("offRampEntries", len(offRampEntries)).
+		Msg("Router ramp updates applied")
 
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
@@ -1240,6 +1351,223 @@ func findStellarRoot() (string, error) {
 		}
 		dir = parent
 	}
+}
+
+func selectorsFromEnvironment(env *deployment.Environment) []uint64 {
+	selectors := make([]uint64, 0)
+	for selector := range env.BlockChains.All() {
+		selectors = append(selectors, selector)
+	}
+	sort.Slice(selectors, func(i, j int) bool {
+		return selectors[i] < selectors[j]
+	})
+	return selectors
+}
+
+func filterRemoteSelectors(selectors []uint64, localSelector uint64) []uint64 {
+	remote := make([]uint64, 0, len(selectors))
+	seen := make(map[uint64]struct{}, len(selectors))
+	for _, selector := range selectors {
+		if selector == 0 || selector == localSelector {
+			continue
+		}
+		if _, ok := seen[selector]; ok {
+			continue
+		}
+		seen[selector] = struct{}{}
+		remote = append(remote, selector)
+	}
+	sort.Slice(remote, func(i, j int) bool {
+		return remote[i] < remote[j]
+	})
+	return remote
+}
+
+func addressBytesLengthForSelector(selector uint64) (uint32, error) {
+	family, err := chainsel.GetSelectorFamily(selector)
+	if err != nil {
+		return 0, fmt.Errorf("get selector family for %d: %w", selector, err)
+	}
+	if family == chainsel.FamilyStellar {
+		return stellarAddressLen, nil
+	}
+	return 20, nil
+}
+
+func zeroAddressBytesForSelector(selector uint64) ([]byte, error) {
+	addressBytesLength, err := addressBytesLengthForSelector(selector)
+	if err != nil {
+		return nil, err
+	}
+	return make([]byte, addressBytesLength), nil
+}
+
+func lookupAddressRef(ds datastore.DataStore, selector uint64, contractType datastore.ContractType, version *semver.Version, qualifier string) (datastore.AddressRef, error) {
+	ref, err := ds.Addresses().Get(datastore.NewAddressRefKey(selector, contractType, version, qualifier))
+	if err != nil {
+		return datastore.AddressRef{}, err
+	}
+	return ref, nil
+}
+
+func lookupStellarContractID(ds datastore.DataStore, selector uint64, contractType datastore.ContractType, version *semver.Version, qualifier string) (string, error) {
+	ref, err := lookupAddressRef(ds, selector, contractType, version, qualifier)
+	if err != nil {
+		return "", err
+	}
+	contractID, err := scval.HexToContractStrkey(ref.Address)
+	if err != nil {
+		return "", fmt.Errorf("convert %s address %s to contract strkey: %w", contractType, ref.Address, err)
+	}
+	return contractID, nil
+}
+
+func addressBytesForSelector(ref datastore.AddressRef, selector uint64) ([]byte, error) {
+	raw, err := hexutil.Decode(ref.Address)
+	if err != nil {
+		return nil, fmt.Errorf("decode address %s: %w", ref.Address, err)
+	}
+	expectedLen, err := addressBytesLengthForSelector(selector)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) != int(expectedLen) {
+		return nil, fmt.Errorf("address %s has %d bytes, expected %d for selector %d", ref.Address, len(raw), expectedLen, selector)
+	}
+	return raw, nil
+}
+
+func canonicalSourceOnRampBytesForSelector(ref datastore.AddressRef, selector uint64) ([]byte, error) {
+	raw, err := addressBytesForSelector(ref, selector)
+	if err != nil {
+		return nil, err
+	}
+
+	family, err := chainsel.GetSelectorFamily(selector)
+	if err != nil {
+		return nil, fmt.Errorf("get selector family for %d: %w", selector, err)
+	}
+	if family != chainsel.FamilyEVM {
+		return raw, nil
+	}
+
+	// Canonical CCIP messages encode EVM source addresses as 32-byte left-padded
+	// fields. Store the same bytes in Stellar OffRamp source config so
+	// verify_onramp_allowed hashes the exact same payload.
+	padded := make([]byte, 32)
+	copy(padded[len(padded)-len(raw):], raw)
+	return padded, nil
+}
+
+func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) error {
+	if c.deployer == nil {
+		return fmt.Errorf("deployer not initialized")
+	}
+
+	var err error
+	if c.onRampContractID == "" {
+		c.onRampContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
+		if err != nil {
+			return fmt.Errorf("lookup local onramp: %w", err)
+		}
+	}
+	if c.offRampContractID == "" {
+		c.offRampContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
+		if err != nil {
+			return fmt.Errorf("lookup local offramp: %w", err)
+		}
+	}
+	if c.routerContractID == "" {
+		c.routerContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(routeroperations.ContractType), routeroperations.Version, "")
+		if err != nil {
+			return fmt.Errorf("lookup local router: %w", err)
+		}
+	}
+	if c.vvrContractID == "" {
+		c.vvrContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), versioned_verifier_resolver.Version, devenvcommon.DefaultCommitteeVerifierQualifier)
+		if err != nil {
+			return fmt.Errorf("lookup local versioned verifier resolver: %w", err)
+		}
+	}
+
+	if c.onRampClient == nil {
+		c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, c.onRampContractID)
+	}
+	if c.offRampClient == nil {
+		c.offRampClient = offrampbindings.NewOffRampClient(c.deployer, c.offRampContractID)
+	}
+	if c.routerClient == nil {
+		c.routerClient = routerbindings.NewRouterClient(c.deployer, c.routerContractID)
+	}
+
+	return nil
+}
+
+func (c *Chain) buildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error) {
+	configs := make([]onrampbindings.DestChainConfigArgs, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		addressBytesLength, err := addressBytesLengthForSelector(rs)
+		if err != nil {
+			return nil, err
+		}
+
+		offRampBytes, err := zeroAddressBytesForSelector(rs)
+		if err != nil {
+			return nil, err
+		}
+		if useRemoteOffRamp {
+			offRampRef, err := lookupAddressRef(ds, rs, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
+			if err != nil {
+				return nil, fmt.Errorf("lookup remote offramp for %d: %w", rs, err)
+			}
+			offRampBytes, err = addressBytesForSelector(offRampRef, rs)
+			if err != nil {
+				return nil, fmt.Errorf("resolve remote offramp bytes for %d: %w", rs, err)
+			}
+		}
+
+		configs = append(configs, onrampbindings.DestChainConfigArgs{
+			DestChainSelector:         rs,
+			AddressBytesLength:        addressBytesLength,
+			BaseExecutionGasCost:      100_000,
+			DefaultCcvs:               []string{c.vvrContractID},
+			DefaultExecutor:           defaultExecutor,
+			LaneMandatedCcvs:          []string{},
+			MessageNetworkFeeUsdCents: 100,
+			OffRamp:                   offRampBytes,
+			Router:                    c.routerContractID,
+			TokenNetworkFeeUsdCents:   0,
+			TokenReceiverAllowed:      false,
+		})
+	}
+	return configs, nil
+}
+
+func (c *Chain) buildOffRampSourceConfigs(ds datastore.DataStore, remoteSelectors []uint64, useRemoteOnRamp bool) ([]offrampbindings.SourceChainConfigArgs, error) {
+	configs := make([]offrampbindings.SourceChainConfigArgs, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		onRampBytes := make([]byte, 32)
+		if useRemoteOnRamp {
+			onRampRef, err := lookupAddressRef(ds, rs, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
+			if err != nil {
+				return nil, fmt.Errorf("lookup remote onramp for %d: %w", rs, err)
+			}
+			onRampBytes, err = canonicalSourceOnRampBytesForSelector(onRampRef, rs)
+			if err != nil {
+				return nil, fmt.Errorf("resolve remote onramp bytes for %d: %w", rs, err)
+			}
+		}
+
+		configs = append(configs, offrampbindings.SourceChainConfigArgs{
+			SourceChainSelector: rs,
+			IsEnabled:           true,
+			DefaultCcvs:         []string{c.vvrContractID},
+			LaneMandatedCcvs:    []string{},
+			OnRamps:             [][]byte{onRampBytes},
+			Router:              c.routerContractID,
+		})
+	}
+	return configs, nil
 }
 
 // generateMockContractID generates a deterministic mock contract ID for testing.

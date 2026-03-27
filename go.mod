@@ -9,10 +9,10 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
 	github.com/smartcontractkit/chain-selectors v1.0.97
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260323224438-d819cb3228e1
-	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260323224438-d819cb3228e1
-	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260327152450-9fb3e7ea4bd8
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260327152450-9fb3e7ea4bd8
+	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
+	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
+	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260327175135-affd7529ff0b
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260327175135-affd7529ff0b
 	github.com/smartcontractkit/chainlink-common v0.10.1-0.20260310151336-c98a9c147ac0
 	github.com/smartcontractkit/chainlink-deployments-framework v0.85.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.0
@@ -135,6 +135,9 @@ require (
 	github.com/smartcontractkit/ccip-contract-examples/chains/evm v0.0.0-20250826190403-aed7f5f33cde // indirect
 	github.com/smartcontractkit/chainlink-common/keystore v1.0.0 // indirect
 	github.com/smartcontractkit/chainlink-evm v0.3.4-0.20260126170652-c5f27bb1804e // indirect
+	github.com/smartcontractkit/chainlink-framework/chains v0.0.0-20251210101658-1c5c8e4c4f15 // indirect
+	github.com/smartcontractkit/chainlink-framework/metrics v0.0.0-20251210101658-1c5c8e4c4f15 // indirect
+	github.com/smartcontractkit/chainlink-framework/multinode v0.0.0-20251021173435-e86785845942 // indirect
 	github.com/smartcontractkit/chainlink-protos/node-platform v0.0.0-20260205130626-db2a2aab956b // indirect
 	github.com/smartcontractkit/chainlink-protos/orchestrator v0.10.0 // indirect
 	github.com/smartcontractkit/chainlink-testing-framework/lib/grafana v1.50.0 // indirect
@@ -398,11 +401,11 @@ require (
 	github.com/sigurn/crc16 v0.0.0-20211026045750-20ab5afb07e3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smartcontractkit/chainlink-aptos v0.0.0-20251212131933-e5e85d6fa4d3 // indirect
-	github.com/smartcontractkit/chainlink-ccip v0.1.1-solana.0.20260323224438-d819cb3228e1 // indirect
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm v0.0.0-20260323224438-d819cb3228e1 // indirect
+	github.com/smartcontractkit/chainlink-ccip v0.1.1-solana.0.20260326205122-a6b3f014b808 // indirect
+	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm v0.0.0-20260326205122-a6b3f014b808 // indirect
 	github.com/smartcontractkit/chainlink-ccip/chains/solana v0.0.0-20260129103204-4c8453dd8139 // indirect
 	github.com/smartcontractkit/chainlink-ccip/chains/solana/gobindings v0.0.0-20260129103204-4c8453dd8139 // indirect
-	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260323224438-d819cb3228e1
+	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260326205122-a6b3f014b808
 	github.com/smartcontractkit/chainlink-common/pkg/chipingress v0.0.10 // indirect
 	github.com/smartcontractkit/chainlink-evm/gethwrappers v0.0.0-20260119171452-39c98c3b33cd // indirect
 	github.com/smartcontractkit/chainlink-protos/chainlink-ccv/committee-verifier v0.0.0-20251211142334-5c3421fe2c8d // indirect

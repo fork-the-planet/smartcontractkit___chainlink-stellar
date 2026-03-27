@@ -25,6 +25,7 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	contracttransmitter "github.com/smartcontractkit/chainlink-stellar/ccv/contract_transmitter"
 	destinationreader "github.com/smartcontractkit/chainlink-stellar/ccv/destination_reader"
+	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	"github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -46,12 +47,12 @@ func loadConfig(path string) (*common.Config, error) {
 func main() {
 	if err := bootstrap.Run(
 		"StellarExecutor",
-		cmd.NewServiceFactory[any](
+		cmd.NewServiceFactory[sourcereader.ReaderConfig](
 			chainsel.FamilyStellar,
 			func(
 				ctx context.Context,
 				lggr logger.Logger,
-				_ map[string]*any,
+				_ map[string]*sourcereader.ReaderConfig,
 				cfg executor.Configuration,
 			) (*cmd.ServiceComponents, error) {
 				configPath, ok := os.LookupEnv(StellarConfigPathEnv)
@@ -118,11 +119,11 @@ func main() {
 						Str("component", "executor").
 						Logger().Level(zerolog.InfoLevel)
 
-					rpcClient := rpcclient.NewClient(tc.NetworkPassphrase, &http.Client{Timeout: 60 * time.Second})
-
-					if rc, ok := stellarConfig.ReaderConfigs[strSel]; ok && rc.SorobanRPCURL != "" {
-						rpcClient = rpcclient.NewClient(rc.SorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
+					rc, ok := stellarConfig.ReaderConfigs[strSel]
+					if !ok || rc.SorobanRPCURL == "" {
+						return nil, fmt.Errorf("ReaderConfigs[%s].SorobanRPCURL is required but missing", strSel)
 					}
+					rpcClient := rpcclient.NewClient(rc.SorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
 
 					invoker := deployment.NewDeployer(
 						rpcClient,

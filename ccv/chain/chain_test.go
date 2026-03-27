@@ -4,14 +4,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const testEVMSelector = uint64(3379446385462418246)
 
 func TestNewChain(t *testing.T) {
 	logger := zerolog.Nop()
@@ -114,7 +119,80 @@ func TestPostConnect(t *testing.T) {
 	chain := New(logger, 1)
 
 	err := chain.PostConnect(nil, 1, []uint64{2, 3})
-	assert.NoError(t, err, "PostConnect is a no-op stub and should always succeed")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "environment is nil")
+}
+
+func TestFilterRemoteSelectors(t *testing.T) {
+	got := filterRemoteSelectors([]uint64{5, 1, 3, 1, 3, 2, 0}, 1)
+	assert.Equal(t, []uint64{2, 3, 5}, got)
+}
+
+func TestBuildOnRampDestConfigs_UsesSelectorSpecificAddressLengths(t *testing.T) {
+	chain := &Chain{
+		vvrContractID:    "vvr",
+		routerContractID: "router",
+	}
+
+	configs, err := chain.buildOnRampDestConfigs(nil, []uint64{testEVMSelector, chainsel.STELLAR_LOCALNET.Selector}, "executor", false)
+	require.NoError(t, err)
+	require.Len(t, configs, 2)
+
+	assert.Equal(t, uint32(20), configs[0].AddressBytesLength)
+	assert.Len(t, configs[0].OffRamp, 20)
+	assert.Equal(t, uint32(stellarAddressLen), configs[1].AddressBytesLength)
+	assert.Len(t, configs[1].OffRamp, stellarAddressLen)
+}
+
+func TestBuildOffRampSourceConfigs_UsesPlaceholderOnRampBytes(t *testing.T) {
+	chain := &Chain{
+		vvrContractID:    "vvr",
+		routerContractID: "router",
+	}
+
+	configs, err := chain.buildOffRampSourceConfigs(nil, []uint64{testEVMSelector, chainsel.STELLAR_LOCALNET.Selector}, false)
+	require.NoError(t, err)
+	require.Len(t, configs, 2)
+
+	require.Len(t, configs[0].OnRamps, 1)
+	assert.Len(t, configs[0].OnRamps[0], 32)
+	require.Len(t, configs[1].OnRamps, 1)
+	assert.Len(t, configs[1].OnRamps[0], 32)
+}
+
+func TestBuildRemoteRampConfigs_ResolveDatastoreAddresses(t *testing.T) {
+	ds := datastore.NewMemoryDataStore()
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       "0x" + strings.Repeat("ab", 20),
+		ChainSelector: testEVMSelector,
+		Type:          datastore.ContractType(onrampoperations.ContractType),
+		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
+	})
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       "0x" + strings.Repeat("cd", 20),
+		ChainSelector: testEVMSelector,
+		Type:          datastore.ContractType(offrampoperations.ContractType),
+		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
+	})
+
+	chain := &Chain{
+		vvrContractID:    "vvr",
+		routerContractID: "router",
+	}
+
+	onRampConfigs, err := chain.buildOnRampDestConfigs(ds.Seal(), []uint64{testEVMSelector}, "executor", true)
+	require.NoError(t, err)
+	require.Len(t, onRampConfigs, 1)
+	assert.Equal(t, []byte{0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd}, onRampConfigs[0].OffRamp)
+
+	offRampConfigs, err := chain.buildOffRampSourceConfigs(ds.Seal(), []uint64{testEVMSelector}, true)
+	require.NoError(t, err)
+	require.Len(t, offRampConfigs, 1)
+	require.Len(t, offRampConfigs[0].OnRamps, 1)
+	assert.Equal(t,
+		append(make([]byte, 12), []byte{0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab}...),
+		offRampConfigs[0].OnRamps[0],
+	)
 }
 
 func TestStellarAdapter(t *testing.T) {
