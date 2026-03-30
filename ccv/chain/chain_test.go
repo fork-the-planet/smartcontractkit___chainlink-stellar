@@ -10,6 +10,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/stretchr/testify/assert"
@@ -111,6 +112,25 @@ func TestGetConnectionProfile(t *testing.T) {
 		assert.Equal(t, otherSelector, def.Selector)
 		assert.Equal(t, otherSelector, def.DefaultInboundCCVs[0].ChainSelector)
 		assert.Equal(t, otherSelector, def.DefaultOutboundCCVs[0].ChainSelector)
+	})
+
+	t.Run("FeeQuoter dest chain config override is set and produces valid config", func(t *testing.T) {
+		require.NotNil(t, chainDef.FeeQuoterDestChainConfigOverrides,
+			"FeeQuoterDestChainConfigOverrides must be set so remote EVM FeeQuoter accepts Stellar as a destination")
+
+		var cfg lanes.FeeQuoterDestChainConfig
+		(*chainDef.FeeQuoterDestChainConfigOverrides)(&cfg)
+
+		assert.True(t, cfg.IsEnabled)
+		assert.Equal(t, uint32(30_000), cfg.MaxDataBytes)
+		assert.Equal(t, uint32(3_000_000), cfg.MaxPerMsgGasLimit)
+		assert.Equal(t, uint32(300_000), cfg.DestGasOverhead)
+		assert.Equal(t, uint32(200_000), cfg.DefaultTxGasLimit)
+		assert.Equal(t, uint16(10), cfg.NetworkFeeUSDCents)
+		// Stand-in EVM family selector (0x2812d52c) until Stellar has its own.
+		assert.Equal(t, uint32(0x2812d52c), cfg.ChainFamilySelector)
+		require.NotNil(t, cfg.V2Params)
+		assert.EqualValues(t, 90, cfg.V2Params.LinkFeeMultiplierPercent)
 	})
 }
 

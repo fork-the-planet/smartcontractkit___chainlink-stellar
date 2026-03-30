@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -156,10 +157,12 @@ func (c *Chain) ChainSelector() uint64 {
 // Returns a ChainDefinition describing this Stellar chain as a lane endpoint,
 // plus the default committee verifier config to apply for each remote chain.
 func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64) (lanes.ChainDefinition, lanes.CommitteeVerifierRemoteChainInput, error) {
+	feeQuoterOverride := stellarFeeQuoterDestChainConfigOverride(selector)
 	chainDef := lanes.ChainDefinition{
-		Selector:             selector,
-		AddressBytesLength:   stellarAddressLen,
-		BaseExecutionGasCost: 100_000,
+		Selector:                          selector,
+		AddressBytesLength:                stellarAddressLen,
+		BaseExecutionGasCost:              100_000,
+		FeeQuoterDestChainConfigOverrides: &feeQuoterOverride,
 		DefaultInboundCCVs: []datastore.AddressRef{
 			{
 				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
@@ -192,6 +195,36 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 	}
 
 	return chainDef, cvConfig, nil
+}
+
+// stellarFeeQuoterDestChainConfigOverride returns a FeeQuoterDestChainConfigOverride
+// that configures Stellar as a valid destination on remote (EVM) FeeQuoter contracts.
+//
+// Uses the EVM family selector (0x2812d52c) as a stand-in because Stellar does not
+// yet have its own registered ChainFamilySelector in the on-chain FeeQuoter contract.
+// TODO(NONEVM-4241): replace with a real Stellar family selector once registered.
+func stellarFeeQuoterDestChainConfigOverride(selector uint64) lanes.FeeQuoterDestChainConfigOverride {
+	// bytes4(keccak256("CCIP ChainFamilySelector EVM")) — used as stand-in for Stellar.
+	var evmFamilyBytes [4]byte
+	evmFamilyHex, _ := hex.DecodeString("2812d52c")
+	copy(evmFamilyBytes[:], evmFamilyHex)
+
+	return func(cfg *lanes.FeeQuoterDestChainConfig) {
+		cfg.IsEnabled = true
+		cfg.MaxDataBytes = 30_000
+		cfg.MaxPerMsgGasLimit = 3_000_000
+		cfg.DestGasOverhead = 300_000
+		cfg.DefaultTokenFeeUSDCents = 25
+		cfg.DestGasPerPayloadByteBase = 16
+		cfg.DefaultTokenDestGasOverhead = 90_000
+		cfg.DefaultTxGasLimit = 200_000
+		cfg.NetworkFeeUSDCents = 10
+		cfg.ChainFamilySelector = binary.BigEndian.Uint32(evmFamilyBytes[:])
+		cfg.V2Params = &lanes.FeeQuoterV2Params{
+			LinkFeeMultiplierPercent: 90,
+			USDPerUnitGas:            big.NewInt(1e6),
+		}
+	}
 }
 
 // PostConnect implements cciptestinterfaces.OnChainConfigurable.
@@ -515,6 +548,13 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	inboundImplUpdates := []vvrbindings.InboundImplementationUpdate{
 		{
 			Version:  [4]byte{0x49, 0xff, 0x34, 0xed}, // VERSION_TAG_V1_7_0
+			Verifier: &cvContractID,
+		},
+		{
+			// EVM CommitteeVerifier 2.0.0 attestation blobs use this prefix.
+			// Register it against the Stellar CommitteeVerifier so inbound
+			// EVM verifier results can be resolved during OffRamp execution.
+			Version:  [4]byte{0xe9, 0xa0, 0x5a, 0x20},
 			Verifier: &cvContractID,
 		},
 	}

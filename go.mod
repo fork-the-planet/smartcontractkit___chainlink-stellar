@@ -530,6 +530,8 @@ replace (
 	github.com/ugorji/go/codec => github.com/ugorji/go/codec v1.2.12
 )
 
-// replace github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
-// replace github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
+replace github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
+
+replace github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
+
 // replace github.com/smartcontractkit/chainlink-ccv/deployments => ../chainlink-ccv/deployments
