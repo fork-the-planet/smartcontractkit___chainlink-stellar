@@ -50,19 +50,27 @@ fn signers_to_soroban_vec(
 
 /// `keccak256(version_tag || message_hash)` — must match `verify_message` signed payload hashing.
 fn keccak_signed_hash(env: &Env, message_hash: &BytesN<32>) -> BytesN<32> {
+    keccak_signed_hash_with_tag(env, &VERSION_TAG, message_hash)
+}
+
+fn keccak_signed_hash_with_tag(env: &Env, tag: &[u8; 4], message_hash: &BytesN<32>) -> BytesN<32> {
     let mut signed_payload = Bytes::new(env);
-    signed_payload.append(&Bytes::from_array(env, &VERSION_TAG));
+    signed_payload.append(&Bytes::from_array(env, tag));
     signed_payload.append(&Bytes::from_array(env, &message_hash.to_array()));
     env.crypto().keccak256(&signed_payload).into()
 }
 
 fn build_verifier_results(env: &Env, sig_payload: &[u8]) -> Bytes {
+    build_verifier_results_with_tag(env, &VERSION_TAG, sig_payload)
+}
+
+fn build_verifier_results_with_tag(env: &Env, tag: &[u8; 4], sig_payload: &[u8]) -> Bytes {
     let len = sig_payload.len();
     assert!(len <= u16::MAX as usize);
     let b0 = ((len >> 8) & 0xff) as u8;
     let b1 = (len & 0xff) as u8;
     let mut raw: HostVec<u8> = HostVec::with_capacity(6 + len);
-    raw.extend_from_slice(&VERSION_TAG);
+    raw.extend_from_slice(tag);
     raw.push(b0);
     raw.push(b1);
     raw.extend_from_slice(sig_payload);
@@ -364,17 +372,32 @@ fn test_verify_message_fails_when_verifier_results_too_short() {
     client.verify_message(&source_chain, &message_hash, &short_results);
 }
 
+/// EVM CommitteeVerifier 2.0.0 version tag — used in cross-family inbound blobs.
+const VERSION_TAG_EVM_V2: [u8; 4] = [0xe9, 0xa0, 0x5a, 0x20];
+
 #[test]
-#[should_panic(expected = "Error(Contract, #59)")] // InvalidCCVVersion
-fn test_verify_message_fails_when_wrong_version() {
-    let (env, client, ..) = setup();
+fn test_verify_message_accepts_non_v170_version_tag() {
+    let (env, client, _owner, ..) = setup();
 
-    let source_chain: u64 = 1;
-    let message_hash = BytesN::from_array(&env, &[0u8; 32]);
-    // Wrong version tag (0x00,0x00,0x00,0x00) + 2 bytes sig len (0x00, 0x00) + 0 sig bytes
-    let wrong_version_results = Bytes::from_slice(&env, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let source_chain: u64 = 400;
+    let pairs = sorted_signers_from_seeds(&[29, 31, 37]);
+    let signers = signers_to_soroban_vec(&env, &pairs);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers,
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
 
-    client.verify_message(&source_chain, &message_hash, &wrong_version_results);
+    let message_hash = BytesN::from_array(&env, &[0xabu8; 32]);
+    let signed_hash = keccak_signed_hash_with_tag(&env, &VERSION_TAG_EVM_V2, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let wire_subset = [pairs[0].clone(), pairs[1].clone()];
+    let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
+    let verifier_results = build_verifier_results_with_tag(&env, &VERSION_TAG_EVM_V2, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
 }
 
 #[test]

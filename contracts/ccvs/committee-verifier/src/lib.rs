@@ -190,9 +190,7 @@ impl CommitteeVerifierContract {
         }
 
         let version = <Self as SignatureQuorum>::extract_version_tag(&env, &verifier_results)?;
-        if version != BytesN::from_array(&env, &VERSION_TAG_V1_7_0) {
-            return Err(CCIPError::InvalidCCVVersion);
-        }
+        // Version-based routing is handled by the VVR; no need to re-check here.
 
         let signature_len = <Self as SignatureQuorum>::extract_signature_len(&verifier_results)?;
         let expected = VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES + signature_len;
@@ -200,9 +198,8 @@ impl CommitteeVerifierContract {
             return Err(CCIPError::InvalidVerifierResults);
         }
 
-        // TODO: finalize exact signed payload format with offchain signer pipeline.
         let mut signed_payload = Bytes::new(&env);
-        signed_payload.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
+        signed_payload.append(&Bytes::from_slice(&env, &version.to_array()));
         signed_payload.append(&Bytes::from_array(&env, &message_hash.to_array()));
         let signed_hash: BytesN<32> = env.crypto().keccak256(&signed_payload).into();
 
