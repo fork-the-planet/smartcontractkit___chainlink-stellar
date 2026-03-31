@@ -2,10 +2,13 @@ package contracttransmitter
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"math/big"
 	"os"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
@@ -217,5 +220,136 @@ func TestConvertAndWriteMessageToChain(t *testing.T) {
 		err = ct.ConvertAndWriteMessageToChain(context.Background(), report)
 		require.NoError(t, err)
 		assert.Equal(t, customOffRampID, capturedID)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// convertVerifierBlobToEIP2098 tests
+// ---------------------------------------------------------------------------
+
+// buildV27Blob constructs a verifier result blob in the CCV aggregator's format:
+// [4B version_tag][2B BE sig_payload_len][N × 64B R||S]
+func buildV27Blob(versionTag [4]byte, sigs [][64]byte) []byte {
+	sigPayloadLen := len(sigs) * 64
+	blob := make([]byte, 6+sigPayloadLen)
+	copy(blob[:4], versionTag[:])
+	binary.BigEndian.PutUint16(blob[4:6], uint16(sigPayloadLen))
+	for i, sig := range sigs {
+		copy(blob[6+i*64:6+(i+1)*64], sig[:])
+	}
+	return blob
+}
+
+func TestConvertVerifierBlobToEIP2098(t *testing.T) {
+	versionTag := [4]byte{0x49, 0xff, 0x34, 0xed}
+	n := crypto.S256().Params().N
+	halfN := new(big.Int).Rsh(n, 1)
+
+	t.Run("recovery_id=0: low-S signature unchanged", func(t *testing.T) {
+		// Construct a synthetic v=27-normalized R||S where S <= n/2 (recovery_id=0)
+		var r32 [32]byte
+		r32[31] = 0x01
+
+		// Pick S = 42, which is trivially <= n/2
+		sOriginal := new(big.Int).SetInt64(42)
+		require.True(t, sOriginal.Cmp(halfN) <= 0, "test precondition: S must be <= n/2")
+
+		var s32 [32]byte
+		sBytes := sOriginal.Bytes()
+		copy(s32[32-len(sBytes):], sBytes)
+
+		var sig [64]byte
+		copy(sig[:32], r32[:])
+		copy(sig[32:], s32[:])
+
+		blob := buildV27Blob(versionTag, [][64]byte{sig})
+		result, err := convertVerifierBlobToEIP2098(blob)
+		require.NoError(t, err)
+
+		// For low-S, the output should be identical to input (high bit clear)
+		assert.Equal(t, blob, result)
+		assert.Equal(t, byte(0), result[6+32]&0x80, "high bit of S should be 0 for recovery_id=0")
+	})
+
+	t.Run("recovery_id=1: high-S is un-flipped and bit 255 set", func(t *testing.T) {
+		// Create a synthetic v=27-normalized signature where S > n/2,
+		// meaning original v was 28 (recovery_id=1)
+		var r32 [32]byte
+		r32[31] = 0x42
+
+		// Choose S_original < n/2, then S_v27_norm = n - S_original (which will be > n/2)
+		sOriginal := new(big.Int).SetInt64(12345678)
+		sNormalized := new(big.Int).Sub(n, sOriginal)
+		require.True(t, sNormalized.Cmp(halfN) > 0, "test precondition: S_norm must be > n/2")
+
+		var s32 [32]byte
+		sBytes := sNormalized.Bytes()
+		copy(s32[32-len(sBytes):], sBytes)
+
+		var sig [64]byte
+		copy(sig[:32], r32[:])
+		copy(sig[32:], s32[:])
+
+		blob := buildV27Blob(versionTag, [][64]byte{sig})
+		result, err := convertVerifierBlobToEIP2098(blob)
+		require.NoError(t, err)
+
+		// Extract the converted S
+		resultS := result[6+32 : 6+64]
+		assert.Equal(t, byte(0x80), resultS[0]&0x80, "high bit must be set for recovery_id=1")
+
+		// Clear the high bit and check S equals the original
+		resultSClean := make([]byte, 32)
+		copy(resultSClean, resultS)
+		resultSClean[0] &= 0x7F
+		sRecovered := new(big.Int).SetBytes(resultSClean)
+		assert.Equal(t, sOriginal, sRecovered, "S must equal the original pre-flip value")
+	})
+
+	t.Run("multiple signatures in one blob", func(t *testing.T) {
+		sOriginal := new(big.Int).SetInt64(99999)
+		sNorm := new(big.Int).Sub(n, sOriginal) // high-S
+		var sig1, sig2 [64]byte
+		sig1[31] = 0x01
+		sNormBytes := sNorm.Bytes()
+		copy(sig1[64-len(sNormBytes):], sNormBytes)
+
+		// sig2: low-S (recovery_id=0)
+		sig2[31] = 0x02
+		sig2[63] = 0x07
+
+		blob := buildV27Blob(versionTag, [][64]byte{sig1, sig2})
+		result, err := convertVerifierBlobToEIP2098(blob)
+		require.NoError(t, err)
+
+		// sig1: high bit should be set
+		assert.Equal(t, byte(0x80), result[6+32]&0x80)
+		// sig2: should be unchanged
+		assert.Equal(t, byte(0x00), result[6+64+32]&0x80)
+		assert.Equal(t, byte(0x07), result[6+64+63])
+	})
+
+	t.Run("empty blob is passed through", func(t *testing.T) {
+		blob := []byte{0x49, 0xff, 0x34, 0xed, 0x00, 0x00}
+		result, err := convertVerifierBlobToEIP2098(blob)
+		require.NoError(t, err)
+		assert.Equal(t, blob, result)
+	})
+
+	t.Run("short blob is passed through", func(t *testing.T) {
+		blob := []byte{0x01, 0x02}
+		result, err := convertVerifierBlobToEIP2098(blob)
+		require.NoError(t, err)
+		assert.Equal(t, blob, result)
+	})
+
+	t.Run("malformed signature length returns error", func(t *testing.T) {
+		// sig_len = 63 (not a multiple of 64)
+		blob := make([]byte, 6+63)
+		copy(blob[:4], versionTag[:])
+		binary.BigEndian.PutUint16(blob[4:6], 63)
+		_, err := convertVerifierBlobToEIP2098(blob)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a multiple of")
 	})
 }

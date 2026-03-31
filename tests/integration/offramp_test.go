@@ -3,13 +3,16 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stellar/go-stellar-sdk/keypair"
 
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
@@ -32,7 +35,6 @@ func deployOffRampDependencies(
 ) (rmnRemoteID, rmnProxyID, ccvResolverID, ccvVerifierID string) {
 	t.Helper()
 
-	// Deploy RMN Remote
 	salt := deployment.GenerateDeterministicSalt(deployerAddr, "rmn-remote-offramp")
 	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
 	rmnRemoteID, err := deployer.DeployContract(ctx, wasmPath, salt)
@@ -46,7 +48,6 @@ func deployOffRampDependencies(
 		t.Fatalf("Failed to initialize RMN Remote: %v", err)
 	}
 
-	// Deploy RMN Proxy
 	salt = deployment.GenerateDeterministicSalt(deployerAddr, "rmn-proxy-offramp")
 	wasmPath = filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_proxy.wasm")
 	rmnProxyID, err = deployer.DeployContract(ctx, wasmPath, salt)
@@ -60,7 +61,6 @@ func deployOffRampDependencies(
 		t.Fatalf("Failed to initialize RMN Proxy: %v", err)
 	}
 
-	// TODO: Deploy CCV Resolver + Committee Verifier
 	ccvResolverID = helpers.GenerateMockContractID(t, deployerAddr, "ccv-resolver")
 	ccvVerifierID = helpers.GenerateMockContractID(t, deployerAddr, "ccv-verifier")
 
@@ -75,7 +75,6 @@ func TestOffRamp(t *testing.T) {
 
 	rmnRemoteID, rmnProxyID, _, _ := deployOffRampDependencies(ctx, t, projectRoot, deployer, deployerKP.Address())
 
-	// Deploy OffRamp contract
 	t.Log("Deploying OffRamp contract...")
 	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "offramp")
 	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "offramp.wasm")
@@ -91,9 +90,7 @@ func TestOffRamp(t *testing.T) {
 
 	lggr := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
-	// Used across subtests that exercise the ContractTransmitter path.
 	_ = networkPassphrase
-	_ = rmnRemoteID
 	_ = rmnProxyID
 	_ = &lggr
 
@@ -129,7 +126,6 @@ func TestOffRamp(t *testing.T) {
 
 	t.Run("watch for StaticConfigSet event after initialization", func(t *testing.T) {
 		t.Skip("Placeholder: watch for StaticConfigSet event after initialization")
-		// TODO: query events from a known start ledger and verify StaticConfigSetEvent is emitted
 	})
 
 	// ========================================
@@ -177,15 +173,10 @@ func TestOffRamp(t *testing.T) {
 	// ========================================
 
 	t.Run("apply source chain config", func(t *testing.T) {
-		// TODO: populate OnRamps, DefaultCcvs, and Router with real deployed addresses
-		// once those contracts are available for integration testing
-		t.Skip("Placeholder: apply source chain config with a valid source chain selector and verify persistence")
-	})
-
-	t.Run("watch for SourceChainConfigSet event", func(t *testing.T) {
-		// TODO: after applying source chain config, use offrampClient.WaitForSourceChainConfigSetEvent
-		// to verify the event is emitted with the correct selector and config
-		t.Skip("Placeholder: verify SourceChainConfigSet event after apply_source_chain_cfg_updates")
+		// Full source chain config application requires the complete contract stack
+		// (Router + VVR + CommitteeVerifier). The basic TestOffRamp deploys only
+		// OffRamp + RMN. See TestOffRampExecute for full-stack source chain config.
+		t.Skip("Source chain config requires full contract stack; covered in TestOffRampExecute")
 	})
 
 	t.Run("get all source chain configs initially empty", func(t *testing.T) {
@@ -219,73 +210,45 @@ func TestOffRamp(t *testing.T) {
 
 	t.Run("execute with source chain not enabled", func(t *testing.T) {
 		t.Skip("Placeholder: execute with source chain not enabled")
-		// TODO: construct a protocol.AbstractAggregatedReport with a source chain selector
-		// that has no config applied — expect the offramp to reject with SourceChainNotEnabled
 	})
 
 	t.Run("execute with CCV length mismatch", func(t *testing.T) {
-		// TODO: construct a report where len(CCVS) != len(CCVData) and invoke via
-		// ContractTransmitter — expect CCVLengthMismatch error
 		t.Skip("Placeholder: ContractTransmitter.ConvertAndWriteMessageToChain should fail on CCV length mismatch")
 	})
 
 	t.Run("execute with gas limit override too low", func(t *testing.T) {
-		// TODO: construct a report with gas_limit_override > 0 but less than the
-		// message's ccip_receive_gas_limit — expect GasLimitOverrideTooLow error
 		t.Skip("Placeholder: ContractTransmitter.ConvertAndWriteMessageToChain should fail when gas limit override is too low")
 	})
 
 	t.Run("execute with invalid destination chain", func(t *testing.T) {
-		// TODO: construct a message where dest_chain_selector does not match the
-		// offramp's local chain selector — expect InvalidMessageDestination error
 		t.Skip("Placeholder: ContractTransmitter.ConvertAndWriteMessageToChain should fail on destination chain mismatch")
 	})
 
 	t.Run("execute with invalid onramp address", func(t *testing.T) {
-		// TODO: construct a message with an onramp_address not in the source chain's
-		// allowed on_ramps — expect InvalidOnRampAddress error
 		t.Skip("Placeholder: ContractTransmitter.ConvertAndWriteMessageToChain should fail on invalid onramp")
 	})
 
 	t.Run("execute with invalid offramp address in message", func(t *testing.T) {
-		// TODO: construct a message where offramp_address does not match the contract's
-		// own address — expect InvalidOffRampAddress error
 		t.Skip("Placeholder: ContractTransmitter.ConvertAndWriteMessageToChain should fail when offramp address doesn't match")
 	})
 
 	t.Run("execute valid message and watch ExecutionStateChanged event", func(t *testing.T) {
-		// TODO: requires full dependency stack (CCV resolver, verifier, router) to be deployed.
-		// 1. Deploy and configure CCV resolver + verifier contracts
-		// 2. Deploy and configure a Router contract
-		// 3. Apply source chain config with valid onramps, ccvs, and router
-		// 4. Build a valid protocol.AbstractAggregatedReport
-		// 5. Call ContractTransmitter.ConvertAndWriteMessageToChain
-		// 6. Use offrampClient.WaitForExecutionStateChangedEvent to assert the event
-		// 7. Verify message_id, source_chain_selector, sequence_number, and state fields
 		t.Skip("Placeholder: full execute path with ExecutionStateChanged event verification")
 	})
 
 	t.Run("execute already-executed message fails", func(t *testing.T) {
-		// TODO: after a successful execute, submit the same message again — expect
-		// MessageAlreadyExecuted error
 		t.Skip("Placeholder: re-execution of a successful message should be rejected")
 	})
 
 	t.Run("execute on cursed offramp fails", func(t *testing.T) {
-		// TODO: curse the RMN Remote, then attempt execute via ContractTransmitter
-		// — expect CursedByRMN error; uncurse afterwards to not affect subsequent tests
 		t.Skip("Placeholder: execute should fail when RMN has a global curse active")
 	})
 
 	t.Run("execute with invalid CCV resolver address", func(t *testing.T) {
-		// TODO: construct a message with an invalid CCV resolver address
-		// — expect InvalidCCVResolverAddress error
 		t.Skip("Placeholder: execution should fail on invalid CCV resolver address")
 	})
 
 	t.Run("execute with empty CCV verifier address set to ensure default CCV is used", func(t *testing.T) {
-		// TODO: construct a message with an invalid CCV verifier address
-		// — expect InvalidCCVVerifierAddress error
 		t.Skip("Placeholder: execution should succeed using the default CCV set for the source chain")
 	})
 
@@ -306,8 +269,6 @@ func TestOffRamp(t *testing.T) {
 	})
 
 	t.Run("get execution state after successful execute", func(t *testing.T) {
-		// TODO: after a successful execute, query get_execution_state with the message_id
-		// and verify it returns MessageExecutionStateSuccess
 		t.Skip("Placeholder: verify execution state is Success after a valid execute")
 	})
 
@@ -316,8 +277,186 @@ func TestOffRamp(t *testing.T) {
 	// ========================================
 
 	t.Run("transfer ownership", func(t *testing.T) {
-		// TODO: use offrampClient.TransferOwnership to start a 2-step transfer, then
-		// verify GetPendingOwner, AcceptOwnership, and the OwnershipTransferStarted event
-		t.Skip("Placeholder: 2-step ownership transfer flow")
+		newOwnerKP, err := keypair.Random()
+		if err != nil {
+			t.Fatalf("Failed to generate new owner keypair: %v", err)
+		}
+
+		err = offrampClient.TransferOwnership(ctx, newOwnerKP.Address())
+		if err != nil {
+			t.Fatalf("TransferOwnership failed: %v", err)
+		}
+
+		pending, err := offrampClient.GetPendingOwner(ctx)
+		if err != nil {
+			t.Fatalf("GetPendingOwner failed: %v", err)
+		}
+		if pending == nil || *pending != newOwnerKP.Address() {
+			t.Fatalf("PendingOwner mismatch: expected %s, got %v", newOwnerKP.Address(), pending)
+		}
+		t.Logf("Ownership transfer initiated to %s", newOwnerKP.Address())
+
+		err = offrampClient.CancelOwnershipTransfer(ctx)
+		if err != nil {
+			t.Fatalf("CancelOwnershipTransfer failed: %v", err)
+		}
+
+		owner, err := offrampClient.Owner(ctx)
+		if err != nil {
+			t.Fatalf("Owner check after cancel failed: %v", err)
+		}
+		if owner == nil || *owner != deployerKP.Address() {
+			t.Fatalf("Owner should still be original deployer after cancel, got %v", owner)
+		}
+		t.Log("Ownership transfer cancelled; original owner retained")
+	})
+}
+
+// TestOffRampExecute exercises the full execute path using a complete contract stack
+// deployed via deployFullStack. These tests are separated from the basic TestOffRamp
+// suite because they require the full contract dependency chain.
+func TestOffRampExecute(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
+
+	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec")
+
+	t.Run("execute valid message succeeds", func(t *testing.T) {
+		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+
+		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
+		if err != nil {
+			t.Fatalf("GetExecutionState: %v", err)
+		}
+		if state != offrampbindings.MessageExecutionStateSuccess {
+			t.Fatalf("execution state = %d, want Success (%d)", state, offrampbindings.MessageExecutionStateSuccess)
+		}
+		t.Logf("Execute succeeded; message ID %x has state Success", msgID[:8])
+	})
+
+	t.Run("execute already-executed message fails", func(t *testing.T) {
+		encoded, _, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err == nil {
+			t.Fatal("Expected error on duplicate execute, got nil")
+		}
+		if !strings.Contains(err.Error(), "Error(Contract") {
+			t.Fatalf("Expected contract error, got: %v", err)
+		}
+		t.Logf("Duplicate execution correctly rejected: %v", err)
+	})
+
+	t.Run("get execution state after successful execute", func(t *testing.T) {
+		_, msgID, _ := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))
+		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
+		if err != nil {
+			t.Fatalf("GetExecutionState: %v", err)
+		}
+		if state != offrampbindings.MessageExecutionStateSuccess {
+			t.Errorf("Expected Success state, got %d", state)
+		}
+		t.Logf("Execution state confirmed: %d (Success)", state)
+	})
+
+	t.Run("execute on cursed offramp fails", func(t *testing.T) {
+		var globalCurseSubject [16]byte
+		copy(globalCurseSubject[:], []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01})
+
+		err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{globalCurseSubject})
+		if err != nil {
+			t.Fatalf("Failed to curse: %v", err)
+		}
+
+		encoded, _, verifierBlob := stack.buildValidMessage(t, localChainSelector, 2, []byte("cursed-test"))
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err == nil {
+			t.Fatal("Expected error executing on cursed offramp, got nil")
+		}
+		if !strings.Contains(err.Error(), "Error(Contract") {
+			t.Fatalf("Expected contract error for curse, got: %v", err)
+		}
+		t.Logf("Execute on cursed offramp correctly rejected: %v", err)
+
+		err = stack.RmnRemoteClient.Uncurse(ctx, [][16]byte{globalCurseSubject})
+		if err != nil {
+			t.Fatalf("Failed to uncurse: %v", err)
+		}
+		t.Log("Uncursed successfully; offramp restored")
+	})
+
+	t.Run("execute with wrong destination chain fails", func(t *testing.T) {
+		wrongDest := uint64(99998)
+		encoded, _, verifierBlob := stack.buildValidMessage(t, wrongDest, 3, []byte("wrong-dest"))
+
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err == nil {
+			t.Fatal("Expected error for wrong destination chain, got nil")
+		}
+		if !strings.Contains(err.Error(), "Error(Contract") {
+			t.Fatalf("Expected contract error, got: %v", err)
+		}
+		t.Logf("Wrong destination chain correctly rejected: %v", err)
+	})
+
+	t.Run("execute with invalid onramp address fails", func(t *testing.T) {
+		sender := bytes.Repeat([]byte{0xcd}, 20)
+		var ccvHashZero [32]byte
+		badOnRamp := bytes.Repeat([]byte{0xFF}, 32)
+		encoded, err := encodeCcipMessageV1(ccipV1Wire{
+			SourceChainSelector: remoteSourceChain,
+			DestChainSelector:   localChainSelector,
+			SequenceNumber:      4,
+			ExecutionGasLimit:   500_000,
+			CcipReceiveGasLimit: 200_000,
+			Finality:            0,
+			CcvExecutorHash:     ccvHashZero,
+			OnRampAddress:       badOnRamp,
+			OffRampAddress:      stack.OffRampSuffix,
+			Sender:              sender,
+			Receiver:            stack.ReceiverRaw,
+			DestBlob:            nil,
+			TokenTransfer:       nil,
+			Data:                []byte("bad-onramp"),
+		})
+		if err != nil {
+			t.Fatalf("encodeCcipMessageV1: %v", err)
+		}
+
+		msgID := keccak256MessageID(encoded)
+		verifierBlob := stack.signVerifierBlob(t, msgID)
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err == nil {
+			t.Fatal("Expected error for invalid onramp, got nil")
+		}
+		if !strings.Contains(err.Error(), "Error(Contract") {
+			t.Fatalf("Expected contract error, got: %v", err)
+		}
+		t.Logf("Invalid onramp address correctly rejected: %v", err)
+	})
+
+	t.Run("execute with second valid message succeeds", func(t *testing.T) {
+		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 5, []byte("second-message"))
+
+		err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+
+		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
+		if err != nil {
+			t.Fatalf("GetExecutionState: %v", err)
+		}
+		if state != offrampbindings.MessageExecutionStateSuccess {
+			t.Fatalf("execution state = %d, want Success", state)
+		}
+		t.Logf("Second message executed successfully; ID %x", msgID[:8])
 	})
 }

@@ -5,14 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/executor"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
@@ -63,32 +60,6 @@ func TestEVMToStellarExecution(t *testing.T) {
 	stellarChain := env.Chains[stellarDetails.ChainSelector]
 	require.NotNil(t, stellarChain, "Stellar chain not found in chains map")
 
-	// Look up executor proxy address on the EVM source chain.
-	executorKey := datastore.NewAddressRefKey(
-		evmDetails.ChainSelector,
-		datastore.ContractType(executor.ProxyType),
-		semver.MustParse(executor.DeployProxy.Version()),
-		devenvcommon.DefaultExecutorQualifier,
-	)
-	executorRef, err := env.DataStore.Addresses().Get(executorKey)
-	require.NoError(t, err, "executor proxy address must exist in datastore")
-	executorAddr, err := protocol.NewUnknownAddressFromHex(executorRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("executorAddr", hex.EncodeToString(executorAddr)).Msg("Resolved EVM executor proxy address")
-
-	// Look up CCV (VVR) address on the EVM source chain.
-	ccvKey := datastore.NewAddressRefKey(
-		evmDetails.ChainSelector,
-		datastore.ContractType(committee_verifier.ResolverType),
-		semver.MustParse(committee_verifier.Deploy.Version()),
-		devenvcommon.DefaultCommitteeVerifierQualifier,
-	)
-	ccvRef, err := env.DataStore.Addresses().Get(ccvKey)
-	require.NoError(t, err, "CCV (VVR) address must exist in datastore")
-	ccvAddr, err := protocol.NewUnknownAddressFromHex(ccvRef.Address)
-	require.NoError(t, err)
-	l.Info().Str("ccvAddr", hex.EncodeToString(ccvAddr)).Msg("Resolved EVM CCV address")
-
 	t.Run("evm_to_stellar_execution", func(t *testing.T) {
 		// Get the Stellar receiver address (deterministic 32-byte ed25519 key).
 		stellarReceiver, err := stellarChain.GetEOAReceiverAddress()
@@ -101,6 +72,9 @@ func TestEVMToStellarExecution(t *testing.T) {
 		l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from EVM OnRamp")
 
 		// Send the CCIP message from EVM to Stellar.
+		// For Stellar destinations, rely on the lane defaults configured on the
+		// EVM OnRamp. GenericExtraArgsV3 on EVM only supports explicit 20-byte
+		// address overrides, while Stellar executor/CCV addresses are 32 bytes.
 		sendResult, err := evmChain.SendMessage(ctx, stellarDetails.ChainSelector,
 			cciptestinterfaces.MessageFields{
 				Receiver: stellarReceiver,
@@ -109,12 +83,6 @@ func TestEVMToStellarExecution(t *testing.T) {
 			cciptestinterfaces.MessageOptions{
 				Version:           3,
 				ExecutionGasLimit: 200_000,
-				Executor:          executorAddr,
-				CCVs: []protocol.CCV{{
-					CCVAddress: ccvAddr,
-					Args:       []byte{},
-					ArgsLen:    0,
-				}},
 			},
 		)
 		require.NoError(t, err)
@@ -154,7 +122,7 @@ func TestEVMToStellarExecution(t *testing.T) {
 		offRampKey := datastore.NewAddressRefKey(
 			stellarDetails.ChainSelector,
 			datastore.ContractType(offramp.ContractType),
-			semver.MustParse(offramp.Deploy.Version()),
+			offramp.Version,
 			"",
 		)
 		offrampRef, err := env.DataStore.Addresses().Get(offRampKey)

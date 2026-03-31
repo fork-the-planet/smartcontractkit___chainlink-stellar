@@ -1,12 +1,117 @@
 #![cfg(test)]
 
+extern crate alloc;
+
 use super::*;
-use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env};
+use alloc::vec::Vec as HostVec;
+use common_verifier::signatures::SignatureQuorumConfig;
+use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
+use sha3::{Digest, Keccak256};
+use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env, Vec as SorobanVec};
 
 use crate::types::{DynamicConfig, RemoteChainConfig};
 use crate::{CommitteeVerifierContract, CommitteeVerifierContractClient};
 use rmn_proxy::{RmnProxyContract, RmnProxyContractClient};
 use rmn_remote::{RmnRemoteContract, RmnRemoteContractClient};
+
+/// Version tag bytes must match `VERSION_TAG_V1_7_0` in the contract.
+const VERSION_TAG: [u8; 4] = [0x49, 0xff, 0x34, 0xed];
+
+fn make_signing_key(seed: u8) -> SigningKey {
+    let mut bytes = [0u8; 32];
+    bytes[0] = seed;
+    SigningKey::from_slice(&bytes).expect("valid secp256k1 secret key")
+}
+
+/// Derive the left-zero-padded 32-byte Ethereum address from a secp256k1 signing key.
+fn eth_address_padded(sk: &SigningKey) -> [u8; 32] {
+    let vk = sk.verifying_key();
+    let uncompressed = vk.to_encoded_point(false);
+    let hash = Keccak256::digest(&uncompressed.as_bytes()[1..]);
+    let mut padded = [0u8; 32];
+    padded[12..].copy_from_slice(&hash[12..]);
+    padded
+}
+
+/// Deterministic secp256k1 keys from seeds, sorted by Ethereum address (ascending).
+fn sorted_signers_from_seeds(seeds: &[u8]) -> HostVec<(SigningKey, [u8; 32])> {
+    let mut v: HostVec<(SigningKey, [u8; 32])> = seeds
+        .iter()
+        .copied()
+        .map(|s| {
+            let sk = make_signing_key(s);
+            let addr = eth_address_padded(&sk);
+            (sk, addr)
+        })
+        .collect();
+    v.sort_by(|a, b| a.1.cmp(&b.1));
+    v
+}
+
+fn signers_to_soroban_vec(
+    env: &Env,
+    pairs: &HostVec<(SigningKey, [u8; 32])>,
+) -> SorobanVec<BytesN<32>> {
+    let mut out = SorobanVec::new(env);
+    for (_, addr) in pairs {
+        out.push_back(BytesN::from_array(env, addr));
+    }
+    out
+}
+
+/// `keccak256(version_tag || message_hash)` — must match `verify_message` signed payload hashing.
+fn keccak_signed_hash(env: &Env, message_hash: &BytesN<32>) -> BytesN<32> {
+    keccak_signed_hash_with_tag(env, &VERSION_TAG, message_hash)
+}
+
+fn keccak_signed_hash_with_tag(env: &Env, tag: &[u8; 4], message_hash: &BytesN<32>) -> BytesN<32> {
+    let mut signed_payload = Bytes::new(env);
+    signed_payload.append(&Bytes::from_array(env, tag));
+    signed_payload.append(&Bytes::from_array(env, &message_hash.to_array()));
+    env.crypto().keccak256(&signed_payload).into()
+}
+
+fn build_verifier_results(env: &Env, sig_payload: &[u8]) -> Bytes {
+    build_verifier_results_with_tag(env, &VERSION_TAG, sig_payload)
+}
+
+fn build_verifier_results_with_tag(env: &Env, tag: &[u8; 4], sig_payload: &[u8]) -> Bytes {
+    let len = sig_payload.len();
+    assert!(len <= u16::MAX as usize);
+    let b0 = ((len >> 8) & 0xff) as u8;
+    let b1 = (len & 0xff) as u8;
+    let mut raw: HostVec<u8> = HostVec::with_capacity(6 + len);
+    raw.extend_from_slice(tag);
+    raw.push(b0);
+    raw.push(b1);
+    raw.extend_from_slice(sig_payload);
+    Bytes::from_slice(env, &raw)
+}
+
+/// Produce an EIP-2098 compact ECDSA signature (64 bytes) for a prehashed message.
+fn sign_compact(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 64] {
+    let (sig, recid) = sk.sign_prehash(prehash).expect("signing must succeed");
+    let sig_bytes = sig.to_bytes();
+    let mut compact = [0u8; 64];
+    compact[..32].copy_from_slice(&sig_bytes[..32]); // r
+    compact[32..].copy_from_slice(&sig_bytes[32..]); // s
+                                                     // Pack recovery ID into bit 255 of yParityAndS
+    compact[32] |= (recid.to_byte() & 1) << 7;
+    compact
+}
+
+/// Build EIP-2098 compact ECDSA signature payload, ordered by the caller.
+fn signature_payload_valid(
+    pairs_in_wire_order: &[(SigningKey, [u8; 32])],
+    signed_hash: &[u8; 32],
+) -> HostVec<u8> {
+    let mut out = HostVec::with_capacity(pairs_in_wire_order.len() * 64);
+    for (sk, _addr) in pairs_in_wire_order {
+        let compact = sign_compact(sk, signed_hash);
+        out.extend_from_slice(&compact);
+    }
+    out
+}
 
 fn default_dynamic_config(env: &Env) -> DynamicConfig {
     DynamicConfig {
@@ -31,7 +136,7 @@ fn setup() -> (
     CommitteeVerifierContractClient<'static>,
     Address,
     Address,
-    Vec<Bytes>,
+    SorobanVec<Bytes>,
 ) {
     let env = Env::default();
     env.mock_all_auths();
@@ -178,6 +283,24 @@ fn test_update_storage_locations() {
     assert_eq!(stored.len(), 2);
 }
 
+#[test]
+fn test_storage_locations_admin_two_step_transfer() {
+    let (env, client, owner, ..) = setup();
+    let new_admin = Address::generate(&env);
+
+    assert_eq!(client.get_storage_locations_admin(), owner);
+
+    client.transfer_storage_locations_admin(&new_admin);
+    assert_eq!(
+        client.get_pending_storage_loc_admin(),
+        Some(new_admin.clone())
+    );
+
+    client.accept_storage_locations_admin();
+    assert_eq!(client.get_storage_locations_admin(), new_admin);
+    assert_eq!(client.get_pending_storage_loc_admin(), None);
+}
+
 // ============================================================
 // Ownership Tests
 // ============================================================
@@ -271,17 +394,32 @@ fn test_verify_message_fails_when_verifier_results_too_short() {
     client.verify_message(&source_chain, &message_hash, &short_results);
 }
 
+/// EVM CommitteeVerifier 2.0.0 version tag — used in cross-family inbound blobs.
+const VERSION_TAG_EVM_V2: [u8; 4] = [0xe9, 0xa0, 0x5a, 0x20];
+
 #[test]
-#[should_panic(expected = "Error(Contract, #59)")] // InvalidCCVVersion
-fn test_verify_message_fails_when_wrong_version() {
-    let (env, client, ..) = setup();
+fn test_verify_message_accepts_non_v170_version_tag() {
+    let (env, client, _owner, ..) = setup();
 
-    let source_chain: u64 = 1;
-    let message_hash = BytesN::from_array(&env, &[0u8; 32]);
-    // Wrong version tag (0x00,0x00,0x00,0x00) + 2 bytes sig len (0x00, 0x00) + 0 sig bytes
-    let wrong_version_results = Bytes::from_slice(&env, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let source_chain: u64 = 400;
+    let pairs = sorted_signers_from_seeds(&[29, 31, 37]);
+    let signers = signers_to_soroban_vec(&env, &pairs);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers,
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
 
-    client.verify_message(&source_chain, &message_hash, &wrong_version_results);
+    let message_hash = BytesN::from_array(&env, &[0xabu8; 32]);
+    let signed_hash = keccak_signed_hash_with_tag(&env, &VERSION_TAG_EVM_V2, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let wire_subset = [pairs[0].clone(), pairs[1].clone()];
+    let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
+    let verifier_results = build_verifier_results_with_tag(&env, &VERSION_TAG_EVM_V2, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
 }
 
 #[test]
@@ -294,5 +432,350 @@ fn test_verify_message_fails_when_source_chain_not_configured() {
     // Correct version + sig len (0, 0) + no signatures - will fail at validate_signatures
     let verifier_results = Bytes::from_slice(&env, &[0x49, 0xff, 0x34, 0xed, 0x00, 0x00]);
 
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+// ============================================================
+// SignatureQuorum — config management
+// ============================================================
+
+#[test]
+fn test_apply_signature_configs_and_get() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 100;
+    let pairs = sorted_signers_from_seeds(&[3, 7, 11]);
+    let signers = signers_to_soroban_vec(&env, &pairs);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers: signers.clone(),
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg.clone()]);
+
+    let got = client.get_signature_config(&source_chain);
+    assert_eq!(got.source_chain_selector, source_chain);
+    assert_eq!(got.threshold, 2);
+    assert_eq!(got.signers.len(), 3);
+    for i in 0..3 {
+        assert_eq!(got.signers.get(i).unwrap(), signers.get(i).unwrap());
+    }
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #19)")] // SourceSignersNotConfigured
+fn test_apply_signature_configs_remove() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 101;
+    let pairs = sorted_signers_from_seeds(&[5, 9, 13]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+    client.apply_signature_configs(&vec![&env, source_chain], &vec![&env]);
+
+    client.get_signature_config(&source_chain);
+}
+
+#[test]
+fn test_get_all_signature_configs() {
+    let (env, client, _owner, ..) = setup();
+
+    let pairs_a = sorted_signers_from_seeds(&[2, 4, 6]);
+    let pairs_b = sorted_signers_from_seeds(&[8, 10, 12]);
+
+    let cfg_a = SignatureQuorumConfig {
+        source_chain_selector: 200,
+        threshold: 2,
+        signers: signers_to_soroban_vec(&env, &pairs_a),
+    };
+    let cfg_b = SignatureQuorumConfig {
+        source_chain_selector: 201,
+        threshold: 1,
+        signers: signers_to_soroban_vec(&env, &pairs_b),
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg_a, cfg_b]);
+
+    let all = client.get_all_signature_configs();
+    assert_eq!(all.len(), 2);
+
+    let c0 = all.get(0).unwrap();
+    let c1 = all.get(1).unwrap();
+    assert!(
+        (c0.source_chain_selector == 200 && c1.source_chain_selector == 201)
+            || (c0.source_chain_selector == 201 && c1.source_chain_selector == 200)
+    );
+
+    let mut saw_200 = false;
+    let mut saw_201 = false;
+    for i in 0..2 {
+        let c = all.get(i).unwrap();
+        match c.source_chain_selector {
+            200 => {
+                assert_eq!(c.threshold, 2);
+                saw_200 = true;
+            }
+            201 => {
+                assert_eq!(c.threshold, 1);
+                saw_201 = true;
+            }
+            _ => panic!("unexpected source_chain_selector"),
+        }
+    }
+    assert!(saw_200 && saw_201);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #17)")] // InvalidSignatureThreshold
+fn test_apply_signature_configs_rejects_zero_threshold() {
+    let (env, client, _owner, ..) = setup();
+
+    let pairs = sorted_signers_from_seeds(&[17, 19]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: 300,
+        threshold: 0,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #17)")] // InvalidSignatureThreshold
+fn test_apply_signature_configs_rejects_threshold_exceeding_signers() {
+    let (env, client, _owner, ..) = setup();
+
+    let pairs = sorted_signers_from_seeds(&[21, 23]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: 301,
+        threshold: 3,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #66)")] // DuplicateOnchainPublicKey
+fn test_apply_signature_configs_rejects_duplicate_signers() {
+    let (env, client, _owner, ..) = setup();
+
+    let pk = BytesN::from_array(&env, &[7u8; 32]);
+    let mut signers = SorobanVec::new(&env);
+    signers.push_back(pk.clone());
+    signers.push_back(pk);
+
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: 302,
+        threshold: 1,
+        signers,
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #67)")] // InvalidSignerOrder
+fn test_apply_signature_configs_rejects_unordered_signers() {
+    let (env, client, _owner, ..) = setup();
+
+    let hi = BytesN::from_array(&env, &[0xFFu8; 32]);
+    let lo = BytesN::from_array(&env, &[0x00u8; 32]);
+    let mut signers = SorobanVec::new(&env);
+    signers.push_back(hi);
+    signers.push_back(lo);
+
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: 303,
+        threshold: 1,
+        signers,
+    };
+
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+}
+
+// ============================================================
+// SignatureQuorum — verify_message (Ed25519 quorum)
+// ============================================================
+
+#[test]
+fn test_verify_message_with_valid_signatures() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 400;
+    let pairs = sorted_signers_from_seeds(&[29, 31, 37]);
+    let signers = signers_to_soroban_vec(&env, &pairs);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers,
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0xabu8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let wire_subset = [pairs[0].clone(), pairs[1].clone()];
+    let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #71)")] // ThresholdNotMet
+fn test_verify_message_fails_below_threshold() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 401;
+    let pairs = sorted_signers_from_seeds(&[41, 43, 47]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0xcd_u8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let wire_subset = [pairs[0].clone()];
+    let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #70)")] // OutOfOrderSignatures
+fn test_verify_message_fails_with_out_of_order_signatures() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 402;
+    let pairs = sorted_signers_from_seeds(&[53, 59, 61]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0x11u8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    // Wire order: larger pubkey first (descending) — violates strictly ascending requirement.
+    let wire_desc = [pairs[2].clone(), pairs[0].clone()];
+    let sig_payload = signature_payload_valid(&wire_desc, &signed_bytes);
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #70)")] // OutOfOrderSignatures
+fn test_verify_message_fails_with_duplicate_signatures() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 403;
+    let pairs = sorted_signers_from_seeds(&[67, 71, 73]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 2,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0x22u8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let p0 = pairs[0].clone();
+    let wire_dup = [p0.clone(), p0];
+    let sig_payload = signature_payload_valid(&wire_dup, &signed_bytes);
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #72)")] // UnexpectedSigner
+fn test_verify_message_fails_with_unknown_signer() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 404;
+    let pairs = sorted_signers_from_seeds(&[79, 83, 89]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 1,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let outsider = sorted_signers_from_seeds(&[97]);
+    let message_hash = BytesN::from_array(&env, &[0x33u8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let wire = [outsider[0].clone()];
+    let sig_payload = signature_payload_valid(&wire, &signed_bytes);
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic]
+fn test_verify_message_fails_with_invalid_signature() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 405;
+    let pairs = sorted_signers_from_seeds(&[101, 103, 107]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 1,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0x44u8; 32]);
+    // Bogus 64-byte compact signature — will recover a wrong/invalid address
+    let mut sig_payload = HostVec::with_capacity(64);
+    sig_payload.extend_from_slice(&[0xEEu8; 64]);
+
+    let verifier_results = build_verifier_results(&env, &sig_payload);
+    client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #14)")] // InvalidSignatureLength
+fn test_verify_message_fails_with_malformed_payload() {
+    let (env, client, _owner, ..) = setup();
+
+    let source_chain: u64 = 406;
+    let pairs = sorted_signers_from_seeds(&[109, 113]);
+    let cfg = SignatureQuorumConfig {
+        source_chain_selector: source_chain,
+        threshold: 1,
+        signers: signers_to_soroban_vec(&env, &pairs),
+    };
+    client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
+
+    let message_hash = BytesN::from_array(&env, &[0x55u8; 32]);
+    let signed_hash = keccak_signed_hash(&env, &message_hash);
+    let signed_bytes: [u8; 32] = signed_hash.to_array();
+
+    let mut sig_payload = signature_payload_valid(&[pairs[0].clone()], &signed_bytes);
+    sig_payload.truncate(63); // not a multiple of 64
+
+    let verifier_results = build_verifier_results(&env, &sig_payload);
     client.verify_message(&source_chain, &message_hash, &verifier_results);
 }

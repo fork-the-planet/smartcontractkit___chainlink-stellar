@@ -8,6 +8,9 @@ build:
 test-e2e:
 	go test -v -timeout 15m ./tests/e2e/...
 
+test-integration:
+	go test -v -tags=integration -count=1 -p=1 -timeout=15m ./tests/integration/...
+
 # Generate Rust interface files for all contracts from their WASM files.
 # This can be run with `--no-build` to skip the build of the contracts.
 generate-interfaces:

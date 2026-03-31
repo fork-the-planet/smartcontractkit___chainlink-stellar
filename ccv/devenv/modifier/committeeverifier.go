@@ -12,7 +12,7 @@ import (
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
-	"github.com/smartcontractkit/chainlink-ccv/verifier/commit"
+	"github.com/smartcontractkit/chainlink-ccv/verifier/pkg/commit"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
@@ -86,11 +86,13 @@ func buildVerifierStellarConfig(verifierInput *committeeverifier.Input, outputs 
 		}
 		sorobanRPCURL := output.Nodes[0].InternalHTTPUrl
 
+		// Contract addresses may not be available yet: the modifier runs
+		// when verifiers are launched early (before contract deployment)
+		// so that signing keys can be discovered. The verifier binary
+		// back-fills missing addresses from the job-spec commit.Config
+		// which IS generated after deployment.
 		var onrampContractID string
-		onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]
-		if !ok {
-			// TODO: should we throw an error here?
-		} else {
+		if onrampHex, ok := deployedCfg.OnRampAddresses[strSelector]; ok && onrampHex != "" {
 			onrampContractID, err = scval.HexToContractStrkey(onrampHex)
 			if err != nil {
 				return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", strSelector, err)
@@ -98,7 +100,7 @@ func buildVerifierStellarConfig(verifierInput *committeeverifier.Input, outputs 
 		}
 
 		var rmnRemoteContractID string
-		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok {
+		if rmnRemoteHex, ok := deployedCfg.RMNRemoteAddresses[strSelector]; ok && rmnRemoteHex != "" {
 			rmnRemoteContractID, err = scval.HexToContractStrkey(rmnRemoteHex)
 			if err != nil {
 				return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", strSelector, err)

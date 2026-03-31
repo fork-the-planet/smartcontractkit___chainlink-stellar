@@ -5,9 +5,13 @@ package integration
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 
 	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	ccvsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
@@ -92,12 +96,15 @@ func TestRouter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// apply_signature_configs rejects threshold > len(signers) (CCIPError::InvalidSignatureThreshold = 17).
-		// CommitteeVerifier::validate_signatures is still a stub, so a placeholder pubkey is enough.
-		var dummySigner [32]byte
-		copy(dummySigner[:], []byte("router-int-test-dummy-signer-32b")) // 32 bytes; ed25519 verify not enforced yet
+		signerKey, err := crypto.GenerateKey()
+		if err != nil {
+			t.Fatalf("crypto.GenerateKey: %v", err)
+		}
+		ethAddr := crypto.PubkeyToAddress(signerKey.PublicKey)
+		var signerAddrPad [32]byte
+		copy(signerAddrPad[12:], ethAddr.Bytes())
 		if err := ccvClient.ApplySignatureConfigs(ctx, nil, []ccvsbindings.SignatureQuorumConfig{
-			{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{dummySigner}},
+			{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{signerAddrPad}},
 		}); err != nil {
 			t.Fatalf("ApplySignatureConfigs: %v", err)
 		}
@@ -189,15 +196,38 @@ func TestRouter(t *testing.T) {
 			t.Fatalf("encodeCcipMessageV1: %v", err)
 		}
 
-		verifierBlob := []byte{
-			ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3,
-			0x00, 0x00, // signature payload length = 0
+		msgID := keccak256MessageID(encoded)
+		versionTag := [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3}
+		var signedPayload []byte
+		signedPayload = append(signedPayload, versionTag[:]...)
+		signedPayload = append(signedPayload, msgID[:]...)
+		signedHash := crypto.Keccak256(signedPayload)
+		sig65, err := crypto.Sign(signedHash, signerKey)
+		if err != nil {
+			t.Fatalf("crypto.Sign: %v", err)
 		}
+		// Convert to EIP-2098 compact format (64 bytes)
+		var compact [64]byte
+		copy(compact[:32], sig65[0:32])
+		copy(compact[32:], sig65[32:64])
+		v := sig65[64]
+		s := new(big.Int).SetBytes(compact[32:])
+		halfN := new(big.Int).Rsh(crypto.S256().Params().N, 1)
+		if s.Cmp(halfN) > 0 {
+			t.Fatalf("crypto.Sign should produce low-S signatures")
+		}
+		if v == 1 {
+			compact[32] |= 0x80
+		}
+		const perSigBytes = 64
+		var verifierBlob []byte
+		verifierBlob = append(verifierBlob, versionTag[:]...)
+		verifierBlob = binary.BigEndian.AppendUint16(verifierBlob, perSigBytes)
+		verifierBlob = append(verifierBlob, compact[:]...)
 		if err := offrampClient.Execute(ctx, encoded, []string{vvrID}, [][]byte{verifierBlob}, 0); err != nil {
 			t.Fatalf("OffRamp Execute: %v", err)
 		}
 
-		msgID := keccak256MessageID(encoded)
 		state, err := offrampClient.GetExecutionState(ctx, msgID)
 		if err != nil {
 			t.Fatalf("GetExecutionState: %v", err)

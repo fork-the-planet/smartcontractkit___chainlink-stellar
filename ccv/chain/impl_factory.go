@@ -14,9 +14,11 @@ import (
 	"github.com/stellar/go-stellar-sdk/keypair"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/committee_verifier"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
@@ -25,6 +27,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
@@ -144,10 +147,24 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
+		fqKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(fee_quoter.ContractType),
+			semver.MustParse(fee_quoter.Deploy.Version()),
+			"",
+		)
+		fqRef, err := env.DataStore.Addresses().Get(fqKey)
+		if err == nil && fqRef.Address != "" {
+			fqContractID, convErr := scval.HexToContractStrkey(fqRef.Address)
+			if convErr == nil {
+				chain.feeQuoterClient = fqbindings.NewFeeQuoterClient(deployer, fqContractID)
+			}
+		}
+
 		vvrKey := datastore.NewAddressRefKey(
 			details.ChainSelector,
-			datastore.ContractType(committee_verifier.ResolverType),
-			semver.MustParse(committee_verifier.Deploy.Version()),
+			datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+			versioned_verifier_resolver.Version,
 			devenvcommon.DefaultCommitteeVerifierQualifier,
 		)
 		vvrRef, err := env.DataStore.Addresses().Get(vvrKey)
@@ -161,7 +178,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		cvKey := datastore.NewAddressRefKey(
 			details.ChainSelector,
 			datastore.ContractType(committee_verifier.ContractType),
-			semver.MustParse(committee_verifier.Deploy.Version()),
+			committee_verifier.Version,
 			devenvcommon.DefaultCommitteeVerifierQualifier,
 		)
 		cvRef, err := env.DataStore.Addresses().Get(cvKey)
@@ -169,6 +186,20 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			cvContractID, convErr := scval.HexToContractStrkey(cvRef.Address)
 			if convErr == nil {
 				chain.cvContractID = cvContractID
+			}
+		}
+
+		receiverKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(CcipReceiverContractType),
+			semver.MustParse("1.0.0"),
+			"",
+		)
+		receiverRef, err := env.DataStore.Addresses().Get(receiverKey)
+		if err == nil && receiverRef.Address != "" {
+			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
+			if convErr == nil {
+				chain.receiverContractID = receiverContractID
 			}
 		}
 	}

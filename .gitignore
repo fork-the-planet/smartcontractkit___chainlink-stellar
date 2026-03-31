@@ -11,6 +11,9 @@ context/
 # Generated reference bindings (from `make generate-interfaces`)
 generated/
 
+# Compiled binaries
+/executor
+
 # Misc
 .DS_Store
 
