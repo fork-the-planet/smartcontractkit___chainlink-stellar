@@ -5,7 +5,8 @@ extern crate alloc;
 use super::*;
 use alloc::vec::Vec as HostVec;
 use common_verifier::signatures::SignatureQuorumConfig;
-use ed25519_dalek::{Signer, SigningKey};
+use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
+use sha3::{Digest, Keccak256};
 use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env, Vec as SorobanVec};
 
 use crate::types::{DynamicConfig, RemoteChainConfig};
@@ -19,18 +20,28 @@ const VERSION_TAG: [u8; 4] = [0x49, 0xff, 0x34, 0xed];
 fn make_signing_key(seed: u8) -> SigningKey {
     let mut bytes = [0u8; 32];
     bytes[0] = seed;
-    SigningKey::from_bytes(&bytes)
+    SigningKey::from_slice(&bytes).expect("valid secp256k1 secret key")
 }
 
-/// Deterministic Ed25519 keys from seeds, sorted by public key (ascending), as required by `apply_signature_configs`.
+/// Derive the left-zero-padded 32-byte Ethereum address from a secp256k1 signing key.
+fn eth_address_padded(sk: &SigningKey) -> [u8; 32] {
+    let vk = sk.verifying_key();
+    let uncompressed = vk.to_encoded_point(false);
+    let hash = Keccak256::digest(&uncompressed.as_bytes()[1..]);
+    let mut padded = [0u8; 32];
+    padded[12..].copy_from_slice(&hash[12..]);
+    padded
+}
+
+/// Deterministic secp256k1 keys from seeds, sorted by Ethereum address (ascending).
 fn sorted_signers_from_seeds(seeds: &[u8]) -> HostVec<(SigningKey, [u8; 32])> {
     let mut v: HostVec<(SigningKey, [u8; 32])> = seeds
         .iter()
         .copied()
         .map(|s| {
             let sk = make_signing_key(s);
-            let pk = sk.verifying_key().to_bytes();
-            (sk, pk)
+            let addr = eth_address_padded(&sk);
+            (sk, addr)
         })
         .collect();
     v.sort_by(|a, b| a.1.cmp(&b.1));
@@ -42,8 +53,8 @@ fn signers_to_soroban_vec(
     pairs: &HostVec<(SigningKey, [u8; 32])>,
 ) -> SorobanVec<BytesN<32>> {
     let mut out = SorobanVec::new(env);
-    for (_, pk) in pairs {
-        out.push_back(BytesN::from_array(env, pk));
+    for (_, addr) in pairs {
+        out.push_back(BytesN::from_array(env, addr));
     }
     out
 }
@@ -77,16 +88,27 @@ fn build_verifier_results_with_tag(env: &Env, tag: &[u8; 4], sig_payload: &[u8])
     Bytes::from_slice(env, &raw)
 }
 
-/// Build signature payload: strictly ascending pubkeys, each followed by a valid Ed25519 signature over `signed_hash`.
+/// Produce an EIP-2098 compact ECDSA signature (64 bytes) for a prehashed message.
+fn sign_compact(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 64] {
+    let (sig, recid) = sk.sign_prehash(prehash).expect("signing must succeed");
+    let sig_bytes = sig.to_bytes();
+    let mut compact = [0u8; 64];
+    compact[..32].copy_from_slice(&sig_bytes[..32]); // r
+    compact[32..].copy_from_slice(&sig_bytes[32..]); // s
+    // Pack recovery ID into bit 255 of yParityAndS
+    compact[32] |= (recid.to_byte() & 1) << 7;
+    compact
+}
+
+/// Build EIP-2098 compact ECDSA signature payload, ordered by the caller.
 fn signature_payload_valid(
     pairs_in_wire_order: &[(SigningKey, [u8; 32])],
     signed_hash: &[u8; 32],
 ) -> HostVec<u8> {
-    let mut out = HostVec::with_capacity(pairs_in_wire_order.len() * 96);
-    for (sk, pk) in pairs_in_wire_order {
-        let sig = sk.sign(signed_hash.as_slice());
-        out.extend_from_slice(pk);
-        out.extend_from_slice(&sig.to_bytes());
+    let mut out = HostVec::with_capacity(pairs_in_wire_order.len() * 64);
+    for (sk, _addr) in pairs_in_wire_order {
+        let compact = sign_compact(sk, signed_hash);
+        out.extend_from_slice(&compact);
     }
     out
 }
@@ -725,9 +747,8 @@ fn test_verify_message_fails_with_invalid_signature() {
     client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
 
     let message_hash = BytesN::from_array(&env, &[0x44u8; 32]);
-    let pk = pairs[0].1;
-    let mut sig_payload = HostVec::with_capacity(96);
-    sig_payload.extend_from_slice(&pk);
+    // Bogus 64-byte compact signature — will recover a wrong/invalid address
+    let mut sig_payload = HostVec::with_capacity(64);
     sig_payload.extend_from_slice(&[0xEEu8; 64]);
 
     let verifier_results = build_verifier_results(&env, &sig_payload);
@@ -753,7 +774,7 @@ fn test_verify_message_fails_with_malformed_payload() {
     let signed_bytes: [u8; 32] = signed_hash.to_array();
 
     let mut sig_payload = signature_payload_valid(&[pairs[0].clone()], &signed_bytes);
-    sig_payload.truncate(95); // not a multiple of 96
+    sig_payload.truncate(63); // not a multiple of 64
 
     let verifier_results = build_verifier_results(&env, &sig_payload);
     client.verify_message(&source_chain, &message_hash, &verifier_results);

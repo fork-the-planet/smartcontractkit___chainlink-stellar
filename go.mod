@@ -11,8 +11,8 @@ require (
 	github.com/smartcontractkit/chain-selectors v1.0.97
 	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
 	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
-	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260327175135-affd7529ff0b
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260327175135-affd7529ff0b
+	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260331115054-9e70380c412c
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260331115054-9e70380c412c
 	github.com/smartcontractkit/chainlink-common v0.10.1-0.20260310151336-c98a9c147ac0
 	github.com/smartcontractkit/chainlink-deployments-framework v0.85.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.0
@@ -512,9 +512,8 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-// Replace directives needed for CCV devenv dependencies
+// Replace directives needed for transitive CCV devenv dependencies
 replace (
-	// Repeat replaces from chainlink-ccv devenv
 	github.com/digital-asset/dazl-client/v8 => github.com/noders-team/dazl-client/v8 v8.7.1-2
 	// Gotron-sdk fork required by chainlink-deployments-framework
 	github.com/fbsobreira/gotron-sdk => github.com/smartcontractkit/chainlink-tron/relayer/gotron-sdk v0.0.5-0.20251014124537-af6b1684fe15
@@ -529,9 +528,3 @@ replace (
 	// v1.3.0, causing MVS to select it and breaking the build. Force v1.2.12.
 	github.com/ugorji/go/codec => github.com/ugorji/go/codec v1.2.12
 )
-
-replace github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
-
-replace github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
-
-// replace github.com/smartcontractkit/chainlink-ccv/deployments => ../chainlink-ccv/deployments

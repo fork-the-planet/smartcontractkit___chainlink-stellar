@@ -1692,11 +1692,12 @@ func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAdd
 	return nil
 }
 
-// resolveSignersFromTopology extracts signer public keys and threshold for a
-// given source chain selector from the environment topology. It searches all
-// committees for a chain config matching sourceChainSelector, then looks up
-// each NOP's signer address for the specified chain family.
-func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sourceChainSelector uint64, family string) ([][32]byte, uint32) {
+// resolveSignersFromTopology extracts signer addresses and threshold for a
+// given source chain selector from the environment topology. All committee
+// verifier DONs sign with ECDSA (secp256k1), so we always look up the EVM
+// family signer address (20-byte Ethereum address) and left-pad it to 32
+// bytes to match the on-chain Soroban storage format.
+func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}
@@ -1715,16 +1716,21 @@ func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sour
 			if !found {
 				continue
 			}
-			addrHex := nop.SignerAddressByFamily[family]
+			// All CCV DONs sign with ECDSA regardless of destination family.
+			addrHex := nop.SignerAddressByFamily[chainsel.FamilyEVM]
 			if addrHex == "" {
 				continue
 			}
 			decoded, decErr := hex.DecodeString(addrHex)
-			if decErr != nil || len(decoded) != 32 {
+			if decErr != nil {
+				continue
+			}
+			// Accept 20-byte Ethereum addresses; left-pad to 32 bytes.
+			if len(decoded) != 20 {
 				continue
 			}
 			var signer [32]byte
-			copy(signer[:], decoded)
+			copy(signer[32-len(decoded):], decoded)
 			signers = append(signers, signer)
 		}
 

@@ -20,4 +20,5 @@ common-helpers = { workspace = true }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 rmn_proxy = { workspace = true }
 rmn_remote = { workspace = true }
-ed25519-dalek = "2.1.1"
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"

@@ -2,41 +2,72 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use soroban_sdk::{
-    contracttrait, contracttype, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
+    contracttrait, contracttype,
+    crypto::Hash,
+    symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
-pub const PUBKEY_BYTES: u32 = 32;
-pub const ED25519_SIG_BYTES: u32 = 64;
-/// Each entry in the signature payload is [32-byte pubkey][64-byte Ed25519 signature].
-pub const PER_SIGNATURE_BYTES: u32 = PUBKEY_BYTES + ED25519_SIG_BYTES;
+/// EIP-2098 compact ECDSA signature: r(32) + yParityAndS(32) = 64 bytes.
+pub const ECDSA_COMPACT_SIG_BYTES: u32 = 64;
+pub const PER_SIGNATURE_BYTES: u32 = ECDSA_COMPACT_SIG_BYTES;
+
+/// Ethereum address length (last 20 bytes of keccak256(uncompressed_pubkey[1..])).
+pub const ETH_ADDRESS_BYTES: u32 = 20;
+
+/// Offset within a BytesN<32> where the 20-byte Ethereum address is stored
+/// (left-padded with 12 zero bytes to match Solidity's `abi.encode(address)` layout).
+pub const ETH_ADDRESS_OFFSET: u32 = 32 - ETH_ADDRESS_BYTES;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignatureQuorumConfig {
     pub source_chain_selector: u64,
     pub threshold: u32,
-    /// Ed25519 public keys (32 bytes each), stored in ascending byte-lexicographic order.
+    /// Signer identifiers (32 bytes each), stored in ascending byte-lexicographic
+    /// order. Each entry is a left-zero-padded 20-byte Ethereum address derived
+    /// from the signer's secp256k1 public key: `keccak256(pubkey[1..])[12..32]`.
     pub signers: Vec<BytesN<32>>,
 }
 
-fn read_pubkey(env: &Env, data: &Bytes, offset: u32) -> Result<BytesN<32>, CCIPError> {
-    let mut out = [0u8; 32];
+fn read_compact_sig(_env: &Env, data: &Bytes, offset: u32) -> Result<([u8; 64], u32), CCIPError> {
+    let mut raw = [0u8; 64];
     let mut i = 0u32;
-    while i < PUBKEY_BYTES {
-        out[i as usize] = data.get(offset + i).ok_or(CCIPError::InvalidSignature)?;
+    while i < ECDSA_COMPACT_SIG_BYTES {
+        raw[i as usize] = data.get(offset + i).ok_or(CCIPError::InvalidSignature)?;
         i += 1;
     }
-    Ok(BytesN::from_array(env, &out))
+    // EIP-2098: bit 255 of yParityAndS carries the recovery ID (0 or 1).
+    let recovery_id = (raw[32] >> 7) as u32;
+    raw[32] &= 0x7F; // clear parity bit to recover clean s
+    Ok((raw, recovery_id))
 }
 
-fn read_ed25519_sig(env: &Env, data: &Bytes, offset: u32) -> Result<BytesN<64>, CCIPError> {
-    let mut out = [0u8; 64];
-    let mut i = 0u32;
-    while i < ED25519_SIG_BYTES {
-        out[i as usize] = data.get(offset + i).ok_or(CCIPError::InvalidSignature)?;
-        i += 1;
-    }
-    Ok(BytesN::from_array(env, &out))
+/// Recover the left-zero-padded Ethereum address from an EIP-2098 compact
+/// ECDSA signature using `secp256k1_recover` + `keccak256`.
+fn recover_signer_address(
+    env: &Env,
+    msg_hash: &BytesN<32>,
+    sig_bytes: &[u8; 64],
+    recovery_id: u32,
+) -> Result<BytesN<32>, CCIPError> {
+    let sig = BytesN::<64>::from_array(env, sig_bytes);
+    // SAFETY: Hash<32> is #[repr(transparent)] over BytesN<32>, so the
+    // reference reinterpret is layout-compatible. The caller already
+    // guarantees `msg_hash` is a keccak-256 digest (produced in
+    // `verify_message`), satisfying the SDK's "secure hash" invariant.
+    let hash_ref: &Hash<32> = unsafe { &*(msg_hash as *const BytesN<32> as *const Hash<32>) };
+    let uncompressed_pubkey: BytesN<65> =
+        env.crypto().secp256k1_recover(hash_ref, &sig, recovery_id);
+
+    // keccak256(pubkey[1..65]) — skip the 0x04 prefix byte
+    let pubkey_body = Bytes::from_slice(env, &uncompressed_pubkey.to_array()[1..]);
+    let hash: BytesN<32> = env.crypto().keccak256(&pubkey_body).into();
+    let hash_arr = hash.to_array();
+
+    // The Ethereum address is the last 20 bytes, left-padded to 32 bytes.
+    let mut padded = [0u8; 32];
+    padded[ETH_ADDRESS_OFFSET as usize..].copy_from_slice(&hash_arr[ETH_ADDRESS_OFFSET as usize..]);
+    Ok(BytesN::from_array(env, &padded))
 }
 
 #[contracttrait]
@@ -74,14 +105,16 @@ pub trait SignatureQuorum: Initializable + Ownable {
         Ok(((b0 as u32) << 8) | (b1 as u32))
     }
 
-    /// Verify that `signatures` contains at least `threshold` valid Ed25519 signatures
-    /// over `signed_hash`, produced by distinct signers from the configured set for
-    /// `source_chain_selector`.
+    /// Verify that `signatures` contains at least `threshold` valid ECDSA
+    /// (secp256k1) signatures over `signed_hash`, produced by distinct signers
+    /// from the configured set for `source_chain_selector`.
     ///
-    /// Signature payload format: `[pubkey_0 (32B)][sig_0 (64B)][pubkey_1 (32B)][sig_1 (64B)]...`
+    /// Signature payload format (EIP-2098 compact):
+    /// `[r_0 (32B)][yParityAndS_0 (32B)][r_1 (32B)][yParityAndS_1 (32B)]...`
     ///
-    /// Signers must appear in strictly ascending byte-lexicographic order of their public
-    /// keys. This prevents duplicates and makes the ordering deterministic.
+    /// Recovered signer addresses must appear in strictly ascending
+    /// byte-lexicographic order. This prevents duplicates and makes the
+    /// ordering deterministic.
     fn validate_signatures(
         env: &Env,
         source_chain_selector: u64,
@@ -111,24 +144,24 @@ pub trait SignatureQuorum: Initializable + Ownable {
             return Err(CCIPError::ThresholdNotMet);
         }
 
-        let message = Bytes::from_slice(env, &signed_hash.to_array());
-        let mut prev_pubkey: Option<BytesN<32>> = None;
+        let mut prev_address: Option<BytesN<32>> = None;
 
         let mut i = 0u32;
         while i < sig_count {
             let offset = i * PER_SIGNATURE_BYTES;
-            let pubkey = read_pubkey(env, &signatures, offset)?;
-            let sig = read_ed25519_sig(env, &signatures, offset + PUBKEY_BYTES)?;
+            let (sig_bytes, recovery_id) = read_compact_sig(env, &signatures, offset)?;
+            let recovered_address =
+                recover_signer_address(env, &signed_hash, &sig_bytes, recovery_id)?;
 
-            if let Some(ref prev) = prev_pubkey {
-                if *prev >= pubkey {
+            if let Some(ref prev) = prev_address {
+                if *prev >= recovered_address {
                     return Err(CCIPError::OutOfOrderSignatures);
                 }
             }
 
             let mut found = false;
             for signer in cfg.signers.iter() {
-                if signer == pubkey {
+                if signer == recovered_address {
                     found = true;
                     break;
                 }
@@ -137,9 +170,7 @@ pub trait SignatureQuorum: Initializable + Ownable {
                 return Err(CCIPError::UnexpectedSigner);
             }
 
-            env.crypto().ed25519_verify(&pubkey, &message, &sig);
-
-            prev_pubkey = Some(pubkey);
+            prev_address = Some(recovered_address);
             i += 1;
         }
 
@@ -147,7 +178,6 @@ pub trait SignatureQuorum: Initializable + Ownable {
     }
 
     /// Hook for implementors to emit a contract event when signature configs change.
-    /// Default is a no-op; override in the concrete contract to publish events.
     fn emit_signature_config_set(
         _env: &Env,
         _source_chain_selector: u64,
