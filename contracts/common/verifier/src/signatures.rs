@@ -2,9 +2,7 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use soroban_sdk::{
-    contracttrait, contracttype,
-    crypto::Hash,
-    symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
+    contracttrait, contracttype, crypto::Hash, symbol_short, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
 /// EIP-2098 compact ECDSA signature: r(32) + yParityAndS(32) = 64 bytes.

@@ -130,7 +130,7 @@ func (a *StellarLaneAdapter) GetFeeQuoterDestChainConfig() lanes.FeeQuoterDestCh
 		},
 		V2Params: &lanes.FeeQuoterV2Params{
 			LinkFeeMultiplierPercent: 90,
-			USDPerUnitGas:           big.NewInt(1e6),
+			USDPerUnitGas:            big.NewInt(1e6),
 		},
 	}
 }

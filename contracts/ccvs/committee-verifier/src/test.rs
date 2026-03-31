@@ -95,7 +95,7 @@ fn sign_compact(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 64] {
     let mut compact = [0u8; 64];
     compact[..32].copy_from_slice(&sig_bytes[..32]); // r
     compact[32..].copy_from_slice(&sig_bytes[32..]); // s
-    // Pack recovery ID into bit 255 of yParityAndS
+                                                     // Pack recovery ID into bit 255 of yParityAndS
     compact[32] |= (recid.to_byte() & 1) << 7;
     compact
 }

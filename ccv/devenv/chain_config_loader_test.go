@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
+	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
