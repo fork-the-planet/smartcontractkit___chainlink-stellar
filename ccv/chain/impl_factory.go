@@ -188,6 +188,20 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 				chain.cvContractID = cvContractID
 			}
 		}
+
+		receiverKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(CcipReceiverContractType),
+			semver.MustParse("1.0.0"),
+			"",
+		)
+		receiverRef, err := env.DataStore.Addresses().Get(receiverKey)
+		if err == nil && receiverRef.Address != "" {
+			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
+			if convErr == nil {
+				chain.receiverContractID = receiverContractID
+			}
+		}
 	}
 
 	return chain, nil

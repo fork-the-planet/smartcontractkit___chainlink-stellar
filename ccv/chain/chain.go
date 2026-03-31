@@ -45,6 +45,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
@@ -61,6 +62,11 @@ import (
 
 // stellarAddressLen is 32 bytes for ed25519 public key
 const stellarAddressLen = 32
+
+// CcipReceiverContractType is the datastore contract type for the example CCIP
+// receiver deployed on Stellar so that GetEOAReceiverAddress can return a valid
+// Wasm contract address in tests.
+const CcipReceiverContractType = "CcipReceiverExample"
 
 // generateContractAddress generates a deterministic Soroban contract address from a name and network passphrase.
 // Soroban contract addresses are derived from the network ID (SHA-256 of passphrase) and a unique identifier.
@@ -98,22 +104,23 @@ var (
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
 type Chain struct {
-	chainSelector     uint64
-	logger            zerolog.Logger
-	rpcClient         *rpcclient.Client
-	networkPassphrase string
-	sorobanRPCURL     string
-	deployerKeypair   *keypair.Full
-	deployer          *stellardeployment.Deployer
-	onRampClient      *onrampbindings.OnRampClient
-	onRampContractID  string
-	offRampClient     *offrampbindings.OffRampClient
-	offRampContractID string
-	routerClient      *routerbindings.RouterClient
-	routerContractID  string
-	feeQuoterClient   *fqbindings.FeeQuoterClient
-	vvrContractID     string
-	cvContractID      string
+	chainSelector      uint64
+	logger             zerolog.Logger
+	rpcClient          *rpcclient.Client
+	networkPassphrase  string
+	sorobanRPCURL      string
+	deployerKeypair    *keypair.Full
+	deployer           *stellardeployment.Deployer
+	onRampClient       *onrampbindings.OnRampClient
+	onRampContractID   string
+	offRampClient      *offrampbindings.OffRampClient
+	offRampContractID  string
+	routerClient       *routerbindings.RouterClient
+	routerContractID   string
+	feeQuoterClient    *fqbindings.FeeQuoterClient
+	vvrContractID      string
+	cvContractID       string
+	receiverContractID string
 }
 
 // New creates a new Stellar Chain instance.
@@ -762,6 +769,41 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Int("offRampEntries", len(offRampEntries)).
 		Msg("Router ramp updates applied")
 
+	// Deploy an example CCIP receiver so that GetEOAReceiverAddress can return
+	// a valid Wasm contract address. Stellar OffRamp requires receivers to be
+	// deployed Wasm contracts (unlike EVM which accepts EOA receivers).
+	receiverWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccip_receiver_example.wasm")
+	if _, statErr := os.Stat(receiverWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("ccip_receiver_example WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", receiverWasmPath)
+	}
+
+	c.logger.Info().Str("wasmPath", receiverWasmPath).Msg("Deploying CCIP receiver example contract...")
+	receiverSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "ccip-receiver-example")
+	receiverContractID, err := c.deployer.DeployContract(ctx, receiverWasmPath, receiverSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy ccip_receiver_example contract: %w", err)
+	}
+
+	recvClient := cciprecv.NewExampleCcipReceiverClient(c.deployer, receiverContractID)
+	if err := recvClient.Initialize(ctx, routerContractID); err != nil {
+		return nil, fmt.Errorf("failed to initialize ccip_receiver_example: %w", err)
+	}
+
+	c.receiverContractID = receiverContractID
+	c.logger.Info().Str("receiverContractID", receiverContractID).Msg("CCIP receiver example deployed and initialized")
+
+	// Add CCIP receiver to datastore so ImplFactory.New can reconstruct it.
+	receiverHex, err := strkeyToHex(receiverContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert receiver address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       receiverHex,
+		ChainSelector: selector,
+		Type:          datastore.ContractType(CcipReceiverContractType),
+		Version:       semver.MustParse("1.0.0"),
+	})
+
 	// Add OnRamp to datastore
 	onrampHex, err := strkeyToHex(onrampContractID)
 	if err != nil {
@@ -1075,20 +1117,17 @@ func (c *Chain) ExposeMetrics(ctx context.Context, source, dest uint64) ([]strin
 }
 
 // GetEOAReceiverAddress implements cciptestinterfaces.CCIP17.
-// Gets an EOA receiver address for this chain.
+// On Stellar, CCIP receivers must be deployed Wasm contracts (the OffRamp
+// checks executable() on the receiver address). This returns the address of
+// the ccip_receiver_example contract deployed during DeployContractsForSelector.
+// TODO: check if this assumption is always correct or if it only applies to arbitrary messages?
 func (c *Chain) GetEOAReceiverAddress() (protocol.UnknownAddress, error) {
-	// Generate a deterministic receiver address based on the network passphrase
-	// This ensures the same address is returned for the same network
-	receiverSeed := fmt.Sprintf("receiver-%s", c.networkPassphrase)
-	seedHash := sha256.Sum256([]byte(receiverSeed))
-	receiverKP, err := keypair.FromRawSeed(seedHash)
-	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("failed to create receiver keypair: %w", err)
+	if c.receiverContractID == "" {
+		return protocol.UnknownAddress{}, fmt.Errorf("ccip_receiver contract not deployed; run DeployContractsForSelector first")
 	}
-	// Decode the strkey address to raw bytes
-	rawBytes, err := strkey.Decode(strkey.VersionByteAccountID, receiverKP.Address())
+	rawBytes, err := strkey.Decode(strkey.VersionByteContract, c.receiverContractID)
 	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("failed to decode receiver address: %w", err)
+		return protocol.UnknownAddress{}, fmt.Errorf("failed to decode receiver contract address: %w", err)
 	}
 	return protocol.UnknownAddress(rawBytes), nil
 }
