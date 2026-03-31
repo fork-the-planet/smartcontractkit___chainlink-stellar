@@ -5,9 +5,8 @@ package integration
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/binary"
+	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
@@ -97,14 +96,15 @@ func TestRouter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		signerPubKey, signerPrivKey, err := ed25519.GenerateKey(rand.Reader)
+		signerKey, err := crypto.GenerateKey()
 		if err != nil {
-			t.Fatalf("ed25519.GenerateKey: %v", err)
+			t.Fatalf("crypto.GenerateKey: %v", err)
 		}
-		var signerPubKeyArr [32]byte
-		copy(signerPubKeyArr[:], signerPubKey)
+		ethAddr := crypto.PubkeyToAddress(signerKey.PublicKey)
+		var signerAddrPad [32]byte
+		copy(signerAddrPad[12:], ethAddr.Bytes())
 		if err := ccvClient.ApplySignatureConfigs(ctx, nil, []ccvsbindings.SignatureQuorumConfig{
-			{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{signerPubKeyArr}},
+			{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{signerAddrPad}},
 		}); err != nil {
 			t.Fatalf("ApplySignatureConfigs: %v", err)
 		}
@@ -202,13 +202,28 @@ func TestRouter(t *testing.T) {
 		signedPayload = append(signedPayload, versionTag[:]...)
 		signedPayload = append(signedPayload, msgID[:]...)
 		signedHash := crypto.Keccak256(signedPayload)
-		sig := ed25519.Sign(signerPrivKey, signedHash)
-		const perSigBytes = 32 + 64
+		sig65, err := crypto.Sign(signedHash, signerKey)
+		if err != nil {
+			t.Fatalf("crypto.Sign: %v", err)
+		}
+		// Convert to EIP-2098 compact format (64 bytes)
+		var compact [64]byte
+		copy(compact[:32], sig65[0:32])
+		copy(compact[32:], sig65[32:64])
+		v := sig65[64]
+		s := new(big.Int).SetBytes(compact[32:])
+		halfN := new(big.Int).Rsh(crypto.S256().Params().N, 1)
+		if s.Cmp(halfN) > 0 {
+			t.Fatalf("crypto.Sign should produce low-S signatures")
+		}
+		if v == 1 {
+			compact[32] |= 0x80
+		}
+		const perSigBytes = 64
 		var verifierBlob []byte
 		verifierBlob = append(verifierBlob, versionTag[:]...)
 		verifierBlob = binary.BigEndian.AppendUint16(verifierBlob, perSigBytes)
-		verifierBlob = append(verifierBlob, signerPubKey...)
-		verifierBlob = append(verifierBlob, sig...)
+		verifierBlob = append(verifierBlob, compact[:]...)
 		if err := offrampClient.Execute(ctx, encoded, []string{vvrID}, [][]byte{verifierBlob}, 0); err != nil {
 			t.Fatalf("OffRamp Execute: %v", err)
 		}

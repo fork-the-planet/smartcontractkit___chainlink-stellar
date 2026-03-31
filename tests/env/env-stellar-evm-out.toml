@@ -61,20 +61,20 @@ port = 8432
 [verifier.out]
 verifier_id = 'default-default-verifier'
 container_name = '/stellar-stellar-verifier-1'
-http_url = 'http://localhost:32837'
+http_url = 'http://localhost:32858'
 internal_http_url = 'http://stellar-stellar-verifier-1:8100'
 db_url = ''
-db_connection_string = 'postgresql://stellar-verifier-1:stellar-verifier-1@localhost:32836/stellar-verifier-1?sslmode=disable'
+db_connection_string = 'postgresql://stellar-verifier-1:stellar-verifier-1@localhost:32857/stellar-verifier-1?sslmode=disable'
 use_cache = false
-bootstrap_db_url = 'http://localhost:32838'
-bootstrap_db_connection_string = 'postgresql://stellar-verifier-1:stellar-verifier-1@localhost:32836/bootstrap_db?sslmode=disable'
-jd_node_id = 'node_Z4eEUmiLc6UWuRK6vUfEt'
+bootstrap_db_url = 'http://localhost:32859'
+bootstrap_db_connection_string = 'postgresql://stellar-verifier-1:stellar-verifier-1@localhost:32857/bootstrap_db?sslmode=disable'
+jd_node_id = 'node_beo44aqhkPK73ob6tSWgV'
 
 [verifier.out.bootstrap_keys]
-csa_public_key = 'fd8322aad0a21332ddc2a3996c6440af1f6617043b6a7e18370d274f0335fd63'
-ecdsa_public_key = '0480d93caf0895c31800069696af3683b9020f93b88a2b061e193fff86368b1053346fbe4f0f9d1e210a7febcb091f08510eddfdfa8d0dab8dd389cca4221d6aa2'
-ecdsa_address = '0c327e9e3050775e6d898348b5120e4b796d6379'
-ed25519_public_key = 'b5999b0d80a5b2336f2f87acee1bf08d483cd17554409815a4e7105a192499c8'
+csa_public_key = '6d84e298bae96dec29452adf57654facb04821580f21e7d28c44610abea404d5'
+ecdsa_public_key = '04a42d4e331bd1e44a3b5dabae1fbd6b26f9bd6bd6d5aae7b49780be6e7a86d967f8e17aac9ad122747d166882044b6c73f9913c26d7367ac439ef35946d75f852'
+ecdsa_address = '19e0530e0e8f09089e47e163d807d32741c52f13'
+ed25519_public_key = '924189ec2aadc9712756d59b6298e17b4cc2ce246f67bed7608bc2dc87649df6'
 
 [verifier.bootstrap]
 [verifier.bootstrap.keystore]
@@ -106,20 +106,20 @@ port = 8433
 [verifier.out]
 verifier_id = 'default-default-verifier'
 container_name = '/stellar-stellar-verifier-2'
-http_url = 'http://localhost:32840'
+http_url = 'http://localhost:32861'
 internal_http_url = 'http://stellar-stellar-verifier-2:8100'
 db_url = ''
-db_connection_string = 'postgresql://stellar-verifier-2:stellar-verifier-2@localhost:32839/stellar-verifier-2?sslmode=disable'
+db_connection_string = 'postgresql://stellar-verifier-2:stellar-verifier-2@localhost:32860/stellar-verifier-2?sslmode=disable'
 use_cache = false
-bootstrap_db_url = 'http://localhost:32841'
-bootstrap_db_connection_string = 'postgresql://stellar-verifier-2:stellar-verifier-2@localhost:32839/bootstrap_db?sslmode=disable'
-jd_node_id = 'node_ZHF1aZiZ2fkfcpbZYPfcv'
+bootstrap_db_url = 'http://localhost:32862'
+bootstrap_db_connection_string = 'postgresql://stellar-verifier-2:stellar-verifier-2@localhost:32860/bootstrap_db?sslmode=disable'
+jd_node_id = 'node_ho9WggN3U11AdjbYw6YeR'
 
 [verifier.out.bootstrap_keys]
-csa_public_key = '9c3436a3a96af38c27fabf9146ac7180bda56fa6144f25162bfff0bfa73db7a9'
-ecdsa_public_key = '04fbd29269ab7f7aa2ea05ace8ed219eb75194ffbccf1be75dfc9b000ade6c7b173b72c169af2ce9004ec7ad314d750485d050329a2f5f91a1d58ff7c6f67730fd'
-ecdsa_address = 'a48feecf00d18e4dca410db8203574ae713ca631'
-ed25519_public_key = 'c8f7c5c2bf4b7bc08f8a8b38e58fd4031e29fe01b61d8190a8638f11849dc225'
+csa_public_key = '8cfa8c8915bd678cd8eeb0c6e5ed8055b4027d864eb10fed92644de955388003'
+ecdsa_public_key = '04c3cbc6217dd56e92bca7ed739f3ec03731d53898056498c0e9472d572c1760ed6c50f78763614be5047e9417bbc9b81571673d023f76273fca01adb71da08b23'
+ecdsa_address = '05b8643f185691aae2e2f4fca0234963660e884f'
+ed25519_public_key = '62602cb16fdf99d2d372912744826ccdcb1842a1b0225adca35683553dcf221f'
 
 [verifier.bootstrap]
 [verifier.bootstrap.keystore]
@@ -151,20 +151,20 @@ port = 8434
 [verifier.out]
 verifier_id = 'default-default-verifier'
 container_name = '/evm-evm-verifier-1'
-http_url = 'http://localhost:32843'
+http_url = 'http://localhost:32864'
 internal_http_url = 'http://evm-evm-verifier-1:8100'
 db_url = ''
-db_connection_string = 'postgresql://evm-verifier-1:evm-verifier-1@localhost:32842/evm-verifier-1?sslmode=disable'
+db_connection_string = 'postgresql://evm-verifier-1:evm-verifier-1@localhost:32863/evm-verifier-1?sslmode=disable'
 use_cache = false
-bootstrap_db_url = 'http://localhost:32844'
-bootstrap_db_connection_string = 'postgresql://evm-verifier-1:evm-verifier-1@localhost:32842/bootstrap_db?sslmode=disable'
-jd_node_id = 'node_y6HURjW4LMZNANzPLqrgf'
+bootstrap_db_url = 'http://localhost:32865'
+bootstrap_db_connection_string = 'postgresql://evm-verifier-1:evm-verifier-1@localhost:32863/bootstrap_db?sslmode=disable'
+jd_node_id = 'node_wXy1nUaBEAwsJEonRQVeW'
 
 [verifier.out.bootstrap_keys]
-csa_public_key = 'bca4c50d835a081edd1cc83a3b416b131945d4c165a8ed0fea1ae8aaeb92c82e'
-ecdsa_public_key = '0435c62323194a2dc448413041280a8659ba4afb3ca35d6b40a60eba45612437ed3283735248988e05e0806c1a6909a8e7ddc6b57aa699a85da7781983a5f1808d'
-ecdsa_address = 'd424e0164f19c756a58e3d95224889cd922675be'
-ed25519_public_key = '76132939f6fdb5565e5210411b714a93b8f69df42416b85beb1d75cda0ed5f88'
+csa_public_key = '52984475e334f81ef3367a5b68aa73f83df1383d80cb96fb4b74247294e47877'
+ecdsa_public_key = '046d06af13c310c1d6b4f91f93de71e9fdebe8108fbff917f2d4088cdaf4975610513461638a1ddef1f766703af8b0475778f9467d1b5c6ac1d04dcb0318b88e62'
+ecdsa_address = '6c545a224c626bd14c7455807f97e86a498abc58'
+ed25519_public_key = 'a951b5e5b21e6f2e92b4afe50bfd612626caa5e5516839fde1daad5f0f8dc389'
 
 [verifier.bootstrap]
 [verifier.bootstrap.keystore]
@@ -196,20 +196,20 @@ port = 8435
 [verifier.out]
 verifier_id = 'default-default-verifier'
 container_name = '/evm-evm-verifier-2'
-http_url = 'http://localhost:32846'
+http_url = 'http://localhost:32867'
 internal_http_url = 'http://evm-evm-verifier-2:8100'
 db_url = ''
-db_connection_string = 'postgresql://evm-verifier-2:evm-verifier-2@localhost:32845/evm-verifier-2?sslmode=disable'
+db_connection_string = 'postgresql://evm-verifier-2:evm-verifier-2@localhost:32866/evm-verifier-2?sslmode=disable'
 use_cache = false
-bootstrap_db_url = 'http://localhost:32847'
-bootstrap_db_connection_string = 'postgresql://evm-verifier-2:evm-verifier-2@localhost:32845/bootstrap_db?sslmode=disable'
-jd_node_id = 'node_no8C7wMqUmW89EPhGSbvh'
+bootstrap_db_url = 'http://localhost:32868'
+bootstrap_db_connection_string = 'postgresql://evm-verifier-2:evm-verifier-2@localhost:32866/bootstrap_db?sslmode=disable'
+jd_node_id = 'node_NNELHD7SZwchZz2MQUpZp'
 
 [verifier.out.bootstrap_keys]
-csa_public_key = 'ff790c6085de9885a953e366d8d9c4510b21437f7eba3efbf6903202f84dd39a'
-ecdsa_public_key = '049efd87689628af2a41b8671c2cdda781cfabffee5b8450fcd95a7f7de86a7dd21e33781ebfb67c24144c67f45a4db5b81f0721eec2ae7385d11f112950434153'
-ecdsa_address = 'f74a69a14de87627999c51426fcfa0649f38571e'
-ed25519_public_key = '3c31a496b8c2a2bf5767c391c565470f3cf5c68ac3b4cce7c28a846ac414e35c'
+csa_public_key = '84579bd948508aa151268059218e4e74beda3c2130cf1d3a98af1871c13067e6'
+ecdsa_public_key = '04a2f95a18729515aa2352a7ba92ee0d6a5ff5da3a13fe0edf4be14e890c1f20fd9b71027f1cdceb790919be0ccbc1ab0195181a3964aad8fba009e128a81d6dc7'
+ecdsa_address = '53e2734b1327464c56fa9d869f4e90459f653f57'
+ed25519_public_key = 'ebc69a725555be8d8d9ce9d4ad62bbdbe7d8056cdbe30addc4c074af910acefb'
 
 [verifier.bootstrap]
 [verifier.bootstrap.keystore]
@@ -229,22 +229,22 @@ port = 8101
 use_cache = false
 chain_family = 'stellar'
 executor_qualifier = 'default'
-transmitter_private_key = 'dd38442c894c0306f9de5b4f53a5d5c79b36ee0c3c8b002ae6fa53ef06a3d983'
+transmitter_private_key = '3753de48dd977bd41d45e1c749bed9f91758ed74fa6b8ec8065e373c1d2a2e23'
 
 [executor.out]
 container_name = '/stellar-stellar-executor-1'
-http_url = 'http://localhost:32851'
+http_url = 'http://localhost:32873'
 internal_http_url = 'http://stellar-stellar-executor-1:8101'
 use_cache = false
-bootstrap_db_url = 'http://localhost:32852'
-bootstrap_db_connection_string = 'postgresql://stellar-executor-1:stellar-executor-1@localhost:32850/bootstrap_db?sslmode=disable'
-jd_node_id = 'node_4ofKyWnH3kZn3DdrvkWur'
+bootstrap_db_url = 'http://localhost:32874'
+bootstrap_db_connection_string = 'postgresql://stellar-executor-1:stellar-executor-1@localhost:32872/bootstrap_db?sslmode=disable'
+jd_node_id = 'node_9FMToLfkgh2coNq2sfMGt'
 
 [executor.out.bootstrap_keys]
-csa_public_key = 'da428f740379b5fcfe64653c2d36414ed984e1db10bd22aa6c6f884c06d40c63'
-ecdsa_public_key = '049d7f0f4d2e84c811b885cade42093e5324c99d6b8a5b7dd719aab18e253f464841ef5c87bfcd00b1569d22938bcb5235747bb2c81c198d74814715a86ab4c27c'
-ecdsa_address = 'd503bc551f9e408ee25bb3259ae0535b73ef7390'
-ed25519_public_key = 'c9637a7c78afc5fdd7be2669004006dab01d658a5b0b41a55b580333920c855d'
+csa_public_key = 'c03e86cb371b2ecefe008ca51284a18aecd0e568c2f4c821790f74e71e87a05b'
+ecdsa_public_key = '043924d64b1646665685b7b4b08f4fb06476fe19702439459234bbe572caa5d8fbd859ad3e693d68e891f57d8db2e139b6615d32aad1ec8070db9c7bedd7e07b4d'
+ecdsa_address = '7a0372f45286404e023a4aa4ba2eac3c43e424db'
+ed25519_public_key = 'dd92e07525cb5c8edf97614246a74fdea6738850815891306ea11637ab7e12ac'
 
 [executor.bootstrap]
 [executor.bootstrap.keystore]
@@ -269,7 +269,7 @@ port = 8201
 use_cache = false
 chain_family = 'evm'
 executor_qualifier = 'default'
-transmitter_private_key = 'bf87527ec9959ba19967871bd53c5f229384b622ed4908278150e2d3b6cce8ec'
+transmitter_private_key = 'e2fee6f03adb02de47aab6f23ce8aac98a1955993d093305da2079a26adbddee'
 
 [executor.out]
 container_name = 'evm-executor-1'
@@ -345,8 +345,8 @@ TraceBatchTimeout = 10
 [[indexer.indexer_config.Discoveries]]
 Address = 'default-aggregator-nginx:443'
 Since = 0
-APIKey = '75a56188-5da4-4ce0-b4ad-21068a3b59ba'
-Secret = '4a4daac523c5268591feab15b681adf62f13f8fe49aec7438c36481bc309de6f'
+APIKey = '9eba4871-2b74-45bb-8219-797b62b824ea'
+Secret = '972b5a20db573b0df2b5c25268ebc4d2d37582d1b18340965acfc6096fa95765'
 InsecureConnection = false
 PollInterval = 500
 Timeout = 5000
@@ -401,13 +401,13 @@ Enabled = false
 [indexer.secrets]
 [indexer.secrets.Discoveries]
 [indexer.secrets.Discoveries.0]
-APIKey = '75a56188-5da4-4ce0-b4ad-21068a3b59ba'
-Secret = '4a4daac523c5268591feab15b681adf62f13f8fe49aec7438c36481bc309de6f'
+APIKey = '9eba4871-2b74-45bb-8219-797b62b824ea'
+Secret = '972b5a20db573b0df2b5c25268ebc4d2d37582d1b18340965acfc6096fa95765'
 
 [indexer.secrets.Verifier]
 [indexer.secrets.Verifier.0]
-APIKey = '75a56188-5da4-4ce0-b4ad-21068a3b59ba'
-Secret = '4a4daac523c5268591feab15b681adf62f13f8fe49aec7438c36481bc309de6f'
+APIKey = '9eba4871-2b74-45bb-8219-797b62b824ea'
+Secret = '972b5a20db573b0df2b5c25268ebc4d2d37582d1b18340965acfc6096fa95765'
 
 [indexer.secrets.Storage]
 [indexer.secrets.Storage.Single]
@@ -460,30 +460,30 @@ sourceVerifierAddress = '0x8501D4bE48748aAdde4C7a443c62e2c3a74F7CC7'
 threshold = 2
 
 [[aggregator.out.generated_committee.quorumConfigs.12922642891491394802.signers]]
-address = '0xD424e0164F19C756a58e3d95224889Cd922675Be'
+address = '0x6c545a224c626bd14c7455807f97e86A498abC58'
 
 [[aggregator.out.generated_committee.quorumConfigs.12922642891491394802.signers]]
-address = '0xF74a69A14dE87627999c51426FCFA0649f38571e'
+address = '0x53E2734B1327464c56Fa9D869F4E90459F653F57'
 
 [aggregator.out.generated_committee.quorumConfigs.17301180955411967724]
 sourceVerifierAddress = '0xadcaef374904dca17a87e0bd7da6a28bff9fb26575149867bd4b445a8dc2888e'
 threshold = 2
 
 [[aggregator.out.generated_committee.quorumConfigs.17301180955411967724.signers]]
-address = '0x0c327e9E3050775E6D898348b5120E4b796D6379'
+address = '0x19e0530e0e8F09089e47E163D807d32741C52F13'
 
 [[aggregator.out.generated_committee.quorumConfigs.17301180955411967724.signers]]
-address = '0xA48FeeCf00D18E4dCA410dB8203574AE713Ca631'
+address = '0x05B8643f185691aaE2E2F4FCA0234963660e884F'
 
 [aggregator.out.generated_committee.quorumConfigs.3379446385462418246]
 sourceVerifierAddress = '0x822dfa456138F18FE45D54CA11AC71c5706AFb43'
 threshold = 2
 
 [[aggregator.out.generated_committee.quorumConfigs.3379446385462418246.signers]]
-address = '0xD424e0164F19C756a58e3d95224889Cd922675Be'
+address = '0x6c545a224c626bd14c7455807f97e86A498abC58'
 
 [[aggregator.out.generated_committee.quorumConfigs.3379446385462418246.signers]]
-address = '0xF74a69A14dE87627999c51426FCFA0649f38571e'
+address = '0x53E2734B1327464c56Fa9D869F4E90459F653F57'
 
 [aggregator.out.generated_committee.destinationVerifiers]
 12922642891491394802 = '0x8501D4bE48748aAdde4C7a443c62e2c3a74F7CC7'
@@ -503,8 +503,8 @@ enabled = true
 groups = ['verifiers']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '6cb36aef-8dc3-4d4c-aa01-76105b10c60b'
-secret = '460d54d0b1058cdecba3943ed2841bd8fbc285e100ae6eac8182f59cbda17951'
+api_key = 'e0c7935c-a69f-4742-89ab-5ab2a88b541d'
+secret = 'ed37bf90f249ab5edb29fc6ccb1385892f22b7a3a80feabe1650ef71d49353c2'
 
 [[aggregator.api_clients]]
 client_id = 'stellar-verifier-2'
@@ -513,8 +513,8 @@ enabled = true
 groups = ['verifiers']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '4f1d183b-e074-43d5-911b-960ffd48d7e1'
-secret = '45044db689315170424c7b3d66e68a3d97e4fb416dd4282bf00ab7c7331dd374'
+api_key = '97cd8cab-244d-4296-b954-295771cae279'
+secret = 'e8f874d23cdc7847adbd6959c8d039171eaca499218209acbc784c462cfc0b7d'
 
 [[aggregator.api_clients]]
 client_id = 'evm-verifier-1'
@@ -523,8 +523,8 @@ enabled = true
 groups = ['verifiers']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '6a6585a2-ceac-45b1-a0c7-81dca3057dac'
-secret = '41a52ae0731470388f6eeaed9e57392893e0de7da44b55722be5d393934385ec'
+api_key = 'c552b13a-dba2-4c7e-beab-96e2fe1e834c'
+secret = '19ee3376de90006f7dfd44f06b48ae3cb0011593932753d1002f4b726ff73f0c'
 
 [[aggregator.api_clients]]
 client_id = 'evm-verifier-2'
@@ -533,8 +533,8 @@ enabled = true
 groups = ['verifiers']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '760ace30-bc12-40aa-89e9-d817bf3bae01'
-secret = '34873a55a0aa201795a82cb60f6bc8cd0ce0c489410a49a060a8958177cf4578'
+api_key = '6a2cc6f1-90f3-4c72-b8aa-335b6c56f944'
+secret = '4fb5ee9516b65a007f9abf11b160e1a8f484932914d32a70ee166515eb16d593'
 
 [[aggregator.api_clients]]
 client_id = 'monitoring'
@@ -543,8 +543,8 @@ enabled = true
 groups = ['monitoring']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '6b8b7a6a-383c-4232-bb81-c7909e927813'
-secret = '819c9461ed3fde9899a2125c6818369667c5494fc29204ead8a9b98e777ad6ed'
+api_key = '10815c51-360d-4685-a9a4-16f45f7caba0'
+secret = '9be0c30eb02768178d13c9d8d5e7b86e3a6c704ae0a19cc03abad1bbef0935b7'
 
 [[aggregator.api_clients]]
 client_id = 'indexer'
@@ -553,8 +553,8 @@ enabled = true
 groups = ['indexer']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '75a56188-5da4-4ce0-b4ad-21068a3b59ba'
-secret = '4a4daac523c5268591feab15b681adf62f13f8fe49aec7438c36481bc309de6f'
+api_key = '9eba4871-2b74-45bb-8219-797b62b824ea'
+secret = '972b5a20db573b0df2b5c25268ebc4d2d37582d1b18340965acfc6096fa95765'
 
 [[aggregator.api_clients]]
 client_id = 'evm-executor-1'
@@ -563,8 +563,8 @@ enabled = true
 groups = ['executors']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '592b861a-52eb-445d-80cb-6cca23fb803c'
-secret = '2d8afc33622974646a4bc77fc2598ae29d5cc954d63fce981594a0c8a7d38c2c'
+api_key = '1e01186f-70a0-41f6-b485-be6f4e465867'
+secret = '6f3299522a2cc32bac261ffa743f7bd67f2260cc0c1c5ec1fb71b052627a66ed'
 
 [[aggregator.api_clients]]
 client_id = 'evm-executor-2'
@@ -573,8 +573,8 @@ enabled = true
 groups = ['executors']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '428742b7-b6e3-45be-ba2d-a8f77cb25d4d'
-secret = '9dcf79a000ac2eab1a2fe5d5778829597d6045d954b882da47b96d3b26ed82d9'
+api_key = 'cc21e499-14a0-47fd-a74a-2b444d9f0c5f'
+secret = 'c185e5ddbdf945997d264399de063fe600cc5ec981f5143ca481ef9724a36189'
 
 [[aggregator.api_clients]]
 client_id = 'stellar-executor-1'
@@ -583,8 +583,8 @@ enabled = true
 groups = ['executors']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = '5b93733e-ab18-46d7-8eb7-ede79ed9a4b3'
-secret = 'a8cd9511be7039ca651c273d6b7821e3651e7aeff2eb89b7f9f3558ca327f607'
+api_key = 'f0d7d064-4734-444a-b62f-aa66d2eae1b1'
+secret = 'cf334e606b66d467511610701b1ffbdd932e530c0ab6df204176b4e28b9b93fa'
 
 [[aggregator.api_clients]]
 client_id = 'stellar-executor-2'
@@ -593,8 +593,8 @@ enabled = true
 groups = ['executors']
 
 [[aggregator.api_clients.api_key_pairs]]
-api_key = 'a9d68c34-7ae6-4e72-9069-75d512b10cfe'
-secret = '7b3d6da0a73ca09e6bb00c77b1e2d3dd7bf57ca63f26040ea6cf1cbbf4bf19f5'
+api_key = 'b294231f-1336-4692-9f08-51267aed35f5'
+secret = '2f1c84c4a702a6ab1b318065bb48462cdf64a787c82e3ca75f83d246a83808bf'
 
 [jd]
 image = 'job-distributor:local'
@@ -625,12 +625,12 @@ pull_image = false
 
 [jd.out]
 use_cache = true
-container_name = 'jd-9617a'
+container_name = 'jd-20c7a'
 db_container_name = 'jd-db'
 grpc_url = '127.0.0.1:14231'
-internal_grpc_url = 'jd-9617a:14231'
+internal_grpc_url = 'jd-20c7a:14231'
 wsrpc_url = '127.0.0.1:8080'
-internal_wsrpc_url = 'jd-9617a:8080'
+internal_wsrpc_url = 'jd-20c7a:8080'
 
 [[blockchains]]
 # Type can be one of: anvil geth besu solana aptos tron sui ton canton stellar, this struct describes common configuration we are using across all blockchains
@@ -785,7 +785,7 @@ type = 'stellar'
 # Blockchain family, can be one of: evm solana aptos sui tron ton canton stellar
 family = 'stellar'
 # Blockchain Docker container name
-container_name = 'stellar-node-ea877'
+container_name = 'stellar-node-3fea2'
 # Chain ID
 chain_id = 'baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a'
 
@@ -807,7 +807,7 @@ http_url = 'http://127.0.0.1:8010/rpc'
 # Internal blockchain node WebSocket URL
 internal_ws_url = ''
 # Internal blockchain node HTTP URL
-internal_http_url = 'http://stellar-node-ea877:8000/rpc'
+internal_http_url = 'http://stellar-node-3fea2:8000/rpc'
 
 [aggregator_endpoints]
 default = 'localhost:50051'
@@ -840,9 +840,9 @@ name = 'stellar-verifier-1'
 mode = 'standalone'
 
 [environment_topology.nop_topology.nops.signer_address_by_family]
-canton = '0480d93caf0895c31800069696af3683b9020f93b88a2b061e193fff86368b1053346fbe4f0f9d1e210a7febcb091f08510eddfdfa8d0dab8dd389cca4221d6aa2'
-evm = '0c327e9e3050775e6d898348b5120e4b796d6379'
-stellar = 'b5999b0d80a5b2336f2f87acee1bf08d483cd17554409815a4e7105a192499c8'
+canton = '04a42d4e331bd1e44a3b5dabae1fbd6b26f9bd6bd6d5aae7b49780be6e7a86d967f8e17aac9ad122747d166882044b6c73f9913c26d7367ac439ef35946d75f852'
+evm = '19e0530e0e8f09089e47e163d807d32741c52f13'
+stellar = '924189ec2aadc9712756d59b6298e17b4cc2ce246f67bed7608bc2dc87649df6'
 
 [[environment_topology.nop_topology.nops]]
 alias = 'stellar-verifier-2'
@@ -850,9 +850,9 @@ name = 'stellar-verifier-2'
 mode = 'standalone'
 
 [environment_topology.nop_topology.nops.signer_address_by_family]
-canton = '04fbd29269ab7f7aa2ea05ace8ed219eb75194ffbccf1be75dfc9b000ade6c7b173b72c169af2ce9004ec7ad314d750485d050329a2f5f91a1d58ff7c6f67730fd'
-evm = 'a48feecf00d18e4dca410db8203574ae713ca631'
-stellar = 'c8f7c5c2bf4b7bc08f8a8b38e58fd4031e29fe01b61d8190a8638f11849dc225'
+canton = '04c3cbc6217dd56e92bca7ed739f3ec03731d53898056498c0e9472d572c1760ed6c50f78763614be5047e9417bbc9b81571673d023f76273fca01adb71da08b23'
+evm = '05b8643f185691aae2e2f4fca0234963660e884f'
+stellar = '62602cb16fdf99d2d372912744826ccdcb1842a1b0225adca35683553dcf221f'
 
 [[environment_topology.nop_topology.nops]]
 alias = 'evm-verifier-1'
@@ -860,9 +860,9 @@ name = 'evm-verifier-1'
 mode = 'standalone'
 
 [environment_topology.nop_topology.nops.signer_address_by_family]
-canton = '0435c62323194a2dc448413041280a8659ba4afb3ca35d6b40a60eba45612437ed3283735248988e05e0806c1a6909a8e7ddc6b57aa699a85da7781983a5f1808d'
-evm = 'd424e0164f19c756a58e3d95224889cd922675be'
-stellar = '76132939f6fdb5565e5210411b714a93b8f69df42416b85beb1d75cda0ed5f88'
+canton = '046d06af13c310c1d6b4f91f93de71e9fdebe8108fbff917f2d4088cdaf4975610513461638a1ddef1f766703af8b0475778f9467d1b5c6ac1d04dcb0318b88e62'
+evm = '6c545a224c626bd14c7455807f97e86a498abc58'
+stellar = 'a951b5e5b21e6f2e92b4afe50bfd612626caa5e5516839fde1daad5f0f8dc389'
 
 [[environment_topology.nop_topology.nops]]
 alias = 'evm-verifier-2'
@@ -870,9 +870,9 @@ name = 'evm-verifier-2'
 mode = 'standalone'
 
 [environment_topology.nop_topology.nops.signer_address_by_family]
-canton = '049efd87689628af2a41b8671c2cdda781cfabffee5b8450fcd95a7f7de86a7dd21e33781ebfb67c24144c67f45a4db5b81f0721eec2ae7385d11f112950434153'
-evm = 'f74a69a14de87627999c51426fcfa0649f38571e'
-stellar = '3c31a496b8c2a2bf5767c391c565470f3cf5c68ac3b4cce7c28a846ac414e35c'
+canton = '04a2f95a18729515aa2352a7ba92ee0d6a5ff5da3a13fe0edf4be14e890c1f20fd9b71027f1cdceb790919be0ccbc1ab0195181a3964aad8fba009e128a81d6dc7'
+evm = '53e2734b1327464c56fa9d869f4e90459f653f57'
+stellar = 'ebc69a725555be8d8d9ce9d4ad62bbdbe7d8056cdbe30addc4c074af910acefb'
 
 [[environment_topology.nop_topology.nops]]
 alias = 'stellar-executor-1'

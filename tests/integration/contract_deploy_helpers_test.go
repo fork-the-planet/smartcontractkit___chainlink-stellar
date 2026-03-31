@@ -5,9 +5,9 @@ package integration
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
+	"crypto/ecdsa"
 	"encoding/binary"
+	"math/big"
 	"path/filepath"
 	"testing"
 
@@ -50,12 +50,12 @@ type fullStack struct {
 	CcvClient       *ccvsbindings.CommitteeVerifierClient
 	VvrClient       *vvrbindings.VersionedVerifierResolverClient
 
-	OnRampWire  []byte
+	OnRampWire    []byte
 	OffRampSuffix []byte
-	ReceiverRaw []byte
+	ReceiverRaw   []byte
 
-	signerPrivKey ed25519.PrivateKey
-	signerPubKey  ed25519.PublicKey
+	signerKey     *ecdsa.PrivateKey
+	signerAddrPad [32]byte // left-padded 20-byte Ethereum address
 }
 
 // deployFullStack deploys and wires the complete contract stack needed for
@@ -118,17 +118,16 @@ func deployFullStack(
 		t.Fatalf("CommitteeVerifier Initialize: %v", err)
 	}
 
-	// 4. Signature quorum for remote source chain with real Ed25519 keypair
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	// 4. Signature quorum for remote source chain with secp256k1 ECDSA keypair
+	ecdsaKey, err := crypto.GenerateKey()
 	if err != nil {
-		t.Fatalf("ed25519.GenerateKey: %v", err)
+		t.Fatalf("crypto.GenerateKey: %v", err)
 	}
-	s.signerPubKey = pubKey
-	s.signerPrivKey = privKey
-	var signerPubKeyArr [32]byte
-	copy(signerPubKeyArr[:], pubKey)
+	s.signerKey = ecdsaKey
+	ethAddr := crypto.PubkeyToAddress(ecdsaKey.PublicKey)
+	copy(s.signerAddrPad[12:], ethAddr.Bytes())
 	if err := s.CcvClient.ApplySignatureConfigs(ctx, nil, []ccvsbindings.SignatureQuorumConfig{
-		{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{signerPubKeyArr}},
+		{SourceChainSelector: remoteSourceChain, Threshold: 1, Signers: [][32]byte{s.signerAddrPad}},
 	}); err != nil {
 		t.Fatalf("ApplySignatureConfigs: %v", err)
 	}
@@ -203,11 +202,11 @@ func deployFullStack(
 	return s
 }
 
-// signVerifierBlob builds a verifier result blob containing a real Ed25519 signature
-// over the message hash, matching the on-chain verify_message expectations:
+// signVerifierBlob builds a verifier result blob containing a real secp256k1 ECDSA
+// signature in EIP-2098 compact format over the message hash:
 //
 //	signed_hash = keccak256(VERSION_TAG || message_hash)
-//	blob = [4B version_tag][2B sig_payload_len][32B pubkey][64B ed25519_sig]
+//	blob = [4B version_tag][2B sig_payload_len][64B r||yParityAndS]
 func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte {
 	t.Helper()
 
@@ -218,16 +217,46 @@ func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte 
 	signedPayload = append(signedPayload, messageHash[:]...)
 	signedHash := crypto.Keccak256(signedPayload)
 
-	sig := ed25519.Sign(s.signerPrivKey, signedHash)
+	sig65, err := crypto.Sign(signedHash, s.signerKey)
+	if err != nil {
+		t.Fatalf("crypto.Sign: %v", err)
+	}
 
-	const perSigBytes = 32 + 64
+	compact := ecdsaToEIP2098Compact(t, sig65)
+
+	const perSigBytes = 64
 	var blob []byte
 	blob = append(blob, versionTag[:]...)
 	blob = binary.BigEndian.AppendUint16(blob, perSigBytes)
-	blob = append(blob, s.signerPubKey...)
-	blob = append(blob, sig...)
+	blob = append(blob, compact[:]...)
 
 	return blob
+}
+
+// ecdsaToEIP2098Compact converts a 65-byte R||S||V signature to 64-byte EIP-2098 compact format.
+func ecdsaToEIP2098Compact(t *testing.T, sig65 []byte) [64]byte {
+	t.Helper()
+	if len(sig65) != 65 {
+		t.Fatalf("expected 65-byte signature, got %d", len(sig65))
+	}
+
+	var compact [64]byte
+	copy(compact[:32], sig65[0:32])  // R
+	copy(compact[32:], sig65[32:64]) // S
+
+	v := sig65[64]
+	// go-ethereum returns v as 0 or 1; ensure low-S
+	s := new(big.Int).SetBytes(compact[32:])
+	halfN := new(big.Int).Rsh(crypto.S256().Params().N, 1)
+	if s.Cmp(halfN) > 0 {
+		t.Fatalf("crypto.Sign should produce low-S signatures")
+	}
+
+	// Pack recovery ID into bit 255 of yParityAndS
+	if v == 1 {
+		compact[32] |= 0x80
+	}
+	return compact
 }
 
 // buildValidMessage constructs an encoded CCIP v1 message targeting the fullStack's
