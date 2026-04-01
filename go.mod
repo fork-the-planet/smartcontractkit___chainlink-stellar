@@ -21,11 +21,6 @@ require (
 )
 
 require (
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260323224438-d819cb3228e1
-	github.com/smartcontractkit/chainlink-protos/svr v1.1.0 // indirect
-)
-
-require (
 	cloud.google.com/go/auth v0.16.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
