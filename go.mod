@@ -519,10 +519,6 @@ replace (
 	github.com/fbsobreira/gotron-sdk => github.com/smartcontractkit/chainlink-tron/relayer/gotron-sdk v0.0.5-0.20251014124537-af6b1684fe15
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/noders-team/go-daml => github.com/stackman27/go-daml v0.0.0-20260204001938-550ee9d8ab10
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm => ../chainlink-ccip/ccv/chains/evm
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment => ../chainlink-ccip/ccv/chains/evm/deployment
-	github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
-	github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
 
 	github.com/smartcontractkit/chainlink-stellar/bindings => ./bindings
 
