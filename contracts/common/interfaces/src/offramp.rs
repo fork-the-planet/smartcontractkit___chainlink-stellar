@@ -40,6 +40,10 @@ pub trait OffRampInterface {
         source_chain_selector: u64,
     ) -> Result<SourceChainConfig, CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn extend_execution_state_ttl(
+        env: soroban_sdk::Env,
+        message_id: soroban_sdk::BytesN<32>,
+    ) -> Result<(), CCIPError>;
     fn get_all_source_chain_configs(
         env: soroban_sdk::Env,
     ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<SourceChainConfig>), CCIPError>;
@@ -123,6 +127,11 @@ pub struct SourceChainConfigArgs {
     pub on_ramps: soroban_sdk::Vec<soroban_sdk::Bytes>,
     pub router: soroban_sdk::Address,
     pub source_chain_selector: u64,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum DataKey {
+    ExecState(soroban_sdk::BytesN<32>),
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -222,6 +231,8 @@ pub enum CCIPError {
     InvalidReceiverLength = 111,
     TokenHandlingError = 112,
     MessageDecodingError = 113,
+    ReceiverDoesNotExist = 114,
+    ReceiverNotWasmContract = 115,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

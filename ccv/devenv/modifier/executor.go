@@ -11,8 +11,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	executorsvc "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
-	"github.com/smartcontractkit/chainlink-ccv/executor"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
+	executorpkg "github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
@@ -31,7 +31,7 @@ const defaultStellarExecutorImage = "stellarexecutor:dev"
 //     info (passphrase + internal RPC URL from blockchain outputs), including
 //     TransmitterConfigs, DestinationReaderConfigs, and ReaderConfigs, then
 //     bind-mounts it at DefaultStellarConfigPath so the binary reads it on startup.
-func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput *executorsvc.ExecutorInput, outputs []*blockchain.Output) (testcontainers.ContainerRequest, error) {
+func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput *executor.Input, outputs []*blockchain.Output) (testcontainers.ContainerRequest, error) {
 	req.Image = defaultStellarExecutorImage
 	req.Name = fmt.Sprintf("stellar-%s", executorInput.ContainerName)
 
@@ -56,8 +56,8 @@ func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput 
 
 // buildExecutorStellarConfig constructs a common.Config with TransmitterConfigs,
 // DestinationReaderConfigs, and ReaderConfigs, then serialises it as TOML.
-func buildExecutorStellarConfig(executorInput *executorsvc.ExecutorInput, outputs []*blockchain.Output) ([]byte, error) {
-	var executorCfg executor.Configuration
+func buildExecutorStellarConfig(executorInput *executor.Input, outputs []*blockchain.Output) ([]byte, error) {
+	var executorCfg executorpkg.Configuration
 	if executorInput.GeneratedConfig != "" {
 		if _, err := toml.Decode(executorInput.GeneratedConfig, &executorCfg); err != nil {
 			return nil, fmt.Errorf("parse GeneratedConfig: %w", err)

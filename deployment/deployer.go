@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"math/big"
 	"os"
 	"time"
 
@@ -701,4 +702,76 @@ func getLedgerEntryXDR(entry protocolrpc.LedgerEntryResult) (string, bool) {
 		return entry.DataXDR, true
 	}
 	return "", false
+}
+
+// NativeAccountState returns the account native balance (stroops) and sequence number from the ledger.
+// rawAccountKey must be the 32-byte Ed25519 public key (Stellar account id).
+func (d *Deployer) NativeAccountState(ctx context.Context, rawAccountKey []byte) (balance *big.Int, seq uint64, exists bool, err error) {
+	if len(rawAccountKey) != 32 {
+		return nil, 0, false, fmt.Errorf("expected 32-byte account key, got %d", len(rawAccountKey))
+	}
+	gAddr, err := strkey.Encode(strkey.VersionByteAccountID, rawAccountKey)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("encode account id: %w", err)
+	}
+	aid, err := xdr.AddressToAccountId(gAddr)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("account id from address: %w", err)
+	}
+	lk := xdr.LedgerKey{
+		Type: xdr.LedgerEntryTypeAccount,
+		Account: &xdr.LedgerKeyAccount{
+			AccountId: aid,
+		},
+	}
+	keyXDR, err := lk.MarshalBinaryBase64()
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("marshal account ledger key: %w", err)
+	}
+	resp, err := d.rpcClient.GetLedgerEntries(ctx, protocolrpc.GetLedgerEntriesRequest{
+		Keys: []string{keyXDR},
+	})
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("get ledger entries: %w", err)
+	}
+	if len(resp.Entries) == 0 {
+		return big.NewInt(0), 0, false, nil
+	}
+	entryXDR, ok := getLedgerEntryXDR(resp.Entries[0])
+	if !ok || entryXDR == "" {
+		return big.NewInt(0), 0, false, nil
+	}
+	var entry xdr.LedgerEntryData
+	if err := xdr.SafeUnmarshalBase64(entryXDR, &entry); err != nil {
+		return nil, 0, false, fmt.Errorf("unmarshal account entry: %w", err)
+	}
+	account := entry.MustAccount()
+	seqN := int64(account.SeqNum)
+	if seqN < 0 {
+		return nil, 0, false, fmt.Errorf("invalid account sequence %d", seqN)
+	}
+	return big.NewInt(int64(account.Balance)), uint64(seqN), true, nil
+}
+
+// SendNativePayment submits a payment of stroops native XLM from the deployer's account.
+func (d *Deployer) SendNativePayment(ctx context.Context, destinationStrkey string, stroops int64) error {
+	if stroops <= 0 {
+		return fmt.Errorf("payment amount must be positive")
+	}
+	if _, err := xdr.AddressToAccountId(destinationStrkey); err != nil {
+		return fmt.Errorf("invalid destination account: %w", err)
+	}
+	src, err := d.getSourceAccount(ctx)
+	if err != nil {
+		return fmt.Errorf("load source account: %w", err)
+	}
+	payment := &txnbuild.Payment{
+		Destination: destinationStrkey,
+		Amount:      fmt.Sprintf("%d", stroops),
+		Asset:       txnbuild.NativeAsset{},
+	}
+	if _, err = d.buildAndSubmitTransaction(ctx, src, payment); err != nil {
+		return err
+	}
+	return nil
 }

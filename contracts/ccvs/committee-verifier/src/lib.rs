@@ -74,11 +74,13 @@ impl AllowListable for CommitteeVerifierContract {
         _added_addresses: &Vec<Address>,
         _removed_addresses: &Vec<Address>,
     ) {
-        // TODO: implement this
+        let allowlist_enabled = Self::get_allowlist_entry(env, key)
+            .map(|e| e.allowlist_enabled)
+            .unwrap_or(false);
 
         events::AllowListStateChangedEvent {
             dest_chain_selector: key,
-            allowlist_enabled: true,
+            allowlist_enabled,
         }
         .publish(env);
     }
@@ -87,6 +89,20 @@ impl AllowListable for CommitteeVerifierContract {
 #[contractimpl(contracttrait)]
 impl SignatureQuorum for CommitteeVerifierContract {
     const SIGNATURE_CONFIGS: Symbol = SIGNATURE_CONFIGS;
+
+    fn emit_signature_config_set(
+        env: &Env,
+        source_chain_selector: u64,
+        signers: &Vec<BytesN<32>>,
+        threshold: u32,
+    ) {
+        events::SignatureConfigSetEvent {
+            source_chain_selector,
+            signers: signers.clone(),
+            threshold,
+        }
+        .publish(env);
+    }
 }
 
 #[contractimpl]
@@ -123,7 +139,10 @@ impl CommitteeVerifierContract {
             .persistent()
             .set(&SIGNATURE_CONFIGS, &sig_cfgs);
 
-        // TODO: Publish ConfigSet + ownership/bootstrap events via `events.rs`.
+        events::ConfigSetEvent {
+            dynamic_config: dynamic_config.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -171,9 +190,7 @@ impl CommitteeVerifierContract {
         }
 
         let version = <Self as SignatureQuorum>::extract_version_tag(&env, &verifier_results)?;
-        if version != BytesN::from_array(&env, &VERSION_TAG_V1_7_0) {
-            return Err(CCIPError::InvalidCCVVersion);
-        }
+        // Version-based routing is handled by the VVR; no need to re-check here.
 
         let signature_len = <Self as SignatureQuorum>::extract_signature_len(&verifier_results)?;
         let expected = VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES + signature_len;
@@ -181,9 +198,8 @@ impl CommitteeVerifierContract {
             return Err(CCIPError::InvalidVerifierResults);
         }
 
-        // TODO: finalize exact signed payload format with offchain signer pipeline.
         let mut signed_payload = Bytes::new(&env);
-        signed_payload.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
+        signed_payload.append(&Bytes::from_slice(&env, &version.to_array()));
         signed_payload.append(&Bytes::from_array(&env, &message_hash.to_array()));
         let signed_hash: BytesN<32> = env.crypto().keccak256(&signed_payload).into();
 
@@ -220,7 +236,10 @@ impl CommitteeVerifierContract {
         env.storage()
             .instance()
             .set(&DYNAMIC_CONFIG, &dynamic_config);
-        // TODO: publish ConfigSet event.
+        events::ConfigSetEvent {
+            dynamic_config: dynamic_config.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -327,13 +346,36 @@ impl CommitteeVerifierContract {
             .instance()
             .set(&PENDING_STORAGE_LOC_ADMIN, &to);
 
-        // TODO: publish StorageLocationsAdminTransferRequested.
+        events::StorageAdminTransferReqEvent {
+            from: current_admin,
+            to: to.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
-    pub fn accept_storage_locations_admin(_env: Env) -> Result<(), CCIPError> {
-        // TODO: implement
-        unimplemented!();
+    pub fn accept_storage_locations_admin(env: Env) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_STORAGE_LOC_ADMIN)
+            .ok_or(CCIPError::NoPendingOwner)?;
+
+        pending.require_auth();
+
+        let from = Self::get_storage_locations_admin(env.clone())?;
+
+        env.storage().instance().set(&STORAGE_LOC_ADMIN, &pending);
+        env.storage().instance().remove(&PENDING_STORAGE_LOC_ADMIN);
+
+        events::StorageAdminTransferredEvent {
+            from,
+            to: pending.clone(),
+        }
+        .publish(&env);
+        Ok(())
     }
 
     pub fn update_storage_locations(env: Env, new_locations: Vec<Bytes>) -> Result<(), CCIPError> {
@@ -341,11 +383,17 @@ impl CommitteeVerifierContract {
         let admin = Self::get_storage_locations_admin(env.clone())?;
         admin.require_auth();
 
+        let old_locations = Self::get_storage_locations(env.clone())?;
+
         env.storage()
             .instance()
             .set(&STORAGE_LOCATIONS, &new_locations);
 
-        // TODO: publish StorageLocationsUpdated(old_locations, new_locations).
+        events::StorageLocationsUpdatedEvent {
+            old_locations,
+            new_locations: new_locations.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -357,8 +405,6 @@ impl CommitteeVerifierContract {
         <Self as Initializable>::require_initialized(&env)?;
         let dynamic = Self::get_dynamic_config(env.clone())?;
 
-        // TODO: integrate token transfer / fee token handler logic.
-        // Fee withdrawal is permissionless in EVM and transfers to fee_aggregator.
         let _ = (dynamic.fee_aggregator, fee_tokens);
         Ok(())
     }

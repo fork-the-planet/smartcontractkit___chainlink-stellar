@@ -2,10 +2,13 @@ package contracttransmitter
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
 
 	"github.com/smartcontractkit/chainlink-ccv/executor"
@@ -15,6 +18,9 @@ import (
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
+
+var secp256k1N = crypto.S256().Params().N
+var secp256k1HalfN = new(big.Int).Rsh(secp256k1N, 1)
 
 // DefaultGasLimitOverride is passed to every offramp execute call.
 // Zero means "use the gas limit from the message itself".
@@ -80,6 +86,54 @@ func NewContractTransmitterWithClient(
 	}, nil
 }
 
+// convertVerifierBlobToEIP2098 converts a single verifier result blob from the
+// CCV aggregator's v=27-normalized R||S format to EIP-2098 compact format.
+//
+// Blob layout: [4B version_tag][2B BE sig_len][N × 64B R||S pairs]
+//
+// For each 64-byte signature, if the v=27-normalized S > n/2, the original
+// recovery ID was 1 and S was flipped (S_norm = n − S_orig). We undo the flip
+// and encode the recovery ID in bit 255 of the S word per EIP-2098.
+func convertVerifierBlobToEIP2098(blob []byte) ([]byte, error) {
+	const headerLen = 6 // 4 version + 2 sigLen
+	const sigSize = 64
+
+	if len(blob) < headerLen {
+		return blob, nil
+	}
+
+	sigPayloadLen := int(binary.BigEndian.Uint16(blob[4:6]))
+	if sigPayloadLen == 0 || len(blob) < headerLen+sigPayloadLen {
+		return blob, nil
+	}
+	if sigPayloadLen%sigSize != 0 {
+		return nil, fmt.Errorf("signature payload length %d is not a multiple of %d", sigPayloadLen, sigSize)
+	}
+
+	out := make([]byte, len(blob))
+	copy(out, blob)
+
+	sigCount := sigPayloadLen / sigSize
+	for i := range sigCount {
+		sOff := headerLen + i*sigSize + 32
+		sBytes := out[sOff : sOff+32]
+
+		s := new(big.Int).SetBytes(sBytes)
+
+		if s.Cmp(secp256k1HalfN) > 0 {
+			// Original recovery_id was 1; undo the v=27 flip: S_orig = n − S_norm
+			s.Sub(secp256k1N, s)
+			padded := s.Bytes()
+			clear(sBytes)
+			copy(sBytes[32-len(padded):], padded)
+			sBytes[0] |= 0x80 // set bit 255 (recovery_id = 1)
+		}
+		// If S <= n/2 the original recovery_id was 0 and the high bit is naturally clear.
+	}
+
+	return out, nil
+}
+
 // ConvertAndWriteMessageToChain encodes the report into ScVal arguments and
 // invokes OffRamp.execute on Stellar.
 //
@@ -115,7 +169,22 @@ func (ct *ContractTransmitter) ConvertAndWriteMessageToChain(ctx context.Context
 		ccvScVals[i] = ccvStrkey
 	}
 
-	err = ct.offrampClient.Execute(ctx, encodedMsg, ccvScVals, report.CCVData, DefaultGasLimitOverride)
+	// TODO: is this actually necessary for other chains or is this something specifically for EVM?
+	convertedCCVData := make([][]byte, len(report.CCVData))
+	for i, blob := range report.CCVData {
+		converted, convErr := convertVerifierBlobToEIP2098(blob)
+		if convErr != nil {
+			ct.lggr.Error().Err(convErr).
+				Str("messageID", messageID.String()).
+				Int("blobIndex", i).
+				Msg("Unable to submit txn: EIP-2098 signature conversion failed")
+			return errors.Join(executor.ErrMessageEncoding,
+				fmt.Errorf("unable to convert verifier blob %d to EIP-2098: %w", i, convErr))
+		}
+		convertedCCVData[i] = converted
+	}
+
+	err = ct.offrampClient.Execute(ctx, encodedMsg, ccvScVals, convertedCCVData, DefaultGasLimitOverride)
 
 	if err != nil {
 		ct.lggr.Error().

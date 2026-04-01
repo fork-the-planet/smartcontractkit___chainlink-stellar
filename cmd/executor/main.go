@@ -47,14 +47,14 @@ func loadConfig(path string) (*common.Config, error) {
 func main() {
 	if err := bootstrap.Run(
 		"StellarExecutor",
-		cmd.NewServiceFactory(
+		cmd.NewServiceFactory[sourcereader.ReaderConfig](
 			chainsel.FamilyStellar,
 			func(
 				ctx context.Context,
 				lggr logger.Logger,
-				infos map[string]*sourcereader.ReaderConfig,
+				_ map[string]*sourcereader.ReaderConfig,
 				cfg executor.Configuration,
-			) (*cmd.ExecutorChainComponents, error) {
+			) (*cmd.ServiceComponents, error) {
 				configPath, ok := os.LookupEnv(StellarConfigPathEnv)
 				if !ok {
 					configPath = common.DefaultStellarConfigPath
@@ -62,11 +62,14 @@ func main() {
 
 				stellarConfig, err := loadConfig(configPath)
 				if err != nil {
-					return nil, fmt.Errorf("failed to load stellar config: %w", err)
+					return nil, fmt.Errorf("failed to load config: %w", err)
 				}
 
-				// Fill in OffRamp and RMN Remote addresses from the executor ChainConfiguration
-				// when they are missing from the bind-mounted config (same pattern as verifier).
+				// TODO: this may be removed once we have a way to get the contract IDs from the modifier.
+				// The bind-mounted config file is created before contracts are
+				// deployed, so OffRamp and RMN Remote addresses may be missing.
+				// Fill them in from the executor Configuration, which is
+				// generated after contract deployment.
 				for sel, tc := range stellarConfig.TransmitterConfigs {
 					if tc.OffRampContractID == "" {
 						if chainCfg, ok := cfg.ChainConfiguration[sel]; ok && chainCfg.OffRampAddress != "" {
@@ -96,13 +99,11 @@ func main() {
 				for strSel, tc := range stellarConfig.TransmitterConfigs {
 					selector, err := strconv.ParseUint(strSel, 10, 64)
 					if err != nil {
-						lggr.Errorw("Invalid chain selector", "error", err, "chainSelector", strSel)
-						continue
+						return nil, fmt.Errorf("invalid chain selector %s: %w", strSel, err)
 					}
 
 					family, err := chainsel.GetSelectorFamily(selector)
 					if err != nil || family != chainsel.FamilyStellar {
-						lggr.Warnw("Skipping non-Stellar chain", "chainSelector", strSel)
 						continue
 					}
 
@@ -118,12 +119,11 @@ func main() {
 						Str("component", "executor").
 						Logger().Level(zerolog.InfoLevel)
 
-					rpcClient := rpcclient.NewClient(tc.NetworkPassphrase, &http.Client{Timeout: 60 * time.Second})
-
-					// Resolve soroban RPC URL from reader config if available
-					if rc, ok := stellarConfig.ReaderConfigs[strSel]; ok && rc.SorobanRPCURL != "" {
-						rpcClient = rpcclient.NewClient(rc.SorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
+					rc, ok := stellarConfig.ReaderConfigs[strSel]
+					if !ok || rc.SorobanRPCURL == "" {
+						return nil, fmt.Errorf("ReaderConfigs[%s].SorobanRPCURL is required but missing", strSel)
 					}
+					rpcClient := rpcclient.NewClient(rc.SorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
 
 					invoker := deployment.NewDeployer(
 						rpcClient,
@@ -143,7 +143,6 @@ func main() {
 					}
 					contractTransmitters[protocol.ChainSelector(selector)] = ct
 
-					// Resolve destination reader config
 					drCfg, hasDRCfg := stellarConfig.DestinationReaderConfigs[strSel]
 					offRampID := tc.OffRampContractID
 					rmnRemoteID := tc.RMNRemoteAddress
@@ -164,7 +163,7 @@ func main() {
 					rmnReaders[protocol.ChainSelector(selector)] = dr
 				}
 
-				return &cmd.ExecutorChainComponents{
+				return &cmd.ServiceComponents{
 					ContractTransmitters: contractTransmitters,
 					DestinationReaders:   destReaders,
 					RMNCurseReaders:      rmnReaders,

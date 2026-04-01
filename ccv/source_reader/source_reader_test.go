@@ -138,6 +138,21 @@ func TestLatestAndFinalizedBlock(t *testing.T) {
 	})
 }
 
+func TestLatestSafeBlock(t *testing.T) {
+	lggr := zerolog.New(os.Stdout).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+
+	t.Run("returns nil for Stellar (no safe head concept)", func(t *testing.T) {
+		mockClient := mocks.NewMockRPCClient(t)
+
+		reader, err := NewSourceReaderWithClient(mockClient, nil, "CADDR", "transfer", "RMNREMOTE", &lggr)
+		require.NoError(t, err)
+
+		safe, err := reader.LatestSafeBlock(context.Background())
+		require.NoError(t, err)
+		require.Nil(t, safe, "Stellar has no safe head — LatestSafeBlock should return nil")
+	})
+}
+
 func TestGetBlocksHeaders(t *testing.T) {
 	lggr := zerolog.New(os.Stdout).With().Timestamp().Logger().Level(zerolog.DebugLevel)
 
@@ -192,8 +207,7 @@ func TestGetBlocksHeaders(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, headers, 1)
 
-		// Find the header by the original key
-		header, exists := headers[blockNumbers[0]]
+		header, exists := headers[uint64(100)]
 		require.True(t, exists)
 		assert.Equal(t, uint64(100), header.Number)
 		assert.Equal(t, "RMNREMOTE", reader.rmnRemoteAddress)

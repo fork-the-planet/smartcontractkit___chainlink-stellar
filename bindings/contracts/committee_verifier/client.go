@@ -255,36 +255,6 @@ func (c *CommitteeVerifierClient) GetPendingOwner(ctx context.Context) (*string,
 	return v, nil
 }
 
-// ExtractSignatures calls the extract_signatures function on the contract.
-func (c *CommitteeVerifierClient) ExtractSignatures(ctx context.Context, signatures []byte) ([][32]byte, error) {
-	args := []xdr.ScVal{
-		scval.BytesToScVal(signatures),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extract_signatures", args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call extract_signatures: %w", err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no return value from extract_signatures")
-	}
-
-	vec, ok := result.GetVec()
-	if !ok || vec == nil {
-		return nil, fmt.Errorf("expected vec return type")
-	}
-	out := make([][32]byte, len(*vec))
-	for i, item := range *vec {
-		v, err := scval.Bytes32FromScVal(item)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
-	}
-	return out, nil
-}
-
 // GetDynamicConfig calls the get_dynamic_config function on the contract.
 func (c *CommitteeVerifierClient) GetDynamicConfig(ctx context.Context) (*DynamicConfig, error) {
 	args := []xdr.ScVal{}
@@ -592,50 +562,6 @@ func (c *CommitteeVerifierClient) GetRemoteChainConfig(ctx context.Context, remo
 	return RemoteChainConfigFromScVal(*result)
 }
 
-// ExtractSignatureLength calls the extract_signature_length function on the contract.
-func (c *CommitteeVerifierClient) ExtractSignatureLength(ctx context.Context, signatures []byte) (uint32, error) {
-	args := []xdr.ScVal{
-		scval.BytesToScVal(signatures),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extract_signature_length", args)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call extract_signature_length: %w", err)
-	}
-
-	if result == nil {
-		return 0, fmt.Errorf("no return value from extract_signature_length")
-	}
-
-	v, ok := result.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 return type")
-	}
-	return uint32(v), nil
-}
-
-// ExtractSignaturePubkey calls the extract_signature_pubkey function on the contract.
-func (c *CommitteeVerifierClient) ExtractSignaturePubkey(ctx context.Context, signatures []byte) ([32]byte, error) {
-	args := []xdr.ScVal{
-		scval.BytesToScVal(signatures),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extract_signature_pubkey", args)
-	if err != nil {
-		return [32]byte{}, fmt.Errorf("failed to call extract_signature_pubkey: %w", err)
-	}
-
-	if result == nil {
-		return [32]byte{}, fmt.Errorf("no return value from extract_signature_pubkey")
-	}
-
-	v, err := scval.Bytes32FromScVal(*result)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return v, nil
-}
-
 // UpdateStorageLocations calls the update_storage_locations function on the contract.
 func (c *CommitteeVerifierClient) UpdateStorageLocations(ctx context.Context, newLocations [][]byte) error {
 	args := []xdr.ScVal{
@@ -690,28 +616,6 @@ func (c *CommitteeVerifierClient) GetAllSignatureConfigs(ctx context.Context) ([
 		out[i] = *v
 	}
 	return out, nil
-}
-
-// ExtractSignatureThreshold calls the extract_signature_threshold function on the contract.
-func (c *CommitteeVerifierClient) ExtractSignatureThreshold(ctx context.Context, signatures []byte) (uint32, error) {
-	args := []xdr.ScVal{
-		scval.BytesToScVal(signatures),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extract_signature_threshold", args)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call extract_signature_threshold: %w", err)
-	}
-
-	if result == nil {
-		return 0, fmt.Errorf("no return value from extract_signature_threshold")
-	}
-
-	v, ok := result.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 return type")
-	}
-	return uint32(v), nil
 }
 
 // GetStorageLocationsAdmin calls the get_storage_locations_admin function on the contract.
@@ -857,6 +761,90 @@ func ParseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
 			v, err := DynamicConfigFromScVal(entry.Val)
 			if err == nil {
 				result.DynamicConfig = *v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForSignatureConfigSetEvent waits for a SignatureConfigSetEvent event.
+func (c *CommitteeVerifierClient) WaitForSignatureConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*SignatureConfigSetEvent) bool) (*SignatureConfigSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{SignatureConfigSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseSignatureConfigSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseSignatureConfigSetEvent(e protocolrpc.EventInfo) (*SignatureConfigSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &SignatureConfigSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "source_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.SourceChainSelector = v
+			}
+		case "signers":
+			vec, ok := entry.Val.GetVec()
+			if ok && vec != nil {
+				parsed := make([][32]byte, len(*vec))
+				for i, item := range *vec {
+					v, err := scval.Bytes32FromScVal(item)
+					if err == nil {
+						parsed[i] = v
+					}
+				}
+				result.Signers = parsed
+			}
+		case "threshold":
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.Threshold = uint32(v)
 			}
 		}
 	}

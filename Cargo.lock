@@ -229,6 +229,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ccip_receiver_example"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "common-message",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ccvs-committee-verifier"
 version = "0.0.0"
 dependencies = [
@@ -237,8 +246,10 @@ dependencies = [
  "common-guard",
  "common-helpers",
  "common-verifier",
+ "k256",
  "rmn_proxy",
  "rmn_remote",
+ "sha3",
  "soroban-sdk",
 ]
 
@@ -610,6 +621,7 @@ dependencies = [
  "elliptic-curve",
  "rfc6979",
  "signature",
+ "spki",
 ]
 
 [[package]]
@@ -655,6 +667,7 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+ "pkcs8",
  "rand_core",
  "sec1",
  "subtle",
@@ -916,7 +929,9 @@ dependencies = [
  "cfg-if",
  "ecdsa",
  "elliptic-curve",
+ "once_cell",
  "sha2",
+ "signature",
 ]
 
 [[package]]
@@ -1019,6 +1034,7 @@ dependencies = [
  "common-interfaces",
  "common-message",
  "soroban-sdk",
+ "stellar-strkey 0.0.16",
 ]
 
 [[package]]
@@ -1305,6 +1321,7 @@ dependencies = [
  "base16ct",
  "der",
  "generic-array",
+ "pkcs8",
  "subtle",
  "zeroize",
 ]

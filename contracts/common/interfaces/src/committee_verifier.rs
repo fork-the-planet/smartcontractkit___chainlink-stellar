@@ -37,10 +37,6 @@ pub trait CommitteeVerifierInterface {
     fn is_in_allowlist(env: soroban_sdk::Env, key: u64, addr: soroban_sdk::Address) -> bool;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
-    fn extract_signatures(
-        env: soroban_sdk::Env,
-        signatures: soroban_sdk::Bytes,
-    ) -> Result<soroban_sdk::Vec<soroban_sdk::BytesN<32>>, CCIPError>;
     fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
     fn set_dynamic_config(
         env: soroban_sdk::Env,
@@ -104,26 +100,20 @@ pub trait CommitteeVerifierInterface {
         env: soroban_sdk::Env,
         remote_chain_selector: u64,
     ) -> Result<RemoteChainConfig, CCIPError>;
-    fn extract_signature_length(
-        env: soroban_sdk::Env,
-        signatures: soroban_sdk::Bytes,
-    ) -> Result<u32, CCIPError>;
-    fn extract_signature_pubkey(
-        env: soroban_sdk::Env,
-        signatures: soroban_sdk::Bytes,
-    ) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
     fn update_storage_locations(
         env: soroban_sdk::Env,
         new_locations: soroban_sdk::Vec<soroban_sdk::Bytes>,
     ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn emit_signature_config_set(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+        signers: soroban_sdk::Vec<soroban_sdk::BytesN<32>>,
+        threshold: u32,
+    );
     fn get_all_signature_configs(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<SignatureQuorumConfig>, CCIPError>;
-    fn extract_signature_threshold(
-        env: soroban_sdk::Env,
-        signatures: soroban_sdk::Bytes,
-    ) -> Result<u32, CCIPError>;
     fn get_storage_locations_admin(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Address, CCIPError>;
@@ -316,6 +306,8 @@ pub enum CCIPError {
     InvalidReceiverLength = 111,
     TokenHandlingError = 112,
     MessageDecodingError = 113,
+    ReceiverDoesNotExist = 114,
+    ReceiverNotWasmContract = 115,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,
@@ -328,6 +320,13 @@ pub enum CCIPError {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ConfigSetEvent {
     pub dynamic_config: DynamicConfig,
+}
+#[soroban_sdk::contractevent(topics = ["ccv_SignatureConfigSet"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct SignatureConfigSetEvent {
+    pub source_chain_selector: u64,
+    pub signers: soroban_sdk::Vec<soroban_sdk::BytesN<32>>,
+    pub threshold: u32,
 }
 #[soroban_sdk::contractevent(topics = ["ccv_RemoteChainConfigSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

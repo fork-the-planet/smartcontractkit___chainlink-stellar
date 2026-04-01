@@ -72,7 +72,7 @@ mode = "standalone"
 # Committee configuration
 [environment_topology.nop_topology.committees.default]
 qualifier = "default"
-verifier_version = "1.7.0"
+verifier_version = "2.0.0"
 
 [[environment_topology.nop_topology.committees.default.aggregators]]
 name = "default"
@@ -96,7 +96,7 @@ threshold = 2
 # # Secondary committee
 # [environment_topology.nop_topology.committees.secondary]
 # qualifier = "secondary"
-# verifier_version = "1.7.0"
+# verifier_version = "2.0.0"
 
 # [[environment_topology.nop_topology.committees.secondary.aggregators]]
 # name = "default"
@@ -118,7 +118,7 @@ threshold = 2
 # # Tertiary committee
 # [environment_topology.nop_topology.committees.tertiary]
 # qualifier = "tertiary"
-# verifier_version = "1.7.0"
+# verifier_version = "2.0.0"
 
 # [[environment_topology.nop_topology.committees.tertiary.aggregators]]
 # name = "default"
@@ -137,7 +137,15 @@ threshold = 2
 # nop_aliases = ["tertiary-verifier-1", "tertiary-verifier-2"]
 # threshold = 2
 
-[environment_topology.executor_pools.default]
+[environment_topology.executor_pools.default.chain_configs.3379446385462418246]
+nop_aliases = ["stellar-executor-1", "evm-executor-1"]
+execution_interval = 15_000_000_000
+
+[environment_topology.executor_pools.default.chain_configs.12922642891491394802]
+nop_aliases = ["stellar-executor-1", "evm-executor-1"]
+execution_interval = 15_000_000_000
+
+[environment_topology.executor_pools.default.chain_configs.17301180955411967724]
 nop_aliases = ["stellar-executor-1", "evm-executor-1"]
 execution_interval = 15_000_000_000
 
@@ -168,6 +176,7 @@ execution_interval = 15_000_000_000
 [[blockchains]]
   container_name = "blockchain-stellar"
   chain_id = "baefd734b8d3e48472cff83912375fedbc7573701912fe308af730180f97d74a" 
+  image = "stellar/quickstart:testing"
   port = "8010"
   type = "stellar"
 
@@ -313,11 +322,11 @@ execution_interval = 15_000_000_000
 #     port = 8437
 
 [[executor]]
-  chain_family = "stellar"
   image = "stellarexecutor:dev"
   port = 8101
-  source_code_path = "chainlink-ccv/executor"
-  root_path = "../chainlink-ccv"
+  chain_family = "stellar"
+  source_code_path = "chainlink-stellar/cmd/executor"
+  root_path = ".."
   container_name = "stellar-executor-1"
   nop_alias = "stellar-executor-1"
   executor_qualifier = "default"

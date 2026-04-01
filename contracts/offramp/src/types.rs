@@ -1,6 +1,16 @@
 use common_error::CCIPError;
 use common_helpers::validation::Validatable;
-use soroban_sdk::{contracttype, Address, Bytes, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Vec};
+
+// ============================================================
+// Storage Key Enum
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    ExecState(BytesN<32>),
+}
 
 // ============================================================
 // MessageExecutionState

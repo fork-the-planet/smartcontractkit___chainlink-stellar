@@ -787,6 +787,8 @@ const (
 	CCIPErrorInvalidReceiverLength          = 111
 	CCIPErrorTokenHandlingError             = 112
 	CCIPErrorMessageDecodingError           = 113
+	CCIPErrorReceiverDoesNotExist           = 114
+	CCIPErrorReceiverNotWasmContract        = 115
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -880,6 +882,8 @@ var CCIPErrorMessage = map[int]string{
 	111: "invalid receiver length",
 	112: "token handling error",
 	113: "message decoding error",
+	114: "receiver does not exist",
+	115: "receiver not wasm contract",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
@@ -989,6 +993,25 @@ type ExecutionStateChangedEvent struct {
 
 // ExecutionStateChangedEventTopic is the event topic identifier.
 const ExecutionStateChangedEventTopic = "offramp_1_7_ExecStateChanged"
+
+// DataKey represents the DataKey enum.
+type DataKey uint32
+
+const ()
+
+// ToScVal converts DataKey to an xdr.ScVal.
+func (e DataKey) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// DataKeyFromScVal parses an xdr.ScVal into DataKey.
+func DataKeyFromScVal(val xdr.ScVal) (DataKey, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for DataKey enum")
+	}
+	return DataKey(v), nil
+}
 
 // MessageExecutionState represents the MessageExecutionState enum.
 type MessageExecutionState uint32

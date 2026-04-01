@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.25.5-alpine AS builder
+FROM golang:1.25.6-alpine AS builder
 WORKDIR /build
 
 # git is needed for module resolution of dependencies that use VCS metadata.
@@ -10,10 +10,10 @@ RUN apk --no-cache add git
 COPY go.mod go.sum ./
 COPY bindings/go.mod bindings/go.sum ./bindings/
 
-# TODO: remove when chainlink-ccv is published with latest updates
 # Drop local replace directives that point to ../chainlink-ccv (not available
 # in the Docker build context). The require block already pins published
 # pseudo-versions for these modules, so they'll resolve from the module proxy.
+# TODO: remove when chainlink-ccv is published with the triple-slash URL fix.
 RUN go mod edit \
     -dropreplace=github.com/smartcontractkit/chainlink-ccv \
     -dropreplace=github.com/smartcontractkit/chainlink-ccv/build/devenv \
@@ -25,11 +25,9 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
 # Copy the rest of the source; build layer invalidated when source changes.
 COPY . .
 
-# TODO: remove when chainlink-ccv is published with latest updates
-# Re-apply the dropreplace after COPY overwrites go.mod AND go.sum with
-# the host versions, then run go mod tidy to add the missing go.sum
-# checksums for the now-remote ccv modules (go mod download alone does not
-# update go.sum in Go 1.21+).
+# Re-apply dropreplace after COPY overwrites go.mod with the host version,
+# then tidy to fetch checksums for the now-remote ccv modules.
+# TODO: remove when chainlink-ccv is published with the triple-slash URL fix.
 RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
     go mod edit \
       -dropreplace=github.com/smartcontractkit/chainlink-ccv \

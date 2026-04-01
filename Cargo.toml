@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "contracts/ccvs/*",
+  "contracts/examples/ccip_receiver",
   "contracts/fee-quoter",
   "contracts/onramp",
   "contracts/offramp",
@@ -16,6 +17,7 @@ members = [
 
 [workspace.dependencies]
 soroban-sdk = "25.1.1"
+stellar-strkey = "0.0.16"
 common-message = { path = "contracts/common/message" }
 common-guard = { path = "contracts/common/guard" }
 common-authorization = { path = "contracts/common/authorization" }

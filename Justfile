@@ -2,6 +2,9 @@
 default:
     just --list
 
+# Coverage exclusion regex (mockery-generated files), aligned with chainlink-ccv Justfile
+COVERAGE_EXCLUDE_REGEX := '(/mock_.*\\.go:|/_mocks/.*:|/mocks/.*:)'
+
 # Host target triple (needed to override .cargo/config.toml wasm target for tests)
 host_target := `rustc -vV | grep host | awk '{print $2}'`
 
@@ -24,6 +27,17 @@ fmt-contracts:
 # Check Rust formatting (CI mode, no changes)
 fmt-contracts-check:
     cargo fmt --all -- --check
+
+# Run Go unit tests (root module) with coverage; optional second arg "short" runs -short tests only.
+# Excludes tests/e2e (requires running devenv; same idea as chainlink-ccv -short for heavy tests).
+# Writes filtered coverprofile to coverage_file (strips mock files matching COVERAGE_EXCLUDE_REGEX).
+test-coverage coverage_file="coverage.out" short="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkgs=$(go list ./... | grep -v 'github.com/smartcontractkit/chainlink-stellar/tests/e2e$' || true)
+    go test -v -race -fullpath -shuffle on {{ if short != "" { "-short" } else { "" } }} -coverprofile={{ coverage_file }} $pkgs
+    { head -n1 {{ coverage_file }}; tail -n +2 {{ coverage_file }} | grep -v -E '{{ COVERAGE_EXCLUDE_REGEX }}' || true; } > {{ coverage_file }}.filtered
+    mv {{ coverage_file }}.filtered {{ coverage_file }}
 
 # Run Go unit tests (root module) with coverage
 test-go:

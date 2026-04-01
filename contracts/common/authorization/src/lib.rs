@@ -518,11 +518,7 @@ impl AccessControl {
                 DefaultOwnable::require_owner(env)?;
                 Ok(owner)
             }
-            None => {
-                let _admin_members = Self::get_role_members(env, ROLE_ADMIN);
-                // TODO: need to invoke require_auth on only the address that matches the caller
-                unimplemented!();
-            }
+            None => Self::require_role(env, ROLE_ADMIN),
         }
     }
 }

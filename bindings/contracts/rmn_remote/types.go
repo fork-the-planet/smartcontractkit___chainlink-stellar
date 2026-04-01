@@ -649,6 +649,8 @@ const (
 	CCIPErrorInvalidReceiverLength          = 111
 	CCIPErrorTokenHandlingError             = 112
 	CCIPErrorMessageDecodingError           = 113
+	CCIPErrorReceiverDoesNotExist           = 114
+	CCIPErrorReceiverNotWasmContract        = 115
 	CCIPErrorOnlyRegistryModuleOrOwner      = 201
 	CCIPErrorOnlyAdministrator              = 202
 	CCIPErrorOnlyPendingAdministrator       = 203
@@ -747,6 +749,8 @@ var CCIPErrorMessage = map[int]string{
 	111: "invalid receiver length",
 	112: "token handling error",
 	113: "message decoding error",
+	114: "receiver does not exist",
+	115: "receiver not wasm contract",
 	201: "only registry module or owner",
 	202: "only administrator",
 	203: "only pending administrator",
