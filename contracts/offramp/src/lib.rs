@@ -563,8 +563,7 @@ impl OffRampContract {
     ) -> Result<Vec<TokenAmount>, CCIPError> {
         let token_transfer = CcipTokenTransferV1::from_bytes(env, token_transfer_bytes)?;
 
-        let registry =
-            TokenAdminRegistryClient::new(env, &static_config.token_admin_registry);
+        let registry = TokenAdminRegistryClient::new(env, &static_config.token_admin_registry);
 
         let dest_token = Self::address_from_token_bytes(env, &token_transfer.dest_token_address)?;
 
@@ -576,8 +575,7 @@ impl OffRampContract {
 
         let amount = Self::bytes32_to_i128(env, &token_transfer.amount)?;
 
-        let receiver_address =
-            Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
+        let receiver_address = Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
 
         let release_result = pool_client.release_or_mint(&ReleaseOrMintIn {
             original_sender: original_sender.clone(),

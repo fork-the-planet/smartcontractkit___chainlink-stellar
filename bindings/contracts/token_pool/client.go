@@ -204,4 +204,3 @@ func (c *TokenPoolClient) ApplyChainUpdates(ctx context.Context, adds []ChainUpd
 	_ = result // void return
 	return nil
 }
-

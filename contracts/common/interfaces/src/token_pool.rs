@@ -6,10 +6,8 @@ pub trait TokenPoolInterface {
         token: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
 
-    fn lock_or_burn(
-        env: soroban_sdk::Env,
-        input: LockOrBurnIn,
-    ) -> Result<LockOrBurnOut, CCIPError>;
+    fn lock_or_burn(env: soroban_sdk::Env, input: LockOrBurnIn)
+        -> Result<LockOrBurnOut, CCIPError>;
 
     fn release_or_mint(
         env: soroban_sdk::Env,

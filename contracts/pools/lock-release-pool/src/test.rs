@@ -41,8 +41,7 @@ fn setup_env() -> (
 
 #[test]
 fn test_initialize() {
-    let (env, pool_client, _owner, token_address, _token_client, _token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, _token_admin_client) = setup_env();
 
     let pool_token = pool_client.get_token();
     assert_eq!(pool_token, token_address);
@@ -153,15 +152,13 @@ fn chain_update(env: &Env, selector: u64, pool_byte: u8, token_byte: u8) -> Chai
 #[test]
 #[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_initialize_twice_rejected() {
-    let (_env, pool_client, owner, token_address, _token_client, _token_admin_client) =
-        setup_env();
+    let (_env, pool_client, owner, token_address, _token_client, _token_admin_client) = setup_env();
     pool_client.initialize(&owner, &token_address);
 }
 
 #[test]
 fn test_lock_or_burn_zero_amount_succeeds_when_chain_configured() {
-    let (env, pool_client, _owner, token_address, token_client, _token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, token_client, _token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -186,8 +183,7 @@ fn test_lock_or_burn_zero_amount_succeeds_when_chain_configured() {
 
 #[test]
 fn test_release_or_mint_zero_amount_succeeds_without_pool_balance() {
-    let (env, pool_client, _owner, token_address, token_client, _token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, token_client, _token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -213,8 +209,7 @@ fn test_release_or_mint_zero_amount_succeeds_without_pool_balance() {
 
 #[test]
 fn test_lock_or_burn_amount_exceeds_sender_balance_fails() {
-    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -239,8 +234,7 @@ fn test_lock_or_burn_amount_exceeds_sender_balance_fails() {
 
 #[test]
 fn test_lock_or_burn_negative_amount_fails() {
-    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -265,8 +259,7 @@ fn test_lock_or_burn_negative_amount_fails() {
 
 #[test]
 fn test_release_or_mint_insufficient_pool_liquidity() {
-    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -304,8 +297,7 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
 
 #[test]
 fn test_apply_chain_updates_remove_unlists_chain() {
-    let (env, pool_client, _owner, token_address, _token_client, _token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, _token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(
@@ -314,10 +306,7 @@ fn test_apply_chain_updates_remove_unlists_chain() {
     );
     assert!(pool_client.is_supported_chain(&remote_chain));
 
-    pool_client.apply_chain_updates(
-        &Vec::new(&env),
-        &Vec::from_array(&env, [remote_chain]),
-    );
+    pool_client.apply_chain_updates(&Vec::new(&env), &Vec::from_array(&env, [remote_chain]));
     assert!(!pool_client.is_supported_chain(&remote_chain));
 
     let sender = Address::generate(&env);
@@ -345,8 +334,7 @@ fn test_apply_chain_updates_remove_unlists_chain() {
 
 #[test]
 fn test_apply_chain_updates_duplicate_selector_overwrites_remote_token() {
-    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) =
-        setup_env();
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
     pool_client.apply_chain_updates(

@@ -260,8 +260,7 @@ impl FromBytes for CcipTokenTransferV1 {
 
         let mut amount_arr = [0u8; 32];
         for i in 0..32u32 {
-            amount_arr[i as usize] =
-                bytes.get(pos + i).ok_or(CCIPError::MessageDecodingError)?;
+            amount_arr[i as usize] = bytes.get(pos + i).ok_or(CCIPError::MessageDecodingError)?;
         }
         let amount = BytesN::from_array(env, &amount_arr);
         pos += 32;
