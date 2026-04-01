@@ -1,6 +1,9 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, Vec};
+use common_message::{CcipMessageV1, MessageIdCompute, ToBytes, MESSAGE_V1_VERSION};
+use rmn_proxy::{RmnProxyContract, RmnProxyContractClient};
+use rmn_remote::{RmnRemoteContract, RmnRemoteContractClient};
+use soroban_sdk::{testutils::Address as _, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 use crate::types::{DataKey, MessageExecutionState, SourceChainConfigArgs, StaticConfig};
 use crate::{OffRampContract, OffRampContractClient};
@@ -190,3 +193,326 @@ fn test_source_chain_config_zero_selector_fails() {
     updates.push_back(args);
     client.apply_source_chain_cfg_updates(&updates);
 }
+
+// ============================================================
+// execute() — validation paths
+// ============================================================
+
+const EXEC_TEST_SRC_CHAIN: u64 = 5678;
+const EXEC_TEST_DEST_CHAIN: u64 = 1234;
+
+/// OffRamp `execute` calls `require_not_cursed`, which invokes the configured RMN proxy. Random
+/// addresses in `default_static_config` are not valid proxy contracts — deploy Remote + Proxy like production.
+fn setup_initialized_offramp_for_execute() -> (Env, OffRampContractClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let owner = Address::generate(&env);
+
+    let rmn_remote_id = env.register(RmnRemoteContract, ());
+    RmnRemoteContractClient::new(&env, &rmn_remote_id).initialize(&owner, &1u64);
+
+    let rmn_proxy_id = env.register(RmnProxyContract, ());
+    RmnProxyContractClient::new(&env, &rmn_proxy_id).initialize(&owner, &rmn_remote_id);
+
+    let static_config = StaticConfig {
+        chain_selector: EXEC_TEST_DEST_CHAIN,
+        rmn_proxy: rmn_proxy_id,
+        token_admin_registry: Address::generate(&env),
+    };
+
+    let contract_id = env.register(OffRampContract, ());
+    let client = OffRampContractClient::new(&env, &contract_id);
+    client.initialize(&owner, &static_config);
+
+    (env, client)
+}
+
+/// Wire-format `offramp_address` bytes: last 32 bytes of the contract's Soroban Address XDR.
+fn offramp_address_field_from_contract(env: &Env, contract: &Address) -> Bytes {
+    let xdr = contract.to_xdr(env);
+    let start = xdr.len() - 32;
+    xdr.slice(start..xdr.len())
+}
+
+fn sample_onramp_bytes(env: &Env) -> Bytes {
+    Bytes::from_array(env, &[1u8; 32])
+}
+
+fn apply_source_lane(
+    env: &Env,
+    client: &OffRampContractClient,
+    router: Address,
+    default_ccv: Address,
+    onramp: Bytes,
+    enabled: bool,
+) {
+    let mut on_ramps = Vec::new(env);
+    on_ramps.push_back(onramp);
+
+    let mut default_ccvs = Vec::new(env);
+    default_ccvs.push_back(default_ccv);
+
+    let args = SourceChainConfigArgs {
+        source_chain_selector: EXEC_TEST_SRC_CHAIN,
+        router,
+        is_enabled: enabled,
+        on_ramps,
+        default_ccvs,
+        lane_mandated_ccvs: Vec::new(env),
+    };
+
+    let mut updates = Vec::new(env);
+    updates.push_back(args);
+    client.apply_source_chain_cfg_updates(&updates);
+}
+
+fn valid_execute_message(
+    env: &Env,
+    offramp_contract: &Address,
+    onramp: Bytes,
+) -> CcipMessageV1 {
+    CcipMessageV1 {
+        source_chain_selector: EXEC_TEST_SRC_CHAIN,
+        dest_chain_selector: EXEC_TEST_DEST_CHAIN,
+        sequence_number: 1,
+        execution_gas_limit: 0,
+        ccip_receive_gas_limit: 0,
+        finality: 0,
+        ccv_and_executor_hash: BytesN::from_array(env, &[0u8; 32]),
+        onramp_address: onramp,
+        offramp_address: offramp_address_field_from_contract(env, offramp_contract),
+        sender: Bytes::from_array(env, &[2u8; 20]),
+        receiver: Bytes::from_array(env, &[0u8; 32]),
+        dest_blob: Bytes::new(env),
+        token_transfer: Bytes::new(env),
+        data: Bytes::new(env),
+    }
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #100)")]
+fn test_execute_source_chain_not_enabled() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), false);
+
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+    assert_eq!(encoded.get(0).unwrap(), MESSAGE_V1_VERSION);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #100)")]
+fn test_execute_source_chain_not_configured() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let onramp = sample_onramp_bytes(&env);
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #102)")]
+fn test_execute_invalid_onramp() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let allowed_onramp = sample_onramp_bytes(&env);
+    apply_source_lane(
+        &env,
+        &client,
+        router,
+        default_ccv,
+        allowed_onramp,
+        true,
+    );
+
+    let bad_onramp = Bytes::from_array(&env, &[99u8; 32]);
+    let msg = valid_execute_message(&env, &client.address, bad_onramp);
+    let encoded = msg.to_bytes(&env);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #103)")]
+fn test_execute_invalid_offramp_address() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let mut msg = valid_execute_message(&env, &client.address, onramp);
+    msg.offramp_address = Bytes::from_array(&env, &[0xEEu8; 32]);
+    let encoded = msg.to_bytes(&env);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #104)")]
+fn test_execute_invalid_message_destination() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let mut msg = valid_execute_message(&env, &client.address, onramp);
+    msg.dest_chain_selector = 999_999;
+    let encoded = msg.to_bytes(&env);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #107)")]
+fn test_execute_ccv_length_mismatch() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+
+    let mut ccvs = Vec::new(&env);
+    ccvs.push_back(Address::generate(&env));
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #110)")]
+fn test_execute_gas_limit_override_too_low() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let mut msg = valid_execute_message(&env, &client.address, onramp);
+    msg.ccip_receive_gas_limit = 10_000;
+    let encoded = msg.to_bytes(&env);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &100u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #105)")]
+fn test_execute_message_already_success() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+    let message_id = CcipMessageV1::compute_message_id_from_bytes(&env, &encoded);
+    let state_key = DataKey::ExecState(message_id);
+
+    env.as_contract(&client.address, || {
+        env.storage()
+            .persistent()
+            .set(&state_key, &MessageExecutionState::Success);
+        env.storage()
+            .persistent()
+            .extend_ttl(&state_key, 518_400, 3_110_400);
+    });
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #105)")]
+fn test_execute_message_already_in_progress() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+    let message_id = CcipMessageV1::compute_message_id_from_bytes(&env, &encoded);
+    let state_key = DataKey::ExecState(message_id);
+
+    env.as_contract(&client.address, || {
+        env.storage()
+            .persistent()
+            .set(&state_key, &MessageExecutionState::InProgress);
+        env.storage()
+            .persistent()
+            .extend_ttl(&state_key, 518_400, 3_110_400);
+    });
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+    client.execute(&encoded, &ccvs, &verifier_results, &0u32);
+}
+
+#[test]
+fn test_execute_reexecute_after_failure_succeeds() {
+    let (env, client) = setup_initialized_offramp_for_execute();
+
+    let router = Address::generate(&env);
+    let default_ccv = Address::generate(&env);
+    let onramp = sample_onramp_bytes(&env);
+    apply_source_lane(&env, &client, router, default_ccv, onramp.clone(), true);
+
+    let msg = valid_execute_message(&env, &client.address, onramp);
+    let encoded = msg.to_bytes(&env);
+    let message_id = CcipMessageV1::compute_message_id_from_bytes(&env, &encoded);
+
+    let ccvs = Vec::new(&env);
+    let verifier_results = Vec::new(&env);
+
+    assert!(client
+        .try_execute(&encoded, &ccvs, &verifier_results, &0u32)
+        .is_ok());
+    assert_eq!(
+        client.get_execution_state(&message_id),
+        MessageExecutionState::Failure
+    );
+
+    assert!(client
+        .try_execute(&encoded, &ccvs, &verifier_results, &0u32)
+        .is_ok());
+    assert_eq!(
+        client.get_execution_state(&message_id),
+        MessageExecutionState::Failure
+    );
+}
+

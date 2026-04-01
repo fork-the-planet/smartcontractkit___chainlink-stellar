@@ -1,14 +1,19 @@
 #![cfg(test)]
 
 use super::*;
+use ccip_receiver_example::{ExampleCcipReceiver, ExampleCcipReceiverClient};
+use common_error::CCIPError;
+use common_message::AnyToStellarMessage;
 use fee_quoter::{
     types::{DestChainConfig, GasPriceUpdate, PriceUpdates, StaticConfig, TokenPriceUpdate},
     FeeQuoterContract, FeeQuoterContractClient,
 };
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    vec, Address, Bytes, Env, Vec,
+    vec, Address, Bytes, BytesN, Env, Vec,
 };
+
+use crate::test_panic_receiver::{ErrReturningCcipReceiver, PanicCcipReceiver};
 
 // ============================================================
 // Unit Test Helpers
@@ -98,6 +103,23 @@ fn setup_env() -> (Env, Address, Address, Address, Address) {
     let router_id = env.register(RouterContract, ());
 
     (env, router_id, owner, rmn_proxy_addr, rmn_remote_id)
+}
+
+/// EVM `GLOBAL_CURSE_SUBJECT` — cursing this subject makes `RmnRemote::is_cursed()` true.
+const ROUTE_MSG_GLOBAL_CURSE_SUBJECT: [u8; 16] = [
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+];
+
+const ROUTE_MSG_SOURCE_CHAIN: u64 = 456;
+
+fn sample_any_to_stellar_message(env: &Env) -> AnyToStellarMessage {
+    AnyToStellarMessage {
+        message_id: BytesN::from_array(env, &[1u8; 32]),
+        source_chain_selector: ROUTE_MSG_SOURCE_CHAIN,
+        sender: Bytes::from_array(env, &[2u8; 32]),
+        data: Bytes::from_slice(env, b"hello"),
+        dest_token_amounts: Vec::new(env),
+    }
 }
 
 // ============================================================
@@ -514,4 +536,175 @@ fn test_get_fee_via_onramp() {
     // get_fee returns fee from FeeQuoter (message fee + CCV fees; CCVs are mock addresses so may add 0)
     let fee = router_client.get_fee(&dest_chain, &message);
     assert!(fee >= 0, "Fee should be non-negative");
+}
+
+// ============================================================
+// route_message (inbound path)
+// ============================================================
+
+#[test]
+fn test_route_message_happy_path() {
+    let (env, router_id, owner, rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let offramp = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &offramp);
+
+    let receiver_id = env.register(ExampleCcipReceiver, ());
+    let receiver_client = ExampleCcipReceiverClient::new(&env, &receiver_id);
+    receiver_client.initialize(&router_id);
+
+    let message = sample_any_to_stellar_message(&env);
+    let result = router_client.try_route_message(
+        &offramp,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &receiver_id,
+        &message,
+    );
+    assert_eq!(result, Ok(Ok(())));
+
+    let stored_mid = receiver_client.last_message_id();
+    assert_eq!(stored_mid, message.message_id);
+}
+
+#[test]
+fn test_route_message_unregistered_offramp() {
+    let (env, router_id, owner, rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let registered = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &registered);
+
+    let receiver_id = env.register(ExampleCcipReceiver, ());
+    ExampleCcipReceiverClient::new(&env, &receiver_id).initialize(&router_id);
+
+    let message = sample_any_to_stellar_message(&env);
+    let result = router_client.try_route_message(
+        &stranger,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &receiver_id,
+        &message,
+    );
+    assert_eq!(result, Err(Ok(CCIPError::CallerNotAuthorized)));
+}
+
+#[test]
+fn test_route_message_cursed_network() {
+    let (env, router_id, owner, rmn_proxy, rmn_remote_id) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let offramp = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &offramp);
+
+    let receiver_id = env.register(ExampleCcipReceiver, ());
+    ExampleCcipReceiverClient::new(&env, &receiver_id).initialize(&router_id);
+
+    let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
+    let subject = BytesN::from_array(&env, &ROUTE_MSG_GLOBAL_CURSE_SUBJECT);
+    rmn_remote_client.curse(&vec![&env, subject]);
+
+    let message = sample_any_to_stellar_message(&env);
+    let result = router_client.try_route_message(
+        &offramp,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &receiver_id,
+        &message,
+    );
+    assert_eq!(result, Err(Ok(CCIPError::BadRMNSignal)));
+}
+
+#[test]
+fn test_route_message_not_initialized() {
+    let (env, router_id, _owner, _rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+
+    let offramp = Address::generate(&env);
+    let receiver_id = env.register(ExampleCcipReceiver, ());
+
+    let message = AnyToStellarMessage {
+        message_id: BytesN::from_array(&env, &[9u8; 32]),
+        source_chain_selector: ROUTE_MSG_SOURCE_CHAIN,
+        sender: Bytes::from_array(&env, &[2u8; 32]),
+        data: Bytes::from_slice(&env, b"hello"),
+        dest_token_amounts: Vec::new(&env),
+    };
+
+    let result = router_client.try_route_message(
+        &offramp,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &receiver_id,
+        &message,
+    );
+    assert_eq!(result, Err(Ok(CCIPError::NotInitialized)));
+}
+
+#[test]
+fn test_route_message_receiver_traps() {
+    let (env, router_id, owner, rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let offramp = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &offramp);
+
+    let panic_receiver = env.register(PanicCcipReceiver, ());
+    let message = sample_any_to_stellar_message(&env);
+
+    let result = router_client.try_route_message(
+        &offramp,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &panic_receiver,
+        &message,
+    );
+    assert_eq!(result, Err(Ok(CCIPError::ReceiverError)));
+}
+
+#[test]
+fn test_route_message_receiver_returns_contract_error_becomes_receiver_error() {
+    let (env, router_id, owner, rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let offramp = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &offramp);
+
+    let receiver_id = env.register(ErrReturningCcipReceiver, ());
+
+    let message = sample_any_to_stellar_message(&env);
+    let result = router_client.try_route_message(
+        &offramp,
+        &ROUTE_MSG_SOURCE_CHAIN,
+        &receiver_id,
+        &message,
+    );
+    assert_eq!(result, Err(Ok(CCIPError::ReceiverError)));
+}
+
+#[test]
+fn test_route_message_wrong_source_chain_for_offramp() {
+    let (env, router_id, owner, rmn_proxy, _) = setup_env();
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+
+    let offramp = Address::generate(&env);
+    router_client.add_offramp(&ROUTE_MSG_SOURCE_CHAIN, &offramp);
+
+    let receiver_id = env.register(ExampleCcipReceiver, ());
+    ExampleCcipReceiverClient::new(&env, &receiver_id).initialize(&router_id);
+
+    let other_chain: u64 = 999;
+    let message = AnyToStellarMessage {
+        message_id: BytesN::from_array(&env, &[3u8; 32]),
+        source_chain_selector: other_chain,
+        sender: Bytes::from_array(&env, &[2u8; 32]),
+        data: Bytes::from_slice(&env, b"hello"),
+        dest_token_amounts: Vec::new(&env),
+    };
+
+    let result = router_client.try_route_message(&offramp, &other_chain, &receiver_id, &message);
+    assert_eq!(result, Err(Ok(CCIPError::CallerNotAuthorized)));
 }

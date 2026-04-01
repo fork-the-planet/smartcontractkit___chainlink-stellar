@@ -682,4 +682,7 @@ impl RouterContract {
     }
 }
 
+#[cfg(test)]
+mod test_panic_receiver;
+
 mod test;
