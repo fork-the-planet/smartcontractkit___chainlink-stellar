@@ -18,6 +18,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	cmd "github.com/smartcontractkit/chainlink-ccv/cmd/executor"
 	"github.com/smartcontractkit/chainlink-ccv/executor"
+	"github.com/smartcontractkit/chainlink-ccv/integration/pkg/blockchain"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
@@ -25,7 +26,6 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	contracttransmitter "github.com/smartcontractkit/chainlink-stellar/ccv/contract_transmitter"
 	destinationreader "github.com/smartcontractkit/chainlink-stellar/ccv/destination_reader"
-	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 	"github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -47,12 +47,12 @@ func loadConfig(path string) (*common.Config, error) {
 func main() {
 	if err := bootstrap.Run(
 		"StellarExecutor",
-		cmd.NewServiceFactory[sourcereader.ReaderConfig](
+		cmd.NewServiceFactory[string](
 			chainsel.FamilyStellar,
 			func(
 				ctx context.Context,
 				lggr logger.Logger,
-				_ map[string]*sourcereader.ReaderConfig,
+				_ blockchain.Infos[string],
 				cfg executor.Configuration,
 			) (*cmd.ServiceComponents, error) {
 				configPath, ok := os.LookupEnv(StellarConfigPathEnv)
