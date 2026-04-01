@@ -267,11 +267,7 @@ fn apply_source_lane(
     client.apply_source_chain_cfg_updates(&updates);
 }
 
-fn valid_execute_message(
-    env: &Env,
-    offramp_contract: &Address,
-    onramp: Bytes,
-) -> CcipMessageV1 {
+fn valid_execute_message(env: &Env, offramp_contract: &Address, onramp: Bytes) -> CcipMessageV1 {
     CcipMessageV1 {
         source_chain_selector: EXEC_TEST_SRC_CHAIN,
         dest_chain_selector: EXEC_TEST_DEST_CHAIN,
@@ -331,14 +327,7 @@ fn test_execute_invalid_onramp() {
     let router = Address::generate(&env);
     let default_ccv = Address::generate(&env);
     let allowed_onramp = sample_onramp_bytes(&env);
-    apply_source_lane(
-        &env,
-        &client,
-        router,
-        default_ccv,
-        allowed_onramp,
-        true,
-    );
+    apply_source_lane(&env, &client, router, default_ccv, allowed_onramp, true);
 
     let bad_onramp = Bytes::from_array(&env, &[99u8; 32]);
     let msg = valid_execute_message(&env, &client.address, bad_onramp);
@@ -515,4 +504,3 @@ fn test_execute_reexecute_after_failure_succeeds() {
         MessageExecutionState::Failure
     );
 }
-

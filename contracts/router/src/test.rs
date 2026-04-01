@@ -556,12 +556,8 @@ fn test_route_message_happy_path() {
     receiver_client.initialize(&router_id);
 
     let message = sample_any_to_stellar_message(&env);
-    let result = router_client.try_route_message(
-        &offramp,
-        &ROUTE_MSG_SOURCE_CHAIN,
-        &receiver_id,
-        &message,
-    );
+    let result =
+        router_client.try_route_message(&offramp, &ROUTE_MSG_SOURCE_CHAIN, &receiver_id, &message);
     assert_eq!(result, Ok(Ok(())));
 
     let stored_mid = receiver_client.last_message_id();
@@ -582,12 +578,8 @@ fn test_route_message_unregistered_offramp() {
     ExampleCcipReceiverClient::new(&env, &receiver_id).initialize(&router_id);
 
     let message = sample_any_to_stellar_message(&env);
-    let result = router_client.try_route_message(
-        &stranger,
-        &ROUTE_MSG_SOURCE_CHAIN,
-        &receiver_id,
-        &message,
-    );
+    let result =
+        router_client.try_route_message(&stranger, &ROUTE_MSG_SOURCE_CHAIN, &receiver_id, &message);
     assert_eq!(result, Err(Ok(CCIPError::CallerNotAuthorized)));
 }
 
@@ -608,12 +600,8 @@ fn test_route_message_cursed_network() {
     rmn_remote_client.curse(&vec![&env, subject]);
 
     let message = sample_any_to_stellar_message(&env);
-    let result = router_client.try_route_message(
-        &offramp,
-        &ROUTE_MSG_SOURCE_CHAIN,
-        &receiver_id,
-        &message,
-    );
+    let result =
+        router_client.try_route_message(&offramp, &ROUTE_MSG_SOURCE_CHAIN, &receiver_id, &message);
     assert_eq!(result, Err(Ok(CCIPError::BadRMNSignal)));
 }
 
@@ -633,12 +621,8 @@ fn test_route_message_not_initialized() {
         dest_token_amounts: Vec::new(&env),
     };
 
-    let result = router_client.try_route_message(
-        &offramp,
-        &ROUTE_MSG_SOURCE_CHAIN,
-        &receiver_id,
-        &message,
-    );
+    let result =
+        router_client.try_route_message(&offramp, &ROUTE_MSG_SOURCE_CHAIN, &receiver_id, &message);
     assert_eq!(result, Err(Ok(CCIPError::NotInitialized)));
 }
 
@@ -675,12 +659,8 @@ fn test_route_message_receiver_returns_contract_error_becomes_receiver_error() {
     let receiver_id = env.register(ErrReturningCcipReceiver, ());
 
     let message = sample_any_to_stellar_message(&env);
-    let result = router_client.try_route_message(
-        &offramp,
-        &ROUTE_MSG_SOURCE_CHAIN,
-        &receiver_id,
-        &message,
-    );
+    let result =
+        router_client.try_route_message(&offramp, &ROUTE_MSG_SOURCE_CHAIN, &receiver_id, &message);
     assert_eq!(result, Err(Ok(CCIPError::ReceiverError)));
 }
 
