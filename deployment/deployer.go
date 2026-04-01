@@ -21,23 +21,53 @@ import (
 // Compile-time check that Deployer satisfies the common bindings.Invoker interface.
 var _ bindings.Invoker = (*Deployer)(nil)
 
+// stellarRPCClient abstracts the Soroban RPC methods used by Deployer,
+// allowing tests to inject a mock without hitting a real network.
+type stellarRPCClient interface {
+	SimulateTransaction(ctx context.Context, req protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error)
+	SendTransaction(ctx context.Context, req protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error)
+	GetTransaction(ctx context.Context, req protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error)
+	GetLedgerEntries(ctx context.Context, req protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error)
+	GetEvents(ctx context.Context, req protocolrpc.GetEventsRequest) (protocolrpc.GetEventsResponse, error)
+}
+
+// DeployerOption configures optional Deployer behaviour.
+type DeployerOption func(*Deployer)
+
+// WithAutoRestore controls whether the Deployer automatically submits a
+// RestoreFootprint transaction when simulation indicates that persistent
+// ledger entries have expired. Enabled by default.
+func WithAutoRestore(enabled bool) DeployerOption {
+	return func(d *Deployer) { d.autoRestore = enabled }
+}
+
 // Deployer handles Soroban contract deployment and initialization.
 type Deployer struct {
-	rpcClient         *rpcclient.Client
+	rpcClient         stellarRPCClient
 	networkPassphrase string
 	signer            *keypair.Full
 	// Account sequence number tracking
 	accountSequence int64
+	// autoRestore controls automatic RestoreFootprint handling for expired
+	// persistent ledger entries. True by default.
+	autoRestore bool
 }
 
-// NewDeployer creates a new Deployer instance.
-func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *keypair.Full) *Deployer {
-	return &Deployer{
+// NewDeployer creates a new Deployer instance. Options can be passed to
+// customise behaviour (e.g. WithAutoRestore(false) to disable automatic
+// restoration of expired persistent entries).
+func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *keypair.Full, opts ...DeployerOption) *Deployer {
+	d := &Deployer{
 		rpcClient:         rpcClient,
 		networkPassphrase: networkPassphrase,
 		signer:            signer,
 		accountSequence:   -1, // Will be fetched on first use
+		autoRestore:       true,
 	}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
 
 // DeployContract deploys a Soroban contract from a WASM file and returns the contract ID.
@@ -271,6 +301,53 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 		return nil, fmt.Errorf("simulation error: %s", simResult.Error)
 	}
 
+	// If the simulation indicates expired persistent ledger entries, restore
+	// them first, then re-simulate so the read returns fresh data.
+	if d.autoRestore && simResult.RestorePreamble != nil {
+		if err := d.restoreFootprint(ctx, *simResult.RestorePreamble); err != nil {
+			return nil, fmt.Errorf("failed to restore expired ledger entries: %w", err)
+		}
+
+		sourceAccount, err = d.getSourceAccount(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get source account after restore: %w", err)
+		}
+
+		tx, err = txnbuild.NewTransaction(
+			txnbuild.TransactionParams{
+				SourceAccount:        sourceAccount,
+				IncrementSequenceNum: true,
+				Operations: []txnbuild.Operation{
+					&txnbuild.InvokeHostFunction{
+						HostFunction:  hostFn,
+						SourceAccount: d.signer.Address(),
+					},
+				},
+				BaseFee:       txnbuild.MinBaseFee,
+				Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to rebuild transaction after restore: %w", err)
+		}
+
+		txXDR, err = tx.Base64()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get transaction XDR after restore: %w", err)
+		}
+
+		simResult, err = d.rpcClient.SimulateTransaction(ctx, protocolrpc.SimulateTransactionRequest{
+			Transaction: txXDR,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("simulation failed after restore: %w", err)
+		}
+
+		if simResult.Error != "" {
+			return nil, fmt.Errorf("simulation error after restore: %s", simResult.Error)
+		}
+	}
+
 	// Extract result from simulation
 	if len(simResult.Results) == 0 {
 		return nil, nil // No return value
@@ -388,6 +465,48 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		return nil, fmt.Errorf("simulation error: %s", simResult.Error)
 	}
 
+	// If the simulation indicates expired persistent ledger entries, restore
+	// them first, then rebuild and re-simulate the original transaction.
+	if d.autoRestore && simResult.RestorePreamble != nil {
+		if err := d.restoreFootprint(ctx, *simResult.RestorePreamble); err != nil {
+			return nil, fmt.Errorf("failed to restore expired ledger entries: %w", err)
+		}
+
+		sourceAccount, err = d.getSourceAccount(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get source account after restore: %w", err)
+		}
+
+		tx, err = txnbuild.NewTransaction(
+			txnbuild.TransactionParams{
+				SourceAccount:        sourceAccount,
+				IncrementSequenceNum: true,
+				Operations:           []txnbuild.Operation{op},
+				BaseFee:              txnbuild.MinBaseFee,
+				Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to rebuild transaction after restore: %w", err)
+		}
+
+		txXDR, err = tx.Base64()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get transaction XDR after restore: %w", err)
+		}
+
+		simResult, err = d.rpcClient.SimulateTransaction(ctx, protocolrpc.SimulateTransactionRequest{
+			Transaction: txXDR,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("simulation failed after restore: %w", err)
+		}
+
+		if simResult.Error != "" {
+			return nil, fmt.Errorf("simulation error after restore: %s", simResult.Error)
+		}
+	}
+
 	// Assemble the transaction with simulation results
 	assembledTx, err := d.assembleTransaction(tx, simResult)
 	if err != nil {
@@ -481,6 +600,86 @@ func (d *Deployer) waitForTransaction(ctx context.Context, hash string) (*xdr.Tr
 			}
 		}
 	}
+}
+
+// restoreFootprint submits a RestoreFootprint transaction using the data provided
+// by a simulation's RestorePreamble. Soroban returns this preamble when the
+// transaction's read/write footprint references persistent ledger entries whose
+// TTL has expired (archived). The restore must succeed before the original
+// transaction can be retried.
+func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.RestorePreamble) error {
+	sourceAccount, err := d.getSourceAccount(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get source account for restore: %w", err)
+	}
+
+	var sorobanData xdr.SorobanTransactionData
+	if err := xdr.SafeUnmarshalBase64(preamble.TransactionDataXDR, &sorobanData); err != nil {
+		return fmt.Errorf("failed to decode restore preamble soroban data: %w", err)
+	}
+
+	restoreOp := &txnbuild.RestoreFootprint{
+		SourceAccount: d.signer.Address(),
+		Ext: xdr.TransactionExt{
+			V:           1,
+			SorobanData: &sorobanData,
+		},
+	}
+
+	baseFee := preamble.MinResourceFee + 10000
+
+	tx, err := txnbuild.NewTransaction(
+		txnbuild.TransactionParams{
+			SourceAccount:        sourceAccount,
+			IncrementSequenceNum: true,
+			Operations:           []txnbuild.Operation{restoreOp},
+			BaseFee:              baseFee,
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to build restore transaction: %w", err)
+	}
+
+	signedTx, err := tx.Sign(d.networkPassphrase, d.signer)
+	if err != nil {
+		return fmt.Errorf("failed to sign restore transaction: %w", err)
+	}
+
+	signedXDR, err := signedTx.Base64()
+	if err != nil {
+		return fmt.Errorf("failed to get signed restore transaction XDR: %w", err)
+	}
+
+	submitResult, err := d.rpcClient.SendTransaction(ctx, protocolrpc.SendTransactionRequest{
+		Transaction: signedXDR,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to submit restore transaction: %w", err)
+	}
+
+	switch submitResult.Status {
+	case "PENDING", "DUPLICATE":
+		// Transaction was accepted
+	case "TRY_AGAIN_LATER":
+		return fmt.Errorf("restore transaction submission failed: server overloaded, try again later")
+	case "ERROR":
+		if submitResult.ErrorResultXDR != "" {
+			return fmt.Errorf("restore transaction rejected: %v (diagnostics: %v)", submitResult.ErrorResultXDR, submitResult.DiagnosticEventsXDR)
+		}
+		return fmt.Errorf("restore transaction rejected with status ERROR")
+	default:
+		return fmt.Errorf("unexpected restore transaction status: %s", submitResult.Status)
+	}
+
+	d.accountSequence++
+
+	_, err = d.waitForTransaction(ctx, submitResult.Hash)
+	if err != nil {
+		return fmt.Errorf("restore transaction failed: %w", err)
+	}
+
+	return nil
 }
 
 // assembleTransaction adds simulation results to a transaction.
