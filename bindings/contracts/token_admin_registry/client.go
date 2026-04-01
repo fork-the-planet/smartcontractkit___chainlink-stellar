@@ -81,11 +81,19 @@ func (c *TokenAdminRegistryClient) GetPools(ctx context.Context, tokens []string
 		return nil, fmt.Errorf("no return value from get_pools")
 	}
 
-	v, err := scval.OptionalAddressFromScVal(*result)
-	if err != nil {
-		return nil, err
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("expected vec return type")
 	}
-	return v, nil
+	out := make([]*string, len(*vec))
+	for i, item := range *vec {
+		v, err := scval.OptionalAddressFromScVal(item)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
 }
 
 // GetTokenConfig calls the get_token_config function on the contract.

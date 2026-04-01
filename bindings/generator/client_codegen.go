@@ -485,7 +485,7 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tvec, ok := entry.Val.GetVec()\n")
 		b.WriteString("\t\t\tif ok && vec != nil {\n")
 		if strings.HasPrefix(innerType, "Option<") && strings.Contains(innerType, "soroban_sdk::Address") {
-			b.WriteString(fmt.Sprintf("\t\t\t\tparsed := make([]*string, len(*vec))\n"))
+			b.WriteString("\t\t\t\tparsed := make([]*string, len(*vec))\n")
 			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
 			b.WriteString("\t\t\t\t\tv, err := scval.OptionalAddressFromScVal(item)\n")
 			b.WriteString("\t\t\t\t\tif err == nil {\n")
