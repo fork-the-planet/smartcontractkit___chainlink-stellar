@@ -33,6 +33,8 @@ CONTRACTS=(
   "offramp|OffRamp|offramp|0"
   "router|Router|router|0"
   "ccip_receiver|ExampleCcipReceiver|ccip_receiver|0"
+  "token_admin_registry|TokenAdminRegistry|token_admin_registry|0"
+  "token_pool|TokenPool|token_pool|0"
 )
 
 # Extract TokenAmount and StellarToAnyMessage structs from committee_verifier for contracts that use common_message

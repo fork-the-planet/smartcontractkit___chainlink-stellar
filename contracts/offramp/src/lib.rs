@@ -3,7 +3,11 @@
 mod events;
 pub mod types;
 
-use common_interfaces::versioned_verifier_resolver::VersionedVerifierResolverClient;
+use common_interfaces::{
+    token_admin_registry::TokenAdminRegistryClient,
+    token_pool::{ReleaseOrMintIn, TokenPoolClient},
+    versioned_verifier_resolver::VersionedVerifierResolverClient,
+};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, Executable,
     IntoVal, Map, Symbol, Vec,
@@ -15,7 +19,8 @@ use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
 use common_message::{
-    AnyToStellarMessage, CcipMessageV1, FromBytes, MessageIdCompute, TokenAmount,
+    AnyToStellarMessage, CcipMessageV1, CcipTokenTransferV1, FromBytes, MessageIdCompute,
+    TokenAmount,
 };
 use events::{ExecutionStateChangedEvent, SourceChainConfigSetEvent, StaticConfigSetEvent};
 use types::{
@@ -377,13 +382,17 @@ impl OffRampContract {
         )?;
 
         // --- Token Handling ---
-        // TODO: Implement token release/mint when pool contracts are ready.
-        // The flow will be:
-        // 1. Decode token_transfer from message.token_transfer bytes
-        // 2. Look up pool via TokenAdminRegistry.getPool(dest_token)
-        // 3. Call pool.release_or_mint(...)
-        // 4. Verify balance change matches expected amount
-        let dest_token_amounts: Vec<TokenAmount> = Vec::new(env);
+        let dest_token_amounts: Vec<TokenAmount> = if message.token_transfer.len() > 0 {
+            Self::release_or_mint_single_token(
+                env,
+                &message.token_transfer,
+                &message.sender,
+                message.source_chain_selector,
+                _static_config,
+            )?
+        } else {
+            Vec::new(env)
+        };
 
         // --- Message Routing ---
         // EVM skips `_callReceiver` for token-only (no data and ccipReceiveGasLimit == 0).
@@ -536,6 +545,88 @@ impl OffRampContract {
             args,
         )?;
         Ok(())
+    }
+
+    // ========================================
+    // Internal — Token Handling
+    // ========================================
+
+    /// Decode the token transfer, resolve the destination pool via
+    /// TokenAdminRegistry, call `release_or_mint`, and return the
+    /// resulting `TokenAmount` for the receiver.
+    fn release_or_mint_single_token(
+        env: &Env,
+        token_transfer_bytes: &Bytes,
+        original_sender: &Bytes,
+        source_chain_selector: u64,
+        static_config: &StaticConfig,
+    ) -> Result<Vec<TokenAmount>, CCIPError> {
+        let token_transfer = CcipTokenTransferV1::from_bytes(env, token_transfer_bytes)?;
+
+        let registry =
+            TokenAdminRegistryClient::new(env, &static_config.token_admin_registry);
+
+        let dest_token = Self::address_from_token_bytes(env, &token_transfer.dest_token_address)?;
+
+        let pool_address = registry
+            .get_pool(&dest_token)
+            .ok_or(CCIPError::UnsupportedToken)?;
+
+        let pool_client = TokenPoolClient::new(env, &pool_address);
+
+        let amount = Self::bytes32_to_i128(env, &token_transfer.amount)?;
+
+        let receiver_address =
+            Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
+
+        let release_result = pool_client.release_or_mint(&ReleaseOrMintIn {
+            original_sender: original_sender.clone(),
+            remote_chain_selector: source_chain_selector,
+            receiver: receiver_address.clone(),
+            amount,
+            local_token: dest_token.clone(),
+            source_pool_address: token_transfer.source_pool_address,
+            source_pool_data: token_transfer.extra_data,
+        });
+
+        let mut amounts = Vec::new(env);
+        amounts.push_back(TokenAmount {
+            token: dest_token,
+            amount: release_result.destination_amount,
+        });
+        Ok(amounts)
+    }
+
+    /// Convert raw bytes containing a 32-byte contract hash to a Soroban `Address`.
+    fn address_from_token_bytes(env: &Env, bytes: &Bytes) -> Result<Address, CCIPError> {
+        if bytes.len() < 32 {
+            return Err(CCIPError::InvalidReceiverLength);
+        }
+        // Take the last 32 bytes (XDR-encoded addresses have a discriminant prefix)
+        let offset = bytes.len() - 32;
+        let mut hash = [0u8; 32];
+        for i in 0..32u32 {
+            hash[i as usize] = bytes
+                .get(offset + i)
+                .ok_or(CCIPError::InvalidReceiverLength)?;
+        }
+        let sk = StrkeyContract(hash);
+        let encoded = sk.to_string();
+        Ok(Address::from_str(env, encoded.as_str()))
+    }
+
+    /// Convert a 32-byte big-endian uint256 to i128 (lower 16 bytes).
+    fn bytes32_to_i128(_env: &Env, bytes: &BytesN<32>) -> Result<i128, CCIPError> {
+        let arr = bytes.to_array();
+        // Ensure upper 16 bytes are zero (value fits in i128)
+        for b in &arr[..16] {
+            if *b != 0 {
+                return Err(CCIPError::TokenHandlingError);
+            }
+        }
+        let mut amount_bytes = [0u8; 16];
+        amount_bytes.copy_from_slice(&arr[16..]);
+        Ok(i128::from_be_bytes(amount_bytes))
     }
 
     // ========================================

@@ -346,6 +346,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-pool"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "common-verifier"
 version = "0.0.0"
 dependencies = [
@@ -1085,16 +1093,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pools-base-pool"
-version = "0.0.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "pools-burn-mint-pool"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-pool",
  "soroban-sdk",
 ]
 
@@ -1102,6 +1107,10 @@ dependencies = [
 name = "pools-lock-release-pool"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-pool",
  "soroban-sdk",
 ]
 

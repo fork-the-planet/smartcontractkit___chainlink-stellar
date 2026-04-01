@@ -19,6 +19,8 @@ import (
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
+	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
@@ -53,6 +55,12 @@ type fullStack struct {
 	OnRampWire    []byte
 	OffRampSuffix []byte
 	ReceiverRaw   []byte
+
+	TokenAdminRegistryID string
+	TokenPoolID          string
+
+	TokenAdminRegistryClient *tarbindings.TokenAdminRegistryClient
+	TokenPoolClient          *tokenpoolbindings.TokenPoolClient
 
 	signerKey     *ecdsa.PrivateKey
 	signerAddrPad [32]byte // left-padded 20-byte Ethereum address
@@ -290,5 +298,52 @@ func (s *fullStack) buildValidMessage(t *testing.T, destChainSelector uint64, se
 	msgID = keccak256MessageID(encoded)
 	verifierBlob = s.signVerifierBlob(t, msgID)
 	return encoded, msgID, verifierBlob
+}
+
+// deployTokenPool deploys a TokenAdminRegistry and a LockRelease pool contract,
+// registers the pool for the given token, and wires everything into the fullStack.
+// This is additive — call after deployFullStack.
+func (s *fullStack) deployTokenPool(
+	ctx context.Context,
+	t *testing.T,
+	projectRoot string,
+	deployer *deployment.Deployer,
+	deployerAddr string,
+	saltPrefix string,
+	tokenID string,
+) {
+	t.Helper()
+
+	deploy := func(name, wasmFile string) string {
+		t.Helper()
+		salt := deployment.GenerateDeterministicSalt(deployerAddr, saltPrefix+"-"+name)
+		p := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", wasmFile)
+		id, err := deployer.DeployContract(ctx, p, salt)
+		if err != nil {
+			t.Fatalf("deploy %s: %v", name, err)
+		}
+		return id
+	}
+
+	s.TokenAdminRegistryID = deploy("token-admin-registry", "token_admin_registry.wasm")
+	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
+
+	s.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, s.TokenAdminRegistryID)
+	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
+
+	// Initialize token admin registry
+	if err := s.TokenAdminRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+		t.Fatalf("TokenAdminRegistry Initialize: %v", err)
+	}
+
+	// Initialize pool with the token
+	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID); err != nil {
+		t.Fatalf("TokenPool Initialize: %v", err)
+	}
+
+	// Register pool in token admin registry
+	if err := s.TokenAdminRegistryClient.SetPool(ctx, tokenID, &s.TokenPoolID); err != nil {
+		t.Fatalf("TokenAdminRegistry SetPool: %v", err)
+	}
 }
 

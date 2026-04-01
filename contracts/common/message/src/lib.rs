@@ -247,6 +247,67 @@ impl ToBytes for CcipTokenTransferV1 {
     }
 }
 
+impl FromBytes for CcipTokenTransferV1 {
+    fn from_bytes(env: &Env, bytes: &Bytes) -> Result<Self, CCIPError> {
+        let len = bytes.len();
+        if len < 34 {
+            return Err(CCIPError::MessageDecodingError);
+        }
+        let mut pos: u32 = 0;
+
+        let version = bytes.get(pos).ok_or(CCIPError::MessageDecodingError)?;
+        pos += 1;
+
+        let mut amount_arr = [0u8; 32];
+        for i in 0..32u32 {
+            amount_arr[i as usize] =
+                bytes.get(pos + i).ok_or(CCIPError::MessageDecodingError)?;
+        }
+        let amount = BytesN::from_array(env, &amount_arr);
+        pos += 32;
+
+        // 1-byte length-prefixed fields
+        let read_field_1 = |bytes: &Bytes, pos: &mut u32| -> Result<Bytes, CCIPError> {
+            let field_len = bytes.get(*pos).ok_or(CCIPError::MessageDecodingError)? as u32;
+            *pos += 1;
+            if *pos + field_len > len {
+                return Err(CCIPError::MessageDecodingError);
+            }
+            let field = bytes.slice(*pos..*pos + field_len);
+            *pos += field_len;
+            Ok(field)
+        };
+
+        let source_pool_address = read_field_1(bytes, &mut pos)?;
+        let source_token_address = read_field_1(bytes, &mut pos)?;
+        let dest_token_address = read_field_1(bytes, &mut pos)?;
+        let token_receiver = read_field_1(bytes, &mut pos)?;
+
+        // 2-byte length-prefixed extra_data
+        if pos + 2 > len {
+            return Err(CCIPError::MessageDecodingError);
+        }
+        let ed_hi = bytes.get(pos).ok_or(CCIPError::MessageDecodingError)? as u32;
+        let ed_lo = bytes.get(pos + 1).ok_or(CCIPError::MessageDecodingError)? as u32;
+        let ed_len = (ed_hi << 8) | ed_lo;
+        pos += 2;
+        if pos + ed_len > len {
+            return Err(CCIPError::MessageDecodingError);
+        }
+        let extra_data = bytes.slice(pos..pos + ed_len);
+
+        Ok(CcipTokenTransferV1 {
+            version,
+            amount,
+            source_pool_address,
+            source_token_address,
+            dest_token_address,
+            token_receiver,
+            extra_data,
+        })
+    }
+}
+
 /// CCIP MessageV1 canonical encoding, matching protocol.Message.Encode().
 ///
 /// This is the chain-agnostic message format used for computing message IDs

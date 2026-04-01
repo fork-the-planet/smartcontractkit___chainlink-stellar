@@ -23,4 +23,6 @@ pub mod onramp;
 pub mod rmn_proxy;
 pub mod rmn_remote;
 pub mod router;
+pub mod token_admin_registry;
+pub mod token_pool;
 pub mod versioned_verifier_resolver;
