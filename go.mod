@@ -9,10 +9,10 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
 	github.com/smartcontractkit/chain-selectors v1.0.97
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260331203127-b8dc0a6b85c5
+	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
 	github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment v0.0.0-20260326205122-a6b3f014b808
-	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260331180039-5c7b4cb3f2f8
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260331180039-5c7b4cb3f2f8
+	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260331115054-9e70380c412c
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260331115054-9e70380c412c
 	github.com/smartcontractkit/chainlink-common v0.10.1-0.20260310151336-c98a9c147ac0
 	github.com/smartcontractkit/chainlink-deployments-framework v0.85.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.0
@@ -402,7 +402,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smartcontractkit/chainlink-aptos v0.0.0-20251212131933-e5e85d6fa4d3 // indirect
 	github.com/smartcontractkit/chainlink-ccip v0.1.1-solana.0.20260326205122-a6b3f014b808 // indirect
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm v0.0.0-20260331203127-b8dc0a6b85c5 // indirect
+	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm v0.0.0-20260326205122-a6b3f014b808 // indirect
 	github.com/smartcontractkit/chainlink-ccip/chains/solana v0.0.0-20260129103204-4c8453dd8139 // indirect
 	github.com/smartcontractkit/chainlink-ccip/chains/solana/gobindings v0.0.0-20260129103204-4c8453dd8139 // indirect
 	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260326205122-a6b3f014b808
@@ -519,10 +519,6 @@ replace (
 	github.com/fbsobreira/gotron-sdk => github.com/smartcontractkit/chainlink-tron/relayer/gotron-sdk v0.0.5-0.20251014124537-af6b1684fe15
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/noders-team/go-daml => github.com/stackman27/go-daml v0.0.0-20260204001938-550ee9d8ab10
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm => ../chainlink-ccip/ccv/chains/evm
-	github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment => ../chainlink-ccip/ccv/chains/evm/deployment
-	github.com/smartcontractkit/chainlink-ccv => ../chainlink-ccv
-	github.com/smartcontractkit/chainlink-ccv/build/devenv => ../chainlink-ccv/build/devenv
 
 	github.com/smartcontractkit/chainlink-stellar/bindings => ./bindings
 
