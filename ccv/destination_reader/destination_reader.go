@@ -195,3 +195,22 @@ func (d *DestinationReader) GetRMNCursedSubjects(ctx context.Context) ([]protoco
 	}
 	return result, nil
 }
+
+// CheckHealth implements chainaccess.DestinationReader. Currently always returns nil.
+// TODO: Implement this.
+func (d *DestinationReader) CheckHealth(chain protocol.ChainSelector) error {
+	return nil
+}
+
+// HasHonestAttempt implements chainaccess.DestinationReader. Currently always returns false. Returning false
+// means that the offchain will attempt to submit an execution attempt for this message.
+// TODO: Implement this.
+func (d *DestinationReader) HasHonestAttempt(ctx context.Context, message protocol.Message, verifierResults []protocol.VerifierResult, ccvAddressInfo protocol.CCVAddressInfo) (bool, error) {
+	return false, nil
+}
+
+// IsReady implements chainaccess.DestinationReader. Currently always returns true.
+// TODO: Implement this.
+func (d *DestinationReader) IsReady(chain protocol.ChainSelector) bool {
+	return true
+}
