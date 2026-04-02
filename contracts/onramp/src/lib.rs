@@ -6,6 +6,8 @@ pub mod types;
 use common_interfaces::{
     committee_verifier::FeeResponse,
     fee_quoter::{FeeQuoterClient, GasQuoteResult},
+    token_admin_registry::TokenAdminRegistryClient,
+    token_pool::{LockOrBurnIn, TokenPoolClient},
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
@@ -19,7 +21,8 @@ use common_error::CCIPError;
 use common_guard::{initializable::Initializable, ReentrancyGuard};
 use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
 use common_message::{
-    CcipMessageV1, GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage, ToBytes,
+    CcipMessageV1, CcipTokenTransferV1, GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage,
+    ToBytes, MESSAGE_V1_VERSION,
 };
 use events::{CCIPMessageSentEvent, ConfigSetEvent, DestChainConfigSetEvent};
 use types::{DestChainConfig, DestChainConfigArgs, DynamicConfig, Receipt, StaticConfig};
@@ -279,8 +282,34 @@ impl OnRampContract {
         let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
         let _message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
 
-        // Get pool CCVs if token transfer
-        // Merge CCV lists
+        // Lock or burn tokens via the pool (if token transfer)
+        let token_transfer_bytes = if !message.token_amounts.is_empty() {
+            let token_amount = message.token_amounts.get(0).unwrap();
+            let pool_address =
+                Self::get_pool_by_source_token_internal(&env, &static_config, &token_amount.token)?;
+            let pool_client = TokenPoolClient::new(&env, &pool_address);
+
+            let lock_result = pool_client.lock_or_burn(&LockOrBurnIn {
+                receiver: message.receiver.clone(),
+                remote_chain_selector: dest_chain_selector,
+                original_sender: original_sender.clone(),
+                amount: token_amount.amount,
+                local_token: token_amount.token.clone(),
+            });
+
+            let token_transfer = CcipTokenTransferV1 {
+                version: MESSAGE_V1_VERSION,
+                amount: Self::i128_to_bytes32(&env, token_amount.amount),
+                source_pool_address: pool_address.to_xdr(&env),
+                source_token_address: token_amount.token.clone().to_xdr(&env),
+                dest_token_address: lock_result.dest_token_address,
+                token_receiver: extra_args.token_receiver.clone(),
+                extra_data: lock_result.dest_pool_data,
+            };
+            token_transfer.to_bytes(&env)
+        } else {
+            Bytes::new(&env)
+        };
 
         // Compute sequence number before building the canonical message
         dest_config.message_number += 1;
@@ -304,7 +333,7 @@ impl OnRampContract {
             sender: original_sender.clone().to_xdr(&env),
             receiver: message.receiver.clone(),
             dest_blob: Bytes::new(&env),
-            token_transfer: Bytes::new(&env), // TODO: encode token transfers
+            token_transfer: token_transfer_bytes,
             data: message.data.clone(),
         };
 
@@ -351,7 +380,6 @@ impl OnRampContract {
 
         // TODO: sum all fees and validate
         // TODO: Distribute fees
-        // TODO: Lock or burn tokens
 
         // Emit CCIPMessageSent event with canonical MessageV1 encoding
         CCIPMessageSentEvent {
@@ -409,18 +437,13 @@ impl OnRampContract {
     pub fn get_pool_by_source_token(env: Env, source_token: Address) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
 
-        let static_config: StaticConfig = env
-            .storage()
-            .instance()
-            .get(&STATIC_CONFIG)
-            .ok_or(CCIPError::NotInitialized)?;
+        let static_config = Self::get_static_config_internal(&env)?;
+        let registry = TokenAdminRegistryClient::new(&env, &static_config.token_admin_registry);
+        let pool = registry
+            .get_pool(&source_token)
+            .ok_or(CCIPError::UnsupportedToken)?;
 
-        // TODO: Call TokenAdminRegistry.getPool(sourceToken)
-        // For now, return placeholder
-        let _ = static_config.token_admin_registry;
-        let _ = source_token;
-
-        Err(CCIPError::UnsupportedToken)
+        Ok(pool)
     }
 
     // ========================================
@@ -647,6 +670,24 @@ impl OnRampContract {
 
         dest_chains.set(dest_chain_selector, config.clone());
         env.storage().persistent().set(&DEST_CHAINS, &dest_chains);
+    }
+
+    fn get_pool_by_source_token_internal(
+        env: &Env,
+        static_config: &StaticConfig,
+        source_token: &Address,
+    ) -> Result<Address, CCIPError> {
+        let registry = TokenAdminRegistryClient::new(env, &static_config.token_admin_registry);
+        registry
+            .get_pool(source_token)
+            .ok_or(CCIPError::UnsupportedToken)
+    }
+
+    fn i128_to_bytes32(env: &Env, value: i128) -> BytesN<32> {
+        let be_bytes = value.to_be_bytes();
+        let mut padded = [0u8; 32];
+        padded[16..].copy_from_slice(&be_bytes);
+        BytesN::from_array(env, &padded)
     }
 
     fn get_ccv_blobs_and_receipts_internal(

@@ -162,6 +162,16 @@ pub enum CCIPError {
     InvalidTokenPoolToken = 205,
 
     // ============================================================
+    // TokenPool errors
+    // ============================================================
+    PoolTokenMismatch = 301,
+    ChainNotSupported = 302,
+    CallerIsNotRamp = 303,
+    InsufficientPoolLiquidity = 304,
+    InvalidRemotePoolAddress = 305,
+    InvalidRemoteChainConfig = 306,
+
+    // ============================================================
     // Calculation errors
     // ============================================================
     InvalidFeeCalculation = 801,

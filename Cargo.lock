@@ -346,6 +346,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-pool"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "common-verifier"
 version = "0.0.0"
 dependencies = [
@@ -1033,6 +1041,8 @@ dependencies = [
  "common-helpers",
  "common-interfaces",
  "common-message",
+ "rmn_proxy",
+ "rmn_remote",
  "soroban-sdk",
  "stellar-strkey 0.0.16",
 ]
@@ -1085,16 +1095,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pools-base-pool"
-version = "0.0.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "pools-burn-mint-pool"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-pool",
  "soroban-sdk",
 ]
 
@@ -1102,6 +1109,10 @@ dependencies = [
 name = "pools-lock-release-pool"
 version = "0.0.0"
 dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-pool",
  "soroban-sdk",
 ]
 
@@ -1250,6 +1261,7 @@ dependencies = [
 name = "router"
 version = "0.0.0"
 dependencies = [
+ "ccip_receiver_example",
  "common-authorization",
  "common-error",
  "common-guard",

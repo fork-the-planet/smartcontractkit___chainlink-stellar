@@ -25,6 +25,7 @@ common-error = { path = "contracts/common/error" }
 common-interfaces = { path = "contracts/common/interfaces" }
 common-verifier = { path = "contracts/common/verifier" }
 common-helpers = { path = "contracts/common/helpers" }
+common-pool = { path = "contracts/common/pool" }
 fee-quoter = { path = "contracts/fee-quoter" }
 onramp = { path = "contracts/onramp" }
 rmn_proxy = { path = "contracts/rmn_proxy" }

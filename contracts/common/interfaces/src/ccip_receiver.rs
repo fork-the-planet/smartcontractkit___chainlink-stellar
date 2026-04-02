@@ -139,6 +139,12 @@ pub enum CCIPError {
     OnlyPendingAdministrator = 203,
     TokenAlreadyRegistered = 204,
     InvalidTokenPoolToken = 205,
+    PoolTokenMismatch = 301,
+    ChainNotSupported = 302,
+    CallerIsNotRamp = 303,
+    InsufficientPoolLiquidity = 304,
+    InvalidRemotePoolAddress = 305,
+    InvalidRemoteChainConfig = 306,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }
