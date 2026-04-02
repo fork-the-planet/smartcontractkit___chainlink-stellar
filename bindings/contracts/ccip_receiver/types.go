@@ -416,6 +416,12 @@ const (
 	CCIPErrorOnlyPendingAdministrator       = 203
 	CCIPErrorTokenAlreadyRegistered         = 204
 	CCIPErrorInvalidTokenPoolToken          = 205
+	CCIPErrorPoolTokenMismatch              = 301
+	CCIPErrorChainNotSupported              = 302
+	CCIPErrorCallerIsNotRamp                = 303
+	CCIPErrorInsufficientPoolLiquidity      = 304
+	CCIPErrorInvalidRemotePoolAddress       = 305
+	CCIPErrorInvalidRemoteChainConfig       = 306
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -516,6 +522,12 @@ var CCIPErrorMessage = map[int]string{
 	203: "only pending administrator",
 	204: "token already registered",
 	205: "invalid token pool token",
+	301: "pool token mismatch",
+	302: "chain not supported",
+	303: "caller is not ramp",
+	304: "insufficient pool liquidity",
+	305: "invalid remote pool address",
+	306: "invalid remote chain config",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }

@@ -3,8 +3,8 @@
 use soroban_sdk::{testutils::Address as _, vec, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 
 use crate::{
-    CcipMessageV1, CcipTokenTransferV1, GenericExtraArgsV3, MessageIdCompute, StellarToAnyMessage,
-    ToBytes, TokenAmount, MESSAGE_V1_VERSION,
+    CcipMessageV1, CcipTokenTransferV1, FromBytes, GenericExtraArgsV3, MessageIdCompute,
+    StellarToAnyMessage, ToBytes, TokenAmount, MESSAGE_V1_VERSION,
 };
 use common_error::CCIPError;
 
@@ -202,6 +202,88 @@ fn test_token_transfer_v1_empty_fields() {
     let encoded = tt.to_bytes(&env);
     // version(1) + amount(32) + 4 * (1+0) + (2+0) = 1 + 32 + 4 + 2 = 39
     assert_eq!(encoded.len(), 39);
+}
+
+#[test]
+fn test_token_transfer_v1_to_bytes_from_bytes_roundtrip() {
+    let env = Env::default();
+    let src_pool = Bytes::from_array(&env, &[0xAA; 10]);
+    let src_token = Bytes::from_array(&env, &[0xBB; 8]);
+    let dest_token = Bytes::from_array(&env, &[0xCC; 12]);
+    let token_receiver = Bytes::from_array(&env, &[0xDD; 6]);
+    let extra_data = Bytes::from_array(&env, &[0xEE; 4]);
+
+    let mut amount_bytes = [0u8; 32];
+    amount_bytes[30] = 0x01;
+    amount_bytes[31] = 0x23;
+
+    let original = CcipTokenTransferV1 {
+        version: 1,
+        amount: BytesN::from_array(&env, &amount_bytes),
+        source_pool_address: src_pool.clone(),
+        source_token_address: src_token.clone(),
+        dest_token_address: dest_token.clone(),
+        token_receiver: token_receiver.clone(),
+        extra_data: extra_data.clone(),
+    };
+
+    let encoded = original.to_bytes(&env);
+    let decoded = CcipTokenTransferV1::from_bytes(&env, &encoded).unwrap();
+
+    assert_eq!(decoded.version, original.version);
+    assert_eq!(decoded.amount.to_array(), original.amount.to_array());
+    assert_eq!(decoded.source_pool_address, src_pool);
+    assert_eq!(decoded.source_token_address, src_token);
+    assert_eq!(decoded.dest_token_address, dest_token);
+    assert_eq!(decoded.token_receiver, token_receiver);
+    assert_eq!(decoded.extra_data, extra_data);
+}
+
+#[test]
+fn test_token_transfer_v1_from_bytes_roundtrip_empty_variable_fields() {
+    let env = Env::default();
+    let original = CcipTokenTransferV1 {
+        version: 1,
+        amount: BytesN::from_array(&env, &[0u8; 32]),
+        source_pool_address: Bytes::new(&env),
+        source_token_address: Bytes::new(&env),
+        dest_token_address: Bytes::new(&env),
+        token_receiver: Bytes::new(&env),
+        extra_data: Bytes::new(&env),
+    };
+
+    let encoded = original.to_bytes(&env);
+    let decoded = CcipTokenTransferV1::from_bytes(&env, &encoded).unwrap();
+    assert_eq!(decoded.version, 1);
+    assert_eq!(decoded.amount.to_array(), [0u8; 32]);
+    assert_eq!(decoded.extra_data.len(), 0);
+}
+
+#[test]
+fn test_token_transfer_v1_from_bytes_truncated_returns_decoding_error() {
+    let env = Env::default();
+    let tt = CcipTokenTransferV1 {
+        version: 1,
+        amount: BytesN::from_array(&env, &[1u8; 32]),
+        source_pool_address: Bytes::from_array(&env, &[2u8; 5]),
+        source_token_address: Bytes::new(&env),
+        dest_token_address: Bytes::new(&env),
+        token_receiver: Bytes::new(&env),
+        extra_data: Bytes::new(&env),
+    };
+    let encoded = tt.to_bytes(&env);
+    let truncated = encoded.slice(0..encoded.len() - 1);
+
+    let err = CcipTokenTransferV1::from_bytes(&env, &truncated);
+    assert!(matches!(err, Err(CCIPError::MessageDecodingError)));
+}
+
+#[test]
+fn test_token_transfer_v1_from_bytes_too_short_returns_decoding_error() {
+    let env = Env::default();
+    let short = Bytes::from_array(&env, &[0u8; 10]);
+    let err = CcipTokenTransferV1::from_bytes(&env, &short);
+    assert!(matches!(err, Err(CCIPError::MessageDecodingError)));
 }
 
 // ============================================================

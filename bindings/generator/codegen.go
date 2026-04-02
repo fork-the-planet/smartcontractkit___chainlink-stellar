@@ -144,7 +144,7 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t%s = v\n", target))
-	case strings.Contains(f.Type, "Option<") && strings.Contains(f.Type, "soroban_sdk::Address"):
+	case strings.HasPrefix(f.Type, "Option<") && strings.Contains(f.Type, "soroban_sdk::Address"):
 		b.WriteString("\t\t\tv, err := scval.OptionalAddressFromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err != nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
@@ -206,7 +206,13 @@ func generateVecItemParse(b *strings.Builder, innerType, target string) {
 		b.WriteString("\t\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 	default:
-		if n := extractBytesNSize(innerType); n > 0 {
+		if strings.HasPrefix(innerType, "Option<") && strings.Contains(innerType, "soroban_sdk::Address") {
+			b.WriteString("\t\t\t\tv, err := scval.OptionalAddressFromScVal(item)\n")
+			b.WriteString("\t\t\t\tif err != nil {\n")
+			b.WriteString("\t\t\t\t\treturn nil, err\n")
+			b.WriteString("\t\t\t\t}\n")
+			b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+		} else if n := extractBytesNSize(innerType); n > 0 {
 			b.WriteString(fmt.Sprintf("\t\t\t\tv, err := scval.Bytes%dFromScVal(item)\n", n))
 			b.WriteString("\t\t\t\tif err != nil {\n")
 			b.WriteString("\t\t\t\t\treturn nil, err\n")
@@ -385,7 +391,7 @@ func getToScValConverter(rustType, expr string) string {
 		return fmt.Sprintf("scval.BytesToScVal(%s)", expr)
 	}
 
-	if strings.Contains(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
+	if strings.HasPrefix(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
 		return fmt.Sprintf("scval.OptionalAddressToScVal(%s)", expr)
 	}
 

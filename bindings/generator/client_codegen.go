@@ -203,7 +203,7 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\t\treturn nil, fmt.Errorf(\"expected bytes return type\")\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn []byte(v), nil\n")
-	case strings.Contains(returnType, "Option<") && strings.Contains(returnType, "soroban_sdk::Address"):
+	case strings.HasPrefix(returnType, "Option<") && strings.Contains(returnType, "soroban_sdk::Address"):
 		b.WriteString("\tv, err := scval.OptionalAddressFromScVal(*result)\n")
 		b.WriteString("\tif err != nil {\n")
 		b.WriteString("\t\treturn nil, err\n")
@@ -236,7 +236,21 @@ func generateReturnValueParsing(b *strings.Builder, returnType string) {
 		b.WriteString("\treturn v, nil\n")
 	case strings.HasPrefix(returnType, "soroban_sdk::Vec<"):
 		innerType := extractVecInnerType(returnType)
-		if innerType == "soroban_sdk::Address" {
+		if strings.HasPrefix(innerType, "Option<") && strings.Contains(innerType, "soroban_sdk::Address") {
+			b.WriteString("\tvec, ok := result.GetVec()\n")
+			b.WriteString("\tif !ok || vec == nil {\n")
+			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\tout := make([]*string, len(*vec))\n")
+			b.WriteString("\tfor i, item := range *vec {\n")
+			b.WriteString("\t\tv, err := scval.OptionalAddressFromScVal(item)\n")
+			b.WriteString("\t\tif err != nil {\n")
+			b.WriteString("\t\t\treturn nil, err\n")
+			b.WriteString("\t\t}\n")
+			b.WriteString("\t\tout[i] = v\n")
+			b.WriteString("\t}\n")
+			b.WriteString("\treturn out, nil\n")
+		} else if innerType == "soroban_sdk::Address" {
 			b.WriteString("\tvec, ok := result.GetVec()\n")
 			b.WriteString("\tif !ok || vec == nil {\n")
 			b.WriteString("\t\treturn nil, fmt.Errorf(\"expected vec return type\")\n")
@@ -445,7 +459,7 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 		b.WriteString("\t\t\t}\n")
-	case strings.Contains(f.Type, "Option<") && strings.Contains(f.Type, "soroban_sdk::Address"):
+	case strings.HasPrefix(f.Type, "Option<") && strings.Contains(f.Type, "soroban_sdk::Address"):
 		b.WriteString("\t\t\tv, err := scval.OptionalAddressFromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err == nil {\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
@@ -470,7 +484,15 @@ func generateEventFieldParsing(b *strings.Builder, f Field, target string) {
 		innerType := extractVecInnerType(f.Type)
 		b.WriteString("\t\t\tvec, ok := entry.Val.GetVec()\n")
 		b.WriteString("\t\t\tif ok && vec != nil {\n")
-		if innerType == "soroban_sdk::Address" {
+		if strings.HasPrefix(innerType, "Option<") && strings.Contains(innerType, "soroban_sdk::Address") {
+			b.WriteString("\t\t\t\tparsed := make([]*string, len(*vec))\n")
+			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
+			b.WriteString("\t\t\t\t\tv, err := scval.OptionalAddressFromScVal(item)\n")
+			b.WriteString("\t\t\t\t\tif err == nil {\n")
+			b.WriteString("\t\t\t\t\t\tparsed[i] = v\n")
+			b.WriteString("\t\t\t\t\t}\n")
+			b.WriteString("\t\t\t\t}\n")
+		} else if innerType == "soroban_sdk::Address" {
 			b.WriteString(fmt.Sprintf("\t\t\t\tparsed := make([]string, len(*vec))\n"))
 			b.WriteString("\t\t\t\tfor i, item := range *vec {\n")
 			b.WriteString("\t\t\t\t\tv, err := scval.AddressFromScVal(item)\n")
@@ -645,7 +667,7 @@ func getArgConverter(rustType, varName string) string {
 		return fmt.Sprintf("scval.BytesToScVal(%s)", varName)
 	}
 
-	if strings.Contains(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
+	if strings.HasPrefix(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
 		return fmt.Sprintf("scval.OptionalAddressToScVal(%s)", varName)
 	}
 
