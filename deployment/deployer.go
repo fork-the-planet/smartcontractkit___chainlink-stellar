@@ -952,6 +952,80 @@ func (d *Deployer) NativeAccountState(ctx context.Context, rawAccountKey []byte)
 	return big.NewInt(int64(account.Balance)), uint64(seqN), true, nil
 }
 
+// SubmitClassicOperation builds, signs, and submits a single classic Stellar
+// operation (e.g. ChangeTrust, Payment) via the Soroban RPC.
+func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Operation) error {
+	src, err := d.getSourceAccount(ctx)
+	if err != nil {
+		return fmt.Errorf("load source account: %w", err)
+	}
+	_, err = d.buildAndSubmitTransaction(ctx, src, op)
+	return err
+}
+
+// DeploySACToken deploys a Soroban Asset Contract (SAC) wrapper for a classic
+// Stellar asset and returns the resulting contract ID (C… strkey).
+// The contract address is deterministic based on the network passphrase and asset.
+func (d *Deployer) DeploySACToken(ctx context.Context, asset xdr.Asset) (string, error) {
+	src, err := d.getSourceAccount(ctx)
+	if err != nil {
+		return "", fmt.Errorf("load source account: %w", err)
+	}
+
+	op := &txnbuild.InvokeHostFunction{
+		HostFunction: xdr.HostFunction{
+			Type: xdr.HostFunctionTypeHostFunctionTypeCreateContract,
+			CreateContract: &xdr.CreateContractArgs{
+				ContractIdPreimage: xdr.ContractIdPreimage{
+					Type:      xdr.ContractIdPreimageTypeContractIdPreimageFromAsset,
+					FromAsset: &asset,
+				},
+				Executable: xdr.ContractExecutable{
+					Type: xdr.ContractExecutableTypeContractExecutableStellarAsset,
+				},
+			},
+		},
+		SourceAccount: d.signer.Address(),
+	}
+
+	if _, err = d.buildAndSubmitTransaction(ctx, src, op); err != nil {
+		return "", fmt.Errorf("deploy SAC: %w", err)
+	}
+
+	contractID, err := ComputeSACContractID(d.networkPassphrase, asset)
+	if err != nil {
+		return "", fmt.Errorf("compute SAC contract ID: %w", err)
+	}
+	return contractID, nil
+}
+
+// ComputeSACContractID returns the deterministic contract address (C… strkey)
+// for a Soroban Asset Contract wrapping the given classic Stellar asset.
+func ComputeSACContractID(networkPassphrase string, asset xdr.Asset) (string, error) {
+	networkID := sha256.Sum256([]byte(networkPassphrase))
+	preimage := xdr.HashIdPreimage{
+		Type: xdr.EnvelopeTypeEnvelopeTypeContractId,
+		ContractId: &xdr.HashIdPreimageContractId{
+			NetworkId: networkID,
+			ContractIdPreimage: xdr.ContractIdPreimage{
+				Type:      xdr.ContractIdPreimageTypeContractIdPreimageFromAsset,
+				FromAsset: &asset,
+			},
+		},
+	}
+	b, err := preimage.MarshalBinary()
+	if err != nil {
+		return "", fmt.Errorf("marshal preimage: %w", err)
+	}
+	h := sha256.Sum256(b)
+	return strkey.Encode(strkey.VersionByteContract, h[:])
+}
+
+// SignerAddress returns the G… strkey of the deployer's signing keypair.
+func (d *Deployer) SignerAddress() string {
+	return d.signer.Address()
+}
+
 // SendNativePayment submits a payment of stroops native XLM from the deployer's account.
 func (d *Deployer) SendNativePayment(ctx context.Context, destinationStrkey string, stroops int64) error {
 	if stroops <= 0 {
