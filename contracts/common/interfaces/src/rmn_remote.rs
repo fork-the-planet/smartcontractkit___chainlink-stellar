@@ -193,6 +193,11 @@ pub enum CCIPError {
     MessageDecodingError = 113,
     ReceiverDoesNotExist = 114,
     ReceiverNotWasmContract = 115,
+    OnlyRegistryModuleOrOwner = 201,
+    OnlyAdministrator = 202,
+    OnlyPendingAdministrator = 203,
+    TokenAlreadyRegistered = 204,
+    InvalidTokenPoolToken = 205,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }
