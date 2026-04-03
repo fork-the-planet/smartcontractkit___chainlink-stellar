@@ -1,6 +1,8 @@
 package e2e_tests
 
 import (
+	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"testing"
 	"time"
@@ -60,46 +62,8 @@ func TestStellarToEVMExecution(t *testing.T) {
 		require.NoError(t, err)
 		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
 
-		seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
-		require.NoError(t, err)
-		l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from Stellar OnRamp")
-
-		sendResult, err := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
-			cciptestinterfaces.MessageFields{
-				Receiver: evmReceiver,
-				Data:     []byte("hello from stellar"),
-			},
-			cciptestinterfaces.MessageOptions{},
-		)
-		require.NoError(t, err)
-		l.Info().
-			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
-			Msg("CCIP message sent from Stellar")
-
-		sentEvent, err := stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, stellarSentTimeout)
-		require.NoError(t, err)
-		messageID := sentEvent.MessageID
-		l.Info().
-			Str("messageID", hex.EncodeToString(messageID[:])).
-			Msg("Sent event confirmed on Stellar")
-
-		defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
-		require.NotNil(t, defaultAggregatorClient)
-
-		testCtx := e2e.NewTestingContext(t, t.Context(), env.Chains, defaultAggregatorClient, env.IndexerMonitor)
-		result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
-			TickInterval:            1 * time.Second,
-			ExpectedVerifierResults: 1,
-			Timeout:                 tests.WaitTimeout(t),
-			AssertVerifierLogs:      false,
-			AssertExecutorLogs:      false,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, result.AggregatedResult)
-		require.Len(t, result.IndexedVerifications.Results, 1)
-		l.Info().
-			Str("messageID", hex.EncodeToString(messageID[:])).
-			Msg("Message verified and aggregated successfully")
+		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
+			"hello from stellar", "Message verified and aggregated successfully")
 
 		// TODO: uncomment once EVM executor is wired up for Stellar-sourced messages.
 		// execEvent, err := evmChain.WaitOneExecEventBySeqNo(t.Context(), stellarDetails.ChainSelector, seqNo, execTimeout)
@@ -117,4 +81,109 @@ func TestStellarToEVMExecution(t *testing.T) {
 		// 	Uint64("seqNo", seqNo).
 		// 	Msg("Message executed successfully on EVM")
 	})
+
+	t.Run("stellar_to_evm_execution_cursed_destination", func(t *testing.T) {
+		evmReceiver, err := evmChain.GetEOAReceiverAddress()
+		require.NoError(t, err)
+		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
+
+		// Curse the EVM destination chain and ensure it gets uncursed even if test fails
+		l.Info().Uint64("chainSelector", evmDetails.ChainSelector).Msg("Cursing EVM destination chain")
+		err = stellarChain.Curse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+		require.NoError(t, err)
+		l.Info().Msg("✅ EVM destination chain cursed successfully")
+
+		t.Cleanup(func() {
+			l.Info().Msg("🔓 Cleaning up: uncursing EVM destination chain")
+			_ = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+		})
+
+		// Try to send a message from Stellar to the cursed EVM chain
+		// This should fail with an error because the Router will reject it due to RMN curse
+		l.Info().Msg("📨 Attempting to send message to cursed EVM destination")
+		_, sendErr := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+			cciptestinterfaces.MessageFields{
+				Receiver: evmReceiver,
+				Data:     []byte("should fail - chain is cursed"),
+			},
+			cciptestinterfaces.MessageOptions{},
+		)
+		require.Error(t, sendErr, "sending message to cursed chain should fail")
+		l.Info().Err(sendErr).Msg("✅ Message send failed as expected due to curse on destination chain")
+
+		// Uncurse the EVM destination chain
+		l.Info().Msg("🔓 Uncursing EVM destination chain")
+		err = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+		require.NoError(t, err)
+		l.Info().Msg("✅ EVM destination chain uncursed successfully")
+
+		// Now sending a message should work
+		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
+			"hello from stellar after uncurse", "Message verified and aggregated successfully after uncurse")
+	})
+}
+
+// chainSelectorToSubject converts a chain selector to a bytes16 curse subject.
+func chainSelectorToSubject(chainSel uint64) [16]byte {
+	var result [16]byte
+	// Convert the uint64 to bytes and place it in the last 8 bytes of the array
+	binary.BigEndian.PutUint64(result[8:], chainSel)
+	return result
+}
+
+// sendAndVerifyMessage sends a CCIP message from Stellar to EVM and verifies it was processed.
+// It handles the complete flow: get sequence number, send message, wait for sent event,
+// and verify the message was verified and aggregated.
+func sendAndVerifyMessage(
+	t *testing.T,
+	ctx context.Context,
+	l *zerolog.Logger,
+	stellarChain cciptestinterfaces.CCIP17,
+	env *helpers.E2ETestEnv,
+	evmDetails *chainsel.ChainDetails,
+	receiver []byte,
+	messageData string,
+	successMsg string,
+) {
+	seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
+	require.NoError(t, err)
+	l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from Stellar OnRamp")
+
+	sendResult, err := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+		cciptestinterfaces.MessageFields{
+			Receiver: receiver,
+			Data:     []byte(messageData),
+		},
+		cciptestinterfaces.MessageOptions{},
+	)
+	require.NoError(t, err)
+	l.Info().
+		Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
+		Msg("CCIP message sent from Stellar")
+
+	sentEvent, err := stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, stellarSentTimeout)
+	require.NoError(t, err)
+	messageID := sentEvent.MessageID
+	l.Info().
+		Str("messageID", hex.EncodeToString(messageID[:])).
+		Msg("Sent event confirmed on Stellar")
+
+	// Verify the message was processed
+	defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
+	require.NotNil(t, defaultAggregatorClient)
+
+	testCtx := e2e.NewTestingContext(t, ctx, env.Chains, defaultAggregatorClient, env.IndexerMonitor)
+	result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
+		TickInterval:            1 * time.Second,
+		ExpectedVerifierResults: 1,
+		Timeout:                 tests.WaitTimeout(t),
+		AssertVerifierLogs:      false,
+		AssertExecutorLogs:      false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.AggregatedResult)
+	require.Len(t, result.IndexedVerifications.Results, 1)
+	l.Info().
+		Str("messageID", hex.EncodeToString(messageID[:])).
+		Msg(successMsg)
 }

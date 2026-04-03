@@ -241,6 +241,28 @@ func (c *OffRampClient) GetStaticConfig(ctx context.Context) (*StaticConfig, err
 	return StaticConfigFromScVal(*result)
 }
 
+// IsSubjectCursed calls the is_subject_cursed function on the contract.
+func (c *OffRampClient) IsSubjectCursed(ctx context.Context, subject [16]byte) (bool, error) {
+	args := []xdr.ScVal{
+		scval.Bytes16ToScVal(subject),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_subject_cursed", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_subject_cursed: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_subject_cursed")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
 // RequireNotCursed calls the require_not_cursed function on the contract.
 func (c *OffRampClient) RequireNotCursed(ctx context.Context) error {
 	args := []xdr.ScVal{}
@@ -305,6 +327,21 @@ func (c *OffRampClient) GetSourceChainConfig(ctx context.Context, sourceChainSel
 	return SourceChainConfigFromScVal(*result)
 }
 
+// RequireChainNotCursed calls the require_chain_not_cursed function on the contract.
+func (c *OffRampClient) RequireChainNotCursed(ctx context.Context, chainSelector uint64) error {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(chainSelector),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "require_chain_not_cursed", args)
+	if err != nil {
+		return fmt.Errorf("failed to call require_chain_not_cursed: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
 func (c *OffRampClient) CancelOwnershipTransfer(ctx context.Context) error {
 	args := []xdr.ScVal{}
@@ -327,6 +364,21 @@ func (c *OffRampClient) ExtendExecutionStateTtl(ctx context.Context, messageId [
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extend_execution_state_ttl", args)
 	if err != nil {
 		return fmt.Errorf("failed to call extend_execution_state_ttl: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// RequireSubjectNotCursed calls the require_subject_not_cursed function on the contract.
+func (c *OffRampClient) RequireSubjectNotCursed(ctx context.Context, subject [16]byte) error {
+	args := []xdr.ScVal{
+		scval.Bytes16ToScVal(subject),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "require_subject_not_cursed", args)
+	if err != nil {
+		return fmt.Errorf("failed to call require_subject_not_cursed: %w", err)
 	}
 
 	_ = result // void return

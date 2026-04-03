@@ -26,6 +26,10 @@ pub trait OffRampInterface {
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_static_config(env: soroban_sdk::Env) -> Result<StaticConfig, CCIPError>;
+    fn is_subject_cursed(
+        env: soroban_sdk::Env,
+        subject: soroban_sdk::BytesN<16>,
+    ) -> Result<bool, CCIPError>;
     fn require_not_cursed(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn transfer_ownership(
         env: soroban_sdk::Env,
@@ -39,10 +43,18 @@ pub trait OffRampInterface {
         env: soroban_sdk::Env,
         source_chain_selector: u64,
     ) -> Result<SourceChainConfig, CCIPError>;
+    fn require_chain_not_cursed(
+        env: soroban_sdk::Env,
+        chain_selector: u64,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn extend_execution_state_ttl(
         env: soroban_sdk::Env,
         message_id: soroban_sdk::BytesN<32>,
+    ) -> Result<(), CCIPError>;
+    fn require_subject_not_cursed(
+        env: soroban_sdk::Env,
+        subject: soroban_sdk::BytesN<16>,
     ) -> Result<(), CCIPError>;
     fn get_all_source_chain_configs(
         env: soroban_sdk::Env,
