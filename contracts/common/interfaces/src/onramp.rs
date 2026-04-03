@@ -27,6 +27,10 @@ pub trait OnRampInterface {
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_static_config(env: soroban_sdk::Env) -> Result<StaticConfig, CCIPError>;
+    fn is_subject_cursed(
+        env: soroban_sdk::Env,
+        subject: soroban_sdk::BytesN<16>,
+    ) -> Result<bool, CCIPError>;
     fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
     fn require_not_cursed(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn set_dynamic_config(
@@ -56,10 +60,18 @@ pub trait OnRampInterface {
         env: soroban_sdk::Env,
         source_token: soroban_sdk::Address,
     ) -> Result<soroban_sdk::Address, CCIPError>;
+    fn require_chain_not_cursed(
+        env: soroban_sdk::Env,
+        chain_selector: u64,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_all_dest_chain_configs(
         env: soroban_sdk::Env,
     ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<DestChainConfig>), CCIPError>;
+    fn require_subject_not_cursed(
+        env: soroban_sdk::Env,
+        subject: soroban_sdk::BytesN<16>,
+    ) -> Result<(), CCIPError>;
     fn apply_dest_chain_config_updates(
         env: soroban_sdk::Env,
         dest_chain_config_args: soroban_sdk::Vec<DestChainConfigArgs>,

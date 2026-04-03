@@ -109,10 +109,10 @@ func main() {
 					}
 
 					// TODO: get deployer keypair from env instead of generating a random one
-					deployerSeed := sha256.Sum256(fmt.Appendf(nil, "deployer-%s", tc.NetworkPassphrase))
+					deployerSeed := sha256.Sum256(fmt.Appendf(nil, "executor-%s", tc.NetworkPassphrase))
 					deployerKeypair, err := keypair.FromRawSeed(deployerSeed)
 					if err != nil {
-						return nil, fmt.Errorf("failed to create deployer keypair for chain %s: %w", strSel, err)
+						return nil, fmt.Errorf("failed to create executor keypair for chain %s: %w", strSel, err)
 					}
 
 					zerologLogger := zerolog.New(os.Stdout).With().

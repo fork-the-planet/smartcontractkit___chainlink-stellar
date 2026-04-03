@@ -20,7 +20,9 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_0_0/operations/rmn_proxy"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
@@ -31,6 +33,8 @@ import (
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
+	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -201,6 +205,36 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
 			if convErr == nil {
 				chain.receiverContractID = receiverContractID
+			}
+		}
+
+		rmnProxyKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(rmn_proxy.ContractType),
+			semver.MustParse(rmn_proxy.Deploy.Version()),
+			"",
+		)
+		rmnProxyRef, err := env.DataStore.Addresses().Get(rmnProxyKey)
+		if err == nil && rmnProxyRef.Address != "" {
+			rmnProxyContractID, convErr := scval.HexToContractStrkey(rmnProxyRef.Address)
+			if convErr == nil {
+				chain.rmnProxyContractID = rmnProxyContractID
+				chain.rmnProxyClient = rmnproxybindings.NewRmnProxyClient(deployer, rmnProxyContractID)
+			}
+		}
+
+		rmnRemoteKey := datastore.NewAddressRefKey(
+			details.ChainSelector,
+			datastore.ContractType(rmn_remote.ContractType),
+			semver.MustParse(rmn_remote.Deploy.Version()),
+			"",
+		)
+		rmnRemoteRef, err := env.DataStore.Addresses().Get(rmnRemoteKey)
+		if err == nil && rmnRemoteRef.Address != "" {
+			rmnRemoteContractID, convErr := scval.HexToContractStrkey(rmnRemoteRef.Address)
+			if convErr == nil {
+				chain.rmnRemoteContractID = rmnRemoteContractID
+				chain.rmnRemoteClient = rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteContractID)
 			}
 		}
 	}

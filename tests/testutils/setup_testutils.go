@@ -225,6 +225,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 
 type E2ETestEnv struct {
 	DeployerKP         *keypair.Full
+	ExecutorKP         *keypair.Full
 	Deployer           *deployment.Deployer
 	RPCClient          *rpcclient.Client
 	NetworkPassphrase  string
@@ -340,6 +341,20 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	require.NoError(t, err)
 	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Derived deployer keypair (matches chain.go)")
 
+	// Fund the executor account so the Docker-based executor can submit
+	// transactions (OffRamp.execute) without sharing the deployer's sequence.
+	executorSeed := sha256.Sum256(fmt.Appendf(nil, "executor-%s", networkPassphrase))
+	executorKP, err := keypair.FromRawSeed(executorSeed)
+	require.NoError(t, err)
+	resp, err := http.Get(fmt.Sprintf("%s?addr=%s", friendbotURL, executorKP.Address()))
+	require.NoError(t, err)
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		l.Info().Str("executorAddress", executorKP.Address()).Msg("Funded executor account via Friendbot")
+	} else {
+		l.Info().Str("executorAddress", executorKP.Address()).Int("status", resp.StatusCode).Msg("Executor account already funded")
+	}
+
 	// Create Soroban RPC client
 	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
 	t.Cleanup(func() { rpc.Close() })
@@ -351,6 +366,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	return &E2ETestEnv{
 		DeployerKP:         deployerKP,
+		ExecutorKP:         executorKP,
 		Deployer:           deployer,
 		RPCClient:          rpc,
 		NetworkPassphrase:  networkPassphrase,

@@ -13,6 +13,7 @@ use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_interfaces::onramp::OnRampClient;
 use common_interfaces::rmn_proxy::RmnProxyClient;
+use common_interfaces::rmn_remote::RmnRemoteClient;
 use common_message::{AnyToStellarMessage, StellarToAnyMessage};
 use events::{
     CCIPSendRequestedEvent, MessageExecutedEvent, OffRampAddedEvent, OffRampRemovedEvent,
@@ -158,7 +159,14 @@ impl RouterContract {
         sender.require_auth();
 
         <Self as Initializable>::require_initialized(&env)?;
-        Self::require_not_cursed(&env)?;
+
+        // Convert destination chain selector to subject (last 8 bytes)
+        let selector_bytes = dest_chain_selector.to_be_bytes();
+        let mut subject_array = [0u8; 16];
+        subject_array[8..16].copy_from_slice(&selector_bytes);
+        let subject_bytes = BytesN::<16>::from_array(&env, &subject_array);
+
+        Self::require_not_cursed(&env, &subject_bytes)?;
 
         // Get OnRamp for destination
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
@@ -224,7 +232,14 @@ impl RouterContract {
         message: AnyToStellarMessage,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Self::require_not_cursed(&env)?;
+
+        // Convert source chain selector to subject (last 8 bytes)
+        let selector_bytes = source_chain_selector.to_be_bytes();
+        let mut subject_array = [0u8; 16];
+        subject_array[8..16].copy_from_slice(&selector_bytes);
+        let subject_bytes = BytesN::<16>::from_array(&env, &subject_array);
+
+        Self::require_not_cursed(&env, &subject_bytes)?;
 
         if !Self::is_offramp_internal(&env, source_chain_selector, offramp.clone()) {
             return Err(CCIPError::CallerNotAuthorized);
@@ -632,7 +647,7 @@ impl RouterContract {
     // Internal Helper Functions
     // ========================================
 
-    fn require_not_cursed(env: &Env) -> Result<(), CCIPError> {
+    fn require_not_cursed(env: &Env, subject: &BytesN<16>) -> Result<(), CCIPError> {
         let config: RouterConfig = env
             .storage()
             .instance()
@@ -641,9 +656,22 @@ impl RouterContract {
 
         // Cross-contract call to RMN Proxy to check curse status
         let rmn_proxy_client = RmnProxyClient::new(env, &config.rmn_proxy);
-        let is_cursed = rmn_proxy_client.is_cursed();
 
-        if is_cursed {
+        // Check if globally cursed (RMN Proxy global curse)
+        // The client call returns bool (not Result), so no ? operator
+        let is_globally_cursed = rmn_proxy_client.is_cursed();
+        if is_globally_cursed {
+            return Err(CCIPError::BadRMNSignal);
+        }
+
+        // Get the RMN Remote implementation address from the proxy
+        // The client call returns Address (not Result), so no ? operator
+        let rmn_address = rmn_proxy_client.get_rmn();
+
+        // Check if this specific subject (chain) is cursed (RMN Remote specific curse)
+        let rmn_client = RmnRemoteClient::new(env, &rmn_address);
+        let is_subject_cursed = rmn_client.is_cursed_by_subject(subject);
+        if is_subject_cursed {
             return Err(CCIPError::BadRMNSignal);
         }
 

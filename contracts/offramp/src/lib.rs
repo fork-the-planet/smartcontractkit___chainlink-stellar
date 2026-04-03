@@ -124,7 +124,6 @@ impl OffRampContract {
         gas_limit_override: u32,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as CurseCheckable>::require_not_cursed(&env)?;
 
         ReentrancyGuard::enter(&env)?;
 
@@ -132,6 +131,9 @@ impl OffRampContract {
 
         // Decode the canonical message
         let message = CcipMessageV1::from_bytes(&env, &encoded_message)?;
+
+        // Check if the source chain is cursed (both global and source-specific curse)
+        <Self as CurseCheckable>::require_chain_not_cursed(&env, message.source_chain_selector)?;
 
         // Source chain must be enabled
         let source_config =
