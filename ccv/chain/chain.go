@@ -104,23 +104,27 @@ var (
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
 type Chain struct {
-	chainSelector      uint64
-	logger             zerolog.Logger
-	rpcClient          *rpcclient.Client
-	networkPassphrase  string
-	sorobanRPCURL      string
-	deployerKeypair    *keypair.Full
-	deployer           *stellardeployment.Deployer
-	onRampClient       *onrampbindings.OnRampClient
-	onRampContractID   string
-	offRampClient      *offrampbindings.OffRampClient
-	offRampContractID  string
-	routerClient       *routerbindings.RouterClient
-	routerContractID   string
-	feeQuoterClient    *fqbindings.FeeQuoterClient
-	vvrContractID      string
-	cvContractID       string
-	receiverContractID string
+	chainSelector       uint64
+	logger              zerolog.Logger
+	rpcClient           *rpcclient.Client
+	networkPassphrase   string
+	sorobanRPCURL       string
+	deployerKeypair     *keypair.Full
+	deployer            *stellardeployment.Deployer
+	onRampClient        *onrampbindings.OnRampClient
+	onRampContractID    string
+	offRampClient       *offrampbindings.OffRampClient
+	offRampContractID   string
+	routerClient        *routerbindings.RouterClient
+	routerContractID    string
+	feeQuoterClient     *fqbindings.FeeQuoterClient
+	vvrContractID       string
+	cvContractID        string
+	receiverContractID  string
+	rmnProxyContractID  string
+	rmnProxyClient      *rmnproxybindings.RmnProxyClient
+	rmnRemoteContractID string
+	rmnRemoteClient     *rmnremotebindings.RmnRemoteClient
 }
 
 // New creates a new Stellar Chain instance.
@@ -1105,7 +1109,16 @@ func (c *Chain) FundNodes(ctx context.Context, cls []*simple_node_set.Input, bc 
 // Curse implements cciptestinterfaces.CCIP17.
 // Curses a list of chains on this chain's RMN.
 func (c *Chain) Curse(ctx context.Context, subjects [][16]byte) error {
-	// TODO: implement RMN curse for Stellar
+	if c.rmnRemoteClient == nil {
+		return fmt.Errorf("RMN Remote client not initialized")
+	}
+	err := c.rmnRemoteClient.Curse(ctx, subjects)
+	if err != nil {
+		return fmt.Errorf("failed to curse RMN Remote: %w", err)
+	}
+	c.logger.Debug().
+		Int("numSubjects", len(subjects)).
+		Msg("Cursed RMN Remote")
 	return nil
 }
 
@@ -1332,7 +1345,16 @@ func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cc
 // Uncurse implements cciptestinterfaces.CCIP17.
 // Uncurses a list of chains on this chain's RMN.
 func (c *Chain) Uncurse(ctx context.Context, subjects [][16]byte) error {
-	// TODO: implement RMN uncurse for Stellar
+	if c.rmnRemoteClient == nil {
+		return fmt.Errorf("RMN Remote client not initialized")
+	}
+	err := c.rmnRemoteClient.Uncurse(ctx, subjects)
+	if err != nil {
+		return fmt.Errorf("failed to uncurse RMN Remote: %w", err)
+	}
+	c.logger.Debug().
+		Int("numSubjects", len(subjects)).
+		Msg("Uncursed RMN Remote")
 	return nil
 }
 
