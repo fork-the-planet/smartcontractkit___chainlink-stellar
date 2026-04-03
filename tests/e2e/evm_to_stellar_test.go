@@ -174,8 +174,6 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 //
 //	go test -v -timeout 10m ./tests/e2e/... -run TestEVMToStellarExecutionCursedSource
 func TestEVMToStellarExecutionCursedSource(t *testing.T) {
-	// t.Skip("Skipping")
-
 	configOutputPath := "../env/env-stellar-evm-out.toml"
 
 	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
