@@ -174,7 +174,7 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 //
 //	go test -v -timeout 10m ./tests/e2e/... -run TestEVMToStellarExecutionCursedSource
 func TestEVMToStellarExecutionCursedSource(t *testing.T) {
-	t.Skip("Skipping")
+	// t.Skip("Skipping")
 
 	configOutputPath := "../env/env-stellar-evm-out.toml"
 
@@ -279,20 +279,37 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Str("messageID", hex.EncodeToString(messageID[:])).
 			Msg("✅ Confirmed: No execution event after 30 seconds (execution blocked by curse check)")
 
-		// Wait for the executor to give up on the cursed message
-		// The executor retries failed messages with a delay, so we need to wait long enough
-		// for it to exhaust its retry attempts before uncursing
-		l.Info().Msg("⏳ Waiting for executor to give up on cursed message...")
-		time.Sleep(240 * time.Second)
-
 		// Now uncurse the EVM source chain to allow execution
 		l.Info().Msg("🔓 Uncursing EVM source chain to allow execution")
 		err = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
 		require.NoError(t, err)
 		l.Info().Msg("✅ EVM source chain uncursed successfully")
 
-		// Send another message after uncursing
-		l.Info().Msg("📨 Sending message after uncurse")
+		// The first message (seqNo) was stuck in the executor's retry heap while
+		// cursed. After uncursing, the executor's curse cache will refresh and
+		// the stuck message should be retried and executed successfully.
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Uint64("seqNo", seqNo).
+			Msg("🔄 Waiting for stuck message to be retried and executed after uncurse")
+
+		execEventRetried, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)
+		require.NoError(t, err, "stuck message should have been retried and executed after uncurse")
+		require.Equalf(
+			t,
+			cciptestinterfaces.ExecutionStateSuccess,
+			execEventRetried.State,
+			"stuck message should have been successfully executed after uncurse, return data: %x",
+			execEventRetried.ReturnData,
+		)
+
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Uint64("seqNo", seqNo).
+			Msg("✅ Stuck message executed successfully after uncurse (retry worked)")
+
+		// Send another message after uncursing to verify normal flow is restored
+		l.Info().Msg("📨 Sending new message after uncurse")
 		seqNo2, err := evmChain.GetExpectedNextSequenceNumber(ctx, stellarDetails.ChainSelector)
 		require.NoError(t, err)
 
@@ -311,20 +328,20 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Str("messageID", hex.EncodeToString(sendResult2.MessageID[:])).
 			Msg("✅ CCIP message sent from EVM after uncurse")
 
-		// Verify execution succeeds after uncurse
+		// Verify execution succeeds for the new message too
 		execEvent2, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo2, execTimeout)
 		require.NoError(t, err)
 		require.Equalf(
 			t,
 			cciptestinterfaces.ExecutionStateSuccess,
 			execEvent2.State,
-			"message should have been successfully executed after uncurse, return data: %x",
+			"new message should have been successfully executed after uncurse, return data: %x",
 			execEvent2.ReturnData,
 		)
 
 		l.Info().
 			Str("messageID", hex.EncodeToString(sendResult2.MessageID[:])).
 			Uint64("seqNo", seqNo2).
-			Msg("✅ Message executed successfully on Stellar after uncurse")
+			Msg("✅ New message executed successfully on Stellar after uncurse")
 	})
 }
