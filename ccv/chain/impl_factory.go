@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
@@ -200,6 +201,20 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
 			if convErr == nil {
 				chain.receiverContractID = receiverContractID
+			}
+		}
+	}
+
+	// Re-derive the deterministic test SAC token address so that token transfer
+	// tests can call GetTokenAddress() without re-running deployment.
+	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("test-token-issuer-%s", networkPassphrase)))
+	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	if err == nil {
+		asset := txnbuild.CreditAsset{Code: testTokenAssetCode, Issuer: issuerKP.Address()}
+		xdrAsset, xdrErr := asset.ToXDR()
+		if xdrErr == nil {
+			if contractID, sacErr := stellardeployment.ComputeSACContractID(networkPassphrase, xdrAsset); sacErr == nil {
+				chain.testTokenContractID = contractID
 			}
 		}
 	}

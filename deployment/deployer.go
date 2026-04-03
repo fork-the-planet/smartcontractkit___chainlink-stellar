@@ -954,12 +954,60 @@ func (d *Deployer) NativeAccountState(ctx context.Context, rawAccountKey []byte)
 
 // SubmitClassicOperation builds, signs, and submits a single classic Stellar
 // operation (e.g. ChangeTrust, Payment) via the Soroban RPC.
+// Classic operations cannot be simulated through the Soroban RPC, so this
+// method bypasses simulation and submits the transaction directly.
 func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Operation) error {
 	src, err := d.getSourceAccount(ctx)
 	if err != nil {
 		return fmt.Errorf("load source account: %w", err)
 	}
-	_, err = d.buildAndSubmitTransaction(ctx, src, op)
+
+	tx, err := txnbuild.NewTransaction(
+		txnbuild.TransactionParams{
+			SourceAccount:        src,
+			IncrementSequenceNum: true,
+			Operations:           []txnbuild.Operation{op},
+			BaseFee:              txnbuild.MinBaseFee,
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("build transaction: %w", err)
+	}
+
+	signedTx, err := tx.Sign(d.networkPassphrase, d.signer)
+	if err != nil {
+		return fmt.Errorf("sign transaction: %w", err)
+	}
+
+	signedXDR, err := signedTx.Base64()
+	if err != nil {
+		return fmt.Errorf("encode signed transaction: %w", err)
+	}
+
+	submitResult, err := d.rpcClient.SendTransaction(ctx, protocolrpc.SendTransactionRequest{
+		Transaction: signedXDR,
+	})
+	if err != nil {
+		return fmt.Errorf("submit transaction: %w", err)
+	}
+
+	switch submitResult.Status {
+	case "PENDING", "DUPLICATE":
+	case "TRY_AGAIN_LATER":
+		return fmt.Errorf("transaction submission failed: server overloaded, try again later")
+	case "ERROR":
+		if submitResult.ErrorResultXDR != "" {
+			return fmt.Errorf("transaction rejected: %v (diagnostics: %v)", submitResult.ErrorResultXDR, submitResult.DiagnosticEventsXDR)
+		}
+		return fmt.Errorf("transaction rejected with status ERROR")
+	default:
+		return fmt.Errorf("unexpected transaction status: %s", submitResult.Status)
+	}
+
+	d.accountSequence++
+
+	_, err = d.waitForTransaction(ctx, submitResult.Hash)
 	return err
 }
 

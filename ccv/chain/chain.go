@@ -541,6 +541,13 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 			return nil, fmt.Errorf("failed to initialize pool with token: %w", err)
 		}
 
+		deployerAddr := c.deployerKeypair.Address()
+		if err := c.tokenAdminRegistryClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
+			return nil, fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
+		}
+		if err := c.tokenAdminRegistryClient.AcceptAdminRole(ctx, tokenContractID); err != nil {
+			return nil, fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
+		}
 		if err := c.tokenAdminRegistryClient.SetPool(ctx, tokenContractID, &poolContractID); err != nil {
 			return nil, fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
 		}
