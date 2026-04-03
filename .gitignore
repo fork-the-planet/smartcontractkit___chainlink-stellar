@@ -19,3 +19,4 @@ generated/
 
 # E2E test output topology
 /tests/e2e/env/*-out.toml
+/tests/env/*-out.toml

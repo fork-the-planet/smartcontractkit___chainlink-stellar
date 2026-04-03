@@ -20,7 +20,7 @@ import (
 
 const (
 	tokenTransferSentTimeout = 30 * time.Second
-	tokenTransferAmount      = int64(1_000_000) // 1 token in SAC units (7-decimal)
+	tokenTransferAmount      = int64(1_000_000) // 0.1 token in SAC base units (7 decimals)
 )
 
 // TestStellarToEVMTokenTransfer validates the Stellar-to-EVM token transfer flow:

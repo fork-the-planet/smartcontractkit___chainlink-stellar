@@ -70,6 +70,9 @@ const stellarAddressLen = 32
 // Wasm contract address in tests.
 const CcipReceiverContractType = "CcipReceiverExample"
 
+const TokenAdminRegistryContractType = "token_admin_registry"
+const LockReleaseTokenPoolContractType = "lock_release_token_pool"
+
 // generateContractAddress generates a deterministic Soroban contract address from a name and network passphrase.
 // Soroban contract addresses are derived from the network ID (SHA-256 of passphrase) and a unique identifier.
 // The resulting address is 32 bytes (the raw ed25519 public key format used internally).
@@ -979,7 +982,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       tarHex,
 		ChainSelector: selector,
-		Type:          "token_admin_registry",
+		Type:          datastore.ContractType(TokenAdminRegistryContractType),
 		Version:       semver.MustParse("1.0.0"),
 	})
 
@@ -991,7 +994,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       poolHex,
 		ChainSelector: selector,
-		Type:          "lock_release_token_pool",
+		Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
 		Version:       semver.MustParse("1.0.0"),
 		Qualifier:     "TEST",
 	})
@@ -1457,17 +1460,21 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 
 	var tokenAmounts []routerbindings.TokenAmount
 	if fields.TokenAmount.Amount != nil && fields.TokenAmount.Amount.Sign() > 0 && len(fields.TokenAmount.TokenAddress) > 0 {
+		if !fields.TokenAmount.Amount.IsInt64() {
+			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("token amount out of int64 range: %s", fields.TokenAmount.Amount.String())
+		}
 		tokenAddr, encErr := strkey.Encode(strkey.VersionByteContract, []byte(fields.TokenAmount.TokenAddress))
 		if encErr != nil {
 			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("encode token address for send: %w", encErr)
 		}
+		tokenAmount := fields.TokenAmount.Amount.Int64()
 		tokenAmounts = []routerbindings.TokenAmount{{
 			Token:  tokenAddr,
-			Amount: fields.TokenAmount.Amount.Int64(),
+			Amount: tokenAmount,
 		}}
 		c.logger.Info().
 			Str("token", tokenAddr).
-			Int64("amount", fields.TokenAmount.Amount.Int64()).
+			Int64("amount", tokenAmount).
 			Msg("Including token transfer in CCIP message")
 	}
 

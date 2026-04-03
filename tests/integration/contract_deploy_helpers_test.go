@@ -341,7 +341,13 @@ func (s *fullStack) deployTokenPool(
 		t.Fatalf("TokenPool Initialize: %v", err)
 	}
 
-	// Register pool in token admin registry
+	// Two-step admin registration: propose deployer as administrator, accept, then set pool
+	if err := s.TokenAdminRegistryClient.ProposeAdministrator(ctx, deployerAddr, tokenID, deployerAddr); err != nil {
+		t.Fatalf("TokenAdminRegistry ProposeAdministrator: %v", err)
+	}
+	if err := s.TokenAdminRegistryClient.AcceptAdminRole(ctx, tokenID); err != nil {
+		t.Fatalf("TokenAdminRegistry AcceptAdminRole: %v", err)
+	}
 	if err := s.TokenAdminRegistryClient.SetPool(ctx, tokenID, &s.TokenPoolID); err != nil {
 		t.Fatalf("TokenAdminRegistry SetPool: %v", err)
 	}
