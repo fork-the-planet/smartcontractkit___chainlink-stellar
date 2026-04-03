@@ -159,13 +159,13 @@ impl RouterContract {
         sender.require_auth();
 
         <Self as Initializable>::require_initialized(&env)?;
-        
+
         // Convert destination chain selector to subject (last 8 bytes)
         let selector_bytes = dest_chain_selector.to_be_bytes();
         let mut subject_array = [0u8; 16];
         subject_array[8..16].copy_from_slice(&selector_bytes);
         let subject_bytes = BytesN::<16>::from_array(&env, &subject_array);
-        
+
         Self::require_not_cursed(&env, &subject_bytes)?;
 
         // Get OnRamp for destination
@@ -232,13 +232,13 @@ impl RouterContract {
         message: AnyToStellarMessage,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        
+
         // Convert source chain selector to subject (last 8 bytes)
         let selector_bytes = source_chain_selector.to_be_bytes();
         let mut subject_array = [0u8; 16];
         subject_array[8..16].copy_from_slice(&selector_bytes);
         let subject_bytes = BytesN::<16>::from_array(&env, &subject_array);
-        
+
         Self::require_not_cursed(&env, &subject_bytes)?;
 
         if !Self::is_offramp_internal(&env, source_chain_selector, offramp.clone()) {
@@ -656,18 +656,18 @@ impl RouterContract {
 
         // Cross-contract call to RMN Proxy to check curse status
         let rmn_proxy_client = RmnProxyClient::new(env, &config.rmn_proxy);
-        
+
         // Check if globally cursed (RMN Proxy global curse)
         // The client call returns bool (not Result), so no ? operator
         let is_globally_cursed = rmn_proxy_client.is_cursed();
         if is_globally_cursed {
             return Err(CCIPError::BadRMNSignal);
         }
-        
+
         // Get the RMN Remote implementation address from the proxy
         // The client call returns Address (not Result), so no ? operator
         let rmn_address = rmn_proxy_client.get_rmn();
-        
+
         // Check if this specific subject (chain) is cursed (RMN Remote specific curse)
         let rmn_client = RmnRemoteClient::new(env, &rmn_address);
         let is_subject_cursed = rmn_client.is_cursed_by_subject(subject);

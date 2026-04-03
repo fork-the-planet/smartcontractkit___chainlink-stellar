@@ -65,10 +65,10 @@ pub trait CurseCheckable: Initializable {
             .ok_or(CCIPError::NotInitialized)?;
 
         let rmn_proxy_client = RmnProxyClient::new(&env, &rmn_proxy);
-        
+
         // Get the RMN Remote implementation address from the proxy
         let rmn_address = rmn_proxy_client.get_rmn();
-        
+
         // Check if this specific subject (chain) is cursed
         let rmn_client = RmnRemoteClient::new(&env, &rmn_address);
         let is_subject_cursed = rmn_client.is_cursed_by_subject(subject);
