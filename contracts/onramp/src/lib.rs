@@ -247,7 +247,9 @@ impl OnRampContract {
         fee_token_amount: i128,
         original_sender: Address,
     ) -> Result<BytesN<32>, CCIPError> {
-        // Verify the original sender is authorized to send the message
+        // TODO(NONEVM-3946): Re-enable sender auth once the Router-to-OnRamp
+        // invocation tree correctly propagates sub-invocation authorization.
+        // Without this, any caller can forge the original_sender field.
         // original_sender.require_auth_for_args(Vec::from([
         //     dest_chain_selector.into_val(&env),
         //     message.to_bytes(&env).into_val(&env),

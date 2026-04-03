@@ -53,6 +53,8 @@ import (
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
+	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -67,6 +69,9 @@ const stellarAddressLen = 32
 // receiver deployed on Stellar so that GetEOAReceiverAddress can return a valid
 // Wasm contract address in tests.
 const CcipReceiverContractType = "CcipReceiverExample"
+
+const TokenAdminRegistryContractType = "token_admin_registry"
+const LockReleaseTokenPoolContractType = "lock_release_token_pool"
 
 // generateContractAddress generates a deterministic Soroban contract address from a name and network passphrase.
 // Soroban contract addresses are derived from the network ID (SHA-256 of passphrase) and a unique identifier.
@@ -125,6 +130,14 @@ type Chain struct {
 	rmnProxyClient      *rmnproxybindings.RmnProxyClient
 	rmnRemoteContractID string
 	rmnRemoteClient     *rmnremotebindings.RmnRemoteClient
+
+	tokenAdminRegistryContractID string
+	tokenAdminRegistryClient     *tarbindings.TokenAdminRegistryClient
+	tokenPoolContractID          string
+	tokenPoolClient              *tokenpoolbindings.TokenPoolClient
+	testTokenContractID          string
+	testTokenIssuerKeypair       *keypair.Full
+	friendbotURL                 string
 }
 
 // New creates a new Stellar Chain instance.
@@ -301,6 +314,30 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("apply router ramp updates in post-connect: %w", err)
 	}
 
+	// Configure pool chain updates so the pool accepts lock/burn and
+	// release/mint for each remote chain. The remote pool and token addresses
+	// are placeholders (zero bytes) because the EVM-side pool pairing is
+	// handled separately by the CCV token config pipeline.
+	// TODO(NONEVM-3946): populate real remote pool/token addresses once
+	// cross-chain pool pairing is implemented in PostConnect.
+	if c.tokenPoolClient != nil && c.testTokenContractID != "" {
+		var chainUpdates []tokenpoolbindings.ChainUpdate
+		for _, rs := range remoteSelectors {
+			remotePoolLen, addrErr := addressBytesLengthForSelector(rs)
+			if addrErr != nil {
+				return fmt.Errorf("address bytes length for %d: %w", rs, addrErr)
+			}
+			chainUpdates = append(chainUpdates, tokenpoolbindings.ChainUpdate{
+				RemoteChainSelector: rs,
+				RemotePoolAddresses: make([]byte, remotePoolLen),
+				RemoteTokenAddress:  make([]byte, remotePoolLen),
+			})
+		}
+		if err := c.tokenPoolClient.ApplyChainUpdates(context.Background(), chainUpdates, nil); err != nil {
+			return fmt.Errorf("apply pool chain updates in post-connect: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -461,13 +498,78 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
 
+	// Deploy TokenAdminRegistry
+	tarWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "token_admin_registry.wasm")
+	if _, statErr := os.Stat(tarWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("TokenAdminRegistry WASM not found at %s. Run 'make build'.", tarWasmPath)
+	}
+	c.logger.Info().Str("wasmPath", tarWasmPath).Msg("Deploying TokenAdminRegistry contract...")
+	tarSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "token-admin-registry")
+	tarContractID, err := c.deployer.DeployContract(ctx, tarWasmPath, tarSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy TokenAdminRegistry: %w", err)
+	}
+	c.tokenAdminRegistryContractID = tarContractID
+	c.tokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(c.deployer, tarContractID)
+	if err := c.tokenAdminRegistryClient.Initialize(ctx, c.deployerKeypair.Address()); err != nil {
+		return nil, fmt.Errorf("failed to initialize TokenAdminRegistry: %w", err)
+	}
+	c.logger.Info().Str("contractID", tarContractID).Msg("TokenAdminRegistry deployed and initialized")
+
+	// Deploy lock-release token pool
+	poolWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_lock_release_pool.wasm")
+	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
+	}
+	c.logger.Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract...")
+	poolSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "lock-release-pool")
+	poolContractID, err := c.deployer.DeployContract(ctx, poolWasmPath, poolSalt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy LockRelease pool: %w", err)
+	}
+	c.tokenPoolContractID = poolContractID
+	c.tokenPoolClient = tokenpoolbindings.NewTokenPoolClient(c.deployer, poolContractID)
+	c.logger.Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
+
+	// Create test SAC token, initialize pool, and register in TokenAdminRegistry.
+	// The token is a classic Stellar asset wrapped via a Soroban Asset Contract
+	// so that both lock-release and burn-mint pools can interact with it through
+	// the standard token::Client / StellarAssetClient interface.
+	if c.friendbotURL == "" {
+		c.logger.Warn().Msg("Friendbot URL not available; skipping test token deployment. Token transfer E2E tests will not work.")
+	} else {
+		tokenContractID, tokenErr := c.createTestToken(ctx, c.friendbotURL)
+		if tokenErr != nil {
+			return nil, fmt.Errorf("failed to create test token: %w", tokenErr)
+		}
+		c.testTokenContractID = tokenContractID
+
+		if err := c.tokenPoolClient.Initialize(ctx, c.deployerKeypair.Address(), tokenContractID); err != nil {
+			return nil, fmt.Errorf("failed to initialize pool with token: %w", err)
+		}
+
+		deployerAddr := c.deployerKeypair.Address()
+		if err := c.tokenAdminRegistryClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
+			return nil, fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
+		}
+		if err := c.tokenAdminRegistryClient.AcceptAdminRole(ctx, tokenContractID); err != nil {
+			return nil, fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
+		}
+		if err := c.tokenAdminRegistryClient.SetPool(ctx, tokenContractID, &poolContractID); err != nil {
+			return nil, fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
+		}
+		c.logger.Info().
+			Str("token", tokenContractID).
+			Str("pool", poolContractID).
+			Msg("Token pool registered in TokenAdminRegistry")
+	}
+
 	// Initialize the OnRamp with dependency contracts
 	mockFeeAggregator := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
-	mockTokenAdminRegistry := mustGenerateMockContractID(c.deployerKeypair.Address(), "token-admin-registry")
 
 	err = c.onRampClient.Initialize(ctx, c.deployerKeypair.Address(), onrampbindings.StaticConfig{
 		ChainSelector:         selector,
-		TokenAdminRegistry:    mockTokenAdminRegistry,
+		TokenAdminRegistry:    tarContractID,
 		RmnProxy:              rmnProxyContractID,
 		MaxUsdCentsPerMessage: 10000, // $100
 	}, onrampbindings.DynamicConfig{
@@ -668,6 +770,38 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	}
 	c.logger.Info().Msg("FeeQuoter prices updated")
 
+	// Configure FeeQuoter token transfer fees for the test token.
+	if c.testTokenContractID != "" {
+		tokenPriceUpdates := fqbindings.PriceUpdates{
+			TokenPriceUpdates: []fqbindings.TokenPriceUpdate{{
+				Token:       c.testTokenContractID,
+				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
+			}},
+			GasPriceUpdates: []fqbindings.GasPriceUpdate{},
+		}
+		if err := feeQuoterClient.UpdatePrices(ctx, tokenPriceUpdates); err != nil {
+			return nil, fmt.Errorf("failed to set test token price on FeeQuoter: %w", err)
+		}
+
+		var tokenFeeConfigs []fqbindings.TokenFeeConfigArgs
+		for _, rs := range allSelectors {
+			tokenFeeConfigs = append(tokenFeeConfigs, fqbindings.TokenFeeConfigArgs{
+				Token:             c.testTokenContractID,
+				DestChainSelector: rs,
+				Config: fqbindings.TokenTransferFeeConfig{
+					FeeUsdCents:       25,
+					DestGasOverhead:   90_000,
+					DestBytesOverhead: 32,
+					IsEnabled:         true,
+				},
+			})
+		}
+		if err := feeQuoterClient.ApplyTokenFeeConfigs(ctx, tokenFeeConfigs, nil); err != nil {
+			return nil, fmt.Errorf("failed to apply token fee configs on FeeQuoter: %w", err)
+		}
+		c.logger.Info().Int("count", len(tokenFeeConfigs)).Msg("FeeQuoter token transfer fee configs applied")
+	}
+
 	// Deploy the OffRamp contract
 	offRampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "offramp.wasm")
 	if _, statErr := os.Stat(offRampWasmPath); os.IsNotExist(statErr) {
@@ -688,7 +822,7 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	err = c.offRampClient.Initialize(ctx, c.deployerKeypair.Address(), offrampbindings.StaticConfig{
 		ChainSelector:      selector,
 		RmnProxy:           rmnProxyContractID,
-		TokenAdminRegistry: mockTokenAdminRegistry,
+		TokenAdminRegistry: tarContractID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize OffRamp: %w", err)
@@ -844,25 +978,30 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Version:       semver.MustParse(routeroperations.Deploy.Version()),
 	})
 
-	// // Add token pools
-	// for i, combo := range devenvcommon.AllTokenCombinations() {
-	// 	addressRef := combo.DestPoolAddressRef()
-	// 	ds.AddressRefStore.Add(datastore.AddressRef{
-	// 		Address:       contractHexAddr(fmt.Sprintf("stellar-dst-token-%d", i)),
-	// 		Type:          addressRef.Type,
-	// 		Version:       addressRef.Version,
-	// 		Qualifier:     addressRef.Qualifier,
-	// 		ChainSelector: selector,
-	// 	})
-	// 	addressRef = combo.SourcePoolAddressRef()
-	// 	ds.AddressRefStore.Add(datastore.AddressRef{
-	// 		Address:       contractHexAddr(fmt.Sprintf("stellar-src-token-%d", i)),
-	// 		Type:          addressRef.Type,
-	// 		Version:       addressRef.Version,
-	// 		Qualifier:     addressRef.Qualifier,
-	// 		ChainSelector: selector,
-	// 	})
-	// }
+	// Add TokenAdminRegistry to datastore
+	tarHex, err := strkeyToHex(tarContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert TokenAdminRegistry address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       tarHex,
+		ChainSelector: selector,
+		Type:          datastore.ContractType(TokenAdminRegistryContractType),
+		Version:       semver.MustParse("1.0.0"),
+	})
+
+	// Add lock-release pool to datastore
+	poolHex, err := strkeyToHex(poolContractID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert pool address: %w", err)
+	}
+	ds.AddressRefStore.Add(datastore.AddressRef{
+		Address:       poolHex,
+		ChainSelector: selector,
+		Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
+		Version:       semver.MustParse("1.0.0"),
+		Qualifier:     "TEST",
+	})
 
 	// Add CCV refs — use the deployed VVR contract address
 	vvrHex, err := strkeyToHex(vvrContractID)
@@ -949,6 +1088,7 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 
 	c.sorobanRPCURL = input.Out.Nodes[0].ExternalHTTPUrl
 	c.networkPassphrase = input.Out.NetworkSpecificData.StellarNetwork.NetworkPassphrase
+	c.friendbotURL = input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL
 
 	// Initialize the Soroban RPC client
 	c.rpcClient = rpcclient.NewClient(c.sorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
@@ -1202,9 +1342,36 @@ func (c *Chain) GetSenderAddress() (protocol.UnknownAddress, error) {
 }
 
 // GetTokenBalance implements cciptestinterfaces.CCIP17.
-// Gets the balance of a token for an address.
+// Gets the balance of a token for an address by calling the SAC balance function.
 func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
-	return nil, fmt.Errorf("not implemented")
+	if c.deployer == nil {
+		return nil, fmt.Errorf("deployer not initialized")
+	}
+
+	tokenStrkey, err := strkey.Encode(strkey.VersionByteContract, []byte(tokenAddress))
+	if err != nil {
+		return nil, fmt.Errorf("encode token address: %w", err)
+	}
+
+	addrStrkey, err := strkey.Encode(strkey.VersionByteAccountID, []byte(address))
+	if err != nil {
+		addrStrkey, err = strkey.Encode(strkey.VersionByteContract, []byte(address))
+		if err != nil {
+			return nil, fmt.Errorf("encode holder address: %w", err)
+		}
+	}
+
+	balanceArgs := []xdr.ScVal{scval.AddressToScVal(addrStrkey)}
+	result, err := c.deployer.SimulateContract(ctx, tokenStrkey, "balance", balanceArgs)
+	if err != nil {
+		return nil, fmt.Errorf("query token balance: %w", err)
+	}
+
+	bal, err := scval.I128FromScVal(*result)
+	if err != nil {
+		return nil, fmt.Errorf("parse balance: %w", err)
+	}
+	return big.NewInt(bal), nil
 }
 
 // GetUserNonce implements cciptestinterfaces.CCIP17.
@@ -1304,10 +1471,30 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
 	sender := c.deployerKeypair.Address()
 
+	var tokenAmounts []routerbindings.TokenAmount
+	if fields.TokenAmount.Amount != nil && fields.TokenAmount.Amount.Sign() > 0 && len(fields.TokenAmount.TokenAddress) > 0 {
+		if !fields.TokenAmount.Amount.IsInt64() {
+			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("token amount out of int64 range: %s", fields.TokenAmount.Amount.String())
+		}
+		tokenAddr, encErr := strkey.Encode(strkey.VersionByteContract, []byte(fields.TokenAmount.TokenAddress))
+		if encErr != nil {
+			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("encode token address for send: %w", encErr)
+		}
+		tokenAmount := fields.TokenAmount.Amount.Int64()
+		tokenAmounts = []routerbindings.TokenAmount{{
+			Token:  tokenAddr,
+			Amount: tokenAmount,
+		}}
+		c.logger.Info().
+			Str("token", tokenAddr).
+			Int64("amount", tokenAmount).
+			Msg("Including token transfer in CCIP message")
+	}
+
 	routerMsg := routerbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
-		TokenAmounts: []routerbindings.TokenAmount{},
+		TokenAmounts: tokenAmounts,
 		FeeToken:     mockFeeToken,
 		ExtraArgs:    encodedExtraArgs,
 	}
@@ -1429,6 +1616,82 @@ func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, tim
 		MessageID: event.MessageId,
 		Sender:    protocol.UnknownAddress([]byte(event.Sender)),
 	}, nil
+}
+
+// testTokenAssetCode is the classic Stellar asset code used by the test SAC token.
+const testTokenAssetCode = "TEST"
+
+// createTestToken sets up a SAC-wrapped classic Stellar asset for E2E token
+// transfer tests. It creates an issuer, funds it, establishes trustlines, mints
+// an initial supply, and deploys the SAC wrapper.
+func (c *Chain) createTestToken(ctx context.Context, friendbotURL string) (string, error) {
+	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("test-token-issuer-%s", c.networkPassphrase)))
+	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	if err != nil {
+		return "", fmt.Errorf("create issuer keypair: %w", err)
+	}
+	c.testTokenIssuerKeypair = issuerKP
+
+	if friendbotURL != "" {
+		if err := c.fundViaFriendbot(friendbotURL, issuerKP.Address()); err != nil {
+			return "", fmt.Errorf("fund issuer: %w", err)
+		}
+	}
+
+	issuerDeployer := stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, issuerKP)
+	asset := txnbuild.CreditAsset{Code: testTokenAssetCode, Issuer: issuerKP.Address()}
+
+	err = c.deployer.SubmitClassicOperation(ctx, &txnbuild.ChangeTrust{
+		Line:          asset.MustToChangeTrustAsset(),
+		SourceAccount: c.deployerKeypair.Address(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("establish trustline: %w", err)
+	}
+
+	err = issuerDeployer.SubmitClassicOperation(ctx, &txnbuild.Payment{
+		Destination:   c.deployerKeypair.Address(),
+		Amount:        "100000000",
+		Asset:         asset,
+		SourceAccount: issuerKP.Address(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("issue tokens: %w", err)
+	}
+
+	xdrAsset, err := asset.ToXDR()
+	if err != nil {
+		return "", fmt.Errorf("convert asset to XDR: %w", err)
+	}
+	contractID, err := c.deployer.DeploySACToken(ctx, xdrAsset)
+	if err != nil {
+		return "", fmt.Errorf("deploy SAC: %w", err)
+	}
+
+	c.logger.Info().
+		Str("contractID", contractID).
+		Str("issuer", issuerKP.Address()).
+		Msg("Test SAC token deployed")
+
+	return contractID, nil
+}
+
+// GetTokenAddress returns the SAC contract ID of the test token deployed during
+// DeployContractsForSelector, or an error if no token was deployed.
+func (c *Chain) GetTokenAddress() (string, error) {
+	if c.testTokenContractID == "" {
+		return "", fmt.Errorf("test token not deployed; run DeployContractsForSelector first")
+	}
+	return c.testTokenContractID, nil
+}
+
+// GetTokenPoolAddress returns the lock-release pool contract ID deployed during
+// DeployContractsForSelector.
+func (c *Chain) GetTokenPoolAddress() (string, error) {
+	if c.tokenPoolContractID == "" {
+		return "", fmt.Errorf("token pool not deployed; run DeployContractsForSelector first")
+	}
+	return c.tokenPoolContractID, nil
 }
 
 // findStellarRoot locates the chainlink-stellar project root by walking up from
@@ -1637,8 +1900,8 @@ func (c *Chain) buildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors [
 			MessageNetworkFeeUsdCents: 100,
 			OffRamp:                   offRampBytes,
 			Router:                    c.routerContractID,
-			TokenNetworkFeeUsdCents:   0,
-			TokenReceiverAllowed:      false,
+			TokenNetworkFeeUsdCents:   50,
+			TokenReceiverAllowed:      true,
 		})
 	}
 	return configs, nil
