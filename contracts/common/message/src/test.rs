@@ -316,11 +316,11 @@ fn test_message_v1_to_bytes_layout() {
     let encoded = msg.to_bytes(&env);
 
     // Fixed portion: version(1) + src_chain(8) + dst_chain(8) + seq(8) +
-    //   exec_gas(4) + recv_gas(4) + finality(2) + ccv_hash(32) = 67
+    //   exec_gas(4) + recv_gas(4) + finality(4) + ccv_hash(32) = 69
     // Variable: onramp(1+32) + offramp(1+20) + sender(1+32) + receiver(1+20)
     //   + dest_blob(2+10) + token_transfer(2+39) + data(2+100)
     let expected: u32 =
-        67 + (1 + 32) + (1 + 20) + (1 + 32) + (1 + 20) + (2 + 10) + (2 + 39) + (2 + 100);
+        69 + (1 + 32) + (1 + 20) + (1 + 32) + (1 + 20) + (2 + 10) + (2 + 39) + (2 + 100);
     assert_eq!(encoded.len(), expected);
 
     // First byte must be MESSAGE_V1_VERSION
@@ -348,8 +348,8 @@ fn test_message_v1_empty_variable_fields() {
     };
 
     let encoded = msg.to_bytes(&env);
-    // 67 (fixed) + 4*(1+0) + 3*(2+0) = 67 + 4 + 6 = 77
-    assert_eq!(encoded.len(), 77);
+    // 69 (fixed) + 4*(1+0) + 3*(2+0) = 69 + 4 + 6 = 79
+    assert_eq!(encoded.len(), 79);
 }
 
 #[test]
