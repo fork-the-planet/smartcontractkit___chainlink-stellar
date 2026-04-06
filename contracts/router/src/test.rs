@@ -10,7 +10,7 @@ use fee_quoter::{
 };
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    vec, Address, Bytes, BytesN, Env, Vec,
+    token, vec, Address, Bytes, BytesN, Env, Vec,
 };
 
 use crate::test_panic_receiver::{ErrReturningCcipReceiver, PanicCcipReceiver};
@@ -367,8 +367,12 @@ fn test_ccip_send_full_flow() {
     let stellar_chain_selector: u64 = 12345;
     let evm_chain_selector: u64 = 67890;
 
-    // ---- Deploy and configure FeeQuoter ----
-    let fee_token = Address::generate(&env);
+    // ---- Deploy a real SAC token for fees ----
+    let fee_token_admin = Address::generate(&env);
+    let fee_token_contract = env.register_stellar_asset_contract_v2(fee_token_admin.clone());
+    let fee_token = fee_token_contract.address();
+    let fee_token_admin_client = token::StellarAssetClient::new(&env, &fee_token);
+
     let fee_quoter_id = setup_fee_quoter(&env, &owner, evm_chain_selector, &fee_token);
 
     let static_config = StaticConfig {
@@ -415,8 +419,10 @@ fn test_ccip_send_full_flow() {
         extra_args: Bytes::new(&env),
     };
 
-    // ---- Get fee and send the message via Router ----
+    // ---- Get fee and fund the sender ----
     let required_fee = router_client.get_fee(&evm_chain_selector, &message);
+    fee_token_admin_client.mint(&sender, &(required_fee * 2)); // extra buffer
+
     let message_id = router_client.ccip_send(&sender, &evm_chain_selector, &message, &required_fee);
 
     // ---- Verify message ID is non-zero (32 bytes) ----

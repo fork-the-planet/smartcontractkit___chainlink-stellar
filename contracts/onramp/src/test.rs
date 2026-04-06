@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, Env, Vec};
+use soroban_sdk::{testutils::Address as _, token, vec, Address, Bytes, Env, Vec};
 
 fn create_test_static_config(env: &Env) -> StaticConfig {
     StaticConfig {
@@ -417,4 +417,201 @@ fn test_validate_message_too_many_tokens() {
         msg.validate(),
         Err(common_error::CCIPError::CanOnlySendOneTokenPerMessage)
     );
+}
+
+// ============================================================
+// CCV Merge Logic Tests
+// ============================================================
+
+#[test]
+fn test_merge_ccv_lists_user_only() {
+    let env = Env::default();
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+
+    let user = vec![&env, a.clone(), b.clone()];
+    let lane = Vec::new(&env);
+    let defaults = vec![&env, Address::generate(&env)];
+
+    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.get(0), Some(a));
+    assert_eq!(merged.get(1), Some(b));
+}
+
+#[test]
+fn test_merge_ccv_lists_falls_back_to_defaults() {
+    let env = Env::default();
+    let default_ccv = Address::generate(&env);
+
+    let user: Vec<Address> = Vec::new(&env);
+    let lane: Vec<Address> = Vec::new(&env);
+    let defaults = vec![&env, default_ccv.clone()];
+
+    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged.get(0), Some(default_ccv));
+}
+
+#[test]
+fn test_merge_ccv_lists_lane_mandated_appended() {
+    let env = Env::default();
+    let user_ccv = Address::generate(&env);
+    let lane_ccv = Address::generate(&env);
+
+    let user = vec![&env, user_ccv.clone()];
+    let lane = vec![&env, lane_ccv.clone()];
+    let defaults = vec![&env, Address::generate(&env)];
+
+    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.get(0), Some(user_ccv));
+    assert_eq!(merged.get(1), Some(lane_ccv));
+}
+
+#[test]
+fn test_merge_ccv_lists_deduplication() {
+    let env = Env::default();
+    let shared = Address::generate(&env);
+
+    let user = vec![&env, shared.clone()];
+    let lane = vec![&env, shared.clone()];
+    let defaults = vec![&env, Address::generate(&env)];
+
+    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged.get(0), Some(shared));
+}
+
+#[test]
+fn test_merge_ccv_lists_lane_only_no_fallback() {
+    let env = Env::default();
+    let lane_ccv = Address::generate(&env);
+
+    let user: Vec<Address> = Vec::new(&env);
+    let lane = vec![&env, lane_ccv.clone()];
+    let defaults = vec![&env, Address::generate(&env)];
+
+    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged.get(0), Some(lane_ccv));
+}
+
+// ============================================================
+// Withdraw Fee Tokens Tests
+// ============================================================
+
+#[test]
+fn test_withdraw_fee_tokens_transfers_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let fee_aggregator = Address::generate(&env);
+    let static_config = create_test_static_config(&env);
+    let dynamic_config = DynamicConfig {
+        fee_quoter: Address::generate(&env),
+        fee_aggregator: fee_aggregator.clone(),
+    };
+
+    client.initialize(&owner, &static_config, &dynamic_config);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let sac_client = token::StellarAssetClient::new(&env, &token_address);
+    let token_client = token::Client::new(&env, &token_address);
+
+    sac_client.mint(&contract_id, &1000);
+    assert_eq!(token_client.balance(&contract_id), 1000);
+
+    client.withdraw_fee_tokens(&vec![&env, token_address.clone()]);
+
+    assert_eq!(token_client.balance(&contract_id), 0);
+    assert_eq!(token_client.balance(&fee_aggregator), 1000);
+}
+
+#[test]
+fn test_withdraw_fee_tokens_skips_zero_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let fee_aggregator = Address::generate(&env);
+    let static_config = create_test_static_config(&env);
+    let dynamic_config = DynamicConfig {
+        fee_quoter: Address::generate(&env),
+        fee_aggregator: fee_aggregator.clone(),
+    };
+
+    client.initialize(&owner, &static_config, &dynamic_config);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let token_client = token::Client::new(&env, &token_address);
+
+    // No balance minted -- should not panic
+    client.withdraw_fee_tokens(&vec![&env, token_address.clone()]);
+
+    assert_eq!(token_client.balance(&contract_id), 0);
+    assert_eq!(token_client.balance(&fee_aggregator), 0);
+}
+
+#[test]
+fn test_withdraw_fee_tokens_multiple_tokens() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let fee_aggregator = Address::generate(&env);
+    let static_config = create_test_static_config(&env);
+    let dynamic_config = DynamicConfig {
+        fee_quoter: Address::generate(&env),
+        fee_aggregator: fee_aggregator.clone(),
+    };
+
+    client.initialize(&owner, &static_config, &dynamic_config);
+
+    let admin1 = Address::generate(&env);
+    let tc1 = env.register_stellar_asset_contract_v2(admin1);
+    let addr1 = tc1.address();
+    let sac1 = token::StellarAssetClient::new(&env, &addr1);
+    let tok1 = token::Client::new(&env, &addr1);
+    sac1.mint(&contract_id, &500);
+
+    let admin2 = Address::generate(&env);
+    let tc2 = env.register_stellar_asset_contract_v2(admin2);
+    let addr2 = tc2.address();
+    let sac2 = token::StellarAssetClient::new(&env, &addr2);
+    let tok2 = token::Client::new(&env, &addr2);
+    sac2.mint(&contract_id, &300);
+
+    client.withdraw_fee_tokens(&vec![&env, addr1.clone(), addr2.clone()]);
+
+    assert_eq!(tok1.balance(&contract_id), 0);
+    assert_eq!(tok1.balance(&fee_aggregator), 500);
+    assert_eq!(tok2.balance(&contract_id), 0);
+    assert_eq!(tok2.balance(&fee_aggregator), 300);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")] // NotInitialized
+fn test_withdraw_fee_tokens_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(OnRampContract, ());
+    let client = OnRampContractClient::new(&env, &contract_id);
+
+    client.withdraw_fee_tokens(&Vec::new(&env));
 }
