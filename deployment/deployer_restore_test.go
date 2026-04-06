@@ -100,13 +100,20 @@ func successGetTxResponse(t *testing.T) protocolrpc.GetTransactionResponse {
 	}
 }
 
+const testInitialSeq int64 = 100
+
 func newTestDeployer(t *testing.T, mock *mockRPC) *Deployer {
 	t.Helper()
+	kp := keypair.MustRandom()
+	if mock.GetLedgerEntriesFn == nil {
+		seq := testInitialSeq
+		mock.GetLedgerEntriesFn = mockAccountLedgerEntry(t, kp.Address(), &seq)
+	}
 	return &Deployer{
 		rpcClient:         mock,
 		networkPassphrase: "Test SDF Network ; September 2015",
-		signer:            keypair.MustRandom(),
-		accountSequence:   100,
+		signer:            kp,
+		accountSequence:   -1,
 		autoRestore:       true,
 	}
 }
@@ -150,6 +157,28 @@ func randomContractID(t *testing.T) string {
 	return id
 }
 
+// mockAccountLedgerEntry returns a GetLedgerEntriesFn that reports the signer
+// account with a sequence number read from *seq (so callers can advance it
+// between calls to simulate on-chain state changes).
+func mockAccountLedgerEntry(t *testing.T, signerAddress string, seq *int64) func(context.Context, protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error) {
+	t.Helper()
+	return func(_ context.Context, _ protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error) {
+		aid := xdr.MustAddress(signerAddress)
+		entry := xdr.LedgerEntryData{
+			Type: xdr.LedgerEntryTypeAccount,
+			Account: &xdr.AccountEntry{
+				AccountId: aid,
+				SeqNum:    xdr.SequenceNumber(*seq),
+			},
+		}
+		b64, err := xdr.MarshalBase64(entry)
+		require.NoError(t, err)
+		return protocolrpc.GetLedgerEntriesResponse{
+			Entries: []protocolrpc.LedgerEntryResult{{DataXDR: b64}},
+		}, nil
+	}
+}
+
 // ---------------------------------------------------------------------------
 // restoreFootprint
 // ---------------------------------------------------------------------------
@@ -170,14 +199,12 @@ func TestRestoreFootprint_Success(t *testing.T) {
 	}
 
 	d := newTestDeployer(t, mock)
-	seqBefore := d.accountSequence
 
 	err := d.restoreFootprint(context.Background(), protocolrpc.RestorePreamble{
 		TransactionDataXDR: sorobanB64,
 		MinResourceFee:     50000,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, seqBefore+1, d.accountSequence, "account sequence should increment after restore")
 }
 
 func TestRestoreFootprint_SubmitError(t *testing.T) {
@@ -252,7 +279,12 @@ func TestBuildAndSubmitTransaction_WithRestore(t *testing.T) {
 	var sendCount atomic.Int32
 	var getTxCount atomic.Int32
 
+	// Sequence advances each time a transaction is confirmed on-chain.
+	seq := testInitialSeq
+	kp := keypair.MustRandom()
+
 	mock := &mockRPC{
+		GetLedgerEntriesFn: mockAccountLedgerEntry(t, kp.Address(), &seq),
 		SimulateTransactionFn: func(_ context.Context, _ protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error) {
 			call := simCount.Add(1)
 			if call == 1 {
@@ -279,16 +311,23 @@ func TestBuildAndSubmitTransaction_WithRestore(t *testing.T) {
 		},
 		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
 			getTxCount.Add(1)
+			seq++ // simulate on-chain sequence advancing after confirmation
 			return successGetTxResponse(t), nil
 		},
 	}
 
-	d := newTestDeployer(t, mock)
-	seqBefore := d.accountSequence
+	d := &Deployer{
+		rpcClient:         mock,
+		networkPassphrase: "Test SDF Network ; September 2015",
+		signer:            kp,
+		accountSequence:   -1,
+		autoRestore:       true,
+	}
+
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
 
 	op := testInvokeOp(d.signer.Address())
-	src := &txnbuild.SimpleAccount{AccountID: d.signer.Address(), Sequence: d.accountSequence}
-
 	meta, err := d.buildAndSubmitTransaction(context.Background(), src, op)
 	require.NoError(t, err)
 	require.NotNil(t, meta)
@@ -296,7 +335,6 @@ func TestBuildAndSubmitTransaction_WithRestore(t *testing.T) {
 	assert.EqualValues(t, 2, simCount.Load(), "should simulate twice (before and after restore)")
 	assert.EqualValues(t, 2, sendCount.Load(), "should send two transactions (restore + invoke)")
 	assert.EqualValues(t, 2, getTxCount.Load(), "should poll two transactions")
-	assert.Equal(t, seqBefore+2, d.accountSequence, "sequence should increment for both restore and invoke")
 }
 
 func TestBuildAndSubmitTransaction_NoRestore(t *testing.T) {
@@ -326,7 +364,8 @@ func TestBuildAndSubmitTransaction_NoRestore(t *testing.T) {
 	d := newTestDeployer(t, mock)
 
 	op := testInvokeOp(d.signer.Address())
-	src := &txnbuild.SimpleAccount{AccountID: d.signer.Address(), Sequence: d.accountSequence}
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
 
 	meta, err := d.buildAndSubmitTransaction(context.Background(), src, op)
 	require.NoError(t, err)
@@ -356,9 +395,10 @@ func TestBuildAndSubmitTransaction_RestoreFails(t *testing.T) {
 	d := newTestDeployer(t, mock)
 
 	op := testInvokeOp(d.signer.Address())
-	src := &txnbuild.SimpleAccount{AccountID: d.signer.Address(), Sequence: d.accountSequence}
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
 
-	_, err := d.buildAndSubmitTransaction(context.Background(), src, op)
+	_, err = d.buildAndSubmitTransaction(context.Background(), src, op)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to restore expired ledger entries")
 }
@@ -487,7 +527,8 @@ func TestBuildAndSubmitTransaction_AutoRestoreDisabled(t *testing.T) {
 	d.autoRestore = false
 
 	op := testInvokeOp(d.signer.Address())
-	src := &txnbuild.SimpleAccount{AccountID: d.signer.Address(), Sequence: d.accountSequence}
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
 
 	meta, err := d.buildAndSubmitTransaction(context.Background(), src, op)
 	require.NoError(t, err)

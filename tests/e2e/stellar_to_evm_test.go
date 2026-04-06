@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +18,9 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
@@ -186,4 +190,111 @@ func sendAndVerifyMessage(
 	l.Info().
 		Str("messageID", hex.EncodeToString(messageID[:])).
 		Msg(successMsg)
+}
+
+// TestStellarToEVMFeeQuoterDestChainDisabled validates that disabling a
+// destination chain on the Stellar FeeQuoter prevents message sending, and
+// that re-enabling it restores normal operation.
+//
+// The Stellar send path is: Router.ccip_send → OnRamp.get_fee →
+// FeeQuoter.get_message_fee, which returns DestinationChainNotEnabled when
+// the dest chain config has IsEnabled = false.
+//
+// Contracts must be compiled before running:
+//
+//	make build
+//
+// Start the devenv from the chainlink-stellar root:
+//
+//	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv
+//
+// Once the devenv is running, run the test:
+//
+//	go test -v -timeout 10m ./tests/e2e/... -run TestStellarToEVMFeeQuoterDestChainDisabled
+func TestStellarToEVMFeeQuoterDestChainDisabled(t *testing.T) {
+	configOutputPath := "../env/env-stellar-evm-out.toml"
+
+	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
+	stellarSelector := chainsel.STELLAR_LOCALNET.Selector
+
+	ctx := ccv.Plog.WithContext(t.Context())
+	l := zerolog.Ctx(ctx)
+
+	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID, stellarSelector)
+	stellarDetails := env.SourceChainDetails
+	evmDetails := env.DestChainDetails
+
+	stellarChain := env.Chains[stellarDetails.ChainSelector]
+	require.NotNil(t, stellarChain, "Stellar chain not found in chains map")
+
+	evmChain := env.Chains[evmDetails.ChainSelector]
+	require.NotNil(t, evmChain, "EVM chain not found in chains map")
+
+	// Resolve the Stellar FeeQuoter contract from the datastore.
+	fqKey := datastore.NewAddressRefKey(
+		stellarDetails.ChainSelector,
+		"FeeQuoter",
+		semver.MustParse("2.0.0"),
+		"",
+	)
+	fqRef, err := env.DataStore.Addresses().Get(fqKey)
+	require.NoError(t, err)
+	require.NotEmpty(t, fqRef.Address)
+	fqContractID, err := scval.HexToContractStrkey(fqRef.Address)
+	require.NoError(t, err)
+	l.Info().Str("feeQuoterContractID", fqContractID).Msg("Found FeeQuoter in datastore")
+
+	fqClient := fqbindings.NewFeeQuoterClient(env.Deployer, fqContractID)
+
+	t.Run("stellar_to_evm_fee_quoter_dest_disabled", func(t *testing.T) {
+		evmReceiver, err := evmChain.GetEOAReceiverAddress()
+		require.NoError(t, err)
+		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
+
+		// Read current config, then disable the EVM destination chain.
+		cfg, err := fqClient.GetDestChainConfig(ctx, evmDetails.ChainSelector)
+		require.NoError(t, err)
+		require.True(t, cfg.IsEnabled, "dest chain should start enabled")
+
+		cfg.IsEnabled = false
+		l.Info().Uint64("destChainSelector", evmDetails.ChainSelector).Msg("Disabling EVM dest chain on FeeQuoter")
+		err = fqClient.ApplyDestChainConfigs(ctx, []fqbindings.DestChainConfigArgs{
+			{DestChainSelector: evmDetails.ChainSelector, Config: *cfg},
+		})
+		require.NoError(t, err)
+		l.Info().Msg("EVM dest chain disabled on FeeQuoter")
+
+		t.Cleanup(func() {
+			l.Info().Msg("Cleaning up: re-enabling EVM dest chain on FeeQuoter")
+			cfg.IsEnabled = true
+			_ = fqClient.ApplyDestChainConfigs(ctx, []fqbindings.DestChainConfigArgs{
+				{DestChainSelector: evmDetails.ChainSelector, Config: *cfg},
+			})
+		})
+
+		// Attempt to send — should fail because FeeQuoter rejects disabled dest chains.
+		l.Info().Msg("Attempting to send message to disabled EVM destination")
+		_, sendErr := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+			cciptestinterfaces.MessageFields{
+				Receiver: evmReceiver,
+				Data:     []byte("should fail - dest chain disabled"),
+			},
+			cciptestinterfaces.MessageOptions{},
+		)
+		require.Error(t, sendErr, "sending message to disabled dest chain should fail")
+		l.Info().Err(sendErr).Msg("Message send failed as expected (dest chain disabled on FeeQuoter)")
+
+		// Re-enable the EVM destination chain.
+		l.Info().Msg("Re-enabling EVM dest chain on FeeQuoter")
+		cfg.IsEnabled = true
+		err = fqClient.ApplyDestChainConfigs(ctx, []fqbindings.DestChainConfigArgs{
+			{DestChainSelector: evmDetails.ChainSelector, Config: *cfg},
+		})
+		require.NoError(t, err)
+		l.Info().Msg("EVM dest chain re-enabled on FeeQuoter")
+
+		// Now sending a message should work.
+		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
+			"hello from stellar after re-enable", "Message verified and aggregated successfully after re-enable")
+	})
 }
