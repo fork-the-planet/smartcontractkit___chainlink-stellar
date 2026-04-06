@@ -11,10 +11,12 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/proxy"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
+	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
@@ -25,7 +27,10 @@ import (
 // so the sequences here are intentional no-ops.
 type StellarLaneAdapter struct{}
 
-var _ lanes.LaneAdapter = (*StellarLaneAdapter)(nil)
+var (
+	_ lanes.LaneAdapter    = (*StellarLaneAdapter)(nil)
+	_ ccvadapters.ChainFamily = (*StellarLaneAdapter)(nil)
+)
 
 var stellarNoOpSource = cldf_ops.NewSequence(
 	"StellarConfigureLaneLegAsSource",
@@ -137,4 +142,38 @@ func (a *StellarLaneAdapter) GetFeeQuoterDestChainConfig() lanes.FeeQuoterDestCh
 
 func (a *StellarLaneAdapter) GetDefaultGasPrice() *big.Int {
 	return big.NewInt(1e9)
+}
+
+// ---------------------------------------------------------------------------
+// ccvadapters.ChainFamily implementation
+// ---------------------------------------------------------------------------
+
+var stellarNoOpConfigureChainForLanes = cldf_ops.NewSequence(
+	"StellarConfigureChainForLanes",
+	semver.MustParse("2.0.0"),
+	"No-op: Stellar lane config is applied during contract deployment",
+	func(_ cldf_ops.Bundle, _ cldf_chain.BlockChains, _ ccvadapters.ConfigureChainForLanesInput) (seq_core.OnChainOutput, error) {
+		return seq_core.OnChainOutput{}, nil
+	},
+)
+
+func (a *StellarLaneAdapter) ConfigureChainForLanes() *cldf_ops.Sequence[ccvadapters.ConfigureChainForLanesInput, seq_core.OnChainOutput, cldf_chain.BlockChains] {
+	return stellarNoOpConfigureChainForLanes
+}
+
+func (a *StellarLaneAdapter) AddressRefToBytes(ref datastore.AddressRef) ([]byte, error) {
+	return toStellarAddressBytes(ref)
+}
+
+func (a *StellarLaneAdapter) GetTestRouter(ds datastore.DataStore, chainSelector uint64) ([]byte, error) {
+	return a.GetRouterAddress(ds, chainSelector)
+}
+
+func (a *StellarLaneAdapter) ResolveExecutor(ds datastore.DataStore, chainSelector uint64, qualifier string) (string, error) {
+	toAddress := func(ref datastore.AddressRef) (string, error) { return ref.Address, nil }
+	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
+		Type:      datastore.ContractType(proxy.ContractType),
+		Version:   proxy.Version,
+		Qualifier: qualifier,
+	}, chainSelector, toAddress)
 }

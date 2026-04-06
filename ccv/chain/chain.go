@@ -29,6 +29,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/executor"
@@ -249,6 +250,57 @@ func stellarFeeQuoterDestChainConfigOverride(selector uint64) lanes.FeeQuoterDes
 			USDPerUnitGas:            big.NewInt(1e6),
 		}
 	}
+}
+
+// GetChainLaneProfile implements cciptestinterfaces.OnChainConfigurable.
+// Returns the lane profile for Stellar as a destination chain, mirroring the
+// values used in GetConnectionProfile and stellarFeeQuoterDestChainConfigOverride.
+func (c *Chain) GetChainLaneProfile(_ *deployment.Environment, selector uint64) (cciptestinterfaces.ChainLaneProfile, error) {
+	// bytes4(keccak256("CCIP ChainFamilySelector EVM")) — used as stand-in for Stellar.
+	// TODO(NONEVM-4241): replace with a real Stellar family selector once registered.
+	var evmFamilySelector [4]byte
+	evmFamilyHex, _ := hex.DecodeString("2812d52c")
+	copy(evmFamilySelector[:], evmFamilyHex)
+
+	return cciptestinterfaces.ChainLaneProfile{
+		AddressBytesLength:   stellarAddressLen,
+		BaseExecutionGasCost: 100_000,
+		FeeQuoterDestChainConfig: adapters.FeeQuoterDestChainConfig{
+			IsEnabled:                   true,
+			MaxDataBytes:                30_000,
+			MaxPerMsgGasLimit:           3_000_000,
+			DestGasOverhead:             300_000,
+			DefaultTokenFeeUSDCents:     25,
+			DestGasPerPayloadByteBase:   16,
+			DefaultTokenDestGasOverhead: 90_000,
+			DefaultTxGasLimit:           200_000,
+			NetworkFeeUSDCents:          10,
+			ChainFamilySelector:         evmFamilySelector,
+			LinkFeeMultiplierPercent:    90,
+			USDPerUnitGas:               big.NewInt(1e6),
+		},
+		ExecutorDestChainConfig: adapters.ExecutorDestChainConfig{
+			Enabled: true,
+		},
+		DefaultExecutorQualifier: devenvcommon.DefaultExecutorQualifier,
+		DefaultInboundCCVs: []datastore.AddressRef{
+			{
+				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+				Version:       versioned_verifier_resolver.Version,
+				ChainSelector: selector,
+				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
+			},
+		},
+		DefaultOutboundCCVs: []datastore.AddressRef{
+			{
+				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
+				Version:       versioned_verifier_resolver.Version,
+				ChainSelector: selector,
+				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
+			},
+		},
+		GasForVerification: 10_000,
+	}, nil
 }
 
 // PostConnect implements cciptestinterfaces.OnChainConfigurable.
