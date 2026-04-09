@@ -54,7 +54,7 @@ func NewImplFactory() *ImplFactory {
 
 // NewEmpty implements [registry.ImplFactory].
 // Returns a bare Chain used by NewEnvironment() to call DeployLocalNetwork and
-// DeployContractsForSelector.
+// the shared DeployChainContracts path (Pre/GetDeployChainContractsCfg/Post).
 func (f *ImplFactory) NewEmpty() cciptestinterfaces.CCIP17Configuration {
 	return New(
 		zerolog.New(os.Stderr).With().Str("component", "Stellar").Logger(),

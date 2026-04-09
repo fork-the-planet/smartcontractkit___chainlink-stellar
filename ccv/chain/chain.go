@@ -29,7 +29,6 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/executor"
@@ -40,10 +39,14 @@ import (
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
+	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
+	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/changesets"
 	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
@@ -422,9 +425,45 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 	), nil
 }
 
-// DeployContractsForSelector implements cciptestinterfaces.CCIP17Configuration.
-// Deploys CCIP contracts for the given chain selector.
-func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+// PreDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
+func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+	_ = ctx
+	_ = env
+	ensureStellarFeeAggregatorsInTopology(topology)
+	registerStellarDeployChangesetCtx(selector, c, topology)
+	return nil, nil
+}
+
+// GetDeployChainContractsCfg implements cciptestinterfaces.OnChainConfigurable.
+func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (ccipChangesets.DeployChainContractsPerChainCfg, error) {
+	_ = env
+	_ = selector
+	_ = topology
+	if c.deployerKeypair == nil {
+		return ccipChangesets.DeployChainContractsPerChainCfg{}, fmt.Errorf("stellar chain deployer not initialized; call DeployLocalNetwork first")
+	}
+	raw, err := strkey.Decode(strkey.VersionByteAccountID, c.deployerKeypair.Address())
+	if err != nil {
+		return ccipChangesets.DeployChainContractsPerChainCfg{}, fmt.Errorf("decode stellar deployer: %w", err)
+	}
+	return ccipChangesets.DeployChainContractsPerChainCfg{
+		DeployerContract: hexutil.Encode(raw),
+		DeployerKeyOwned: true,
+	}, nil
+}
+
+// PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
+func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+	_ = ctx
+	_ = env
+	_ = topology
+	clearStellarDeployChangesetCtx(selector)
+	return nil, nil
+}
+
+// deployStellarCCIPContracts deploys the full Stellar CCIP stack for devenv.
+// allSelectors must list every chain selector in the environment (see selectorsFromBlockChains).
+func (c *Chain) deployStellarCCIPContracts(ctx context.Context, allSelectors []uint64, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
 	c.logger.Info().Uint64("selector", selector).Msg("Deploying Stellar CCIP contracts")
 
 	// TODO: can we just use env.DataStore instead of creating a new one?
@@ -695,7 +734,6 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 		Str("cvContractID", cvContractID).
 		Msg("Committee Verifier client initialized")
 
-	allSelectors := selectorsFromEnvironment(env)
 	remoteSelectors := filterRemoteSelectors(allSelectors, selector)
 	outboundImplUpdates := []vvrbindings.OutboundImplementationUpdate{}
 	for _, remoteSelector := range allSelectors {
@@ -1126,6 +1164,21 @@ func (c *Chain) DeployContractsForSelector(ctx context.Context, env *deployment.
 	})
 
 	return ds.Seal(), nil
+}
+
+// DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
+// shared DeployChainContracts changeset merge path.
+func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccipOffchain.EnvironmentTopology) (seq_core.OnChainOutput, error) {
+	allSelectors := selectorsFromBlockChains(chains)
+	ds, err := c.deployStellarCCIPContracts(ctx, allSelectors, selector, topology)
+	if err != nil {
+		return seq_core.OnChainOutput{}, err
+	}
+	addrs, err := ds.Addresses().Fetch()
+	if err != nil {
+		return seq_core.OnChainOutput{}, err
+	}
+	return seq_core.OnChainOutput{Addresses: addrs}, nil
 }
 
 // DeployLocalNetwork implements cciptestinterfaces.CCIP17Configuration.
@@ -1769,10 +1822,38 @@ func findStellarRoot() (string, error) {
 	}
 }
 
-func selectorsFromEnvironment(env *deployment.Environment) []uint64 {
+func ensureStellarFeeAggregatorsInTopology(topology *ccipOffchain.EnvironmentTopology) {
+	if topology == nil || topology.NOPTopology == nil {
+		return
+	}
+	const placeholder = "0x0000000000000000000000000000000000000001"
+	for name, committee := range topology.NOPTopology.Committees {
+		if committee.ChainConfigs == nil {
+			continue
+		}
+		for chainKey, chainCfg := range committee.ChainConfigs {
+			if chainCfg.FeeAggregator != "" {
+				continue
+			}
+			sel, err := strconv.ParseUint(chainKey, 10, 64)
+			if err != nil {
+				continue
+			}
+			fam, err := chainsel.GetSelectorFamily(sel)
+			if err != nil || fam != chainsel.FamilyStellar {
+				continue
+			}
+			chainCfg.FeeAggregator = placeholder
+			committee.ChainConfigs[chainKey] = chainCfg
+		}
+		topology.NOPTopology.Committees[name] = committee
+	}
+}
+
+func selectorsFromBlockChains(chains cldf_chain.BlockChains) []uint64 {
 	selectors := make([]uint64, 0)
-	for selector := range env.BlockChains.All() {
-		selectors = append(selectors, selector)
+	for sel := range chains.All() {
+		selectors = append(selectors, sel)
 	}
 	sort.Slice(selectors, func(i, j int) bool {
 		return selectors[i] < selectors[j]
