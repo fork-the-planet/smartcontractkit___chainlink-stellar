@@ -275,6 +275,25 @@ func assertHostContractErrorContainsCode(t *testing.T, err error, code int) {
 	}
 }
 
+// assertGetFeeRejectsBadExtraArgs accepts either:
+//   - Error(Contract, #27) — OnRamp maps failed GenericExtraArgsV3::from_xdr to InvalidExtraArgsData, or
+//   - Error(Value, InvalidInput) — host rejects bogus bytes before/during decode (no contract error in string).
+func assertGetFeeRejectsBadExtraArgs(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "Error(Contract") && strings.Contains(msg, fmt.Sprintf("#%d", routerbindings.CCIPErrorInvalidExtraArgsData)) {
+		return
+	}
+	if strings.Contains(msg, "Error(Value") && strings.Contains(msg, "InvalidInput") {
+		return
+	}
+	t.Fatalf("expected contract #%d or Value InvalidInput for invalid extra_args, got: %v",
+		routerbindings.CCIPErrorInvalidExtraArgsData, err)
+}
+
 // TestRouterCcipSendUnhappyPaths covers outbound Router flows that should fail before a successful send.
 func TestRouterCcipSendUnhappyPaths(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -355,7 +374,7 @@ func TestRouterCcipSendUnhappyPaths(t *testing.T) {
 		badMsg.ExtraArgs = []byte{0xde, 0xad, 0xbe, 0xef}
 
 		_, err := stack.RouterClient.GetFee(ctx, remoteDestChain, badMsg)
-		assertHostContractErrorContainsCode(t, err, routerbindings.CCIPErrorInvalidExtraArgsData)
-		t.Logf("GetFee rejected invalid extra_args (CCIPErrorInvalidExtraArgsData): %v", err)
+		assertGetFeeRejectsBadExtraArgs(t, err)
+		t.Logf("GetFee rejected invalid extra_args: %v", err)
 	})
 }
