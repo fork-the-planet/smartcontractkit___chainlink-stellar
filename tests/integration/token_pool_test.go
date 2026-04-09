@@ -20,7 +20,9 @@ import (
 )
 
 func TestTokenPool(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Many subtests each deploy stacks / use RPC; 5m is too tight on CI (shared ctx expires →
+	// "context deadline exceeded" on WASM upload or get_ledger_entries).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL := GetSharedTestEnv(ctx, t)

@@ -16,6 +16,7 @@ permissions: {}
 jobs:
   test-integration-token-pool:
     name: Integration Tests (Token Pool)
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -44,7 +45,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Run token pool integration tests
-        run: go test -v -race -tags integration -fullpath -shuffle on -run '^TestTokenPool($|/)' -coverpkg=./bindings/contracts/... -coverprofile=coverage-integration-token-pool.out ./tests/integration/...
+        run: go test -v -race -tags integration -fullpath -shuffle on -timeout 20m -run '^TestTokenPool($|/)' -coverpkg=./bindings/contracts/... -coverprofile=coverage-integration-token-pool.out ./tests/integration/...
 
       - name: Write full coverage to job summary
         if: github.event_name == 'pull_request'
