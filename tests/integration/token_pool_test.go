@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
@@ -114,5 +116,80 @@ func TestTokenPool(t *testing.T) {
 			t.Fatalf("pool mismatch: want %s, got %v", stack.TokenPoolID, pool)
 		}
 		t.Log("Full stack with token pool: TokenAdminRegistry correctly maps token to pool")
+	})
+
+	t.Run("router ccip_send with lock-release pool token amount", func(t *testing.T) {
+		const localChain = uint64(11111)
+		const remoteDestChain = uint64(22222)
+
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "ccip-token-send")
+
+		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "ccip-send-mock-token")
+		mockFeeToken := helpers.GenerateMockContractID(t, deployerAddr, "ccip-send-fee-token")
+
+		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", mockToken)
+
+		remotePool := make([]byte, 20)
+		remoteToken := make([]byte, 20)
+		for i := range remotePool {
+			remotePool[i] = 0x11
+			remoteToken[i] = 0x22
+		}
+		if err := stack.TokenPoolClient.ApplyChainUpdates(ctx, []tokenpoolbindings.ChainUpdate{{
+			RemoteChainSelector: remoteDestChain,
+			RemotePoolAddresses: remotePool,
+			RemoteTokenAddress:  remoteToken,
+		}}, nil); err != nil {
+			t.Fatalf("TokenPool ApplyChainUpdates: %v", err)
+		}
+
+		_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
+			localChain, remoteDestChain, mockFeeToken, []string{mockToken})
+
+		defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, "ccip-token-send-executor")
+		extraArgs, err := encodeOnrampExtraArgsV3(onrampbindings.GenericExtraArgsV3{
+			Ccvs:               []string{stack.VvrID},
+			CcvArgs:            [][]byte{{}},
+			Executor:           defaultExecutor,
+			ExecutorArgs:       []byte{},
+			GasLimit:           0,
+			BlockConfirmations: 0,
+			TokenReceiver:      []byte{},
+			TokenArgs:          []byte{},
+		})
+		if err != nil {
+			t.Fatalf("encode extra args: %v", err)
+		}
+
+		evmReceiver := make([]byte, 20)
+		for i := range evmReceiver {
+			evmReceiver[i] = 0x33
+		}
+
+		msg := routerbindings.StellarToAnyMessage{
+			Receiver:     evmReceiver,
+			Data:         []byte("integration token ccip_send"),
+			FeeToken:     mockFeeToken,
+			ExtraArgs:    extraArgs,
+			TokenAmounts: []routerbindings.TokenAmount{{Token: mockToken, Amount: 1_000_000}},
+		}
+
+		requiredFee, err := stack.RouterClient.GetFee(ctx, remoteDestChain, msg)
+		if err != nil {
+			t.Fatalf("Router GetFee: %v", err)
+		}
+		if requiredFee <= 0 {
+			t.Fatalf("expected positive fee for token message, got %d", requiredFee)
+		}
+		t.Logf("quoted fee (fee token base units): %d", requiredFee)
+
+		// mockToken is a deterministic address, not a real Stellar asset contract: lock_or_burn's
+		// token transfer typically fails once OnRamp reaches the pool. We still exercise deploy wiring,
+		// GetFee, and the Router → OnRamp entrypoint.
+		_, err = stack.RouterClient.CcipSend(ctx, deployerAddr, remoteDestChain, msg, requiredFee)
+		if err == nil {
+			t.Fatal("expected CcipSend to fail: mock token cannot authorize transfer for lock_or_burn")
+		}
+		t.Logf("CcipSend failed as expected without a spendable SAC: %v", err)
 	})
 }

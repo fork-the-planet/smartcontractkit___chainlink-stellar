@@ -15,16 +15,20 @@ import (
 
 	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	ccvsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 const (
@@ -351,5 +355,192 @@ func (s *fullStack) deployTokenPool(
 	if err := s.TokenAdminRegistryClient.SetPool(ctx, tokenID, &s.TokenPoolID); err != nil {
 		t.Fatalf("TokenAdminRegistry SetPool: %v", err)
 	}
+}
+
+// outboundSendWire holds FeeQuoter + OnRamp contracts wired for Router.ccip_send to a remote destination.
+type outboundSendWire struct {
+	OnRampID        string
+	FeeQuoterID     string
+	OnRampClient    *onrampbindings.OnRampClient
+	FeeQuoterClient *fqbindings.FeeQuoterClient
+}
+
+// encodeOnrampExtraArgsV3 marshals OnRamp GenericExtraArgsV3 the same way Router / ccip_send expect in message.extra_args.
+func encodeOnrampExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
+	scVal, err := args.ToScVal()
+	if err != nil {
+		return nil, err
+	}
+	return scVal.MarshalBinary()
+}
+
+// deployOutboundSendWire deploys FeeQuoter and OnRamp, configures pricing and destination metadata,
+// and calls Router.set_onramp so ccip_send can reach OnRamp.forward_from_router for remoteDestChainSelector.
+//
+// localSourceChainSelector must match the Stellar chain selector used in deployFullStack (RMN Remote / OffRamp static config).
+// transferTokens should include every token address that may appear in StellarToAnyMessage.token_amounts (for FeeQuoter pricing).
+func deployOutboundSendWire(
+	ctx context.Context,
+	t *testing.T,
+	projectRoot string,
+	deployer *deployment.Deployer,
+	deployerAddr, saltPrefix string,
+	stack *fullStack,
+	localSourceChainSelector, remoteDestChainSelector uint64,
+	feeToken string,
+	transferTokens []string,
+) *outboundSendWire {
+	t.Helper()
+
+	deploy := func(name, wasmFile string) string {
+		t.Helper()
+		salt := deployment.GenerateDeterministicSalt(deployerAddr, saltPrefix+"-"+name)
+		p := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", wasmFile)
+		id, err := deployer.DeployContract(ctx, p, salt)
+		if err != nil {
+			t.Fatalf("deploy %s: %v", name, err)
+		}
+		return id
+	}
+
+	linkToken := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-link-token")
+	feeAgg := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-aggregator-out")
+
+	wire := &outboundSendWire{}
+	wire.FeeQuoterID = deploy("fee-quoter", "fee_quoter.wasm")
+	wire.OnRampID = deploy("onramp", "onramp.wasm")
+
+	wire.FeeQuoterClient = fqbindings.NewFeeQuoterClient(deployer, wire.FeeQuoterID)
+	wire.OnRampClient = onrampbindings.NewOnRampClient(deployer, wire.OnRampID)
+
+	if err := wire.FeeQuoterClient.Initialize(ctx, deployerAddr, fqbindings.StaticConfig{
+		LinkToken:         linkToken,
+		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000,
+	}, []string{deployerAddr}); err != nil {
+		t.Fatalf("FeeQuoter Initialize: %v", err)
+	}
+
+	destCfg := fqbindings.DestChainConfig{
+		IsEnabled:             true,
+		MaxDataBytes:          50000,
+		MaxPerMsgGasLimit:     4_000_000,
+		DestGasOverhead:       350_000,
+		DestGasPerPayloadByte: 16,
+		DefaultTokenFeeUsd:    50,
+		DefaultTokenDestGas:   50_000,
+		DefaultTxGasLimit:     200_000,
+		NetworkFeeUsdCents:    100,
+		LinkPremiumPercent:    90,
+	}
+	if err := wire.FeeQuoterClient.ApplyDestChainConfigs(ctx, []fqbindings.DestChainConfigArgs{
+		{DestChainSelector: remoteDestChainSelector, Config: destCfg},
+	}); err != nil {
+		t.Fatalf("FeeQuoter ApplyDestChainConfigs: %v", err)
+	}
+
+	tokenUpdates := []fqbindings.TokenPriceUpdate{
+		{
+			Token:       linkToken,
+			UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 15_000_000_000_000_000_000}),
+		},
+		{
+			Token:       feeToken,
+			UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}),
+		},
+	}
+	for _, tt := range transferTokens {
+		tokenUpdates = append(tokenUpdates, fqbindings.TokenPriceUpdate{
+			Token:       tt,
+			UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}),
+		})
+	}
+	if err := wire.FeeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
+		TokenPriceUpdates: tokenUpdates,
+		GasPriceUpdates: []fqbindings.GasPriceUpdate{{
+			DestChainSelector: remoteDestChainSelector,
+			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}),
+		}},
+	}); err != nil {
+		t.Fatalf("FeeQuoter UpdatePrices: %v", err)
+	}
+
+	var tokenFeeCfgs []fqbindings.TokenFeeConfigArgs
+	for _, tt := range transferTokens {
+		tokenFeeCfgs = append(tokenFeeCfgs, fqbindings.TokenFeeConfigArgs{
+			Token:             tt,
+			DestChainSelector: remoteDestChainSelector,
+			Config: fqbindings.TokenTransferFeeConfig{
+				FeeUsdCents:       25,
+				DestGasOverhead:   90_000,
+				DestBytesOverhead: 32,
+				IsEnabled:         true,
+			},
+		})
+	}
+	if len(tokenFeeCfgs) > 0 {
+		if err := wire.FeeQuoterClient.ApplyTokenFeeConfigs(ctx, tokenFeeCfgs, nil); err != nil {
+			t.Fatalf("FeeQuoter ApplyTokenFeeConfigs: %v", err)
+		}
+	}
+
+	// OnRamp::get_fee resolves each extra_args.ccvs entry as a VVR and calls
+	// get_outbound_implementation(dest_chain_selector). Without a mapping, VVR returns
+	// CCIPErrorOutboundImplementationNotFound (host Error(Contract, #55)).
+	ccvAddr := stack.CcvID
+	if err := stack.VvrClient.ApplyOutboundImplUpdates(ctx, []vvrbindings.OutboundImplementationUpdate{
+		{DestChainSelector: remoteDestChainSelector, Verifier: &ccvAddr},
+	}); err != nil {
+		t.Fatalf("VVR ApplyOutboundImplUpdates: %v", err)
+	}
+
+	// Resolved verifier (CommitteeVerifier) get_fee requires RemoteChainConfig for that destination.
+	routerOpt := stack.RouterID
+	if err := stack.CcvClient.ApplyRemoteChainCfgUpdates(ctx, []ccvsbindings.RemoteChainConfig{{
+		RemoteChainSelector: remoteDestChainSelector,
+		Router:              &routerOpt,
+		AllowlistEnabled:    false,
+		FeeUsdCents:         10,
+		GasForVerification:  100_000,
+		PayloadSizeBytes:    256,
+	}}); err != nil {
+		t.Fatalf("CommitteeVerifier ApplyRemoteChainCfgUpdates: %v", err)
+	}
+
+	defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-default-executor")
+
+	if err := wire.OnRampClient.Initialize(ctx, deployerAddr, onrampbindings.StaticConfig{
+		ChainSelector:         localSourceChainSelector,
+		TokenAdminRegistry:    stack.TokenAdminRegistryID,
+		RmnProxy:              stack.RmnProxyID,
+		MaxUsdCentsPerMessage: 100_000,
+	}, onrampbindings.DynamicConfig{
+		FeeQuoter:     wire.FeeQuoterID,
+		FeeAggregator: feeAgg,
+	}); err != nil {
+		t.Fatalf("OnRamp Initialize: %v", err)
+	}
+
+	offRampEVM := make([]byte, 20)
+	if err := wire.OnRampClient.ApplyDestChainConfigUpdates(ctx, []onrampbindings.DestChainConfigArgs{{
+		DestChainSelector:         remoteDestChainSelector,
+		Router:                    stack.RouterID,
+		AddressBytesLength:        20,
+		TokenReceiverAllowed:      true,
+		MessageNetworkFeeUsdCents: 50,
+		TokenNetworkFeeUsdCents:   100,
+		BaseExecutionGasCost:      200_000,
+		DefaultExecutor:           defaultExecutor,
+		LaneMandatedCcvs:          nil,
+		DefaultCcvs:               []string{stack.VvrID},
+		OffRamp:                   offRampEVM,
+	}}); err != nil {
+		t.Fatalf("OnRamp ApplyDestChainConfigUpdates: %v", err)
+	}
+
+	if err := stack.RouterClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
+		t.Fatalf("Router SetOnramp: %v", err)
+	}
+
+	return wire
 }
 
