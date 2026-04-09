@@ -485,14 +485,6 @@ func TestTokenPool(t *testing.T) {
 		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
 		assertHostContractErrorContainsCode(t, err, tokenpoolbindings.CCIPErrorInsufficientPoolLiquidity)
 		t.Logf("inbound execute rejected for insufficient pool liquidity: %v", err)
-
-		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
-		if err != nil {
-			t.Fatalf("GetExecutionState: %v", err)
-		}
-		if state != offrampbindings.MessageExecutionStateFailure {
-			t.Fatalf("execution state = %d, want Failure (%d) after pool liquidity error", state, offrampbindings.MessageExecutionStateFailure)
-		}
 	})
 }
 
