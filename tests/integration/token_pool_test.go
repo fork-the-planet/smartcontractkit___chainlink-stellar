@@ -362,6 +362,138 @@ func TestTokenPool(t *testing.T) {
 		}
 		t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
 	})
+
+	// Inbound unhappy: RMN curse on source chain selector (16-byte subject, last 8 = selector BE) must reject execute
+	// before CCV verification (matches CurseCheckable::require_chain_not_cursed).
+	t.Run("offramp inbound execute rejects when source chain is cursed", func(t *testing.T) {
+		const localChain = uint64(11111)
+		const releaseAmount = int64(2_000_000)
+
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "token-pool-inbound-curse-src", true)
+		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "token-pool-inbound-curse-src")
+		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "token-pool-inbound-curse-src", sacToken)
+
+		evmPool := bytes.Repeat([]byte{0x51}, 20)
+		evmTok := bytes.Repeat([]byte{0x52}, 20)
+		if err := stack.TokenPoolClient.ApplyChainUpdates(ctx, []tokenpoolbindings.ChainUpdate{{
+			RemoteChainSelector: remoteSourceChain,
+			RemotePoolAddresses: evmPool,
+			RemoteTokenAddress:  evmTok,
+		}}, nil); err != nil {
+			t.Fatalf("TokenPool ApplyChainUpdates (curse-src): %v", err)
+		}
+
+		sacTransferOrFatal(ctx, t, deployer, sacToken, deployerAddr, stack.TokenPoolID, releaseAmount)
+
+		tokenXfer, err := EncodeCcipTokenTransferV1Inbound(releaseAmount, evmPool, evmTok, sacToken, stack.ReceiverID, nil)
+		if err != nil {
+			t.Fatalf("EncodeCcipTokenTransferV1Inbound: %v", err)
+		}
+		evmSender := bytes.Repeat([]byte{0xcd}, 20)
+		var ccvZero [32]byte
+		encoded, err := encodeCcipMessageV1(ccipV1Wire{
+			SourceChainSelector: remoteSourceChain,
+			DestChainSelector:   localChain,
+			SequenceNumber:      1,
+			ExecutionGasLimit:   0,
+			CcipReceiveGasLimit: 0,
+			Finality:            0,
+			CcvExecutorHash:     ccvZero,
+			OnRampAddress:       stack.OnRampWire,
+			OffRampAddress:      stack.OffRampSuffix,
+			Sender:              evmSender,
+			Receiver:            stack.ReceiverRaw,
+			DestBlob:            nil,
+			TokenTransfer:       tokenXfer,
+			Data:                nil,
+		})
+		if err != nil {
+			t.Fatalf("encodeCcipMessageV1: %v", err)
+		}
+		msgID := keccak256MessageID(encoded)
+		verifierBlob := stack.signVerifierBlob(t, msgID)
+
+		subject := rmnSubjectForRouterDestChain(remoteSourceChain)
+		if err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{subject}); err != nil {
+			t.Fatalf("RmnRemote Curse(source chain subject): %v", err)
+		}
+		t.Cleanup(func() {
+			if err := stack.RmnRemoteClient.Uncurse(ctx, [][16]byte{subject}); err != nil {
+				t.Logf("cleanup Uncurse: %v", err)
+			}
+		})
+
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		assertHostContractErrorContainsCode(t, err, offrampbindings.CCIPErrorCursedByRMN)
+		t.Logf("inbound execute rejected when source chain cursed (CCIPErrorCursedByRMN): %v", err)
+	})
+
+	// Inbound unhappy: lock-release pool returns InsufficientPoolLiquidity when release amount exceeds on-ledger balance.
+	t.Run("offramp inbound execute rejects when pool has insufficient SAC balance", func(t *testing.T) {
+		const localChain = uint64(11111)
+		const poolFunding = int64(500_000)
+		const releaseAmount = int64(2_000_000)
+
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "token-pool-inbound-low-liq", true)
+		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "token-pool-inbound-low-liq")
+		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "token-pool-inbound-low-liq", sacToken)
+
+		evmPool := bytes.Repeat([]byte{0x51}, 20)
+		evmTok := bytes.Repeat([]byte{0x52}, 20)
+		if err := stack.TokenPoolClient.ApplyChainUpdates(ctx, []tokenpoolbindings.ChainUpdate{{
+			RemoteChainSelector: remoteSourceChain,
+			RemotePoolAddresses: evmPool,
+			RemoteTokenAddress:  evmTok,
+		}}, nil); err != nil {
+			t.Fatalf("TokenPool ApplyChainUpdates (low-liq): %v", err)
+		}
+
+		sacTransferOrFatal(ctx, t, deployer, sacToken, deployerAddr, stack.TokenPoolID, poolFunding)
+		poolBal := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)
+		if poolBal < releaseAmount {
+			t.Logf("pool balance %d < release %d (expected for this test)", poolBal, releaseAmount)
+		}
+
+		tokenXfer, err := EncodeCcipTokenTransferV1Inbound(releaseAmount, evmPool, evmTok, sacToken, stack.ReceiverID, nil)
+		if err != nil {
+			t.Fatalf("EncodeCcipTokenTransferV1Inbound: %v", err)
+		}
+		evmSender := bytes.Repeat([]byte{0xcd}, 20)
+		var ccvZero [32]byte
+		encoded, err := encodeCcipMessageV1(ccipV1Wire{
+			SourceChainSelector: remoteSourceChain,
+			DestChainSelector:   localChain,
+			SequenceNumber:      1,
+			ExecutionGasLimit:   0,
+			CcipReceiveGasLimit: 0,
+			Finality:            0,
+			CcvExecutorHash:     ccvZero,
+			OnRampAddress:       stack.OnRampWire,
+			OffRampAddress:      stack.OffRampSuffix,
+			Sender:              evmSender,
+			Receiver:            stack.ReceiverRaw,
+			DestBlob:            nil,
+			TokenTransfer:       tokenXfer,
+			Data:                nil,
+		})
+		if err != nil {
+			t.Fatalf("encodeCcipMessageV1: %v", err)
+		}
+		msgID := keccak256MessageID(encoded)
+		verifierBlob := stack.signVerifierBlob(t, msgID)
+
+		err = stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0)
+		assertHostContractErrorContainsCode(t, err, tokenpoolbindings.CCIPErrorInsufficientPoolLiquidity)
+		t.Logf("inbound execute rejected for insufficient pool liquidity: %v", err)
+
+		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
+		if err != nil {
+			t.Fatalf("GetExecutionState: %v", err)
+		}
+		if state != offrampbindings.MessageExecutionStateFailure {
+			t.Fatalf("execution state = %d, want Failure (%d) after pool liquidity error", state, offrampbindings.MessageExecutionStateFailure)
+		}
+	})
 }
 
 // sacTransferOrFatal invokes Soroban token transfer(from, to, amount) on the SAC (deployer must be `from`).
