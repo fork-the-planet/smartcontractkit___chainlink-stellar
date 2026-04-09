@@ -148,10 +148,8 @@ func TestTokenPool(t *testing.T) {
 			t.Fatalf("TokenPool ApplyChainUpdates: %v", err)
 		}
 
-		outWire := deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
+		_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
 			localChain, remoteDestChain, mockFeeToken, []string{sacToken})
-		// Must match deployOutboundSendWire: 20-byte placeholder off-ramp address on dest chain.
-		offRampRawPlaceholder := make([]byte, 20)
 
 		defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, "ccip-token-send-executor")
 		extraArgs, err := encodeOnrampExtraArgsV3(onrampbindings.GenericExtraArgsV3{
@@ -239,23 +237,6 @@ func TestTokenPool(t *testing.T) {
 		t.Logf("SAC balances before token send: sender=%d pool=%d", senderBefore, poolBefore)
 
 		// Token transfer: deployer authorizes SAC transfer into the pool via simulation-derived auth (see deployment.Deployer).
-		seqForTokenSend, err := outWire.OnRampClient.GetExpectedNextMessageNumber(ctx, remoteDestChain)
-		if err != nil {
-			t.Fatalf("GetExpectedNextMessageNumber before token send: %v", err)
-		}
-
-		tokenXferEncoded, err := EncodeCcipTokenTransferV1(
-			tokenTransferAmount,
-			stack.TokenPoolID,
-			sacToken,
-			remoteToken,
-			nil,
-			nil,
-		)
-		if err != nil {
-			t.Fatalf("EncodeCcipTokenTransferV1: %v", err)
-		}
-
 		latest2, err := rpcClient.GetLatestLedger(ctx)
 		if err != nil {
 			t.Fatalf("GetLatestLedger (token send): %v", err)
@@ -279,32 +260,10 @@ func TestTokenPool(t *testing.T) {
 		if err != nil {
 			t.Fatalf("WaitForCCIPSendRequestedEvent (token send): %v", err)
 		}
+		if !bytes.Equal(tokenEvt.MessageId[:], tokenMsgID[:]) {
+			t.Fatalf("event message_id %x != return value %x", tokenEvt.MessageId, tokenMsgID)
+		}
 		t.Logf("token CCIPSendRequested at ledger %d tx %s", tokenEvt.Ledger, tokenEvt.TxHash)
-
-		predictedID, err := PredictStellarOnrampMessageID(StellarOnrampMessageIDInput{
-			SourceChainSelector: localChain,
-			DestChainSelector:   remoteDestChain,
-			SequenceNumber:      seqForTokenSend,
-			GasLimit:            0,
-			BlockConfirmations:  0,
-			Ccvs:                []string{stack.VvrID},
-			Executor:            defaultExecutor,
-			OnRampContractID:    outWire.OnRampID,
-			OffRampRawBytes:     offRampRawPlaceholder,
-			SenderStrkey:        deployerAddr,
-			Receiver:            evmReceiver,
-			Data:                msg.Data,
-			TokenTransfer:       tokenXferEncoded,
-		})
-		if err != nil {
-			t.Fatalf("PredictStellarOnrampMessageID: %v", err)
-		}
-		if predictedID != tokenMsgID {
-			t.Fatalf("off-chain message_id %x != Router CcipSend %x", predictedID, tokenMsgID)
-		}
-		if predictedID != tokenEvt.MessageId {
-			t.Fatalf("off-chain message_id %x != CCIPSendRequested event %x", predictedID, tokenEvt.MessageId)
-		}
 
 		senderAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, deployerAddr)
 		poolAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)

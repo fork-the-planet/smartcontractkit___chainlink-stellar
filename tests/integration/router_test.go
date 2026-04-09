@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,11 +18,14 @@ import (
 	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	ccvsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func TestRouter(t *testing.T) {
@@ -244,5 +249,113 @@ func TestRouter(t *testing.T) {
 			t.Fatalf("receiver last_message_id mismatch: got %x want %x", stored, msgID)
 		}
 		t.Log("OffRamp → Router → ccip_receive succeeded; receiver persisted message id")
+	})
+}
+
+// rmnSubjectForRouterDestChain matches Router::ccip_send / RMN lane subject encoding:
+// 16 bytes, last 8 = dest_chain_selector big-endian, high 8 bytes zero.
+func rmnSubjectForRouterDestChain(destChainSelector uint64) [16]byte {
+	var s [16]byte
+	binary.BigEndian.PutUint64(s[8:], destChainSelector)
+	return s
+}
+
+func assertHostContractErrorContainsCode(t *testing.T, err error, code int) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Error(Contract") {
+		t.Fatalf("expected Soroban host contract error, got: %v", err)
+	}
+	needle := fmt.Sprintf("#%d", code)
+	if !strings.Contains(msg, needle) {
+		t.Fatalf("expected error to contain %q, got: %v", needle, err)
+	}
+}
+
+// TestRouterCcipSendUnhappyPaths covers outbound Router flows that should fail before a successful send.
+func TestRouterCcipSendUnhappyPaths(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
+	deployerAddr := deployerKP.Address()
+
+	const (
+		localChain      = uint64(12345)
+		remoteDestChain = uint64(44444)
+		saltPrefix      = "router-ccip-unhappy"
+	)
+
+	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, saltPrefix)
+	mockFeeToken := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-token")
+	_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, saltPrefix, stack,
+		localChain, remoteDestChain, mockFeeToken, nil)
+
+	userExecutor := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-executor")
+	validExtra, err := encodeOnrampExtraArgsV3(onrampbindings.GenericExtraArgsV3{
+		Ccvs:               []string{stack.VvrID},
+		CcvArgs:            [][]byte{{}},
+		Executor:           userExecutor,
+		ExecutorArgs:       nil,
+		GasLimit:           0,
+		BlockConfirmations: 0,
+		TokenReceiver:      nil,
+		TokenArgs:          nil,
+	})
+	if err != nil {
+		t.Fatalf("encodeOnrampExtraArgsV3: %v", err)
+	}
+
+	receiver := bytes.Repeat([]byte{0x44}, 20)
+	baseMsg := routerbindings.StellarToAnyMessage{
+		Receiver:     receiver,
+		Data:         []byte("router ccip_send unhappy path"),
+		FeeToken:     mockFeeToken,
+		ExtraArgs:    validExtra,
+		TokenAmounts: nil,
+	}
+
+	t.Run("ccip_send rejects when destination chain is cursed", func(t *testing.T) {
+		fee, err := stack.RouterClient.GetFee(ctx, remoteDestChain, baseMsg)
+		if err != nil {
+			t.Fatalf("GetFee before curse: %v", err)
+		}
+		if fee <= 0 {
+			t.Fatalf("expected positive fee before curse, got %d", fee)
+		}
+
+		subject := rmnSubjectForRouterDestChain(remoteDestChain)
+		if err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{subject}); err != nil {
+			t.Fatalf("RmnRemote Curse(dest subject): %v", err)
+		}
+		t.Cleanup(func() {
+			if err := stack.RmnRemoteClient.Uncurse(ctx, [][16]byte{subject}); err != nil {
+				t.Logf("cleanup Uncurse: %v", err)
+			}
+		})
+
+		// Use simulation so the RPC error includes Error(Contract, #62); InvokeContract can
+		// surface a generic "transaction failed" after submit without the code in the string.
+		args := []xdr.ScVal{
+			scval.AddressToScVal(deployerAddr),
+			scval.Uint64ToScVal(remoteDestChain),
+			scval.MustToScVal(baseMsg.ToScVal()),
+			scval.I128ToScVal(fee),
+		}
+		_, err = deployer.SimulateContract(ctx, stack.RouterID, "ccip_send", args)
+		assertHostContractErrorContainsCode(t, err, routerbindings.CCIPErrorBadRMNSignal)
+		t.Logf("ccip_send simulation rejected when dest lane cursed (CCIPErrorBadRMNSignal): %v", err)
+	})
+
+	t.Run("get_fee rejects invalid extra_args XDR", func(t *testing.T) {
+		badMsg := baseMsg
+		badMsg.ExtraArgs = []byte{0xde, 0xad, 0xbe, 0xef}
+
+		_, err := stack.RouterClient.GetFee(ctx, remoteDestChain, badMsg)
+		assertHostContractErrorContainsCode(t, err, routerbindings.CCIPErrorInvalidExtraArgsData)
+		t.Logf("GetFee rejected invalid extra_args (CCIPErrorInvalidExtraArgsData): %v", err)
 	})
 }
