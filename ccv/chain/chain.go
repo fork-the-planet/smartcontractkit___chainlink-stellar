@@ -429,7 +429,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
-	ensureStellarFeeAggregatorsInTopology(topology)
+	ensureStellarFeeAggregatorsInTopology(c, topology)
 	registerStellarDeployChangesetCtx(selector, c, topology)
 	return nil, nil
 }
@@ -1822,11 +1822,33 @@ func findStellarRoot() (string, error) {
 	}
 }
 
-func ensureStellarFeeAggregatorsInTopology(topology *ccipOffchain.EnvironmentTopology) {
+// stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
+// deterministic mock fee-aggregator contract ID used when initializing Stellar FeeQuoter,
+// CommitteeVerifier, and VVR (mustGenerateMockContractID(..., "fee-aggregator")).
+// Topology FeeAggregator must match that on-chain value so downstream tooling and
+// changesets stay consistent; an EVM-style 0x1 placeholder does not match Soroban state.
+func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
+	if c.deployerKeypair == nil {
+		return "", fmt.Errorf("deployer keypair not set")
+	}
+	mockStrkey := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
+	raw, err := strkey.Decode(strkey.VersionByteContract, mockStrkey)
+	if err != nil {
+		return "", fmt.Errorf("decode mock fee aggregator strkey: %w", err)
+	}
+	return hexutil.Encode(raw), nil
+}
+
+func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccipOffchain.EnvironmentTopology) {
 	if topology == nil || topology.NOPTopology == nil {
 		return
 	}
-	const placeholder = "0x0000000000000000000000000000000000000001"
+	const evmStyleFallback = "0x0000000000000000000000000000000000000001"
+	feeAggHex, err := stellarFeeAggregatorHexForTopology(c)
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("could not derive Stellar fee aggregator for topology; using EVM-style fallback (may break verifier/aggregator alignment)")
+		feeAggHex = evmStyleFallback
+	}
 	for name, committee := range topology.NOPTopology.Committees {
 		if committee.ChainConfigs == nil {
 			continue
@@ -1843,7 +1865,7 @@ func ensureStellarFeeAggregatorsInTopology(topology *ccipOffchain.EnvironmentTop
 			if err != nil || fam != chainsel.FamilyStellar {
 				continue
 			}
-			chainCfg.FeeAggregator = placeholder
+			chainCfg.FeeAggregator = feeAggHex
 			committee.ChainConfigs[chainKey] = chainCfg
 		}
 		topology.NOPTopology.Committees[name] = committee
