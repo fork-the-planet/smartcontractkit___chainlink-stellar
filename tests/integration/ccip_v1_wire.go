@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -167,6 +168,59 @@ func EncodeCcipTokenTransferV1(
 	b = append(b, destTokenAddress...)
 	b = append(b, byte(len(tokenReceiver)))
 	b = append(b, tokenReceiver...)
+	b = binary.BigEndian.AppendUint16(b, uint16(len(extraData)))
+	b = append(b, extraData...)
+	return b, nil
+}
+
+// EncodeCcipTokenTransferV1Inbound builds CcipTokenTransferV1::to_bytes for inbound OffRamp execute:
+// source pool/token are raw bytes (e.g. 20-byte remote addresses). Dest token and receiver must be Stellar
+// **contract** strkeys (C…): we encode the raw 32-byte contract identifiers (same as many cross-chain payloads;
+// OffRamp::address_from_token_bytes uses the last 32 bytes, so len==32 is ideal).
+func EncodeCcipTokenTransferV1Inbound(
+	amount int64,
+	sourcePoolRaw, sourceTokenRaw []byte,
+	destTokenStrkey, receiverContractStrkey string,
+	extraData []byte,
+) ([]byte, error) {
+	if amount < 0 {
+		return nil, fmt.Errorf("negative token amount")
+	}
+	if len(sourcePoolRaw) > 255 || len(sourceTokenRaw) > 255 {
+		return nil, fmt.Errorf("source pool/token length overflow")
+	}
+	if len(extraData) > 65535 {
+		return nil, fmt.Errorf("extra_data length overflow")
+	}
+	destRaw, err := strkey.Decode(strkey.VersionByteContract, destTokenStrkey)
+	if err != nil {
+		return nil, fmt.Errorf("dest token strkey: %w", err)
+	}
+	if len(destRaw) != 32 {
+		return nil, fmt.Errorf("dest token raw id len %d, want 32", len(destRaw))
+	}
+	recvRaw, err := strkey.Decode(strkey.VersionByteContract, receiverContractStrkey)
+	if err != nil {
+		return nil, fmt.Errorf("receiver strkey: %w", err)
+	}
+	if len(recvRaw) != 32 {
+		return nil, fmt.Errorf("receiver raw id len %d, want 32", len(recvRaw))
+	}
+	var amountBE [32]byte
+	binary.BigEndian.PutUint64(amountBE[16:24], 0)
+	binary.BigEndian.PutUint64(amountBE[24:], uint64(amount))
+
+	var b []byte
+	b = append(b, ccipTokenTransferV1Version)
+	b = append(b, amountBE[:]...)
+	b = append(b, byte(len(sourcePoolRaw)))
+	b = append(b, sourcePoolRaw...)
+	b = append(b, byte(len(sourceTokenRaw)))
+	b = append(b, sourceTokenRaw...)
+	b = append(b, byte(len(destRaw)))
+	b = append(b, destRaw...)
+	b = append(b, byte(len(recvRaw)))
+	b = append(b, recvRaw...)
 	b = binary.BigEndian.AppendUint16(b, uint16(len(extraData)))
 	b = append(b, extraData...)
 	return b, nil

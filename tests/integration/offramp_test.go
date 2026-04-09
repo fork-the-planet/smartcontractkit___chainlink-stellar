@@ -321,7 +321,7 @@ func TestOffRampExecute(t *testing.T) {
 
 	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
 
-	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec")
+	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec", false)
 
 	t.Run("execute valid message succeeds", func(t *testing.T) {
 		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))

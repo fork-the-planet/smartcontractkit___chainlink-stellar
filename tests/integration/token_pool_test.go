@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
@@ -99,7 +100,7 @@ func TestTokenPool(t *testing.T) {
 
 	t.Run("deploy full stack with token pool", func(t *testing.T) {
 		const destChain = uint64(11111)
-		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, destChain, "token-pool-stack")
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, destChain, "token-pool-stack", false)
 
 		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "stack-test-token")
 		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "token-pool-stack", mockToken)
@@ -126,7 +127,7 @@ func TestTokenPool(t *testing.T) {
 		const remoteDestChain = uint64(22222)
 		const tokenTransferAmount = int64(1_000_000) // 0.1 INTG at 7 decimals (same scale as ccv/chain E2E test token)
 
-		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "ccip-token-send")
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "ccip-token-send", false)
 
 		// Real SAC + minted balance on deployer (classic issue + trustline), like a mock ERC20 on EVM.
 		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "ccip-token-send")
@@ -278,6 +279,106 @@ func TestTokenPool(t *testing.T) {
 				tokenTransferAmount, poolBefore, poolAfter, got)
 		}
 	})
+
+	// Inbound: OffRamp execute decodes CcipMessageV1 with a token leg, resolves pool via TokenAdminRegistry,
+	// and calls lock-release pool release_or_mint (pool must hold SAC liquidity first).
+	t.Run("offramp execute releases SAC from pool to receiver (inbound)", func(t *testing.T) {
+		const localChain = uint64(11111)
+		const releaseAmount = int64(2_000_000)
+
+		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "token-pool-inbound", true)
+		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "token-pool-inbound")
+		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "token-pool-inbound", sacToken)
+
+		evmPool := bytes.Repeat([]byte{0x51}, 20)
+		evmTok := bytes.Repeat([]byte{0x52}, 20)
+		if err := stack.TokenPoolClient.ApplyChainUpdates(ctx, []tokenpoolbindings.ChainUpdate{{
+			RemoteChainSelector: remoteSourceChain,
+			RemotePoolAddresses: evmPool,
+			RemoteTokenAddress:  evmTok,
+		}}, nil); err != nil {
+			t.Fatalf("TokenPool ApplyChainUpdates (inbound): %v", err)
+		}
+
+		sacTransferOrFatal(ctx, t, deployer, sacToken, deployerAddr, stack.TokenPoolID, releaseAmount)
+
+		poolBefore := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)
+		rcvBefore := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.ReceiverID)
+		if poolBefore < releaseAmount {
+			t.Fatalf("pool underfunded: %d < %d", poolBefore, releaseAmount)
+		}
+
+		tokenXfer, err := EncodeCcipTokenTransferV1Inbound(releaseAmount, evmPool, evmTok, sacToken, stack.ReceiverID, nil)
+		if err != nil {
+			t.Fatalf("EncodeCcipTokenTransferV1Inbound: %v", err)
+		}
+
+		evmSender := bytes.Repeat([]byte{0xcd}, 20)
+		var ccvZero [32]byte
+		encoded, err := encodeCcipMessageV1(ccipV1Wire{
+			SourceChainSelector: remoteSourceChain,
+			DestChainSelector:   localChain,
+			SequenceNumber:      1,
+			ExecutionGasLimit:   0,
+			CcipReceiveGasLimit: 0,
+			Finality:            0,
+			CcvExecutorHash:     ccvZero,
+			OnRampAddress:       stack.OnRampWire,
+			OffRampAddress:      stack.OffRampSuffix,
+			Sender:              evmSender,
+			Receiver:            stack.ReceiverRaw,
+			DestBlob:            nil,
+			TokenTransfer:       tokenXfer,
+			Data:                nil,
+		})
+		if err != nil {
+			t.Fatalf("encodeCcipMessageV1: %v", err)
+		}
+		msgID := keccak256MessageID(encoded)
+		verifierBlob := stack.signVerifierBlob(t, msgID)
+
+		if err := stack.OfframpClient.Execute(ctx, encoded, []string{stack.VvrID}, [][]byte{verifierBlob}, 0); err != nil {
+			t.Fatalf("OffRamp Execute (inbound release): %v", err)
+		}
+
+		state, err := stack.OfframpClient.GetExecutionState(ctx, msgID)
+		if err != nil {
+			t.Fatalf("GetExecutionState: %v", err)
+		}
+		if state != offrampbindings.MessageExecutionStateSuccess {
+			t.Fatalf("execution state = %d, want Success (%d)", state, offrampbindings.MessageExecutionStateSuccess)
+		}
+
+		poolAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)
+		rcvAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.ReceiverID)
+
+		if got := poolBefore - poolAfter; got != releaseAmount {
+			t.Fatalf("pool SAC should drop by %d; before=%d after=%d (delta=%d)",
+				releaseAmount, poolBefore, poolAfter, got)
+		}
+		if got := rcvAfter - rcvBefore; got != releaseAmount {
+			t.Fatalf("receiver SAC should increase by %d; before=%d after=%d (delta=%d)",
+				releaseAmount, rcvBefore, rcvAfter, got)
+		}
+		t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
+	})
+}
+
+// sacTransferOrFatal invokes Soroban token transfer(from, to, amount) on the SAC (deployer must be `from`).
+func sacTransferOrFatal(ctx context.Context, t *testing.T, deployer *deployment.Deployer, sacContract, fromStrkey, toStrkey string, amount int64) {
+	t.Helper()
+	if amount <= 0 {
+		t.Fatal("SAC transfer amount must be positive")
+	}
+	args := []xdr.ScVal{
+		scval.AddressToScVal(fromStrkey),
+		scval.AddressToScVal(toStrkey),
+		scval.I128ToScVal(amount),
+	}
+	_, err := deployer.InvokeContract(ctx, sacContract, "transfer", args)
+	if err != nil {
+		t.Fatalf("SAC transfer %s -> %s amount=%d: %v", fromStrkey, toStrkey, amount, err)
+	}
 }
 
 // sacBalanceOrFatal reads an SPL/SAC balance for a holder (G… account or C… contract) via simulate-only contract call.

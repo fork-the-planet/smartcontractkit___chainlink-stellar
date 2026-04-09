@@ -81,6 +81,10 @@ type fullStack struct {
 // deployFullStack deploys and wires the complete contract stack needed for
 // OffRamp execute tests. The saltPrefix differentiates contract instances so
 // multiple stacks can coexist in the same shared Stellar environment.
+//
+// If offrampUsesDeployedTokenAdminRegistry is true, a real token_admin_registry is deployed before
+// OffRamp init and wired into OffRamp static config so inbound execute can resolve pools via
+// get_pool (see deployTokenPool, which reuses that registry instead of deploying a second one).
 func deployFullStack(
 	ctx context.Context,
 	t *testing.T,
@@ -89,6 +93,7 @@ func deployFullStack(
 	deployerAddr string,
 	destChainSelector uint64,
 	saltPrefix string,
+	offrampUsesDeployedTokenAdminRegistry bool,
 ) *fullStack {
 	t.Helper()
 
@@ -173,12 +178,23 @@ func deployFullStack(
 		t.Fatalf("Router Initialize: %v", err)
 	}
 
+	var tokenAdminRegistryForOfframp string
+	if offrampUsesDeployedTokenAdminRegistry {
+		s.TokenAdminRegistryID = deploy("token-admin-registry", "token_admin_registry.wasm")
+		s.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, s.TokenAdminRegistryID)
+		if err := s.TokenAdminRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+			t.Fatalf("TokenAdminRegistry Initialize (for OffRamp): %v", err)
+		}
+		tokenAdminRegistryForOfframp = s.TokenAdminRegistryID
+	} else {
+		tokenAdminRegistryForOfframp = helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-token-admin")
+	}
+
 	// 8. OffRamp
-	mockTokenAdminReg := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-token-admin")
 	if err := s.OfframpClient.Initialize(ctx, deployerAddr, offrampbindings.StaticConfig{
 		ChainSelector:      destChainSelector,
 		RmnProxy:           s.RmnProxyID,
-		TokenAdminRegistry: mockTokenAdminReg,
+		TokenAdminRegistry: tokenAdminRegistryForOfframp,
 	}); err != nil {
 		t.Fatalf("OffRamp Initialize: %v", err)
 	}
@@ -337,16 +353,18 @@ func (s *fullStack) deployTokenPool(
 		return id
 	}
 
-	s.TokenAdminRegistryID = deploy("token-admin-registry", "token_admin_registry.wasm")
-	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
-
-	s.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, s.TokenAdminRegistryID)
-	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
-
-	// Initialize token admin registry
-	if err := s.TokenAdminRegistryClient.Initialize(ctx, deployerAddr); err != nil {
-		t.Fatalf("TokenAdminRegistry Initialize: %v", err)
+	if s.TokenAdminRegistryID == "" {
+		s.TokenAdminRegistryID = deploy("token-admin-registry", "token_admin_registry.wasm")
+		s.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, s.TokenAdminRegistryID)
+		if err := s.TokenAdminRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+			t.Fatalf("TokenAdminRegistry Initialize: %v", err)
+		}
+	} else if s.TokenAdminRegistryClient == nil {
+		s.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, s.TokenAdminRegistryID)
 	}
+
+	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
+	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
 
 	// Initialize pool with the token
 	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID); err != nil {
@@ -637,4 +655,3 @@ func deployOutboundSendWire(
 
 	return wire
 }
-

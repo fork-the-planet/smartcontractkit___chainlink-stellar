@@ -308,7 +308,7 @@ func TestRouterCcipSendUnhappyPaths(t *testing.T) {
 		saltPrefix      = "router-ccip-unhappy"
 	)
 
-	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, saltPrefix)
+	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, saltPrefix, false)
 	mockFeeToken := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-token")
 	_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, saltPrefix, stack,
 		localChain, remoteDestChain, mockFeeToken, nil)
