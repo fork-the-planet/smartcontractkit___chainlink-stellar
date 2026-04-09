@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -27,11 +29,17 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
+	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
+	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 const (
+	// integrationSACAssetCode is the classic asset code wrapped by deployIntegrationTestSAC (distinct from ccv/chain "TEST").
+	integrationSACAssetCode = "INTG"
+
 	remoteSourceChain = uint64(99999)
 
 	ccipVerifierVersion0 = byte(0x49)
@@ -355,6 +363,61 @@ func (s *fullStack) deployTokenPool(
 	if err := s.TokenAdminRegistryClient.SetPool(ctx, tokenID, &s.TokenPoolID); err != nil {
 		t.Fatalf("TokenAdminRegistry SetPool: %v", err)
 	}
+}
+
+// deployIntegrationTestSAC mirrors ccv/chain.Chain.createTestToken: a deterministic issuer is funded via
+// Friendbot, the deployer establishes a trustline, the issuer mints classic credits to the deployer, and
+// the Soroban Asset Contract (SAC) for that asset is created. This is the Stellar analogue of deploying a
+// mock ERC20 and minting to the sender for lock/release pool tests.
+func deployIntegrationTestSAC(
+	ctx context.Context,
+	t *testing.T,
+	rpcClient *rpcclient.Client,
+	deployer *deployment.Deployer,
+	deployerAddr, networkPassphrase, friendbotBaseURL, saltPrefix string,
+) string {
+	t.Helper()
+	if friendbotBaseURL == "" {
+		t.Fatal("Friendbot URL required to fund the integration SAC issuer account")
+	}
+
+	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("integration-sac-issuer-%s-%s", networkPassphrase, saltPrefix)))
+	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	if err != nil {
+		t.Fatalf("issuer keypair: %v", err)
+	}
+	if err := helpers.FundViaFriendbot(friendbotBaseURL, issuerKP.Address()); err != nil {
+		t.Fatalf("fund issuer via friendbot: %v", err)
+	}
+
+	issuerDeployer := deployment.NewDeployer(rpcClient, networkPassphrase, issuerKP)
+	asset := txnbuild.CreditAsset{Code: integrationSACAssetCode, Issuer: issuerKP.Address()}
+
+	if err := deployer.SubmitClassicOperation(ctx, &txnbuild.ChangeTrust{
+		Line:          asset.MustToChangeTrustAsset(),
+		SourceAccount: deployerAddr,
+	}); err != nil {
+		t.Fatalf("change trust for integration SAC asset: %v", err)
+	}
+	if err := issuerDeployer.SubmitClassicOperation(ctx, &txnbuild.Payment{
+		Destination:   deployerAddr,
+		Amount:        "100000000",
+		Asset:         asset,
+		SourceAccount: issuerKP.Address(),
+	}); err != nil {
+		t.Fatalf("issue credits to deployer: %v", err)
+	}
+
+	xdrAsset, err := asset.ToXDR()
+	if err != nil {
+		t.Fatalf("asset to XDR: %v", err)
+	}
+	sacID, err := deployer.DeploySACToken(ctx, xdrAsset)
+	if err != nil {
+		t.Fatalf("DeploySACToken: %v", err)
+	}
+	t.Logf("integration SAC %s (issuer %s, asset %s)", sacID, issuerKP.Address(), integrationSACAssetCode)
+	return sacID
 }
 
 // outboundSendWire holds FeeQuoter + OnRamp contracts wired for Router.ccip_send to a remote destination.

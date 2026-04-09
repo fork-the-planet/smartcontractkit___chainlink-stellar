@@ -21,7 +21,7 @@ func TestRmnRemote(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
 
 	// Deploy the RmnRemote contract
 	t.Log("Deploying RmnRemote contract...")

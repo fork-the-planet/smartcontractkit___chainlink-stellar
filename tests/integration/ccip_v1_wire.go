@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // Soroban / contracts/common/message: MESSAGE_V1_VERSION.
@@ -83,4 +84,159 @@ func contractAddressScValSuffix32(contractStrkey string) ([]byte, error) {
 		return nil, fmt.Errorf("ScVal XDR shorter than 32 bytes: %d", len(buf))
 	}
 	return buf[len(buf)-32:], nil
+}
+
+// sorobanAddressRaw32 matches contracts/common/message CcipMessageV1::address_raw_bytes (last 32 bytes of Address ScVal XDR).
+func sorobanAddressRaw32(addrStrkey string) ([]byte, error) {
+	v := scval.AddressToScVal(addrStrkey)
+	buf, err := v.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	if len(buf) < 32 {
+		return nil, fmt.Errorf("address ScVal XDR shorter than 32 bytes: %d", len(buf))
+	}
+	return buf[len(buf)-32:], nil
+}
+
+// sorobanScValXDR returns full XDR for a ScVal (matches Soroban Address::to_xdr / Bytes::to_xdr on-chain).
+func sorobanScValXDR(v xdr.ScVal) ([]byte, error) {
+	return v.MarshalBinary()
+}
+
+// computeCcvAndExecutorHash matches contracts/common/message::CcipMessageV1::compute_ccv_and_executor_hash:
+// keccak256( [len_executor_u8] || raw(ccv_0) || ... || raw(executor) ).
+func computeCcvAndExecutorHash(ccvs []string, executorStrkey string) ([32]byte, error) {
+	execRaw, err := sorobanAddressRaw32(executorStrkey)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("executor raw: %w", err)
+	}
+	var b []byte
+	b = append(b, byte(len(execRaw)))
+	for _, c := range ccvs {
+		raw, err := sorobanAddressRaw32(c)
+		if err != nil {
+			return [32]byte{}, fmt.Errorf("ccv raw %s: %w", c, err)
+		}
+		b = append(b, raw...)
+	}
+	b = append(b, execRaw...)
+	h := crypto.Keccak256(b)
+	var out [32]byte
+	copy(out[:], h)
+	return out, nil
+}
+
+const ccipTokenTransferV1Version byte = 1
+
+// EncodeCcipTokenTransferV1 matches contracts/common/message::CcipTokenTransferV1::to_bytes (OnRamp lock path).
+func EncodeCcipTokenTransferV1(
+	amount int64,
+	sourcePoolContractStrkey, sourceTokenContractStrkey string,
+	destTokenAddress, tokenReceiver, extraData []byte,
+) ([]byte, error) {
+	if amount < 0 {
+		return nil, fmt.Errorf("negative token amount")
+	}
+	if len(destTokenAddress) > 255 || len(tokenReceiver) > 255 || len(extraData) > 65535 {
+		return nil, fmt.Errorf("token transfer field length overflow")
+	}
+	poolXDR, err := sorobanScValXDR(scval.AddressToScVal(sourcePoolContractStrkey))
+	if err != nil {
+		return nil, fmt.Errorf("pool scval xdr: %w", err)
+	}
+	tokenXDR, err := sorobanScValXDR(scval.AddressToScVal(sourceTokenContractStrkey))
+	if err != nil {
+		return nil, fmt.Errorf("token scval xdr: %w", err)
+	}
+	if len(poolXDR) > 255 || len(tokenXDR) > 255 {
+		return nil, fmt.Errorf("scval xdr longer than 255 bytes")
+	}
+	var amountBE [32]byte
+	binary.BigEndian.PutUint64(amountBE[16:24], 0)
+	binary.BigEndian.PutUint64(amountBE[24:], uint64(amount))
+
+	var b []byte
+	b = append(b, ccipTokenTransferV1Version)
+	b = append(b, amountBE[:]...)
+	b = append(b, byte(len(poolXDR)))
+	b = append(b, poolXDR...)
+	b = append(b, byte(len(tokenXDR)))
+	b = append(b, tokenXDR...)
+	b = append(b, byte(len(destTokenAddress)))
+	b = append(b, destTokenAddress...)
+	b = append(b, byte(len(tokenReceiver)))
+	b = append(b, tokenReceiver...)
+	b = binary.BigEndian.AppendUint16(b, uint16(len(extraData)))
+	b = append(b, extraData...)
+	return b, nil
+}
+
+// StellarOnrampMessageIDInput is the off-chain mirror of CcipMessageV1 built in OnRamp::forward_from_router
+// before keccak256 (contracts/common/message + contracts/onramp/src/lib.rs).
+type StellarOnrampMessageIDInput struct {
+	SourceChainSelector uint64
+	DestChainSelector   uint64
+	SequenceNumber      uint64
+	GasLimit            uint32
+	BlockConfirmations  uint32 // cast to u16 on-chain
+	Ccvs                []string
+	Executor            string
+	OnRampContractID    string
+	OffRampRawBytes     []byte // raw Bytes from dest config; wrapped as ScVal::Bytes on-chain
+	SenderStrkey        string
+	Receiver            []byte
+	Data                []byte
+	// TokenTransfer is CcipTokenTransferV1::to_bytes output, or nil/empty if no tokens.
+	TokenTransfer []byte
+}
+
+// PredictStellarOnrampMessageID returns keccak256(encode(CcipMessageV1)) matching OnRamp message_id / Router event.
+func PredictStellarOnrampMessageID(in StellarOnrampMessageIDInput) ([32]byte, error) {
+	if len(in.Receiver) > 255 || len(in.OffRampRawBytes) > 255 {
+		return [32]byte{}, fmt.Errorf("receiver or off_ramp length overflow")
+	}
+	ccvHash, err := computeCcvAndExecutorHash(in.Ccvs, in.Executor)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	onXDR, err := sorobanScValXDR(scval.AddressToScVal(in.OnRampContractID))
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("onramp scval: %w", err)
+	}
+	offXDR, err := sorobanScValXDR(scval.BytesToScVal(in.OffRampRawBytes))
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("off_ramp scval: %w", err)
+	}
+	senderXDR, err := sorobanScValXDR(scval.AddressToScVal(in.SenderStrkey))
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("sender scval: %w", err)
+	}
+	if len(onXDR) > 255 || len(offXDR) > 255 || len(senderXDR) > 255 {
+		return [32]byte{}, fmt.Errorf("onramp/offramp/sender XDR length overflow")
+	}
+	tt := in.TokenTransfer
+	if tt == nil {
+		tt = []byte{}
+	}
+	encoded, err := encodeCcipMessageV1(ccipV1Wire{
+		SourceChainSelector: in.SourceChainSelector,
+		DestChainSelector:   in.DestChainSelector,
+		SequenceNumber:      in.SequenceNumber,
+		ExecutionGasLimit:   in.GasLimit,
+		CcipReceiveGasLimit: 0,
+		Finality:            uint16(in.BlockConfirmations),
+		CcvExecutorHash:     ccvHash,
+		OnRampAddress:       onXDR,
+		OffRampAddress:      offXDR,
+		Sender:              senderXDR,
+		Receiver:            in.Receiver,
+		DestBlob:            nil,
+		TokenTransfer:       tt,
+		Data:                in.Data,
+	})
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return keccak256MessageID(encoded), nil
 }

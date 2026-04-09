@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 
 // GetSharedTestEnv returns the shared test environment (Stellar node, deployer, etc.)
 // used across all integration tests. Setup runs once on first use; teardown runs after all tests.
-func GetSharedTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
+func GetSharedTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string, string) {
 	sharedEnvOnce.Do(func() {
 		sharedEnv, sharedEnvErr = helpers.SetupTestEnvShared(ctx, sharedContainerName)
 	})
@@ -49,5 +49,5 @@ func GetSharedTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full,
 		t.Fatalf("Shared test env setup failed: %v", sharedEnvErr)
 	}
 	return sharedEnv.ProjectRoot, sharedEnv.DeployerKP, sharedEnv.Deployer,
-		sharedEnv.RPCClient, sharedEnv.NetworkPassphrase
+		sharedEnv.RPCClient, sharedEnv.NetworkPassphrase, sharedEnv.FriendbotURL
 }

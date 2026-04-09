@@ -27,7 +27,7 @@ func TestRouter(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
 
 	t.Run("deploy and initialize router", func(t *testing.T) {
 		t.Log("Deploying Router contract...")

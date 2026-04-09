@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"testing"
@@ -11,15 +12,17 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func TestTokenPool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL := GetSharedTestEnv(ctx, t)
 	deployerAddr := deployerKP.Address()
 
 	t.Run("deploy and initialize lock-release pool", func(t *testing.T) {
@@ -121,13 +124,15 @@ func TestTokenPool(t *testing.T) {
 	t.Run("router ccip_send with lock-release pool token amount", func(t *testing.T) {
 		const localChain = uint64(11111)
 		const remoteDestChain = uint64(22222)
+		const tokenTransferAmount = int64(1_000_000) // 0.1 INTG at 7 decimals (same scale as ccv/chain E2E test token)
 
 		stack := deployFullStack(ctx, t, projectRoot, deployer, deployerAddr, localChain, "ccip-token-send")
 
-		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "ccip-send-mock-token")
+		// Real SAC + minted balance on deployer (classic issue + trustline), like a mock ERC20 on EVM.
+		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "ccip-token-send")
 		mockFeeToken := helpers.GenerateMockContractID(t, deployerAddr, "ccip-send-fee-token")
 
-		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", mockToken)
+		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", sacToken)
 
 		remotePool := make([]byte, 20)
 		remoteToken := make([]byte, 20)
@@ -143,8 +148,10 @@ func TestTokenPool(t *testing.T) {
 			t.Fatalf("TokenPool ApplyChainUpdates: %v", err)
 		}
 
-		_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
-			localChain, remoteDestChain, mockFeeToken, []string{mockToken})
+		outWire := deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
+			localChain, remoteDestChain, mockFeeToken, []string{sacToken})
+		// Must match deployOutboundSendWire: 20-byte placeholder off-ramp address on dest chain.
+		offRampRawPlaceholder := make([]byte, 20)
 
 		defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, "ccip-token-send-executor")
 		extraArgs, err := encodeOnrampExtraArgsV3(onrampbindings.GenericExtraArgsV3{
@@ -171,7 +178,7 @@ func TestTokenPool(t *testing.T) {
 			Data:         []byte("integration token ccip_send"),
 			FeeToken:     mockFeeToken,
 			ExtraArgs:    extraArgs,
-			TokenAmounts: []routerbindings.TokenAmount{{Token: mockToken, Amount: 1_000_000}},
+			TokenAmounts: []routerbindings.TokenAmount{{Token: sacToken, Amount: tokenTransferAmount}},
 		}
 
 		requiredFee, err := stack.RouterClient.GetFee(ctx, remoteDestChain, msg)
@@ -183,13 +190,151 @@ func TestTokenPool(t *testing.T) {
 		}
 		t.Logf("quoted fee (fee token base units): %d", requiredFee)
 
-		// mockToken is a deterministic address, not a real Stellar asset contract: lock_or_burn's
-		// token transfer typically fails once OnRamp reaches the pool. We still exercise deploy wiring,
-		// GetFee, and the Router → OnRamp entrypoint.
-		_, err = stack.RouterClient.CcipSend(ctx, deployerAddr, remoteDestChain, msg, requiredFee)
-		if err == nil {
-			t.Fatal("expected CcipSend to fail: mock token cannot authorize transfer for lock_or_burn")
+		// Successful send (no tokens): Router returns a message ID and emits CCIPSendRequested.
+		msgNoTokens := msg
+		msgNoTokens.TokenAmounts = nil
+		msgNoTokens.Data = []byte("integration ccip_send without tokens")
+
+		feeNoTokens, err := stack.RouterClient.GetFee(ctx, remoteDestChain, msgNoTokens)
+		if err != nil {
+			t.Fatalf("Router GetFee (no tokens): %v", err)
 		}
-		t.Logf("CcipSend failed as expected without a spendable SAC: %v", err)
+		if feeNoTokens <= 0 {
+			t.Fatalf("expected positive fee, got %d", feeNoTokens)
+		}
+
+		latest, err := rpcClient.GetLatestLedger(ctx)
+		if err != nil {
+			t.Fatalf("GetLatestLedger: %v", err)
+		}
+		startLedger := latest.Sequence
+
+		messageID, err := stack.RouterClient.CcipSend(ctx, deployerAddr, remoteDestChain, msgNoTokens, feeNoTokens)
+		if err != nil {
+			t.Fatalf("Router CcipSend (no tokens): %v", err)
+		}
+		if messageID == [32]byte{} {
+			t.Fatal("CcipSend returned empty message_id")
+		}
+		t.Logf("message_id: %x", messageID)
+
+		const eventWait = 30 * time.Second
+		sendEvt, err := stack.RouterClient.WaitForCCIPSendRequestedEvent(ctx, startLedger, eventWait,
+			func(e *routerbindings.CCIPSendRequestedEvent) bool {
+				if e.DestChainSelector != remoteDestChain || e.Sender != deployerAddr {
+					return false
+				}
+				return bytes.Equal(e.MessageId[:], messageID[:])
+			})
+		if err != nil {
+			t.Fatalf("WaitForCCIPSendRequestedEvent: %v", err)
+		}
+		if !bytes.Equal(sendEvt.MessageId[:], messageID[:]) {
+			t.Fatalf("event message_id %x != return value %x", sendEvt.MessageId, messageID)
+		}
+		t.Logf("CCIPSendRequested at ledger %d tx %s", sendEvt.Ledger, sendEvt.TxHash)
+
+		senderBefore := sacBalanceOrFatal(ctx, t, deployer, sacToken, deployerAddr)
+		poolBefore := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)
+		t.Logf("SAC balances before token send: sender=%d pool=%d", senderBefore, poolBefore)
+
+		// Token transfer: deployer authorizes SAC transfer into the pool via simulation-derived auth (see deployment.Deployer).
+		seqForTokenSend, err := outWire.OnRampClient.GetExpectedNextMessageNumber(ctx, remoteDestChain)
+		if err != nil {
+			t.Fatalf("GetExpectedNextMessageNumber before token send: %v", err)
+		}
+
+		tokenXferEncoded, err := EncodeCcipTokenTransferV1(
+			tokenTransferAmount,
+			stack.TokenPoolID,
+			sacToken,
+			remoteToken,
+			nil,
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("EncodeCcipTokenTransferV1: %v", err)
+		}
+
+		latest2, err := rpcClient.GetLatestLedger(ctx)
+		if err != nil {
+			t.Fatalf("GetLatestLedger (token send): %v", err)
+		}
+		tokenMsgID, err := stack.RouterClient.CcipSend(ctx, deployerAddr, remoteDestChain, msg, requiredFee)
+		if err != nil {
+			t.Fatalf("Router CcipSend (with SAC token): %v", err)
+		}
+		if tokenMsgID == [32]byte{} {
+			t.Fatal("CcipSend (token) returned empty message_id")
+		}
+		t.Logf("token transfer message_id: %x", tokenMsgID)
+
+		tokenEvt, err := stack.RouterClient.WaitForCCIPSendRequestedEvent(ctx, latest2.Sequence, eventWait,
+			func(e *routerbindings.CCIPSendRequestedEvent) bool {
+				if e.DestChainSelector != remoteDestChain || e.Sender != deployerAddr {
+					return false
+				}
+				return bytes.Equal(e.MessageId[:], tokenMsgID[:])
+			})
+		if err != nil {
+			t.Fatalf("WaitForCCIPSendRequestedEvent (token send): %v", err)
+		}
+		t.Logf("token CCIPSendRequested at ledger %d tx %s", tokenEvt.Ledger, tokenEvt.TxHash)
+
+		predictedID, err := PredictStellarOnrampMessageID(StellarOnrampMessageIDInput{
+			SourceChainSelector: localChain,
+			DestChainSelector:   remoteDestChain,
+			SequenceNumber:      seqForTokenSend,
+			GasLimit:            0,
+			BlockConfirmations:  0,
+			Ccvs:                []string{stack.VvrID},
+			Executor:            defaultExecutor,
+			OnRampContractID:    outWire.OnRampID,
+			OffRampRawBytes:     offRampRawPlaceholder,
+			SenderStrkey:        deployerAddr,
+			Receiver:            evmReceiver,
+			Data:                msg.Data,
+			TokenTransfer:       tokenXferEncoded,
+		})
+		if err != nil {
+			t.Fatalf("PredictStellarOnrampMessageID: %v", err)
+		}
+		if predictedID != tokenMsgID {
+			t.Fatalf("off-chain message_id %x != Router CcipSend %x", predictedID, tokenMsgID)
+		}
+		if predictedID != tokenEvt.MessageId {
+			t.Fatalf("off-chain message_id %x != CCIPSendRequested event %x", predictedID, tokenEvt.MessageId)
+		}
+
+		senderAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, deployerAddr)
+		poolAfter := sacBalanceOrFatal(ctx, t, deployer, sacToken, stack.TokenPoolID)
+		t.Logf("SAC balances after token send: sender=%d pool=%d", senderAfter, poolAfter)
+
+		if got := senderBefore - senderAfter; got != tokenTransferAmount {
+			t.Fatalf("sender SAC balance should drop by %d; before=%d after=%d (delta=%d)",
+				tokenTransferAmount, senderBefore, senderAfter, got)
+		}
+		if got := poolAfter - poolBefore; got != tokenTransferAmount {
+			t.Fatalf("pool SAC balance should increase by %d; before=%d after=%d (delta=%d)",
+				tokenTransferAmount, poolBefore, poolAfter, got)
+		}
 	})
+}
+
+// sacBalanceOrFatal reads an SPL/SAC balance for a holder (G… account or C… contract) via simulate-only contract call.
+func sacBalanceOrFatal(ctx context.Context, t *testing.T, deployer *deployment.Deployer, sacContract, holderStrkey string) int64 {
+	t.Helper()
+	args := []xdr.ScVal{scval.AddressToScVal(holderStrkey)}
+	res, err := deployer.SimulateContract(ctx, sacContract, "balance", args)
+	if err != nil {
+		t.Fatalf("SAC balance(holder=%s): %v", holderStrkey, err)
+	}
+	if res == nil {
+		t.Fatalf("SAC balance(holder=%s): nil result", holderStrkey)
+	}
+	bal, err := scval.I128FromScVal(*res)
+	if err != nil {
+		t.Fatalf("parse SAC balance: %v", err)
+	}
+	return bal
 }
