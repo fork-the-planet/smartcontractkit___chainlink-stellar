@@ -420,6 +420,35 @@ func deployIntegrationTestSAC(
 	return sacID
 }
 
+// ensureTokenAdminRegistryForStack deploys and initializes token_admin_registry.wasm when the stack has no
+// registry yet (deployFullStack alone leaves TokenAdminRegistryID empty; deployTokenPool sets it).
+// OnRamp::initialize stores a real registry address — an empty strkey becomes a nil ScAddress and can
+// panic the client when building invoke XDR.
+func ensureTokenAdminRegistryForStack(
+	ctx context.Context,
+	t *testing.T,
+	projectRoot string,
+	deployer *deployment.Deployer,
+	deployerAddr, saltPrefix string,
+	stack *fullStack,
+) {
+	t.Helper()
+	if stack.TokenAdminRegistryID != "" {
+		return
+	}
+	salt := deployment.GenerateDeterministicSalt(deployerAddr, saltPrefix+"-onramp-tar")
+	p := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "token_admin_registry.wasm")
+	id, err := deployer.DeployContract(ctx, p, salt)
+	if err != nil {
+		t.Fatalf("deploy token_admin_registry for OnRamp: %v", err)
+	}
+	stack.TokenAdminRegistryID = id
+	stack.TokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(deployer, id)
+	if err := stack.TokenAdminRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+		t.Fatalf("TokenAdminRegistry Initialize: %v", err)
+	}
+}
+
 // outboundSendWire holds FeeQuoter + OnRamp contracts wired for Router.ccip_send to a remote destination.
 type outboundSendWire struct {
 	OnRampID        string
@@ -454,6 +483,8 @@ func deployOutboundSendWire(
 	transferTokens []string,
 ) *outboundSendWire {
 	t.Helper()
+
+	ensureTokenAdminRegistryForStack(ctx, t, projectRoot, deployer, deployerAddr, saltPrefix, stack)
 
 	deploy := func(name, wasmFile string) string {
 		t.Helper()
