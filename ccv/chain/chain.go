@@ -10,8 +10,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
@@ -30,14 +28,10 @@ import (
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/executor"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/proxy"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
@@ -49,8 +43,6 @@ import (
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
-	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
-	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -59,9 +51,10 @@ import (
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
-	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -72,24 +65,10 @@ const stellarAddressLen = 32
 // CcipReceiverContractType is the datastore contract type for the example CCIP
 // receiver deployed on Stellar so that GetEOAReceiverAddress can return a valid
 // Wasm contract address in tests.
-const CcipReceiverContractType = "CcipReceiverExample"
+const CcipReceiverContractType = stellarccipdevenv.CcipReceiverContractType
 
-const TokenAdminRegistryContractType = "token_admin_registry"
-const LockReleaseTokenPoolContractType = "lock_release_token_pool"
-
-// generateContractAddress generates a deterministic Soroban contract address from a name and network passphrase.
-// Soroban contract addresses are derived from the network ID (SHA-256 of passphrase) and a unique identifier.
-// The resulting address is 32 bytes (the raw ed25519 public key format used internally).
-func generateContractAddress(name, networkPassphrase string) []byte {
-	// Network ID is SHA-256 of the network passphrase
-	networkID := sha256.Sum256([]byte(networkPassphrase))
-
-	// Combine network ID with name to create deterministic seed
-	combined := append(networkID[:], []byte(name)...)
-	hash := sha256.Sum256(combined)
-
-	return hash[:]
-}
+const TokenAdminRegistryContractType = stellarccipdevenv.TokenAdminRegistryContractType
+const LockReleaseTokenPoolContractType = stellarccipdevenv.LockReleaseTokenPoolContractType
 
 // generateAccountAddress generates a Stellar account address (G...) from a seed.
 // This uses the Stellar SDK's keypair package to create a proper strkey-encoded address.
@@ -317,7 +296,7 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("environment datastore is nil")
 	}
 
-	remoteSelectors = filterRemoteSelectors(remoteSelectors, selector)
+	remoteSelectors = stellarutil.FilterRemoteSelectors(remoteSelectors, selector)
 	if len(remoteSelectors) == 0 {
 		return nil
 	}
@@ -426,6 +405,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 }
 
 // PreDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
+// // Stellar has no CREATE2-style pre-bootstrap like EVM, so this stage only patches topology and registers deploy context for the adapter.
 func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
@@ -459,711 +439,6 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	_ = topology
 	clearStellarDeployChangesetCtx(selector)
 	return nil, nil
-}
-
-// deployStellarCCIPContracts deploys the full Stellar CCIP stack for devenv.
-// allSelectors must list every chain selector in the environment (see selectorsFromBlockChains).
-func (c *Chain) deployStellarCCIPContracts(ctx context.Context, allSelectors []uint64, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
-	c.logger.Info().Uint64("selector", selector).Msg("Deploying Stellar CCIP contracts")
-
-	// TODO: can we just use env.DataStore instead of creating a new one?
-	ds := datastore.NewMemoryDataStore()
-
-	// Helper to generate a hex-encoded contract address (used for mock/placeholder contracts)
-	contractHexAddr := func(name string) string {
-		return hexutil.Encode(generateContractAddress(name, c.networkPassphrase))
-	}
-
-	// strkeyToHex decodes a strkey address (C… contract or G… account) to a 0x-prefixed hex string.
-	strkeyToHex := func(addr string) (string, error) {
-		var vb strkey.VersionByte
-		switch {
-		case len(addr) > 0 && addr[0] == 'C':
-			vb = strkey.VersionByteContract
-		case len(addr) > 0 && addr[0] == 'G':
-			vb = strkey.VersionByteAccountID
-		default:
-			return "", fmt.Errorf("unsupported strkey prefix: %s", addr)
-		}
-		raw, err := strkey.Decode(vb, addr)
-		if err != nil {
-			return "", fmt.Errorf("decode strkey %s: %w", addr, err)
-		}
-		return hexutil.Encode(raw), nil
-	}
-
-	stellarRoot, err := findStellarRoot()
-	if err != nil {
-		return nil, fmt.Errorf("failed to locate chainlink-stellar root: %w", err)
-	}
-	c.logger.Info().Str("stellarRoot", stellarRoot).Msg("Stellar root")
-
-	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
-	if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", onrampWasmPath)
-	}
-
-	// Deploy the OnRamp contract
-	c.logger.Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
-
-	onrampSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "onramp")
-	onrampContractID, err := c.deployer.DeployContract(ctx, onrampWasmPath, onrampSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy OnRamp contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
-
-	// Initialize the OnRamp client with the contract ID
-	// Note: For actual deployment, we would:
-	// 1. Deploy the WASM: DeployOnRamp(ctx, c.rpcClient, c.networkPassphrase, c.deployerKeypair, wasmPath)
-	// 2. Initialize it with proper config
-	// For now, we use the deterministic address and will deploy when WASM is available
-	c.onRampContractID = onrampContractID
-	c.onRampClient = onrampbindings.NewOnRampClient(c.deployer, onrampContractID)
-
-	// Deploy the RMN Remote contract
-	rmnRemoteWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
-	if _, statErr := os.Stat(rmnRemoteWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("RMN Remote WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", rmnRemoteWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", rmnRemoteWasmPath).Msg("Deploying RMN Remote contract...")
-	rmnRemoteSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "rmn-remote")
-	rmnRemoteContractID, err := c.deployer.DeployContract(ctx, rmnRemoteWasmPath, rmnRemoteSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy RMN Remote contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", rmnRemoteContractID).Msg("RMN Remote contract deployed")
-
-	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(c.deployer, rmnRemoteContractID)
-	err = rmnRemoteClient.Initialize(ctx, c.deployerKeypair.Address(), selector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize RMN Remote: %w", err)
-	}
-	c.logger.Info().Str("rmnRemoteContractID", rmnRemoteContractID).Msg("RMN Remote initialized")
-
-	// Deploy the RMN Proxy contract
-	rmnProxyWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "rmn_proxy.wasm")
-	if _, statErr := os.Stat(rmnProxyWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("RMN Proxy WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", rmnProxyWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", rmnProxyWasmPath).Msg("Deploying RMN Proxy contract...")
-	rmnProxySalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "rmn-proxy")
-	rmnProxyContractID, err := c.deployer.DeployContract(ctx, rmnProxyWasmPath, rmnProxySalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy RMN Proxy contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", rmnProxyContractID).Msg("RMN Proxy contract deployed")
-
-	rmnProxyClient := rmnproxybindings.NewRmnProxyClient(c.deployer, rmnProxyContractID)
-	err = rmnProxyClient.Initialize(ctx, c.deployerKeypair.Address(), rmnRemoteContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize RMN Proxy: %w", err)
-	}
-	c.logger.Info().Str("rmnProxyContractID", rmnProxyContractID).Msg("RMN Proxy initialized")
-
-	// Deploy the FeeQuoter contract
-	feeQuoterWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "fee_quoter.wasm")
-	if _, statErr := os.Stat(feeQuoterWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("FeeQuoter WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", feeQuoterWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", feeQuoterWasmPath).Msg("Deploying FeeQuoter contract...")
-	feeQuoterSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "fee-quoter")
-	feeQuoterContractID, err := c.deployer.DeployContract(ctx, feeQuoterWasmPath, feeQuoterSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy FeeQuoter contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
-
-	mockLinkToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "link-token")
-	feeQuoterClient := fqbindings.NewFeeQuoterClient(c.deployer, feeQuoterContractID)
-	c.feeQuoterClient = feeQuoterClient
-	err = feeQuoterClient.Initialize(ctx, c.deployerKeypair.Address(), fqbindings.StaticConfig{
-		LinkToken:         mockLinkToken,
-		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
-	}, []string{c.deployerKeypair.Address()})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize FeeQuoter: %w", err)
-	}
-	c.logger.Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
-
-	// Deploy TokenAdminRegistry
-	tarWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "token_admin_registry.wasm")
-	if _, statErr := os.Stat(tarWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("TokenAdminRegistry WASM not found at %s. Run 'make build'.", tarWasmPath)
-	}
-	c.logger.Info().Str("wasmPath", tarWasmPath).Msg("Deploying TokenAdminRegistry contract...")
-	tarSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "token-admin-registry")
-	tarContractID, err := c.deployer.DeployContract(ctx, tarWasmPath, tarSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy TokenAdminRegistry: %w", err)
-	}
-	c.tokenAdminRegistryContractID = tarContractID
-	c.tokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(c.deployer, tarContractID)
-	if err := c.tokenAdminRegistryClient.Initialize(ctx, c.deployerKeypair.Address()); err != nil {
-		return nil, fmt.Errorf("failed to initialize TokenAdminRegistry: %w", err)
-	}
-	c.logger.Info().Str("contractID", tarContractID).Msg("TokenAdminRegistry deployed and initialized")
-
-	// Deploy lock-release token pool
-	poolWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_lock_release_pool.wasm")
-	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
-	}
-	c.logger.Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract...")
-	poolSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "lock-release-pool")
-	poolContractID, err := c.deployer.DeployContract(ctx, poolWasmPath, poolSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy LockRelease pool: %w", err)
-	}
-	c.tokenPoolContractID = poolContractID
-	c.tokenPoolClient = tokenpoolbindings.NewTokenPoolClient(c.deployer, poolContractID)
-	c.logger.Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
-
-	// Create test SAC token, initialize pool, and register in TokenAdminRegistry.
-	// The token is a classic Stellar asset wrapped via a Soroban Asset Contract
-	// so that both lock-release and burn-mint pools can interact with it through
-	// the standard token::Client / StellarAssetClient interface.
-	if c.friendbotURL == "" {
-		c.logger.Warn().Msg("Friendbot URL not available; skipping test token deployment. Token transfer E2E tests will not work.")
-	} else {
-		tokenContractID, tokenErr := c.createTestToken(ctx, c.friendbotURL)
-		if tokenErr != nil {
-			return nil, fmt.Errorf("failed to create test token: %w", tokenErr)
-		}
-		c.testTokenContractID = tokenContractID
-
-		if err := c.tokenPoolClient.Initialize(ctx, c.deployerKeypair.Address(), tokenContractID); err != nil {
-			return nil, fmt.Errorf("failed to initialize pool with token: %w", err)
-		}
-
-		deployerAddr := c.deployerKeypair.Address()
-		if err := c.tokenAdminRegistryClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
-			return nil, fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
-		}
-		if err := c.tokenAdminRegistryClient.AcceptAdminRole(ctx, tokenContractID); err != nil {
-			return nil, fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
-		}
-		if err := c.tokenAdminRegistryClient.SetPool(ctx, tokenContractID, &poolContractID); err != nil {
-			return nil, fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
-		}
-		c.logger.Info().
-			Str("token", tokenContractID).
-			Str("pool", poolContractID).
-			Msg("Token pool registered in TokenAdminRegistry")
-	}
-
-	// Initialize the OnRamp with dependency contracts
-	mockFeeAggregator := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
-
-	err = c.onRampClient.Initialize(ctx, c.deployerKeypair.Address(), onrampbindings.StaticConfig{
-		ChainSelector:         selector,
-		TokenAdminRegistry:    tarContractID,
-		RmnProxy:              rmnProxyContractID,
-		MaxUsdCentsPerMessage: 10000, // $100
-	}, onrampbindings.DynamicConfig{
-		FeeQuoter:     feeQuoterContractID,
-		FeeAggregator: mockFeeAggregator,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize OnRamp: %w", err)
-	}
-
-	c.logger.Info().
-		Str("onRampContractID", onrampContractID).
-		Msg("OnRamp client initialized")
-
-	// Deploy the Versioned Verifier Resolver (VVR) contract
-	vvrWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccvs_versioned_verifier_resolver.wasm")
-	if _, statErr := os.Stat(vvrWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("VVR WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", vvrWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", vvrWasmPath).Msg("Deploying Versioned Verifier Resolver contract...")
-
-	vvrSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "versioned-verifier-resolver")
-	vvrContractID, err := c.deployer.DeployContract(ctx, vvrWasmPath, vvrSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy VVR contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", vvrContractID).Msg("VVR contract deployed")
-	c.vvrContractID = vvrContractID
-
-	vvrClient := vvrbindings.NewVersionedVerifierResolverClient(c.deployer, vvrContractID)
-
-	err = vvrClient.Initialize(ctx, c.deployerKeypair.Address(), mockFeeAggregator)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize VVR: %w", err)
-	}
-
-	c.logger.Info().
-		Str("vvrContractID", vvrContractID).
-		Msg("VVR client initialized")
-
-	// Deploy the Committee Verifier contract
-	cvWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccvs_committee_verifier.wasm")
-	if _, statErr := os.Stat(cvWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("Committee Verifier WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", cvWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", cvWasmPath).Msg("Deploying Committee Verifier contract...")
-
-	cvSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "committee-verifier")
-	cvContractID, err := c.deployer.DeployContract(ctx, cvWasmPath, cvSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy Committee Verifier contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", cvContractID).Msg("Committee Verifier contract deployed")
-
-	cvClient := cvbindings.NewCommitteeVerifierClient(c.deployer, cvContractID)
-
-	allowlistAdmin := c.deployerKeypair.Address()
-	mockStorageLocation := generateContractAddress("storage-location", c.networkPassphrase)
-	err = cvClient.Initialize(ctx, c.deployerKeypair.Address(), cvbindings.DynamicConfig{
-		AllowlistAdmin: &allowlistAdmin,
-		FeeAggregator:  &mockFeeAggregator,
-	}, [][]byte{mockStorageLocation}, rmnProxyContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Committee Verifier: %w", err)
-	}
-
-	c.cvContractID = cvContractID
-	c.logger.Info().
-		Str("cvContractID", cvContractID).
-		Msg("Committee Verifier client initialized")
-
-	remoteSelectors := filterRemoteSelectors(allSelectors, selector)
-	outboundImplUpdates := []vvrbindings.OutboundImplementationUpdate{}
-	for _, remoteSelector := range allSelectors {
-		outboundImplUpdates = append(outboundImplUpdates, vvrbindings.OutboundImplementationUpdate{
-			DestChainSelector: remoteSelector,
-			Verifier:          &cvContractID,
-		})
-	}
-
-	err = vvrClient.ApplyOutboundImplUpdates(ctx, outboundImplUpdates)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply outbound implementation updates: %w", err)
-	}
-
-	inboundImplUpdates := []vvrbindings.InboundImplementationUpdate{
-		{
-			Version:  [4]byte{0x49, 0xff, 0x34, 0xed}, // VERSION_TAG_V1_7_0
-			Verifier: &cvContractID,
-		},
-		{
-			// EVM CommitteeVerifier 2.0.0 attestation blobs use this prefix.
-			// Register it against the Stellar CommitteeVerifier so inbound
-			// EVM verifier results can be resolved during OffRamp execution.
-			Version:  [4]byte{0xe9, 0xa0, 0x5a, 0x20},
-			Verifier: &cvContractID,
-		},
-	}
-	err = vvrClient.ApplyInboundImplUpdates(ctx, inboundImplUpdates)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply inbound implementation updates: %w", err)
-	}
-
-	c.logger.Info().Msg("Inbound implementation and outbound updates applied")
-
-	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(allSelectors))
-	for _, rs := range allSelectors {
-		router := c.deployerKeypair.Address()
-		remoteChainConfigs = append(remoteChainConfigs, cvbindings.RemoteChainConfig{
-			RemoteChainSelector: rs,
-			FeeUsdCents:         0,
-			GasForVerification:  10000, // CANNOT be zero
-			PayloadSizeBytes:    0,
-			AllowlistEnabled:    false,
-			Router:              &router,
-		})
-	}
-	err = cvClient.ApplyRemoteChainCfgUpdates(ctx, remoteChainConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply remote chain config updates on committee verifier: %w", err)
-	}
-	c.logger.Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
-
-	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(allSelectors))
-	for _, rs := range allSelectors {
-		signers, threshold := resolveSignersFromTopology(topology, rs, chainsel.FamilyStellar)
-		if len(signers) == 0 {
-			c.logger.Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
-			// TODO: should we keep this or fail the deployment?
-			// This is a placeholder to avoid panic but will cause the Committee Verifier to fail verification.
-			signers = [][32]byte{{1}}
-			threshold = 1
-		}
-		signatureQuorumConfigs = append(signatureQuorumConfigs, cvbindings.SignatureQuorumConfig{
-			SourceChainSelector: rs,
-			Threshold:           threshold,
-			Signers:             signers,
-		})
-	}
-	err = cvClient.ApplySignatureConfigs(ctx, []uint64{}, signatureQuorumConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply signature quorum configs: %w", err)
-	}
-	c.logger.Info().Int("count", len(signatureQuorumConfigs)).Msg("Signature quorum configs applied")
-
-	// Configure FeeQuoter destination chains
-	fqDestChainConfigs := []fqbindings.DestChainConfigArgs{}
-	for _, rs := range allSelectors {
-		fqDestChainConfigs = append(fqDestChainConfigs, fqbindings.DestChainConfigArgs{
-			DestChainSelector: rs,
-			Config: fqbindings.DestChainConfig{
-				IsEnabled:             true,
-				MaxDataBytes:          50000,
-				MaxPerMsgGasLimit:     4_000_000,
-				DestGasOverhead:       350_000,
-				DestGasPerPayloadByte: 16,
-				DefaultTokenFeeUsd:    50,
-				DefaultTokenDestGas:   50_000,
-				DefaultTxGasLimit:     200_000,
-				NetworkFeeUsdCents:    100,
-				LinkPremiumPercent:    90,
-			},
-		})
-	}
-	err = feeQuoterClient.ApplyDestChainConfigs(ctx, fqDestChainConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply dest chain configs on FeeQuoter: %w", err)
-	}
-	c.logger.Info().Int("count", len(fqDestChainConfigs)).Msg("FeeQuoter dest chain configs applied")
-
-	// Set token and gas prices on the FeeQuoter so get_message_fee works
-	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
-	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(allSelectors))
-	for _, rs := range allSelectors {
-		gasPriceUpdates = append(gasPriceUpdates, fqbindings.GasPriceUpdate{
-			DestChainSelector: rs,
-			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}), // 1e14
-		})
-	}
-	err = feeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
-		TokenPriceUpdates: []fqbindings.TokenPriceUpdate{
-			{
-				Token:       mockLinkToken,
-				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 15_000_000_000_000_000_000}), // $15
-			},
-			{
-				Token:       mockFeeToken,
-				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
-			},
-		},
-		GasPriceUpdates: gasPriceUpdates,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update prices on FeeQuoter: %w", err)
-	}
-	c.logger.Info().Msg("FeeQuoter prices updated")
-
-	// Configure FeeQuoter token transfer fees for the test token.
-	if c.testTokenContractID != "" {
-		tokenPriceUpdates := fqbindings.PriceUpdates{
-			TokenPriceUpdates: []fqbindings.TokenPriceUpdate{{
-				Token:       c.testTokenContractID,
-				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
-			}},
-			GasPriceUpdates: []fqbindings.GasPriceUpdate{},
-		}
-		if err := feeQuoterClient.UpdatePrices(ctx, tokenPriceUpdates); err != nil {
-			return nil, fmt.Errorf("failed to set test token price on FeeQuoter: %w", err)
-		}
-
-		var tokenFeeConfigs []fqbindings.TokenFeeConfigArgs
-		for _, rs := range allSelectors {
-			tokenFeeConfigs = append(tokenFeeConfigs, fqbindings.TokenFeeConfigArgs{
-				Token:             c.testTokenContractID,
-				DestChainSelector: rs,
-				Config: fqbindings.TokenTransferFeeConfig{
-					FeeUsdCents:       25,
-					DestGasOverhead:   90_000,
-					DestBytesOverhead: 32,
-					IsEnabled:         true,
-				},
-			})
-		}
-		if err := feeQuoterClient.ApplyTokenFeeConfigs(ctx, tokenFeeConfigs, nil); err != nil {
-			return nil, fmt.Errorf("failed to apply token fee configs on FeeQuoter: %w", err)
-		}
-		c.logger.Info().Int("count", len(tokenFeeConfigs)).Msg("FeeQuoter token transfer fee configs applied")
-	}
-
-	// Deploy the OffRamp contract
-	offRampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "offramp.wasm")
-	if _, statErr := os.Stat(offRampWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("OffRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", offRampWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", offRampWasmPath).Msg("Deploying OffRamp contract...")
-	offRampSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "offramp")
-	offRampContractID, err := c.deployer.DeployContract(ctx, offRampWasmPath, offRampSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy OffRamp contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", offRampContractID).Msg("OffRamp contract deployed")
-
-	c.offRampContractID = offRampContractID
-	c.offRampClient = offrampbindings.NewOffRampClient(c.deployer, offRampContractID)
-
-	err = c.offRampClient.Initialize(ctx, c.deployerKeypair.Address(), offrampbindings.StaticConfig{
-		ChainSelector:      selector,
-		RmnProxy:           rmnProxyContractID,
-		TokenAdminRegistry: tarContractID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize OffRamp: %w", err)
-	}
-	c.logger.Info().Str("offRampContractID", offRampContractID).Msg("OffRamp initialized")
-
-	// Deploy the Router contract
-	routerWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "router.wasm")
-	if _, statErr := os.Stat(routerWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("Router WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", routerWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", routerWasmPath).Msg("Deploying Router contract...")
-	routerSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "router")
-	routerContractID, err := c.deployer.DeployContract(ctx, routerWasmPath, routerSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy Router contract: %w", err)
-	}
-	c.logger.Info().Str("contractID", routerContractID).Msg("Router contract deployed")
-
-	routerClient := routerbindings.NewRouterClient(c.deployer, routerContractID)
-	err = routerClient.Initialize(ctx, c.deployerKeypair.Address(), rmnProxyContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Router: %w", err)
-	}
-	c.routerContractID = routerContractID
-	c.routerClient = routerClient
-	c.logger.Info().Str("routerContractID", routerContractID).Msg("Router initialized")
-
-	// Configure OnRamp with provisional destination chain entries so that
-	// GetExpectedNextMessageNumber and ccip_send don't revert with
-	// DestinationChainNotSupported. Remote ramp addresses are patched with
-	// their real values in PostConnect after all chains have been deployed.
-	executorProxyHex := contractHexAddr("stellar-executor-proxy")
-	executorContractID, err := scval.HexToContractStrkey(executorProxyHex)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert executor proxy placeholder address: %w", err)
-	}
-	onRampDestConfigs, err := c.buildOnRampDestConfigs(nil, remoteSelectors, executorContractID, false)
-	if err != nil {
-		return nil, fmt.Errorf("build provisional onramp dest configs: %w", err)
-	}
-	err = c.onRampClient.ApplyDestChainConfigUpdates(ctx, onRampDestConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply dest chain config updates on OnRamp: %w", err)
-	}
-	c.logger.Info().Int("count", len(onRampDestConfigs)).Msg("OnRamp dest chain configs applied")
-
-	// Configure OffRamp with supported source chains so inbound messages are
-	// accepted rather than rejected as unknown sources.
-	offRampSourceConfigs, err := c.buildOffRampSourceConfigs(nil, remoteSelectors, false)
-	if err != nil {
-		return nil, fmt.Errorf("build provisional offramp source configs: %w", err)
-	}
-	err = c.offRampClient.ApplySourceChainCfgUpdates(ctx, offRampSourceConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply source chain config updates on OffRamp: %w", err)
-	}
-	c.logger.Info().Int("count", len(offRampSourceConfigs)).Msg("OffRamp source chain configs applied")
-
-	// Configure Router with OnRamp/OffRamp mappings so that ccip_send can
-	// look up the correct OnRamp for each destination, and inbound messages
-	// can be routed through the correct OffRamp for each source.
-	onRampEntries := make([]routerbindings.OnRampEntry, 0, len(remoteSelectors))
-	offRampEntries := make([]routerbindings.OffRampEntry, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
-		onRampEntries = append(onRampEntries, routerbindings.OnRampEntry{
-			DestChainSelector: rs,
-			Onramp:            onrampContractID,
-		})
-		offRampEntries = append(offRampEntries, routerbindings.OffRampEntry{
-			SourceChainSelector: rs,
-			Offramp:             offRampContractID,
-		})
-	}
-	err = routerClient.ApplyRampUpdates(ctx, onRampEntries, []routerbindings.OffRampEntry{}, offRampEntries)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply ramp updates on Router: %w", err)
-	}
-	c.logger.Info().
-		Int("onRampEntries", len(onRampEntries)).
-		Int("offRampEntries", len(offRampEntries)).
-		Msg("Router ramp updates applied")
-
-	// Deploy an example CCIP receiver so that GetEOAReceiverAddress can return
-	// a valid Wasm contract address. Stellar OffRamp requires receivers to be
-	// deployed Wasm contracts (unlike EVM which accepts EOA receivers).
-	receiverWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccip_receiver_example.wasm")
-	if _, statErr := os.Stat(receiverWasmPath); os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("ccip_receiver_example WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", receiverWasmPath)
-	}
-
-	c.logger.Info().Str("wasmPath", receiverWasmPath).Msg("Deploying CCIP receiver example contract...")
-	receiverSalt := stellardeployment.GenerateDeterministicSalt(c.deployerKeypair.Address(), "ccip-receiver-example")
-	receiverContractID, err := c.deployer.DeployContract(ctx, receiverWasmPath, receiverSalt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy ccip_receiver_example contract: %w", err)
-	}
-
-	recvClient := cciprecv.NewExampleCcipReceiverClient(c.deployer, receiverContractID)
-	if err := recvClient.Initialize(ctx, routerContractID); err != nil {
-		return nil, fmt.Errorf("failed to initialize ccip_receiver_example: %w", err)
-	}
-
-	c.receiverContractID = receiverContractID
-	c.logger.Info().Str("receiverContractID", receiverContractID).Msg("CCIP receiver example deployed and initialized")
-
-	// Add CCIP receiver to datastore so ImplFactory.New can reconstruct it.
-	receiverHex, err := strkeyToHex(receiverContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert receiver address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       receiverHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(CcipReceiverContractType),
-		Version:       semver.MustParse("1.0.0"),
-	})
-
-	// Add OnRamp to datastore
-	onrampHex, err := strkeyToHex(onrampContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert OnRamp address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       onrampHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(onrampoperations.ContractType),
-		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
-	})
-
-	// Add OffRamp — use the deployed OffRamp contract address
-	offRampHex, err := strkeyToHex(offRampContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert OffRamp address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       offRampHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(offrampoperations.ContractType),
-		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
-	})
-
-	// Add Router
-	routerHex, err := strkeyToHex(routerContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert Router address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       routerHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(routeroperations.ContractType),
-		Version:       semver.MustParse(routeroperations.Deploy.Version()),
-	})
-
-	// Add TokenAdminRegistry to datastore
-	tarHex, err := strkeyToHex(tarContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert TokenAdminRegistry address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       tarHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(TokenAdminRegistryContractType),
-		Version:       semver.MustParse("1.0.0"),
-	})
-
-	// Add lock-release pool to datastore
-	poolHex, err := strkeyToHex(poolContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert pool address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       poolHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
-		Version:       semver.MustParse("1.0.0"),
-		Qualifier:     "TEST",
-	})
-
-	// Add CCV refs — use the deployed VVR contract address
-	vvrHex, err := strkeyToHex(vvrContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert VVR address: %w", err)
-	}
-	for _, qualifier := range []string{
-		devenvcommon.DefaultCommitteeVerifierQualifier,
-	} {
-		ds.AddressRefStore.Add(datastore.AddressRef{
-			Address:       vvrHex,
-			Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-			Version:       versioned_verifier_resolver.Version,
-			Qualifier:     qualifier,
-			ChainSelector: selector,
-		})
-	}
-
-	cvHex, err := strkeyToHex(cvContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert Committee Verifier address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       cvHex,
-		Type:          datastore.ContractType(committee_verifier.ContractType),
-		Version:       committee_verifier.Version,
-		Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-		ChainSelector: selector,
-	})
-
-	// Add executor refs
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       contractHexAddr("stellar-executor"),
-		Type:          datastore.ContractType(executor.ContractType),
-		Version:       executor.Version,
-		Qualifier:     devenvcommon.DefaultExecutorQualifier,
-		ChainSelector: selector,
-	})
-
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       contractHexAddr("stellar-executor-proxy"),
-		Type:          datastore.ContractType(proxy.ContractType),
-		Version:       proxy.Version,
-		Qualifier:     devenvcommon.DefaultExecutorQualifier,
-		ChainSelector: selector,
-	})
-
-	// Add RMN remote refs — use the deployed RMN Remote contract address
-	rmnRemoteHex, err := strkeyToHex(rmnRemoteContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert RMN Remote address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       rmnRemoteHex,
-		Type:          datastore.ContractType(rmn_remote.ContractType),
-		Version:       semver.MustParse(rmn_remote.Deploy.Version()),
-		ChainSelector: selector,
-	})
-
-	// Add fee quoter refs — use the deployed FeeQuoter contract address
-	feeQuoterHex, err := strkeyToHex(feeQuoterContractID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert FeeQuoter address: %w", err)
-	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       feeQuoterHex,
-		Type:          datastore.ContractType(fee_quoter.ContractType),
-		Version:       semver.MustParse(fee_quoter.Deploy.Version()),
-		ChainSelector: selector,
-	})
-
-	return ds.Seal(), nil
 }
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
@@ -1556,7 +831,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	executorContractID := mustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
+	executorContractID := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
 
 	extraArgs := onrampbindings.GenericExtraArgsV3{
 		Ccvs:               []string{c.vvrContractID},
@@ -1573,7 +848,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
 	}
 
-	mockFeeToken := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
+	mockFeeToken := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
 	sender := c.deployerKeypair.Address()
 
 	var tokenAmounts []routerbindings.TokenAmount
@@ -1799,29 +1074,6 @@ func (c *Chain) GetTokenPoolAddress() (string, error) {
 	return c.tokenPoolContractID, nil
 }
 
-// findStellarRoot locates the chainlink-stellar project root by walking up from
-// CWD looking for go.mod. This works whether the devenv CLI is run from the
-// chainlink-stellar root directly or from a subdirectory.
-func findStellarRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "target")); err == nil {
-				return dir, nil
-			}
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("could not find go.mod in any parent of %s", dir)
-		}
-		dir = parent
-	}
-}
-
 // stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
 // deterministic mock fee-aggregator contract ID used when initializing Stellar FeeQuoter,
 // CommitteeVerifier, and VVR (mustGenerateMockContractID(..., "fee-aggregator")).
@@ -1831,7 +1083,7 @@ func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	if c.deployerKeypair == nil {
 		return "", fmt.Errorf("deployer keypair not set")
 	}
-	mockStrkey := mustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
+	mockStrkey := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
 	raw, err := strkey.Decode(strkey.VersionByteContract, mockStrkey)
 	if err != nil {
 		return "", fmt.Errorf("decode mock fee aggregator strkey: %w", err)
@@ -1881,25 +1133,6 @@ func selectorsFromBlockChains(chains cldf_chain.BlockChains) []uint64 {
 		return selectors[i] < selectors[j]
 	})
 	return selectors
-}
-
-func filterRemoteSelectors(selectors []uint64, localSelector uint64) []uint64 {
-	remote := make([]uint64, 0, len(selectors))
-	seen := make(map[uint64]struct{}, len(selectors))
-	for _, selector := range selectors {
-		if selector == 0 || selector == localSelector {
-			continue
-		}
-		if _, ok := seen[selector]; ok {
-			continue
-		}
-		seen[selector] = struct{}{}
-		remote = append(remote, selector)
-	}
-	sort.Slice(remote, func(i, j int) bool {
-		return remote[i] < remote[j]
-	})
-	return remote
 }
 
 func addressBytesLengthForSelector(selector uint64) (uint32, error) {
@@ -2089,19 +1322,6 @@ func (c *Chain) buildOffRampSourceConfigs(ds datastore.DataStore, remoteSelector
 	return configs, nil
 }
 
-// generateMockContractID generates a deterministic mock contract ID for testing.
-func mustGenerateMockContractID(deployerAddress, contractName string) string {
-	// Generate a deterministic salt
-	salt := stellardeployment.GenerateDeterministicSalt(deployerAddress, contractName)
-
-	// Encode as a Stellar contract address
-	encoded, err := strkey.Encode(strkey.VersionByteContract, salt[:])
-	if err != nil {
-		panic(fmt.Errorf("failed to encode mock contract ID: %w", err))
-	}
-	return encoded
-}
-
 // EncodeExtraArgsV3 converts a GenericExtraArgsV3 to XDR bytes suitable for
 // the OnRamp contract's ExtraArgs field (parsed via GenericExtraArgsV3::from_xdr).
 func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
@@ -2169,57 +1389,4 @@ func (c *Chain) TransferNative(ctx context.Context, from, to protocol.UnknownAdd
 		return err
 	}
 	return nil
-}
-
-// resolveSignersFromTopology extracts signer addresses and threshold for a
-// given source chain selector from the environment topology. All committee
-// verifier DONs sign with ECDSA (secp256k1), so we always look up the EVM
-// family signer address (20-byte Ethereum address) and left-pad it to 32
-// bytes to match the on-chain Soroban storage format.
-func resolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
-	if topology == nil || topology.NOPTopology == nil {
-		return nil, 0
-	}
-
-	selectorStr := strconv.FormatUint(sourceChainSelector, 10)
-
-	for _, committee := range topology.NOPTopology.Committees {
-		chainCfg, ok := committee.ChainConfigs[selectorStr]
-		if !ok {
-			continue
-		}
-
-		var signers [][32]byte
-		for _, alias := range chainCfg.NOPAliases {
-			nop, found := topology.NOPTopology.GetNOP(alias)
-			if !found {
-				continue
-			}
-			// All CCV DONs sign with ECDSA regardless of destination family.
-			addrHex := nop.SignerAddressByFamily[chainsel.FamilyEVM]
-			if addrHex == "" {
-				continue
-			}
-			decoded, decErr := hex.DecodeString(addrHex)
-			if decErr != nil {
-				continue
-			}
-			// Accept 20-byte Ethereum addresses; left-pad to 32 bytes.
-			if len(decoded) != 20 {
-				continue
-			}
-			var signer [32]byte
-			copy(signer[32-len(decoded):], decoded)
-			signers = append(signers, signer)
-		}
-
-		if len(signers) > 0 {
-			sort.Slice(signers, func(i, j int) bool {
-				return bytes.Compare(signers[i][:], signers[j][:]) < 0
-			})
-			return signers, uint32(chainCfg.Threshold)
-		}
-	}
-
-	return nil, 0
 }
