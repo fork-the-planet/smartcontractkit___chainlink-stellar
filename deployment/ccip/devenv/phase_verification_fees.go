@@ -205,34 +205,10 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	h.Logger().Info().Msg("FeeQuoter prices updated")
 
 	if testToken := h.TestTokenContractID(); testToken != "" {
-		tokenPriceUpdates := fqbindings.PriceUpdates{
-			TokenPriceUpdates: []fqbindings.TokenPriceUpdate{{
-				Token:       testToken,
-				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
-			}},
-			GasPriceUpdates: []fqbindings.GasPriceUpdate{},
+		if err := ApplyFeeQuoterTestTokenConfig(ctx, feeQuoterClient, testToken, allSelectors); err != nil {
+			return err
 		}
-		if err := feeQuoterClient.UpdatePrices(ctx, tokenPriceUpdates); err != nil {
-			return fmt.Errorf("failed to set test token price on FeeQuoter: %w", err)
-		}
-
-		var tokenFeeConfigs []fqbindings.TokenFeeConfigArgs
-		for _, rs := range allSelectors {
-			tokenFeeConfigs = append(tokenFeeConfigs, fqbindings.TokenFeeConfigArgs{
-				Token:             testToken,
-				DestChainSelector: rs,
-				Config: fqbindings.TokenTransferFeeConfig{
-					FeeUsdCents:       25,
-					DestGasOverhead:   90_000,
-					DestBytesOverhead: 32,
-					IsEnabled:         true,
-				},
-			})
-		}
-		if err := feeQuoterClient.ApplyTokenFeeConfigs(ctx, tokenFeeConfigs, nil); err != nil {
-			return fmt.Errorf("failed to apply token fee configs on FeeQuoter: %w", err)
-		}
-		h.Logger().Info().Int("count", len(tokenFeeConfigs)).Msg("FeeQuoter token transfer fee configs applied")
+		h.Logger().Info().Int("count", len(allSelectors)).Msg("FeeQuoter token transfer fee configs applied")
 	}
 
 	return nil

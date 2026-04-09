@@ -51,6 +51,10 @@ func (h *stellarCCIPDeployHost) SetTokenAdminRegistry(contractID string, client 
 	h.c.tokenAdminRegistryClient = client
 }
 
+func (h *stellarCCIPDeployHost) TokenAdminRegistryClient() *tarbindings.TokenAdminRegistryClient {
+	return h.c.tokenAdminRegistryClient
+}
+
 func (h *stellarCCIPDeployHost) SetTokenPool(contractID string, client *tokenpoolbindings.TokenPoolClient) {
 	h.c.tokenPoolContractID = contractID
 	h.c.tokenPoolClient = client

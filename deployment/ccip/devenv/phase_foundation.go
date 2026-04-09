@@ -10,7 +10,6 @@ import (
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
-	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 )
@@ -123,50 +122,6 @@ func (w *work) deployFoundationContracts() error {
 		return fmt.Errorf("failed to initialize TokenAdminRegistry: %w", err)
 	}
 	h.Logger().Info().Str("contractID", tarContractID).Msg("TokenAdminRegistry deployed and initialized")
-
-	poolWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_lock_release_pool.wasm")
-	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
-		return fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
-	}
-	h.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract...")
-	poolSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "lock-release-pool")
-	poolContractID, err := h.Deployer().DeployContract(ctx, poolWasmPath, poolSalt)
-	if err != nil {
-		return fmt.Errorf("failed to deploy LockRelease pool: %w", err)
-	}
-	w.poolContractID = poolContractID
-	poolClient := tokenpoolbindings.NewTokenPoolClient(h.Deployer(), poolContractID)
-	h.SetTokenPool(poolContractID, poolClient)
-	h.Logger().Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
-
-	if h.FriendbotURL() == "" {
-		h.Logger().Warn().Msg("Friendbot URL not available; skipping test token deployment. Token transfer E2E tests will not work.")
-	} else {
-		tokenContractID, tokenErr := h.CreateTestToken(ctx, h.FriendbotURL())
-		if tokenErr != nil {
-			return fmt.Errorf("failed to create test token: %w", tokenErr)
-		}
-		h.SetTestToken(tokenContractID)
-
-		if err := poolClient.Initialize(ctx, h.DeployerKeypair().Address(), tokenContractID); err != nil {
-			return fmt.Errorf("failed to initialize pool with token: %w", err)
-		}
-
-		deployerAddr := h.DeployerKeypair().Address()
-		if err := tarClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
-			return fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
-		}
-		if err := tarClient.AcceptAdminRole(ctx, tokenContractID); err != nil {
-			return fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
-		}
-		if err := tarClient.SetPool(ctx, tokenContractID, &poolContractID); err != nil {
-			return fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
-		}
-		h.Logger().Info().
-			Str("token", tokenContractID).
-			Str("pool", poolContractID).
-			Msg("Token pool registered in TokenAdminRegistry")
-	}
 
 	mockFeeAggregator := stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "fee-aggregator")
 

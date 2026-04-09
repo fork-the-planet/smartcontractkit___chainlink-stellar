@@ -31,6 +31,7 @@ type Host interface {
 	FeeQuoterClient() *fqbindings.FeeQuoterClient
 	SetFeeQuoter(client *fqbindings.FeeQuoterClient)
 	SetTokenAdminRegistry(contractID string, client *tarbindings.TokenAdminRegistryClient)
+	TokenAdminRegistryClient() *tarbindings.TokenAdminRegistryClient
 	SetTokenPool(contractID string, client *tokenpoolbindings.TokenPoolClient)
 	SetTestToken(contractID string)
 	TestTokenContractID() string

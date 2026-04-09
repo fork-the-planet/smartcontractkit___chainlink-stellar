@@ -433,12 +433,37 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 }
 
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
+// Deploys the lock-release test pool and SAC token (EVM post-deploy parity), applies FeeQuoter
+// pricing for the test token, and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
-	_ = ctx
-	_ = env
 	_ = topology
-	clearStellarDeployChangesetCtx(selector)
-	return nil, nil
+	defer clearStellarDeployChangesetCtx(selector)
+
+	if env == nil {
+		return nil, fmt.Errorf("environment is nil")
+	}
+
+	host := &stellarCCIPDeployHost{c: c}
+	if err := stellarccipdevenv.DeployLockReleaseTestTokenPool(ctx, host); err != nil {
+		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
+	}
+
+	allSelectors := selectorsFromBlockChains(env.BlockChains)
+	if c.testTokenContractID != "" && c.feeQuoterClient != nil {
+		if err := stellarccipdevenv.ApplyFeeQuoterTestTokenConfig(ctx, c.feeQuoterClient, c.testTokenContractID, allSelectors); err != nil {
+			return nil, fmt.Errorf("apply fee quoter test token config: %w", err)
+		}
+		c.logger.Info().Int("destChainCount", len(allSelectors)).Msg("FeeQuoter test token fees applied (post-deploy)")
+	}
+
+	if c.tokenPoolContractID == "" {
+		return nil, nil
+	}
+	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID)
+	if err != nil {
+		return nil, err
+	}
+	return ds, nil
 }
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the

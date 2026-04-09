@@ -116,17 +116,19 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		Version:       semver.MustParse("1.0.0"),
 	})
 
-	poolHex, err := stellarutil.StrkeyToHex(poolContractID)
-	if err != nil {
-		return fmt.Errorf("failed to convert pool address: %w", err)
+	if poolContractID != "" {
+		poolHex, err := stellarutil.StrkeyToHex(poolContractID)
+		if err != nil {
+			return fmt.Errorf("failed to convert pool address: %w", err)
+		}
+		ds.AddressRefStore.Add(datastore.AddressRef{
+			Address:       poolHex,
+			ChainSelector: selector,
+			Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
+			Version:       semver.MustParse("1.0.0"),
+			Qualifier:     DevenvTestTokenPoolQualifier,
+		})
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       poolHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
-		Version:       semver.MustParse("1.0.0"),
-		Qualifier:     "TEST",
-	})
 
 	vvrHex, err := stellarutil.StrkeyToHex(vvrContractID)
 	if err != nil {
