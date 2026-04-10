@@ -26,26 +26,6 @@ func TestNewChain(t *testing.T) {
 	assert.Equal(t, chainsel.FamilyStellar, chain.ChainFamily())
 }
 
-func TestGenerateContractAddress(t *testing.T) {
-	networkPassphrase := "Test SDF Network ; September 2015"
-
-	// Test that generateContractAddress creates proper 32-byte addresses
-	addr := generateContractAddress("test-contract", networkPassphrase)
-	assert.Len(t, addr, stellarAddressLen)
-
-	// Test determinism - same inputs should produce same output
-	addr2 := generateContractAddress("test-contract", networkPassphrase)
-	assert.Equal(t, addr, addr2)
-
-	// Test that different names produce different addresses
-	addr3 := generateContractAddress("other-contract", networkPassphrase)
-	assert.NotEqual(t, addr, addr3)
-
-	// Test that different network passphrases produce different addresses
-	addr4 := generateContractAddress("test-contract", "Public Global Stellar Network ; September 2015")
-	assert.NotEqual(t, addr, addr4)
-}
-
 func TestGenerateAccountAddress(t *testing.T) {
 	// Test that generateAccountAddress creates valid Stellar addresses
 	addr, err := generateAccountAddress("test-seed")
@@ -141,11 +121,6 @@ func TestPostConnect(t *testing.T) {
 	err := chain.PostConnect(nil, 1, []uint64{2, 3})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "environment is nil")
-}
-
-func TestFilterRemoteSelectors(t *testing.T) {
-	got := filterRemoteSelectors([]uint64{5, 1, 3, 1, 3, 2, 0}, 1)
-	assert.Equal(t, []uint64{2, 3, 5}, got)
 }
 
 func TestBuildOnRampDestConfigs_UsesSelectorSpecificAddressLengths(t *testing.T) {

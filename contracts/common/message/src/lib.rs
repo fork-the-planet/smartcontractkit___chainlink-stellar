@@ -314,7 +314,7 @@ impl FromBytes for CcipTokenTransferV1 {
 ///
 /// Byte layout:
 ///   version(1) | src_chain(8) | dst_chain(8) | seq_num(8) |
-///   exec_gas(4) | recv_gas(4) | finality(2) | ccv_exec_hash(32) |
+///   exec_gas(4) | recv_gas(4) | finality(4) | ccv_exec_hash(32) |
 ///   onramp(1+N) | offramp(1+N) | sender(1+N) | receiver(1+N) |
 ///   dest_blob(2+N) | token_transfer(2+N) | data(2+N)
 ///
@@ -328,7 +328,7 @@ pub struct CcipMessageV1 {
     pub sequence_number: u64,
     pub execution_gas_limit: u32,
     pub ccip_receive_gas_limit: u32,
-    pub finality: u16,
+    pub finality: u32,
     pub ccv_and_executor_hash: BytesN<32>,
     pub onramp_address: Bytes,
     pub offramp_address: Bytes,
@@ -368,7 +368,7 @@ impl ToBytes for CcipMessageV1 {
             &self.ccip_receive_gas_limit.to_be_bytes(),
         ));
 
-        // Finality (2 bytes, big-endian)
+        // Finality (4 bytes, big-endian)
         buf.append(&Bytes::from_array(env, &self.finality.to_be_bytes()));
 
         // CCV and executor hash (32 bytes)
@@ -561,7 +561,7 @@ impl FromBytes for CcipMessageV1 {
         let sequence_number = r.read_u64()?;
         let execution_gas_limit = r.read_u32()?;
         let ccip_receive_gas_limit = r.read_u32()?;
-        let finality = r.read_u16()?;
+        let finality = r.read_u32()?;
         let ccv_and_executor_hash = r.read_bytes32(env)?;
 
         let onramp_address = r.read_1lp_field()?;

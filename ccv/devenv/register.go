@@ -45,5 +45,6 @@ func RegisterStellarComponents() {
 		ccvadapters.GetVerifierJobConfigRegistry().Register(chainsel.FamilyStellar, &StellarVerifierConfigAdapter{})
 		ccvadapters.GetExecutorConfigRegistry().Register(chainsel.FamilyStellar, &StellarExecutorConfigAdapter{})
 		ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &StellarTokenVerifierConfigAdapter{})
+		ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &ccvchain.StellarDeployChainContractsAdapter{})
 	})
 }

@@ -22,7 +22,7 @@ type ccipV1Wire struct {
 	SequenceNumber      uint64
 	ExecutionGasLimit   uint32
 	CcipReceiveGasLimit uint32
-	Finality            uint16
+	Finality            uint32
 	CcvExecutorHash     [32]byte
 	OnRampAddress       []byte
 	OffRampAddress      []byte
@@ -47,7 +47,7 @@ func encodeCcipMessageV1(m ccipV1Wire) ([]byte, error) {
 	b = binary.BigEndian.AppendUint64(b, m.SequenceNumber)
 	b = binary.BigEndian.AppendUint32(b, m.ExecutionGasLimit)
 	b = binary.BigEndian.AppendUint32(b, m.CcipReceiveGasLimit)
-	b = binary.BigEndian.AppendUint16(b, m.Finality)
+	b = binary.BigEndian.AppendUint32(b, m.Finality)
 	b = append(b, m.CcvExecutorHash[:]...)
 	b = append(b, byte(len(m.OnRampAddress)))
 	b = append(b, m.OnRampAddress...)

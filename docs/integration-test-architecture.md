@@ -63,7 +63,7 @@ Messages use the canonical CCIP v1 wire format (`MESSAGE_V1_VERSION = 1`):
 
 ```
 [1B version] [8B source_chain] [8B dest_chain] [8B seq_no]
-[4B exec_gas_limit] [4B ccip_receive_gas_limit] [2B finality]
+[4B exec_gas_limit] [4B ccip_receive_gas_limit] [4B finality]
 [32B ccv_executor_hash]
 [1B onramp_len] [onramp_bytes]
 [1B offramp_len] [offramp_bytes]
