@@ -1,7 +1,4 @@
-name: Integration Tests
-
-# Runs all integration tests under tests/integration except token_pool_test.go (TestTokenPool).
-# Token pool tests run in test-integration-token-pool.yaml.
+name: Integration Tests (Token Pool)
 
 on:
   merge_group:
@@ -17,8 +14,9 @@ concurrency:
 permissions: {}
 
 jobs:
-  test-integration:
-    name: Integration Tests (excl. Token Pool)
+  test-integration-token-pool:
+    name: Integration Tests (Token Pool)
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -46,16 +44,16 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run integration tests
-        run: go test -v -race -tags integration -fullpath -shuffle on -skip '^TestTokenPool($|/)' -coverpkg=./bindings/contracts/... -coverprofile=coverage-integration.out ./tests/integration/...
+      - name: Run token pool integration tests
+        run: go test -v -race -tags integration -fullpath -shuffle on -timeout 20m -run '^TestTokenPool($|/)' -coverpkg=./bindings/contracts/... -coverprofile=coverage-integration-token-pool.out ./tests/integration/...
 
       - name: Write full coverage to job summary
         if: github.event_name == 'pull_request'
         run: |
-          echo '## Integration Test Coverage (excl. Token Pool)' >> $GITHUB_STEP_SUMMARY
+          echo '## Integration Test Coverage (Token Pool)' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=coverage-integration.out >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage-integration-token-pool.out >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Post coverage comment
@@ -63,9 +61,9 @@ jobs:
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TOTAL_LINE=$(go tool cover -func=coverage-integration.out | grep -i 'total' | tail -1 || echo 'No coverage summary found')
+          TOTAL_LINE=$(go tool cover -func=coverage-integration-token-pool.out | grep -i 'total' | tail -1 || echo 'No coverage summary found')
           cat > coverage-summary.md <<EOF
-          ## Integration Test Coverage (excl. Token Pool)
+          ## Integration Test Coverage (Token Pool)
 
           \`\`\`
           ${TOTAL_LINE}
@@ -79,5 +77,5 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
         with:
-          header: integration-coverage
+          header: integration-coverage-token-pool
           path: coverage-summary.md

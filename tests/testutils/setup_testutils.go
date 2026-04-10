@@ -131,6 +131,7 @@ type SharedTestEnv struct {
 	Deployer          *deployment.Deployer
 	RPCClient         *rpcclient.Client
 	NetworkPassphrase string
+	FriendbotURL      string // faucet base URL (no ?addr=), for funding issuers / SAC setup
 	Output            *blockchain.Output // for teardown
 }
 
@@ -212,6 +213,11 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		return nil, fmt.Errorf("find project root: %w", err)
 	}
 
+	friendbotURL := ""
+	if input.Out != nil && input.Out.NetworkSpecificData != nil && input.Out.NetworkSpecificData.StellarNetwork != nil {
+		friendbotURL = input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL
+	}
+
 	success = true
 	return &SharedTestEnv{
 		ProjectRoot:       projectRoot,
@@ -219,6 +225,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		Deployer:          deployer,
 		RPCClient:         rpcClient,
 		NetworkPassphrase: networkPassphrase,
+		FriendbotURL:      friendbotURL,
 		Output:            output,
 	}, nil
 }
