@@ -4,6 +4,7 @@ pub trait TokenPoolInterface {
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
         token: soroban_sdk::Address,
+        token_decimals: u32,
     ) -> Result<(), CCIPError>;
 
     fn lock_or_burn(env: soroban_sdk::Env, input: LockOrBurnIn)
@@ -25,6 +26,8 @@ pub trait TokenPoolInterface {
     ) -> Result<bool, CCIPError>;
 
     fn get_token(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+
+    fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
 
     fn get_remote_pool(
         env: soroban_sdk::Env,
@@ -66,6 +69,7 @@ pub struct ReleaseOrMintIn {
     pub original_sender: soroban_sdk::Bytes,
     pub remote_chain_selector: u64,
     pub receiver: soroban_sdk::Address,
+    /// Source-denominated amount (EVM `sourceDenominatedAmount`).
     pub amount: i128,
     pub local_token: soroban_sdk::Address,
     pub source_pool_address: soroban_sdk::Bytes,
@@ -189,6 +193,9 @@ pub enum CCIPError {
     InsufficientPoolLiquidity = 304,
     InvalidRemotePoolAddress = 305,
     InvalidRemoteChainConfig = 306,
+    InvalidRemoteChainDecimals = 307,
+    DecimalAmountOverflow = 308,
+    InvalidPoolTokenDecimals = 309,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

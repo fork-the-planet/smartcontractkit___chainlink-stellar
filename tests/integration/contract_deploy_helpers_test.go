@@ -366,8 +366,9 @@ func (s *fullStack) deployTokenPool(
 	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
 	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
 
-	// Initialize pool with the token
-	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID); err != nil {
+	// Initialize pool with the token (decimals must match pool math; SAC test asset uses 7).
+	const tokenPoolDecimals uint32 = 7
+	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID, tokenPoolDecimals); err != nil {
 		t.Fatalf("TokenPool Initialize: %v", err)
 	}
 

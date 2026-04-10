@@ -170,6 +170,12 @@ pub enum CCIPError {
     InsufficientPoolLiquidity = 304,
     InvalidRemotePoolAddress = 305,
     InvalidRemoteChainConfig = 306,
+    /// `source_pool_data` is not a valid 32-byte ABI-encoded decimals scalar (EVM `InvalidRemoteChainDecimals`).
+    InvalidRemoteChainDecimals = 307,
+    /// Local amount conversion overflow (EVM `OverflowDetected` / rate math).
+    DecimalAmountOverflow = 308,
+    /// Pool `token_decimals` init argument out of range (must fit `uint8` / EVM `i_tokenDecimals`).
+    InvalidPoolTokenDecimals = 309,
 
     // ============================================================
     // Calculation errors

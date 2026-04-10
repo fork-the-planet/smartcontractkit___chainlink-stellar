@@ -4,7 +4,7 @@ use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Vec};
 
 use crate::{BurnMintTokenPoolContract, BurnMintTokenPoolContractClient};
 use common_error::CCIPError;
-use common_pool::{ChainUpdate, LockOrBurnIn, ReleaseOrMintIn};
+use common_pool::{encode_local_decimals, ChainUpdate, LockOrBurnIn, ReleaseOrMintIn};
 
 fn setup_env() -> (
     Env,
@@ -30,7 +30,7 @@ fn setup_env() -> (
     // Set the pool contract as the token admin so it can mint
     token_admin_client.set_admin(&pool_id);
 
-    pool_client.initialize(&owner, &token_address);
+    pool_client.initialize(&owner, &token_address, &7u32);
 
     (
         env,
@@ -48,6 +48,7 @@ fn test_initialize() {
 
     let pool_token = pool_client.get_token();
     assert_eq!(pool_token, token_address);
+    assert_eq!(pool_client.get_token_decimals(), 7);
 
     assert!(pool_client.is_supported_token(&token_address));
     let other_token = Address::generate(&env);
@@ -155,7 +156,7 @@ fn chain_update(env: &Env, selector: u64, pool_byte: u8, token_byte: u8) -> Chai
 #[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_initialize_twice_rejected() {
     let (_env, pool_client, owner, token_address, _token_client, _token_admin_client) = setup_env();
-    pool_client.initialize(&owner, &token_address);
+    pool_client.initialize(&owner, &token_address, &7u32);
 }
 
 #[test]
@@ -323,4 +324,160 @@ fn test_apply_chain_updates_duplicate_selector_overwrites_remote_token() {
         local_token: token_address,
     };
     assert!(pool_client.try_lock_or_burn(&lock_input).is_ok());
+}
+
+#[test]
+fn test_lock_or_burn_dest_pool_data_encodes_local_decimals() {
+    let (env, pool_client, _owner, token_address, token_client, token_admin_client) = setup_env();
+
+    let remote_chain: u64 = 5009297550715157269;
+    pool_client.apply_chain_updates(
+        &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
+        &Vec::new(&env),
+    );
+
+    let sender = Address::generate(&env);
+    token_admin_client.mint(&sender, &100);
+    let lock_input = LockOrBurnIn {
+        receiver: Bytes::from_slice(&env, &[3u8; 20]),
+        remote_chain_selector: remote_chain,
+        original_sender: sender.clone(),
+        amount: 100,
+        local_token: token_address,
+    };
+    let out = pool_client.lock_or_burn(&lock_input);
+    let expected = encode_local_decimals(&env, 7).unwrap();
+    assert_eq!(out.dest_pool_data, expected);
+    assert_eq!(token_client.balance(&sender), 0);
+}
+
+#[test]
+fn test_release_or_mint_scales_down_remote_more_decimals() {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let pool_id = env.register(BurnMintTokenPoolContract, ());
+    let pool_client = BurnMintTokenPoolContractClient::new(&env, &pool_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let token_client = token::Client::new(&env, &token_address);
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_address);
+    token_admin_client.set_admin(&pool_id);
+
+    let local_decimals: u32 = 6;
+    pool_client.initialize(&owner, &token_address, &local_decimals);
+
+    let remote_chain: u64 = 5009297550715157269;
+    pool_client.apply_chain_updates(
+        &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
+        &Vec::new(&env),
+    );
+
+    let remote_decimals: u32 = 9;
+    let source_amount: i128 = 1_000_000_000; // 1e9 in 9dp
+    let expected_local: i128 = 1_000_000; // 1e6 in 6dp
+
+    let receiver = Address::generate(&env);
+    let release_input = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: receiver.clone(),
+        amount: source_amount,
+        local_token: token_address.clone(),
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: encode_local_decimals(&env, remote_decimals).unwrap(),
+    };
+
+    let out = pool_client.release_or_mint(&release_input);
+    assert_eq!(out.destination_amount, expected_local);
+    assert_eq!(token_client.balance(&receiver), expected_local);
+}
+
+#[test]
+fn test_release_or_mint_scales_up_remote_fewer_decimals() {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let pool_id = env.register(BurnMintTokenPoolContract, ());
+    let pool_client = BurnMintTokenPoolContractClient::new(&env, &pool_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let token_client = token::Client::new(&env, &token_address);
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_address);
+    token_admin_client.set_admin(&pool_id);
+
+    let local_decimals: u32 = 9;
+    pool_client.initialize(&owner, &token_address, &local_decimals);
+
+    let remote_chain: u64 = 5009297550715157269;
+    pool_client.apply_chain_updates(
+        &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
+        &Vec::new(&env),
+    );
+
+    let remote_decimals: u32 = 6;
+    let source_amount: i128 = 1_000_000;
+    let expected_local: i128 = 1_000_000_000;
+
+    let receiver = Address::generate(&env);
+    let release_input = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: receiver.clone(),
+        amount: source_amount,
+        local_token: token_address.clone(),
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: encode_local_decimals(&env, remote_decimals).unwrap(),
+    };
+
+    let out = pool_client.release_or_mint(&release_input);
+    assert_eq!(out.destination_amount, expected_local);
+    assert_eq!(token_client.balance(&receiver), expected_local);
+}
+
+#[test]
+fn test_release_or_mint_invalid_source_pool_data_length() {
+    let (env, pool_client, _owner, token_address, _token_client, _token_admin_client) = setup_env();
+
+    let remote_chain: u64 = 5009297550715157269;
+    pool_client.apply_chain_updates(
+        &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
+        &Vec::new(&env),
+    );
+
+    let release_input = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: Address::generate(&env),
+        amount: 100,
+        local_token: token_address,
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: Bytes::from_slice(&env, &[1u8; 31]),
+    };
+
+    let e = pool_client
+        .try_release_or_mint(&release_input)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(e, CCIPError::InvalidRemoteChainDecimals);
+}
+
+#[test]
+fn test_initialize_rejects_decimals_above_uint8() {
+    let env = Env::default();
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let pool_id = env.register(BurnMintTokenPoolContract, ());
+    let pool_client = BurnMintTokenPoolContractClient::new(&env, &pool_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_address = token_contract.address();
+
+    let r = pool_client.try_initialize(&owner, &token_address, &256u32);
+    assert_eq!(r, Err(Ok(CCIPError::InvalidPoolTokenDecimals)));
 }

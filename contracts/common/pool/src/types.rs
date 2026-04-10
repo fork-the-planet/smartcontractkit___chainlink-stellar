@@ -23,6 +23,7 @@ pub struct ReleaseOrMintIn {
     pub original_sender: Bytes,
     pub remote_chain_selector: u64,
     pub receiver: Address,
+    /// Amount in **source** token minimal units (EVM `sourceDenominatedAmount`).
     pub amount: i128,
     pub local_token: Address,
     pub source_pool_address: Bytes,
@@ -56,4 +57,6 @@ pub enum PoolDataKey {
     Token,
     RemoteChainConfig(u64),
     SupportedChains,
+    /// Local token decimals (`uint8` on EVM), stored at init.
+    TokenDecimals,
 }
