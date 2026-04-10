@@ -253,5 +253,19 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		}
 	}
 
+	// Re-derive the deterministic fee SAC token address so that SendMessage
+	// can reference it without re-running deployment.
+	feeIssuerSeed := sha256.Sum256([]byte(fmt.Sprintf("fee-token-issuer-%s", networkPassphrase)))
+	feeIssuerKP, err := keypair.FromRawSeed(feeIssuerSeed)
+	if err == nil {
+		feeAsset := txnbuild.CreditAsset{Code: feeTokenAssetCode, Issuer: feeIssuerKP.Address()}
+		xdrAsset, xdrErr := feeAsset.ToXDR()
+		if xdrErr == nil {
+			if contractID, sacErr := stellardeployment.ComputeSACContractID(networkPassphrase, xdrAsset); sacErr == nil {
+				chain.feeTokenContractID = contractID
+			}
+		}
+	}
+
 	return chain, nil
 }
