@@ -410,8 +410,8 @@ const (
 	CCIPErrorInvalidRemotePoolAddress       = 305
 	CCIPErrorInvalidRemoteChainConfig       = 306
 	CCIPErrorInvalidRemoteChainDecimals     = 307
-	CCIPErrorDecimalAmountOverflow            = 308
-	CCIPErrorInvalidPoolTokenDecimals         = 309
+	CCIPErrorDecimalAmountOverflow          = 308
+	CCIPErrorInvalidPoolTokenDecimals       = 309
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )

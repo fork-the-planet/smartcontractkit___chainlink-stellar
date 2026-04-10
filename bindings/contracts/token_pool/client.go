@@ -159,10 +159,11 @@ func (c *TokenPoolClient) GetTokenDecimals(ctx context.Context) (uint32, error) 
 		return 0, fmt.Errorf("no return value from get_token_decimals")
 	}
 
-	if result.Type != xdr.ScValTypeScvU32 || result.U32 == nil {
+	v, ok := result.GetU32()
+	if !ok {
 		return 0, fmt.Errorf("expected u32 return type")
 	}
-	return uint32(*result.U32), nil
+	return uint32(v), nil
 }
 
 // GetRemotePool calls the get_remote_pool function on the contract.
