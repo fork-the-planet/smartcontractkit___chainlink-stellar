@@ -42,6 +42,10 @@ type Host interface {
 	SetCV(contractID string)
 	SetReceiver(contractID string)
 
+	SetFeeToken(contractID string)
+	FeeTokenContractID() string
+	CreateFeeToken(ctx context.Context, friendbotURL string) (string, error)
+
 	BuildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error)
 	BuildOffRampSourceConfigs(ds datastore.DataStore, remoteSelectors []uint64, useRemoteOnRamp bool) ([]offrampbindings.SourceChainConfigArgs, error)
 	CreateTestToken(ctx context.Context, friendbotURL string) (string, error)

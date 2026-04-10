@@ -28,7 +28,7 @@ type work struct {
 	stellarRoot     string
 	remoteSelectors []uint64
 
-	mockLinkToken string
+	feeTokenContractID string
 
 	onrampContractID    string
 	rmnRemoteContractID string
