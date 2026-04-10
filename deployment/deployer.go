@@ -61,7 +61,7 @@ func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *
 		rpcClient:         rpcClient,
 		networkPassphrase: networkPassphrase,
 		signer:            signer,
-		accountSequence:   -1, // Will be fetched on first use
+		accountSequence:   -1,
 		autoRestore:       true,
 	}
 	for _, opt := range opts {
@@ -381,47 +381,43 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 	return &scVal, nil
 }
 
-// getSourceAccount fetches the current account state for the signer.
+// getSourceAccount fetches the current account sequence from the network.
+// It always queries the ledger to stay in sync with the on-chain state,
+// which is safe because every write path waits for transaction confirmation
+// (via waitForTransaction) before returning.
 func (d *Deployer) getSourceAccount(ctx context.Context) (*txnbuild.SimpleAccount, error) {
-	// Fetch current sequence if not yet initialized
-	if d.accountSequence < 0 {
-		// Use getLedgerEntries to get account info
-		accountKey := xdr.LedgerKey{
-			Type: xdr.LedgerEntryTypeAccount,
-			Account: &xdr.LedgerKeyAccount{
-				AccountId: xdr.MustAddress(d.signer.Address()),
-			},
-		}
+	accountKey := xdr.LedgerKey{
+		Type: xdr.LedgerEntryTypeAccount,
+		Account: &xdr.LedgerKeyAccount{
+			AccountId: xdr.MustAddress(d.signer.Address()),
+		},
+	}
 
-		keyXDR, err := accountKey.MarshalBinaryBase64()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal account key: %w", err)
-		}
+	keyXDR, err := accountKey.MarshalBinaryBase64()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal account key: %w", err)
+	}
 
-		resp, err := d.rpcClient.GetLedgerEntries(ctx, protocolrpc.GetLedgerEntriesRequest{
-			Keys: []string{keyXDR},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get ledger entries: %w", err)
-		}
+	resp, err := d.rpcClient.GetLedgerEntries(ctx, protocolrpc.GetLedgerEntriesRequest{
+		Keys: []string{keyXDR},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ledger entries: %w", err)
+	}
 
-		if len(resp.Entries) == 0 {
-			// Account doesn't exist yet, start with sequence 0
+	if len(resp.Entries) == 0 {
+		d.accountSequence = 0
+	} else {
+		entryXDR, ok := getLedgerEntryXDR(resp.Entries[0])
+		if !ok || entryXDR == "" {
 			d.accountSequence = 0
 		} else {
-			// Parse account entry to get sequence number
-			entryXDR, ok := getLedgerEntryXDR(resp.Entries[0])
-			if !ok || entryXDR == "" {
-				// Fall back to sequence 0 if we can't read
-				d.accountSequence = 0
-			} else {
-				var entry xdr.LedgerEntryData
-				if err := xdr.SafeUnmarshalBase64(entryXDR, &entry); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal account entry: %w", err)
-				}
-				account := entry.MustAccount()
-				d.accountSequence = int64(account.SeqNum)
+			var entry xdr.LedgerEntryData
+			if err := xdr.SafeUnmarshalBase64(entryXDR, &entry); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal account entry: %w", err)
 			}
+			account := entry.MustAccount()
+			d.accountSequence = int64(account.SeqNum)
 		}
 	}
 
@@ -549,9 +545,6 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		return nil, fmt.Errorf("unexpected transaction status: %s", submitResult.Status)
 	}
 
-	// Update account sequence
-	d.accountSequence++
-
 	// Wait for transaction confirmation
 	txResult, err := d.waitForTransaction(ctx, submitResult.Hash)
 	if err != nil {
@@ -671,8 +664,6 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 	default:
 		return fmt.Errorf("unexpected restore transaction status: %s", submitResult.Status)
 	}
-
-	d.accountSequence++
 
 	_, err = d.waitForTransaction(ctx, submitResult.Hash)
 	if err != nil {
@@ -1004,8 +995,6 @@ func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Opera
 	default:
 		return fmt.Errorf("unexpected transaction status: %s", submitResult.Status)
 	}
-
-	d.accountSequence++
 
 	_, err = d.waitForTransaction(ctx, submitResult.Hash)
 	return err

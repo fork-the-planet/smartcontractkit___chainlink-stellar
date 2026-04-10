@@ -18,7 +18,6 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	cmd "github.com/smartcontractkit/chainlink-ccv/cmd/executor"
 	"github.com/smartcontractkit/chainlink-ccv/executor"
-	"github.com/smartcontractkit/chainlink-ccv/integration/pkg/blockchain"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
@@ -53,7 +52,7 @@ func main() {
 			func(
 				ctx context.Context,
 				lggr logger.Logger,
-				_ blockchain.Infos[sourcereader.ReaderConfig],
+				_ chainaccess.Infos[sourcereader.ReaderConfig],
 				cfg executor.Configuration,
 			) (*cmd.ServiceComponents, error) {
 				configPath, ok := os.LookupEnv(StellarConfigPathEnv)

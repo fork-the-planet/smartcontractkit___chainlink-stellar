@@ -71,7 +71,7 @@ func TestOffRamp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, networkPassphrase := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, networkPassphrase, _ := GetSharedTestEnv(ctx, t)
 
 	rmnRemoteID, rmnProxyID, _, _ := deployOffRampDependencies(ctx, t, projectRoot, deployer, deployerKP.Address())
 
@@ -319,9 +319,9 @@ func TestOffRampExecute(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _ := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
 
-	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec")
+	stack := deployFullStack(ctx, t, projectRoot, deployer, deployerKP.Address(), localChainSelector, "offramp-exec", false)
 
 	t.Run("execute valid message succeeds", func(t *testing.T) {
 		encoded, msgID, verifierBlob := stack.buildValidMessage(t, localChainSelector, 1, []byte("offramp-execute-test"))

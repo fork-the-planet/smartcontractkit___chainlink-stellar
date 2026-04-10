@@ -34,14 +34,18 @@ fmt-contracts-check:
 test-coverage coverage_file="coverage.out" short="":
     #!/usr/bin/env bash
     set -euo pipefail
-    pkgs=$(go list ./... | grep -v 'github.com/smartcontractkit/chainlink-stellar/tests/e2e$' || true)
+    pkgs=$(go list ./... | grep -v '/tests/e2e' || true)
     go test -v -race -fullpath -shuffle on {{ if short != "" { "-short" } else { "" } }} -coverprofile={{ coverage_file }} $pkgs
     { head -n1 {{ coverage_file }}; tail -n +2 {{ coverage_file }} | grep -v -E '{{ COVERAGE_EXCLUDE_REGEX }}' || true; } > {{ coverage_file }}.filtered
     mv {{ coverage_file }}.filtered {{ coverage_file }}
 
-# Run Go unit tests (root module) with coverage
+# Run Go unit tests (root module) with coverage.
+# Excludes tests/e2e (requires running devenv; run those with: go test -v -timeout 10m ./tests/e2e/...).
 test-go:
-    go test -v -race -fullpath -shuffle on -coverprofile=coverage.out ./...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkgs=$(go list ./... | grep -v '/tests/e2e' || true)
+    go test -v -race -fullpath -shuffle on -coverprofile=coverage.out $pkgs
     go tool cover -func=coverage.out
 
 # Run Go unit tests (bindings module) with coverage
@@ -54,7 +58,7 @@ test-go-all: test-go test-go-bindings
 
 # Run Go integration tests (requires running Stellar localnet)
 test-go-integration:
-    go test -tags integration -v -timeout 5m ./tests/integration/...
+    go test -tags integration -v -timeout 20m ./tests/integration/...
 
 # Generate mocks using mockery
 mock:

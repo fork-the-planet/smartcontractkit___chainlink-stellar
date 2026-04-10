@@ -331,7 +331,7 @@ impl OnRampContract {
             sequence_number,
             execution_gas_limit: extra_args.gas_limit,
             ccip_receive_gas_limit: 0,
-            finality: extra_args.block_confirmations as u16,
+            finality: extra_args.block_confirmations,
             ccv_and_executor_hash: CcipMessageV1::compute_ccv_and_executor_hash(
                 &env,
                 &extra_args.ccvs,

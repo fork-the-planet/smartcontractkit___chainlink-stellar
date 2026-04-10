@@ -1,6 +1,7 @@
 package e2e_tests
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"testing"
 	"time"
@@ -341,5 +342,121 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Str("messageID", hex.EncodeToString(sendResult2.MessageID[:])).
 			Uint64("seqNo", seqNo2).
 			Msg("✅ New message executed successfully on Stellar after uncurse")
+	})
+}
+
+// TestEVMToStellarExecutionInvalidReceiver validates that sending a CCIP message
+// from EVM to Stellar with a receiver address that does not correspond to a
+// deployed Wasm contract results in an ExecutionStateFailure on the Stellar
+// OffRamp. The Stellar OffRamp checks `receiver.executable()` and returns
+// CCIPError::ReceiverDoesNotExist (error code 114) when the address has no
+// ledger entry.
+//
+// Contracts must be compiled before running:
+//
+//	make build
+//
+// Start the devenv from the chainlink-stellar root:
+//
+//	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv
+//
+// Once the devenv is running, run the test:
+//
+//	go test -v -timeout 10m ./tests/e2e/... -run TestEVMToStellarExecutionInvalidReceiver
+func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
+	configOutputPath := "../env/env-stellar-evm-out.toml"
+
+	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
+	stellarSelector := chainsel.STELLAR_LOCALNET.Selector
+
+	ctx := ccv.Plog.WithContext(t.Context())
+	l := zerolog.Ctx(ctx)
+
+	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID, stellarSelector)
+	evmDetails := env.DestChainDetails
+	stellarDetails := env.SourceChainDetails
+
+	evmChain := env.Chains[evmDetails.ChainSelector]
+	require.NotNil(t, evmChain, "EVM chain not found in chains map")
+
+	stellarChain := env.Chains[stellarDetails.ChainSelector]
+	require.NotNil(t, stellarChain, "Stellar chain not found in chains map")
+
+	t.Run("evm_to_stellar_invalid_receiver", func(t *testing.T) {
+		// Build a 32-byte receiver that is syntactically valid but does not
+		// correspond to any deployed contract on the Stellar localnet.
+		var fakeReceiver [32]byte
+		copy(fakeReceiver[:], []byte("INVALID_RECEIVER_NO_CONTRACT____"))
+		l.Info().Str("fakeReceiver", hex.EncodeToString(fakeReceiver[:])).Msg("Using fake Stellar receiver address")
+
+		seqNo, err := evmChain.GetExpectedNextSequenceNumber(ctx, stellarDetails.ChainSelector)
+		require.NoError(t, err)
+		l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from EVM OnRamp")
+
+		sendResult, err := evmChain.SendMessage(ctx, stellarDetails.ChainSelector,
+			cciptestinterfaces.MessageFields{
+				Receiver: fakeReceiver[:],
+				Data:     []byte("hello to nowhere"),
+			},
+			cciptestinterfaces.MessageOptions{
+				Version:           3,
+				ExecutionGasLimit: 200_000,
+			},
+		)
+		require.NoError(t, err, "EVM send should succeed — receiver validation happens on the destination")
+		l.Info().
+			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
+			Msg("CCIP message sent from EVM with invalid Stellar receiver")
+
+		sentEvent, err := evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, evmSentTimeout)
+		require.NoError(t, err)
+		messageID := sentEvent.MessageID
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Msg("Sent event confirmed on EVM")
+
+		// Wait for verification and indexing — the DON processes the message
+		// regardless of receiver validity.
+		defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
+		require.NotNil(t, defaultAggregatorClient)
+
+		testCtx := e2e.NewTestingContext(t, t.Context(), env.Chains, defaultAggregatorClient, env.IndexerMonitor)
+		result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
+			TickInterval:            1 * time.Second,
+			ExpectedVerifierResults: 1,
+			Timeout:                 tests.WaitTimeout(t),
+			AssertVerifierLogs:      false,
+			AssertExecutorLogs:      false,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result.AggregatedResult)
+		require.Len(t, result.IndexedVerifications.Results, 1)
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Msg("Message verified and aggregated successfully (receiver validity not checked here)")
+
+		// Wait for execution on the Stellar OffRamp — expect Failure.
+		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)
+		require.NoError(t, err, "should receive an execution event even for failed execution")
+		require.Equalf(
+			t,
+			cciptestinterfaces.ExecutionStateFailure,
+			execEvent.State,
+			"execution should fail because the receiver does not exist on Stellar, return data: %x",
+			execEvent.ReturnData,
+		)
+
+		// Verify the return data contains the ReceiverDoesNotExist error code (114).
+		const ccipErrorReceiverDoesNotExist uint32 = 114
+		require.GreaterOrEqual(t, len(execEvent.ReturnData), 4, "return data should contain at least 4 bytes for error code")
+		errorCode := binary.BigEndian.Uint32(execEvent.ReturnData[:4])
+		require.Equal(t, ccipErrorReceiverDoesNotExist, errorCode,
+			"return data should encode CCIPError::ReceiverDoesNotExist (114)")
+
+		l.Info().
+			Str("messageID", hex.EncodeToString(messageID[:])).
+			Uint64("seqNo", seqNo).
+			Uint32("errorCode", errorCode).
+			Msg("Execution failed as expected with ReceiverDoesNotExist error")
 	})
 }
