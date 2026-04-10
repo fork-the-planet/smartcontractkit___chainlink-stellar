@@ -2,13 +2,13 @@ module github.com/smartcontractkit/chainlink-stellar/bindings
 
 go 1.25.5
 
-require github.com/stellar/go-stellar-sdk v0.1.0
+require github.com/stellar/go-stellar-sdk v0.4.0
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/stellar/go-xdr v0.0.0-20231122183749-b53fb00bcac2 // indirect
+	github.com/stellar/go-xdr v0.0.0-20260312225820-cc2b0611aabf // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
