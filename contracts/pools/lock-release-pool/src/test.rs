@@ -1,10 +1,12 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Vec};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, token, Address, Bytes, Env, Vec};
 
 use crate::{LockReleaseTokenPoolContract, LockReleaseTokenPoolContractClient};
 use common_error::CCIPError;
-use common_pool::{encode_local_decimals, ChainUpdate, LockOrBurnIn, ReleaseOrMintIn};
+use common_pool::{
+    encode_local_decimals, ChainUpdate, LockOrBurnIn, RateLimitConfig, ReleaseOrMintIn,
+};
 
 fn setup_env() -> (
     Env,
@@ -64,6 +66,8 @@ fn test_lock_and_release() {
         remote_chain_selector: remote_chain,
         remote_pool_addresses: remote_pool,
         remote_token_address: remote_token.clone(),
+        outbound_rate_limiter_config: RateLimitConfig::disabled(),
+        inbound_rate_limiter_config: RateLimitConfig::disabled(),
     };
     pool_client.apply_chain_updates(&Vec::from_array(&env, [chain_update]), &Vec::new(&env));
 
@@ -79,7 +83,7 @@ fn test_lock_and_release() {
         local_token: token_address.clone(),
     };
 
-    let lock_result = pool_client.lock_or_burn(&lock_input);
+    let lock_result = pool_client.lock_or_burn(&lock_input, &0u32);
     assert_eq!(lock_result.dest_token_address, remote_token);
 
     let pool_address = pool_client.address.clone();
@@ -97,7 +101,7 @@ fn test_lock_and_release() {
         source_pool_data: Bytes::new(&env),
     };
 
-    let release_result = pool_client.release_or_mint(&release_input);
+    let release_result = pool_client.release_or_mint(&release_input, &0u32);
     assert_eq!(release_result.destination_amount, lock_amount);
     assert_eq!(token_client.balance(&receiver), lock_amount);
     assert_eq!(token_client.balance(&pool_address), 0);
@@ -118,7 +122,7 @@ fn test_unsupported_chain_rejected() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input);
+    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -138,7 +142,7 @@ fn test_wrong_token_rejected() {
         local_token: wrong_token,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input);
+    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -147,6 +151,25 @@ fn chain_update(env: &Env, selector: u64, pool_byte: u8, token_byte: u8) -> Chai
         remote_chain_selector: selector,
         remote_pool_addresses: Bytes::from_slice(env, &[pool_byte; 20]),
         remote_token_address: Bytes::from_slice(env, &[token_byte; 20]),
+        outbound_rate_limiter_config: RateLimitConfig::disabled(),
+        inbound_rate_limiter_config: RateLimitConfig::disabled(),
+    }
+}
+
+fn chain_update_with_limits(
+    env: &Env,
+    selector: u64,
+    pool_byte: u8,
+    token_byte: u8,
+    outbound: RateLimitConfig,
+    inbound: RateLimitConfig,
+) -> ChainUpdate {
+    ChainUpdate {
+        remote_chain_selector: selector,
+        remote_pool_addresses: Bytes::from_slice(env, &[pool_byte; 20]),
+        remote_token_address: Bytes::from_slice(env, &[token_byte; 20]),
+        outbound_rate_limiter_config: outbound,
+        inbound_rate_limiter_config: inbound,
     }
 }
 
@@ -176,7 +199,7 @@ fn test_lock_or_burn_zero_amount_succeeds_when_chain_configured() {
         local_token: token_address.clone(),
     };
 
-    let out = pool_client.lock_or_burn(&lock_input);
+    let out = pool_client.lock_or_burn(&lock_input, &0u32);
     assert_eq!(out.dest_token_address, Bytes::from_slice(&env, &[2u8; 20]));
     assert_eq!(token_client.balance(&pool_client.address), 0);
     assert_eq!(token_client.balance(&sender), 0);
@@ -203,7 +226,7 @@ fn test_release_or_mint_zero_amount_succeeds_without_pool_balance() {
         source_pool_data: Bytes::new(&env),
     };
 
-    let out = pool_client.release_or_mint(&release_input);
+    let out = pool_client.release_or_mint(&release_input, &0u32);
     assert_eq!(out.destination_amount, 0);
     assert_eq!(token_client.balance(&receiver), 0);
 }
@@ -229,7 +252,7 @@ fn test_lock_or_burn_amount_exceeds_sender_balance_fails() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input);
+    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -254,7 +277,7 @@ fn test_lock_or_burn_negative_amount_fails() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input);
+    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -279,7 +302,7 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
         amount: locked,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_input);
+    pool_client.lock_or_burn(&lock_input, &0u32);
 
     let receiver = Address::generate(&env);
     let release_input = ReleaseOrMintIn {
@@ -292,7 +315,7 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
         source_pool_data: Bytes::new(&env),
     };
 
-    let result = pool_client.try_release_or_mint(&release_input);
+    let result = pool_client.try_release_or_mint(&release_input, &0u32);
     assert_eq!(result, Err(Ok(CCIPError::InsufficientPoolLiquidity)));
 }
 
@@ -318,7 +341,7 @@ fn test_apply_chain_updates_remove_unlists_chain() {
         amount: 1,
         local_token: token_address.clone(),
     };
-    let result = pool_client.try_lock_or_burn(&lock_input);
+    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert_eq!(result, Err(Ok(CCIPError::ChainNotSupported)));
 
     // Owner can re-add the same selector with fresh config
@@ -369,7 +392,7 @@ fn test_apply_chain_updates_duplicate_selector_overwrites_remote_token() {
         amount: 1,
         local_token: token_address,
     };
-    let out = pool_client.try_lock_or_burn(&lock_input);
+    let out = pool_client.try_lock_or_burn(&lock_input, &0u32);
     assert!(out.is_ok());
 }
 
@@ -392,7 +415,7 @@ fn test_lock_or_burn_dest_pool_data_encodes_local_decimals() {
         amount: 100,
         local_token: token_address,
     };
-    let out = pool_client.lock_or_burn(&lock_input);
+    let out = pool_client.lock_or_burn(&lock_input, &0u32);
     assert_eq!(out.dest_pool_data, encode_local_decimals(&env, 7).unwrap());
     assert_eq!(token_client.balance(&pool_client.address), 100);
 }
@@ -435,7 +458,7 @@ fn test_release_or_mint_scales_down_remote_more_decimals() {
         source_pool_data: encode_local_decimals(&env, remote_decimals).unwrap(),
     };
 
-    let out = pool_client.release_or_mint(&release_input);
+    let out = pool_client.release_or_mint(&release_input, &0u32);
     assert_eq!(out.destination_amount, expected_local);
     assert_eq!(token_client.balance(&receiver), expected_local);
     assert_eq!(token_client.balance(&pool_id), 0);
@@ -455,4 +478,319 @@ fn test_initialize_rejects_decimals_above_uint8() {
 
     let r = pool_client.try_initialize(&owner, &token_address, &256u32);
     assert_eq!(r, Err(Ok(CCIPError::InvalidPoolTokenDecimals)));
+}
+
+// ================================================================
+//  Rate Limit Tests
+// ================================================================
+
+#[test]
+fn test_lock_or_burn_exceeds_outbound_capacity_rejected() {
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let outbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 500,
+        rate: 10,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                outbound,
+                RateLimitConfig::disabled(),
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    let sender = Address::generate(&env);
+    token_admin_client.mint(&sender, &1000);
+    let lock_input = LockOrBurnIn {
+        receiver: Bytes::from_slice(&env, &[3u8; 20]),
+        remote_chain_selector: remote_chain,
+        original_sender: sender,
+        amount: 501,
+        local_token: token_address,
+    };
+    let r = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
+}
+
+#[test]
+fn test_lock_or_burn_outbound_refills_over_time() {
+    let (env, pool_client, _owner, token_address, token_client, token_admin_client) = setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let outbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 1000,
+        rate: 10,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                outbound,
+                RateLimitConfig::disabled(),
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    let sender = Address::generate(&env);
+    token_admin_client.mint(&sender, &5000);
+
+    let lock_input = LockOrBurnIn {
+        receiver: Bytes::from_slice(&env, &[3u8; 20]),
+        remote_chain_selector: remote_chain,
+        original_sender: sender.clone(),
+        amount: 1000,
+        local_token: token_address.clone(),
+    };
+    pool_client.lock_or_burn(&lock_input, &0u32);
+    assert_eq!(token_client.balance(&pool_client.address), 1000);
+
+    // Advance 50s => 500 tokens refilled
+    env.ledger().with_mut(|li| li.timestamp = 150);
+    let lock_input2 = LockOrBurnIn {
+        receiver: Bytes::from_slice(&env, &[3u8; 20]),
+        remote_chain_selector: remote_chain,
+        original_sender: sender,
+        amount: 500,
+        local_token: token_address,
+    };
+    pool_client.lock_or_burn(&lock_input2, &0u32);
+    assert_eq!(token_client.balance(&pool_client.address), 1500);
+}
+
+#[test]
+fn test_release_or_mint_exceeds_inbound_capacity_rejected() {
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let inbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 500,
+        rate: 10,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                RateLimitConfig::disabled(),
+                inbound,
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    // Fund pool with enough liquidity
+    token_admin_client.mint(&pool_client.address, &1000);
+
+    let release_input = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: Address::generate(&env),
+        amount: 501,
+        local_token: token_address,
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: Bytes::new(&env),
+    };
+    let r = pool_client.try_release_or_mint(&release_input, &0u32);
+    assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
+}
+
+#[test]
+fn test_release_or_mint_inbound_refills_over_time() {
+    let (env, pool_client, _owner, token_address, token_client, token_admin_client) = setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let inbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 1000,
+        rate: 10,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                RateLimitConfig::disabled(),
+                inbound,
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    token_admin_client.mint(&pool_client.address, &5000);
+
+    let receiver = Address::generate(&env);
+    let release_input = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: receiver.clone(),
+        amount: 1000,
+        local_token: token_address.clone(),
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: Bytes::new(&env),
+    };
+    pool_client.release_or_mint(&release_input, &0u32);
+    assert_eq!(token_client.balance(&receiver), 1000);
+
+    // Advance 30s => 300 refilled
+    env.ledger().with_mut(|li| li.timestamp = 130);
+    let release_input2 = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&env, &[4u8; 20]),
+        remote_chain_selector: remote_chain,
+        receiver: receiver.clone(),
+        amount: 300,
+        local_token: token_address,
+        source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
+        source_pool_data: Bytes::new(&env),
+    };
+    pool_client.release_or_mint(&release_input2, &0u32);
+    assert_eq!(token_client.balance(&receiver), 1300);
+}
+
+#[test]
+fn test_get_current_rate_limiter_state() {
+    let (env, pool_client, _owner, _token_address, _token_client, _token_admin_client) =
+        setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let outbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 1000,
+        rate: 10,
+    };
+    let inbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 2000,
+        rate: 20,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                outbound,
+                inbound,
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    let state = pool_client.get_current_rate_limiter_state(&remote_chain, &false);
+    assert!(state.outbound.is_enabled);
+    assert_eq!(state.outbound.capacity, 1000);
+    assert_eq!(state.outbound.tokens, 1000);
+    assert!(state.inbound.is_enabled);
+    assert_eq!(state.inbound.capacity, 2000);
+    assert_eq!(state.inbound.tokens, 2000);
+}
+
+#[test]
+fn test_set_rate_limit_config_updates_limits() {
+    let (env, pool_client, _owner, token_address, _token_client, token_admin_client) = setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    pool_client.apply_chain_updates(
+        &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
+        &Vec::new(&env),
+    );
+
+    let state = pool_client.get_current_rate_limiter_state(&remote_chain, &false);
+    assert!(!state.outbound.is_enabled);
+
+    let new_outbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 500,
+        rate: 5,
+    };
+    pool_client.set_rate_limit_config(
+        &remote_chain,
+        &new_outbound,
+        &RateLimitConfig::disabled(),
+        &false,
+    );
+
+    let state2 = pool_client.get_current_rate_limiter_state(&remote_chain, &false);
+    assert!(state2.outbound.is_enabled);
+    assert_eq!(state2.outbound.capacity, 500);
+
+    // Verify enforcement
+    let sender = Address::generate(&env);
+    token_admin_client.mint(&sender, &1000);
+    let lock_input = LockOrBurnIn {
+        receiver: Bytes::from_slice(&env, &[3u8; 20]),
+        remote_chain_selector: remote_chain,
+        original_sender: sender,
+        amount: 501,
+        local_token: token_address,
+    };
+    let r = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
+}
+
+#[test]
+fn test_chain_remove_clears_rate_limits() {
+    let (env, pool_client, _owner, _token_address, _token_client, _token_admin_client) =
+        setup_env();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    let remote_chain: u64 = 5009297550715157269;
+    let outbound = RateLimitConfig {
+        is_enabled: true,
+        capacity: 1000,
+        rate: 10,
+    };
+    pool_client.apply_chain_updates(
+        &Vec::from_array(
+            &env,
+            [chain_update_with_limits(
+                &env,
+                remote_chain,
+                1,
+                2,
+                outbound,
+                RateLimitConfig::disabled(),
+            )],
+        ),
+        &Vec::new(&env),
+    );
+
+    let state = pool_client.get_current_rate_limiter_state(&remote_chain, &false);
+    assert!(state.outbound.is_enabled);
+
+    pool_client.apply_chain_updates(&Vec::new(&env), &Vec::from_array(&env, [remote_chain]));
+
+    let state2 = pool_client.get_current_rate_limiter_state(&remote_chain, &false);
+    assert!(!state2.outbound.is_enabled);
+    assert_eq!(state2.outbound.tokens, 0);
 }

@@ -2,10 +2,18 @@
 
 pub mod decimals;
 pub mod events;
+pub mod finality_codec;
+pub mod rate_limit;
 pub mod types;
 
 #[cfg(test)]
 mod decimals_tests;
+
+#[cfg(test)]
+mod finality_codec_tests;
+
+#[cfg(test)]
+mod rate_limit_tests;
 
 pub use decimals::*;
 pub use events::*;
@@ -98,6 +106,53 @@ pub trait BaseTokenPool {
         Ok(config.remote_token_address)
     }
 
+    /// Return the current outbound + inbound rate limiter state for a chain,
+    /// with time-based refill applied. Mirrors EVM `getCurrentRateLimiterState`.
+    ///
+    /// TODO: When the FTF outbound simplification is applied, the
+    /// `fast_finality=true` branch should only return FTF inbound state.
+    /// FTF outbound state is meaningless on Stellar (no reorg risk).
+    fn get_current_rate_limiter_state(
+        env: &Env,
+        remote_chain_selector: u64,
+        fast_finality: bool,
+    ) -> RateLimiterState {
+        if fast_finality {
+            RateLimiterState {
+                outbound: rate_limit::current_state(
+                    env,
+                    &PoolDataKey::FtfOutboundRateLimit(remote_chain_selector),
+                ),
+                inbound: rate_limit::current_state(
+                    env,
+                    &PoolDataKey::FtfInboundRateLimit(remote_chain_selector),
+                ),
+            }
+        } else {
+            RateLimiterState {
+                outbound: rate_limit::current_state(
+                    env,
+                    &PoolDataKey::OutboundRateLimit(remote_chain_selector),
+                ),
+                inbound: rate_limit::current_state(
+                    env,
+                    &PoolDataKey::InboundRateLimit(remote_chain_selector),
+                ),
+            }
+        }
+    }
+
+    fn get_rate_limit_admin(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&PoolDataKey::RateLimitAdmin)
+    }
+
+    fn get_allowed_finality_config(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&PoolDataKey::AllowedFinalityConfig)
+            .unwrap_or(finality_codec::WAIT_FOR_FINALITY_FLAG)
+    }
+
     // ------------------------------------------------------------------
     // Chain Configuration (owner check done by caller)
     // ------------------------------------------------------------------
@@ -117,6 +172,8 @@ pub trait BaseTokenPool {
             env.storage()
                 .persistent()
                 .remove(&PoolDataKey::RemoteChainConfig(selector));
+
+            rate_limit::remove_buckets(env, selector);
 
             let mut new_chains: Vec<u64> = Vec::new(env);
             for c in chains.iter() {
@@ -142,6 +199,17 @@ pub trait BaseTokenPool {
                 &config,
             );
 
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::OutboundRateLimit(update.remote_chain_selector),
+                &update.outbound_rate_limiter_config,
+            )?;
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::InboundRateLimit(update.remote_chain_selector),
+                &update.inbound_rate_limiter_config,
+            )?;
+
             let mut already_listed = false;
             for c in chains.iter() {
                 if c == update.remote_chain_selector {
@@ -157,6 +225,8 @@ pub trait BaseTokenPool {
                 remote_chain_selector: update.remote_chain_selector,
                 remote_pool_address: update.remote_pool_addresses.clone(),
                 remote_token_address: update.remote_token_address.clone(),
+                outbound_rate_limiter_config: update.outbound_rate_limiter_config.clone(),
+                inbound_rate_limiter_config: update.inbound_rate_limiter_config.clone(),
             }
             .publish(env);
         }
@@ -166,5 +236,80 @@ pub trait BaseTokenPool {
             .set(&PoolDataKey::SupportedChains, &chains);
 
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Rate Limit Configuration (auth check done by caller)
+    // ------------------------------------------------------------------
+
+    /// Update outbound/inbound rate limit configs for a supported chain.
+    /// When `fast_finality` is true, sets the FTF buckets; otherwise the default buckets.
+    /// Mirrors EVM `setRateLimitConfig`. Caller must enforce owner-or-admin.
+    ///
+    /// TODO: When the FTF outbound simplification is applied, the `fast_finality`
+    /// path should only allow setting FTF inbound config. FTF outbound config is
+    /// not meaningful on Stellar. Consider rejecting non-disabled FTF outbound
+    /// config or splitting into separate inbound/outbound setters.
+    fn set_rate_limit_config(
+        env: &Env,
+        remote_chain_selector: u64,
+        outbound_config: RateLimitConfig,
+        inbound_config: RateLimitConfig,
+        fast_finality: bool,
+    ) -> Result<(), CCIPError> {
+        if !Self::is_supported_chain(env, remote_chain_selector)? {
+            return Err(CCIPError::ChainNotSupported);
+        }
+
+        if fast_finality {
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::FtfOutboundRateLimit(remote_chain_selector),
+                &outbound_config,
+            )?;
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::FtfInboundRateLimit(remote_chain_selector),
+                &inbound_config,
+            )?;
+        } else {
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::OutboundRateLimit(remote_chain_selector),
+                &outbound_config,
+            )?;
+            rate_limit::set_config(
+                env,
+                &PoolDataKey::InboundRateLimit(remote_chain_selector),
+                &inbound_config,
+            )?;
+        }
+
+        RateLimitConfiguredEvent {
+            remote_chain_selector,
+            fast_finality,
+            outbound_config,
+            inbound_config,
+        }
+        .publish(env);
+
+        Ok(())
+    }
+
+    /// Set the rate limit admin address. Owner-only — caller must enforce.
+    fn set_rate_limit_admin(env: &Env, admin: &Address) {
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::RateLimitAdmin, admin);
+    }
+
+    /// Set the allowed finality configuration. Owner-only — caller must enforce.
+    /// Mirrors EVM `setAllowedFinalityConfig`.
+    fn set_allowed_finality_config(env: &Env, allowed_finality: u32) {
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::AllowedFinalityConfig, &allowed_finality);
+
+        FinalityConfigSetEvent { allowed_finality }.publish(env);
     }
 }

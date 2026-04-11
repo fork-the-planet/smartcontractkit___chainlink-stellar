@@ -176,6 +176,22 @@ pub enum CCIPError {
     DecimalAmountOverflow = 308,
     /// Pool `token_decimals` init argument out of range (must fit `uint8` / EVM `i_tokenDecimals`).
     InvalidPoolTokenDecimals = 309,
+    /// Token bucket current tokens exceed capacity (EVM `BucketOverfilled`).
+    BucketOverfilled = 310,
+    /// Requested amount exceeds bucket capacity (EVM `TokenMaxCapacityExceeded`).
+    TokenMaxCapacityExceeded = 311,
+    /// Insufficient bucket tokens; wait for refill (EVM `TokenRateLimitReached`).
+    TokenRateLimitReached = 312,
+    /// Rate limit config has rate > capacity (EVM `InvalidRateLimitRate`).
+    InvalidRateLimitRate = 313,
+    /// Disabled config must have rate=0 and capacity=0 (EVM `DisabledNonZeroRateLimit`).
+    DisabledNonZeroRateLimit = 314,
+    /// Requested finality is not permitted by the pool's allowed finality config
+    /// (EVM `FinalityCodec.InvalidRequestedFinality`).
+    InvalidRequestedFinality = 315,
+    /// Requested finality combines a flag with a block depth — exactly one mode allowed
+    /// (EVM `FinalityCodec.RequestedFinalityCanOnlyHaveOneMode`).
+    RequestedFinalityCanOnlyHaveOneMode = 316,
 
     // ============================================================
     // Calculation errors

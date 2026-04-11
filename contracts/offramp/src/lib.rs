@@ -390,6 +390,7 @@ impl OffRampContract {
                 &message.token_transfer,
                 &message.sender,
                 message.source_chain_selector,
+                message.finality,
                 _static_config,
             )?
         } else {
@@ -556,11 +557,17 @@ impl OffRampContract {
     /// Decode the token transfer, resolve the destination pool via
     /// TokenAdminRegistry, call `release_or_mint`, and return the
     /// resulting `TokenAmount` for the receiver.
+    ///
+    /// `requested_finality` is forwarded from the cross-chain message and drives
+    /// FTF inbound rate limit bucket selection in the pool. When the source is an
+    /// EVM chain, this may be non-zero (WAIT_FOR_SAFE, block depth, etc.),
+    /// reflecting higher reorg risk that the pool's FTF inbound limits guard.
     fn release_or_mint_single_token(
         env: &Env,
         token_transfer_bytes: &Bytes,
         original_sender: &Bytes,
         source_chain_selector: u64,
+        requested_finality: u32,
         static_config: &StaticConfig,
     ) -> Result<Vec<TokenAmount>, CCIPError> {
         let token_transfer = CcipTokenTransferV1::from_bytes(env, token_transfer_bytes)?;
@@ -579,15 +586,18 @@ impl OffRampContract {
 
         let receiver_address = Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
 
-        let release_result = pool_client.release_or_mint(&ReleaseOrMintIn {
-            original_sender: original_sender.clone(),
-            remote_chain_selector: source_chain_selector,
-            receiver: receiver_address.clone(),
-            amount,
-            local_token: dest_token.clone(),
-            source_pool_address: token_transfer.source_pool_address,
-            source_pool_data: token_transfer.extra_data,
-        });
+        let release_result = pool_client.release_or_mint(
+            &ReleaseOrMintIn {
+                original_sender: original_sender.clone(),
+                remote_chain_selector: source_chain_selector,
+                receiver: receiver_address.clone(),
+                amount,
+                local_token: dest_token.clone(),
+                source_pool_address: token_transfer.source_pool_address,
+                source_pool_data: token_transfer.extra_data,
+            },
+            &requested_finality,
+        );
 
         let mut amounts = Vec::new(env);
         amounts.push_back(TokenAmount {
