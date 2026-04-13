@@ -95,7 +95,10 @@ fn scale_down_diff_39_errors() {
 fn scale_up_diff_38_at_boundary() {
     // diff=38 on the scale-up side: small values fit, larger ones overflow.
     assert_eq!(calculate_local_amount(0, 6, 44).unwrap(), 0);
-    assert_eq!(calculate_local_amount(1, 6, 44).unwrap(), 100_000_000_000_000_000_000_000_000_000_000_000_000);
+    assert_eq!(
+        calculate_local_amount(1, 6, 44).unwrap(),
+        100_000_000_000_000_000_000_000_000_000_000_000_000
+    );
     assert_eq!(
         calculate_local_amount(2, 6, 44),
         Err(CCIPError::DecimalAmountOverflow)
