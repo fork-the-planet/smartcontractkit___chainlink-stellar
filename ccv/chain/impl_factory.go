@@ -2,30 +2,37 @@ package ccvchain
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/fee_quoter"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_0_0/operations/rmn_proxy"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	fee_quoter "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
+	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	cldfstellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -50,6 +57,71 @@ type ImplFactory struct{}
 // NewImplFactory returns a new Stellar ImplFactory.
 func NewImplFactory() *ImplFactory {
 	return &ImplFactory{}
+}
+
+// DefaultSignerKey returns the default signer key for this chain family
+// given the bootstrap keys from a verifier node. Each family selects the
+// appropriate key type (e.g. EVM uses ECDSAAddress, Stellar uses EdDSA).
+// Return "" if no default signer is available.
+func (f *ImplFactory) DefaultSignerKey(keys ccvservices.BootstrapKeys) string {
+	pubHex := strings.TrimPrefix(keys.EdDSAPublicKey, "0x")
+	raw, err := hex.DecodeString(pubHex)
+	if err != nil || len(raw) != 32 {
+		return ""
+	}
+	addr, err := strkey.Encode(strkey.VersionByteAccountID, raw)
+	if err != nil {
+		return ""
+	}
+	return addr
+}
+
+// DefaultFeeAggregator implements [ccv.ImplFactory].
+// Returns the CLDF Stellar deployer account address when topology omits fee_aggregator for this chain.
+func (f *ImplFactory) DefaultFeeAggregator(env *deployment.Environment, chainSelector uint64) string {
+	stellarChains := env.BlockChains.StellarChains()
+	if chain, ok := stellarChains[chainSelector]; ok && chain.Signer != nil {
+		return chain.Signer.Address()
+	}
+	return ""
+}
+
+// SupportsFunding reports whether this chain family supports native token
+// funding of executor addresses. Families that lack on-chain transfer
+// primitives in devenv (e.g. Canton) return false.
+func (f *ImplFactory) SupportsFunding() bool {
+	return true
+}
+
+// SupportsBootstrapExecutor reports whether executors for this family
+// use the bootstrap.Run lifecycle (JD-managed with DB). Families that
+// use standalone executors (legacy mode, no bootstrap) return false.
+func (f *ImplFactory) SupportsBootstrapExecutor() bool {
+	return true
+}
+
+// GenerateTransmitterKey generates a fresh private key for executor
+// transaction signing in the native format for this chain family.
+// Returns the hex-encoded private key string.
+func (f *ImplFactory) GenerateTransmitterKey() (string, error) {
+	var seed [32]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		return "", fmt.Errorf("generate transmitter seed: %w", err)
+	}
+	return hex.EncodeToString(seed[:]), nil
+}
+
+// TransmitterAddress implements [ccv.ImplFactory].
+func (f *ImplFactory) TransmitterAddress(privateKeyHex string) (protocol.UnknownAddress, error) {
+	kp, err := cldfstellar.KeypairFromHex(privateKeyHex)
+	if err != nil {
+		return protocol.UnknownAddress{}, fmt.Errorf("invalid Stellar transmitter private key: %w", err)
+	}
+	raw, err := strkey.Decode(strkey.VersionByteAccountID, kp.Address())
+	if err != nil {
+		return protocol.UnknownAddress{}, fmt.Errorf("decode Stellar account id: %w", err)
+	}
+	return protocol.UnknownAddress(raw), nil
 }
 
 // NewEmpty implements [registry.ImplFactory].
