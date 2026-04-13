@@ -93,11 +93,23 @@ func (w *work) deployFoundationContracts() error {
 	w.feeQuoterContractID = feeQuoterContractID
 	h.Logger().Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
 
-	w.mockLinkToken = stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "link-token")
+	if h.FriendbotURL() != "" {
+		feeTokenID, feeTokenErr := h.CreateFeeToken(ctx, h.FriendbotURL())
+		if feeTokenErr != nil {
+			return fmt.Errorf("failed to create fee token: %w", feeTokenErr)
+		}
+		h.SetFeeToken(feeTokenID)
+		w.feeTokenContractID = feeTokenID
+		h.Logger().Info().Str("contractID", feeTokenID).Msg("Fee token SAC deployed for CCIP fee payments")
+	} else {
+		h.Logger().Warn().Msg("Friendbot URL not available; using mock fee token ID (fee transfers will not work)")
+		w.feeTokenContractID = stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "fee-token")
+	}
+
 	feeQuoterClient := fqbindings.NewFeeQuoterClient(h.Deployer(), feeQuoterContractID)
 	h.SetFeeQuoter(feeQuoterClient)
 	err = feeQuoterClient.Initialize(ctx, h.DeployerKeypair().Address(), fqbindings.StaticConfig{
-		LinkToken:         w.mockLinkToken,
+		LinkToken:         w.feeTokenContractID,
 		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
 	}, []string{h.DeployerKeypair().Address()})
 	if err != nil {

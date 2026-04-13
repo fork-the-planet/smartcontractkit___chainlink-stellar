@@ -9,12 +9,12 @@ import (
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
-	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
+	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
+	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
 )
 
 // StellarDeployChainContractsAdapter connects Stellar to the shared
-// deployment/v1_7_0 DeployChainContracts changeset.
+// deployment/v2_0_0 DeployChainContracts changeset.
 type StellarDeployChainContractsAdapter struct{}
 
 var _ ccvadapters.DeployChainContractsAdapter = (*StellarDeployChainContractsAdapter)(nil)

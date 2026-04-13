@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
 
 	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	dsutils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
-	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
+	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 )
@@ -63,7 +64,9 @@ func (a *StellarAggregatorConfigAdapter) ScanCommitteeStates(ctx context.Context
 		for _, cfg := range configs {
 			signers := make([]string, 0, len(cfg.Signers))
 			for _, signer := range cfg.Signers {
-				signers = append(signers, hex.EncodeToString(signer[:]))
+				// Match EVMAggregatorConfigAdapter: on-chain values are left-padded
+				// 20-byte EVM addresses (see contracts/common/verifier ETH_ADDRESS_OFFSET).
+				signers = append(signers, common.BytesToAddress(signer[12:32]).Hex())
 			}
 			sigConfigs = append(sigConfigs, ccvadapters.SignatureConfig{
 				SourceChainSelector: cfg.SourceChainSelector,

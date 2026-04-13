@@ -69,3 +69,47 @@ fn negative_source_errors() {
         Err(CCIPError::InvalidTokenAmount)
     );
 }
+
+#[test]
+fn scale_down_diff_38_at_boundary() {
+    // diff=38 is MAX_DECIMALS_DIFF; small amounts truncate to 0.
+    assert_eq!(calculate_local_amount(1, 44, 6).unwrap(), 0);
+    // i128::MAX / 10^38 = 1 (integer division)
+    assert_eq!(calculate_local_amount(i128::MAX, 44, 6).unwrap(), 1);
+}
+
+#[test]
+fn scale_down_diff_39_errors() {
+    // diff=39 exceeds MAX_DECIMALS_DIFF (38).
+    assert_eq!(
+        calculate_local_amount(i128::MAX, 45, 6),
+        Err(CCIPError::DecimalAmountOverflow)
+    );
+    assert_eq!(
+        calculate_local_amount(0, 45, 6),
+        Err(CCIPError::DecimalAmountOverflow)
+    );
+}
+
+#[test]
+fn scale_up_diff_38_at_boundary() {
+    // diff=38 on the scale-up side: small values fit, larger ones overflow.
+    assert_eq!(calculate_local_amount(0, 6, 44).unwrap(), 0);
+    assert_eq!(
+        calculate_local_amount(1, 6, 44).unwrap(),
+        100_000_000_000_000_000_000_000_000_000_000_000_000
+    );
+    assert_eq!(
+        calculate_local_amount(2, 6, 44),
+        Err(CCIPError::DecimalAmountOverflow)
+    );
+}
+
+#[test]
+fn scale_up_diff_39_errors() {
+    // diff=39 exceeds MAX_DECIMALS_DIFF (38).
+    assert_eq!(
+        calculate_local_amount(0, 6, 45),
+        Err(CCIPError::DecimalAmountOverflow)
+    );
+}

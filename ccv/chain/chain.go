@@ -27,16 +27,16 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/versioned_verifier_resolver"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/proxy"
 	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
+	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
+	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
-	"github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/adapters"
-	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/changesets"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
+	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/changesets"
+	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
@@ -120,6 +120,8 @@ type Chain struct {
 	tokenPoolClient              *tokenpoolbindings.TokenPoolClient
 	testTokenContractID          string
 	testTokenIssuerKeypair       *keypair.Full
+	feeTokenContractID           string
+	feeTokenIssuerKeypair        *keypair.Full
 	friendbotURL                 string
 }
 
@@ -875,7 +877,9 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
 	}
 
-	mockFeeToken := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "fee-token")
+	if c.feeTokenContractID == "" {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
+	}
 	sender := c.deployerKeypair.Address()
 
 	var tokenAmounts []routerbindings.TokenAmount
@@ -902,7 +906,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
 		TokenAmounts: tokenAmounts,
-		FeeToken:     mockFeeToken,
+		FeeToken:     c.feeTokenContractID,
 		ExtraArgs:    encodedExtraArgs,
 	}
 
@@ -1079,6 +1083,63 @@ func (c *Chain) createTestToken(ctx context.Context, friendbotURL string) (strin
 		Str("contractID", contractID).
 		Str("issuer", issuerKP.Address()).
 		Msg("Test SAC token deployed")
+
+	return contractID, nil
+}
+
+const feeTokenAssetCode = "FEE"
+
+// createFeeToken sets up a SAC-wrapped classic Stellar asset used for CCIP fee
+// payments. Similar to createTestToken but with a separate issuer and asset code
+// so the fee token is independent of the transfer-test token.
+func (c *Chain) createFeeToken(ctx context.Context, friendbotURL string) (string, error) {
+	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("fee-token-issuer-%s", c.networkPassphrase)))
+	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	if err != nil {
+		return "", fmt.Errorf("create fee token issuer keypair: %w", err)
+	}
+	c.feeTokenIssuerKeypair = issuerKP
+
+	if friendbotURL != "" {
+		if err := c.fundViaFriendbot(friendbotURL, issuerKP.Address()); err != nil {
+			return "", fmt.Errorf("fund fee token issuer: %w", err)
+		}
+	}
+
+	issuerDeployer := stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, issuerKP)
+	asset := txnbuild.CreditAsset{Code: feeTokenAssetCode, Issuer: issuerKP.Address()}
+
+	err = c.deployer.SubmitClassicOperation(ctx, &txnbuild.ChangeTrust{
+		Line:          asset.MustToChangeTrustAsset(),
+		SourceAccount: c.deployerKeypair.Address(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("establish fee token trustline: %w", err)
+	}
+
+	err = issuerDeployer.SubmitClassicOperation(ctx, &txnbuild.Payment{
+		Destination:   c.deployerKeypair.Address(),
+		Amount:        "100000000",
+		Asset:         asset,
+		SourceAccount: issuerKP.Address(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("issue fee tokens: %w", err)
+	}
+
+	xdrAsset, err := asset.ToXDR()
+	if err != nil {
+		return "", fmt.Errorf("convert fee asset to XDR: %w", err)
+	}
+	contractID, err := c.deployer.DeploySACToken(ctx, xdrAsset)
+	if err != nil {
+		return "", fmt.Errorf("deploy fee token SAC: %w", err)
+	}
+
+	c.logger.Info().
+		Str("contractID", contractID).
+		Str("issuer", issuerKP.Address()).
+		Msg("Fee token SAC deployed")
 
 	return contractID, nil
 }

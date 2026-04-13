@@ -5,13 +5,13 @@ pub mod types;
 
 use common_interfaces::{
     committee_verifier::FeeResponse,
-    fee_quoter::{FeeQuoterClient, GasQuoteResult},
+    fee_quoter::FeeQuoterClient,
     token_admin_registry::TokenAdminRegistryClient,
     token_pool::{LockOrBurnIn, TokenPoolClient},
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
-    contract, contractimpl, symbol_short,
+    contract, contractimpl, symbol_short, token,
     xdr::{FromXdr, ToXdr},
     Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
@@ -170,18 +170,18 @@ impl OnRampContract {
         let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
         let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
 
-        // TODO: Get CCVs for pool (if token transfer)
-        // TODO: Merge CCV lists
-
-        // TODO: add the defualt ccv from dest config if no user-specified CCVs
+        let merged_ccvs = Self::merge_ccv_lists(
+            &env,
+            &extra_args.ccvs,
+            &dest_config.lane_mandated_ccvs,
+            &dest_config.default_ccvs,
+        );
 
         // Query each CCV (via VVR resolution) for fees
-        let ccv_fees_usd_cents = extra_args
-            .ccvs
+        let ccv_fees_usd_cents = merged_ccvs
             .iter()
             .zip(extra_args.ccv_args.iter())
             .try_fold(0u128, |acc, (ccv, ccv_args)| {
-                // TODO: are these addresses meant to be the VVR addresses or the verifier addresses?
                 let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
                 let verifier_address =
                     vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
@@ -282,7 +282,14 @@ impl OnRampContract {
 
         // Get message fee (incl. transfer fees and network fees) with the fee token price.
         let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
-        let _message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
+        let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
+
+        let merged_ccvs = Self::merge_ccv_lists(
+            &env,
+            &extra_args.ccvs,
+            &dest_config.lane_mandated_ccvs,
+            &dest_config.default_ccvs,
+        );
 
         // Lock or burn tokens via the pool (if token transfer)
         let token_transfer_bytes = if !message.token_amounts.is_empty() {
@@ -362,6 +369,7 @@ impl OnRampContract {
             &original_sender,
             &message,
             &extra_args,
+            &merged_ccvs,
             fee_token_amount,
         )?;
 
@@ -388,8 +396,57 @@ impl OnRampContract {
         // Persist updated sequence number
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
 
-        // TODO: sum all fees and validate
-        // TODO: Distribute fees
+        // Sum all receipt fees and validate against provided fee_token_amount.
+        // CCV receipt fees are in USD cents; convert to fee token units using message_fee price.
+        let mut total_ccv_usd_cents: u128 = 0;
+        let ccv_receipt_count = merged_ccvs.len();
+        for i in 0..ccv_receipt_count {
+            if let Some(r) = receipts.get(i) {
+                total_ccv_usd_cents = total_ccv_usd_cents
+                    .checked_add(r.fee_token_amount as u128)
+                    .ok_or(CCIPError::InvalidFeeCalculation)?;
+            }
+        }
+        let ccv_fees_in_fee_token = total_ccv_usd_cents
+            .checked_mul(10_u128.pow(16))
+            .ok_or(CCIPError::InvalidFeeCalculation)?
+            .checked_div(message_fee.fee_token_price)
+            .ok_or(CCIPError::InvalidFeeCalculation)? as i128;
+
+        let total_fee = message_fee
+            .fee_token_amount
+            .checked_add(ccv_fees_in_fee_token)
+            .ok_or(CCIPError::InvalidFeeCalculation)?;
+
+        if fee_token_amount < total_fee {
+            return Err(CCIPError::InsufficientFeeTokenAmount);
+        }
+
+        // Distribute accumulated fee tokens to the fee aggregator.
+        // CCV and executor fees stay in the OnRamp balance for later
+        // withdrawal via `withdraw_fee_tokens`; the network fee portion is
+        // transferred to fee_aggregator immediately so protocol revenue is
+        // not delayed.
+        if fee_token_amount > 0 {
+            let fee_token_client = token::Client::new(&env, &message.fee_token);
+            let onramp_address = env.current_contract_address();
+            let network_fee = dest_config.token_network_fee_usd_cents as i128;
+            if network_fee > 0 {
+                let network_fee_tokens = (network_fee as u128)
+                    .checked_mul(10_u128.pow(16))
+                    .ok_or(CCIPError::InvalidFeeCalculation)?
+                    .checked_div(message_fee.fee_token_price)
+                    .ok_or(CCIPError::InvalidFeeCalculation)?
+                    as i128;
+                if network_fee_tokens > 0 {
+                    fee_token_client.transfer(
+                        &onramp_address,
+                        &dynamic_config.fee_aggregator,
+                        &network_fee_tokens,
+                    );
+                }
+            }
+        }
 
         // Emit CCIPMessageSent event with canonical MessageV1 encoding
         CCIPMessageSentEvent {
@@ -628,12 +685,20 @@ impl OnRampContract {
             .get(&DYNAMIC_CONFIG)
             .ok_or(CCIPError::NotInitialized)?;
 
-        // TODO: Implement fee token withdrawal
-        // For each token:
-        // 1. Get contract's balance
-        // 2. Transfer to fee_aggregator
-        let _ = fee_tokens;
-        let _ = dynamic_config.fee_aggregator;
+        let onramp_address = env.current_contract_address();
+        for i in 0..fee_tokens.len() {
+            if let Some(fee_token) = fee_tokens.get(i) {
+                let token_client = token::Client::new(&env, &fee_token);
+                let balance = token_client.balance(&onramp_address);
+                if balance > 0 {
+                    token_client.transfer(
+                        &onramp_address,
+                        &dynamic_config.fee_aggregator,
+                        &balance,
+                    );
+                }
+            }
+        }
 
         Ok(())
     }
@@ -700,6 +765,42 @@ impl OnRampContract {
         BytesN::from_array(env, &padded)
     }
 
+    /// Merge CCV lists: user-specified + lane-mandated (deduped), falling back to
+    /// default_ccvs when no user CCVs are provided.
+    fn merge_ccv_lists(
+        _env: &Env,
+        user_ccvs: &Vec<Address>,
+        lane_mandated_ccvs: &Vec<Address>,
+        default_ccvs: &Vec<Address>,
+    ) -> Vec<Address> {
+        if user_ccvs.is_empty() && lane_mandated_ccvs.is_empty() {
+            return default_ccvs.clone();
+        }
+
+        let mut merged = user_ccvs.clone();
+
+        for i in 0..lane_mandated_ccvs.len() {
+            if let Some(ccv) = lane_mandated_ccvs.get(i) {
+                let mut already_present = false;
+                for j in 0..merged.len() {
+                    if merged.get(j) == Some(ccv.clone()) {
+                        already_present = true;
+                        break;
+                    }
+                }
+                if !already_present {
+                    merged.push_back(ccv);
+                }
+            }
+        }
+
+        if merged.is_empty() {
+            return default_ccvs.clone();
+        }
+
+        merged
+    }
+
     fn get_ccv_blobs_and_receipts_internal(
         env: &Env,
         dest_chain_selector: u64,
@@ -707,13 +808,14 @@ impl OnRampContract {
         original_sender: &Address,
         message: &StellarToAnyMessage,
         extra_args: &GenericExtraArgsV3,
+        merged_ccvs: &Vec<Address>,
         fee_token_amount: i128,
     ) -> Result<(Vec<Bytes>, Vec<Receipt>), CCIPError> {
         let mut receipts = Vec::new(env);
         let mut verification_blobs = Vec::new(env);
         let message_bytes = message.to_bytes(env);
 
-        for (ccv, ccv_args) in extra_args.ccvs.iter().zip(extra_args.ccv_args.iter()) {
+        for (ccv, ccv_args) in merged_ccvs.iter().zip(extra_args.ccv_args.iter()) {
             let vvr = VersionedVerifierResolverClient::new(env, &ccv);
             let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
 

@@ -178,7 +178,6 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	}
 	h.Logger().Info().Int("count", len(fqDestChainConfigs)).Msg("FeeQuoter dest chain configs applied")
 
-	mockFeeToken := stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "fee-token")
 	gasPriceUpdates := make([]fqbindings.GasPriceUpdate, 0, len(allSelectors))
 	for _, rs := range allSelectors {
 		gasPriceUpdates = append(gasPriceUpdates, fqbindings.GasPriceUpdate{
@@ -189,11 +188,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	err = feeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
 		TokenPriceUpdates: []fqbindings.TokenPriceUpdate{
 			{
-				Token:       w.mockLinkToken,
-				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 15_000_000_000_000_000_000}), // $15
-			},
-			{
-				Token:       mockFeeToken,
+				Token:       w.feeTokenContractID,
 				UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}), // $1
 			},
 		},

@@ -4,8 +4,8 @@ mod events;
 mod types;
 
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, InvokeError, Map, Symbol,
-    Vec,
+    contract, contractimpl, symbol_short, token, Address, BytesN, Env, IntoVal, InvokeError, Map,
+    Symbol, Vec,
 };
 
 use common_authorization::Ownable;
@@ -178,10 +178,13 @@ impl RouterContract {
             return Err(CCIPError::InsufficientFeeTokenAmount);
         }
 
-        // TODO: Transfer fee tokens from sender to OnRamp.
-        // This requires the sender to have authorized the token transfer as part of
-        // the transaction tree (sub-invocations). Will be implemented when token pool
-        // and fee quoter integration is complete.
+        // Transfer fee tokens from sender to OnRamp.
+        // The sender has already authorized via `sender.require_auth()` above, and
+        // Soroban's auth tree propagates sub-invocation authorization.
+        if fee_token_amount > 0 {
+            let fee_token_client = token::Client::new(&env, &message.fee_token);
+            fee_token_client.transfer(&sender, &onramp, &fee_token_amount);
+        }
 
         // Call OnRamp.forward_from_router to process the message
         let message_id = onramp_client.forward_from_router(
