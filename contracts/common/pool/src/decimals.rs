@@ -1,7 +1,7 @@
 //! Cross-chain token decimal handling aligned with EVM [`TokenPool`](https://github.com/smartcontractkit/chainlink-ccip/blob/develop/chains/evm/contracts/pools/TokenPool.sol):
 //! - `encode_local_decimals` matches `abi.encode(uint256(localDecimals))` (32-byte big-endian).
 //! - `parse_remote_decimals` matches `_parseRemoteDecimals` (empty → local decimals).
-//! - `calculate_local_amount` matches `_calculateLocalAmount` (including the 77-decimal guard).
+//! - `calculate_local_amount` matches `_calculateLocalAmount` (guard lowered to 38 for u128).
 
 use soroban_sdk::{Bytes, Env};
 
@@ -10,8 +10,8 @@ use common_error::CCIPError;
 /// ABI width for `abi.encode(uint256)` decimals payload on EVM.
 pub const ENCODED_DECIMALS_LEN: u32 = 32;
 
-/// Same guard as EVM `TokenPool._calculateLocalAmount` to avoid unbounded `10**diff`.
-const MAX_DECIMALS_DIFF: u32 = 77;
+/// EVM uses 77 (uint256 ceiling); Stellar uses u128, which overflows at 10^39.
+const MAX_DECIMALS_DIFF: u32 = 38;
 
 /// Encode local token decimals for `LockOrBurnOut.dest_pool_data` (EVM `_encodeLocalDecimals`).
 pub fn encode_local_decimals(env: &Env, local_decimals: u32) -> Result<Bytes, CCIPError> {
