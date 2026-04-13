@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
 
@@ -63,7 +64,9 @@ func (a *StellarAggregatorConfigAdapter) ScanCommitteeStates(ctx context.Context
 		for _, cfg := range configs {
 			signers := make([]string, 0, len(cfg.Signers))
 			for _, signer := range cfg.Signers {
-				signers = append(signers, hex.EncodeToString(signer[:]))
+				// Match EVMAggregatorConfigAdapter: on-chain values are left-padded
+				// 20-byte EVM addresses (see contracts/common/verifier ETH_ADDRESS_OFFSET).
+				signers = append(signers, common.BytesToAddress(signer[12:32]).Hex())
 			}
 			sigConfigs = append(sigConfigs, ccvadapters.SignatureConfig{
 				SourceChainSelector: cfg.SourceChainSelector,
