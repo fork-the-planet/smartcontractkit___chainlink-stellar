@@ -9,6 +9,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	ccvdevmevm "github.com/smartcontractkit/chainlink-ccv/build/devenv/evm"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
@@ -31,6 +33,10 @@ var registerOnce sync.Once
 //   - CLDFProviderFactory:       factory for creating Stellar CLDF BlockChain providers.
 func RegisterStellarComponents() {
 	registerOnce.Do(func() {
+		// EVM SendMessage encodes extraArgs via destination family; Stellar uses the same
+		// ABI GenericExtraArgsV1–V3 wire format from the EVM router (lane defaults supply CCV/executor).
+		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, ccvdevmevm.SerializeEVMExtraArgs)
+
 		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
 		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
