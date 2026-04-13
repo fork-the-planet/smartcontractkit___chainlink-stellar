@@ -122,8 +122,8 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 		// Get the source chain config from the Stellar OffRamp contract.
 		offRampKey := datastore.NewAddressRefKey(
 			stellarDetails.ChainSelector,
-			datastore.ContractType(offramp.ContractType),
-			offramp.Version,
+			datastore.ContractType(offrampoperations.ContractType),
+			offrampoperations.Version,
 			"",
 		)
 		offrampRef, err := env.DataStore.Addresses().Get(offRampKey)
