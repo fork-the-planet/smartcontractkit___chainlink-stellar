@@ -8,7 +8,8 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_pool::{
-    BaseTokenPool, ChainUpdate, LockOrBurnIn, LockOrBurnOut, ReleaseOrMintIn, ReleaseOrMintOut,
+    calculate_local_amount, encode_local_decimals, parse_remote_decimals, BaseTokenPool,
+    ChainUpdate, LockOrBurnIn, LockOrBurnOut, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{LockedEvent, ReleasedEvent};
 
@@ -39,11 +40,16 @@ impl LockReleaseTokenPoolContract {
     // Initialization
     // ------------------------------------------------------------------
 
-    pub fn initialize(env: Env, owner: Address, token: Address) -> Result<(), CCIPError> {
+    pub fn initialize(
+        env: Env,
+        owner: Address,
+        token: Address,
+        token_decimals: u32,
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
-        <Self as BaseTokenPool>::init_pool(&env, &token)?;
+        <Self as BaseTokenPool>::init_pool(&env, &token, token_decimals)?;
         Ok(())
     }
 
@@ -82,9 +88,12 @@ impl LockReleaseTokenPoolContract {
         let remote_token =
             <Self as BaseTokenPool>::get_remote_token(&env, input.remote_chain_selector)?;
 
+        let local_decimals = <Self as BaseTokenPool>::get_token_decimals(&env)?;
+        let dest_pool_data = encode_local_decimals(&env, local_decimals)?;
+
         Ok(LockOrBurnOut {
             dest_token_address: remote_token,
-            dest_pool_data: Bytes::new(&env),
+            dest_pool_data,
         })
     }
 
@@ -105,25 +114,29 @@ impl LockReleaseTokenPoolContract {
             return Err(CCIPError::ChainNotSupported);
         }
 
+        let local_decimals = <Self as BaseTokenPool>::get_token_decimals(&env)?;
+        let remote_decimals = parse_remote_decimals(&input.source_pool_data, local_decimals)?;
+        let local_amount = calculate_local_amount(input.amount, remote_decimals, local_decimals)?;
+
         let pool_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &pool_token);
 
         let pool_balance = token_client.balance(&pool_address);
-        if pool_balance < input.amount {
+        if pool_balance < local_amount {
             return Err(CCIPError::InsufficientPoolLiquidity);
         }
 
-        token_client.transfer(&pool_address, &input.receiver, &input.amount);
+        token_client.transfer(&pool_address, &input.receiver, &local_amount);
 
         ReleasedEvent {
             sender: pool_address,
             recipient: input.receiver.clone(),
-            amount: input.amount,
+            amount: local_amount,
         }
         .publish(&env);
 
         Ok(ReleaseOrMintOut {
-            destination_amount: input.amount,
+            destination_amount: local_amount,
         })
     }
 
@@ -147,6 +160,11 @@ impl LockReleaseTokenPoolContract {
 
     pub fn get_token(env: Env) -> Result<Address, CCIPError> {
         <Self as BaseTokenPool>::get_token(&env)
+    }
+
+    pub fn get_token_decimals(env: Env) -> Result<u32, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::get_token_decimals(&env)
     }
 
     pub fn is_supported_token(env: Env, token: Address) -> Result<bool, CCIPError> {

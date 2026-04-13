@@ -409,6 +409,9 @@ const (
 	CCIPErrorInsufficientPoolLiquidity      = 304
 	CCIPErrorInvalidRemotePoolAddress       = 305
 	CCIPErrorInvalidRemoteChainConfig       = 306
+	CCIPErrorInvalidRemoteChainDecimals     = 307
+	CCIPErrorDecimalAmountOverflow          = 308
+	CCIPErrorInvalidPoolTokenDecimals       = 309
 	CCIPErrorInvalidFeeCalculation          = 801
 	CCIPErrorInvalidFeeTokenConversion      = 802
 )
@@ -515,6 +518,9 @@ var CCIPErrorMessage = map[int]string{
 	304: "insufficient pool liquidity",
 	305: "invalid remote pool address",
 	306: "invalid remote chain config",
+	307: "invalid remote chain decimals",
+	308: "decimal amount overflow",
+	309: "invalid pool token decimals",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }

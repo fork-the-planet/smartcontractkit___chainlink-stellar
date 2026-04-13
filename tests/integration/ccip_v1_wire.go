@@ -233,7 +233,7 @@ type StellarOnrampMessageIDInput struct {
 	DestChainSelector   uint64
 	SequenceNumber      uint64
 	GasLimit            uint32
-	BlockConfirmations  uint32 // cast to u16 on-chain
+	BlockConfirmations  uint32 // maps to CcipMessageV1.finality (from GenericExtraArgsV3.block_confirmations)
 	Ccvs                []string
 	Executor            string
 	OnRampContractID    string

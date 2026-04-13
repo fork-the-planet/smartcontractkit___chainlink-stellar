@@ -1,8 +1,13 @@
 #![no_std]
 
+pub mod decimals;
 pub mod events;
 pub mod types;
 
+#[cfg(test)]
+mod decimals_tests;
+
+pub use decimals::*;
 pub use events::*;
 pub use types::*;
 
@@ -23,8 +28,14 @@ pub trait BaseTokenPool {
     // Initialization
     // ------------------------------------------------------------------
 
-    fn init_pool(env: &Env, token: &Address) -> Result<(), CCIPError> {
+    fn init_pool(env: &Env, token: &Address, token_decimals: u32) -> Result<(), CCIPError> {
+        if token_decimals > u8::MAX as u32 {
+            return Err(CCIPError::InvalidPoolTokenDecimals);
+        }
         env.storage().instance().set(&PoolDataKey::Token, token);
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::TokenDecimals, &token_decimals);
         let chains: Vec<u64> = Vec::new(env);
         env.storage()
             .instance()
@@ -40,6 +51,13 @@ pub trait BaseTokenPool {
         env.storage()
             .instance()
             .get(&PoolDataKey::Token)
+            .ok_or(CCIPError::NotInitialized)
+    }
+
+    fn get_token_decimals(env: &Env) -> Result<u32, CCIPError> {
+        env.storage()
+            .instance()
+            .get(&PoolDataKey::TokenDecimals)
             .ok_or(CCIPError::NotInitialized)
     }
 

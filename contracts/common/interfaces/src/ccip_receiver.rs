@@ -145,6 +145,9 @@ pub enum CCIPError {
     InsufficientPoolLiquidity = 304,
     InvalidRemotePoolAddress = 305,
     InvalidRemoteChainConfig = 306,
+    InvalidRemoteChainDecimals = 307,
+    DecimalAmountOverflow = 308,
+    InvalidPoolTokenDecimals = 309,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

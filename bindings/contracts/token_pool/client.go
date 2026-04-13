@@ -30,10 +30,11 @@ func (c *TokenPoolClient) ContractID() string {
 }
 
 // Initialize calls the initialize function on the contract.
-func (c *TokenPoolClient) Initialize(ctx context.Context, owner string, token string) error {
+func (c *TokenPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(owner),
 		scval.AddressToScVal(token),
+		scval.Uint32ToScVal(tokenDecimals),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
@@ -143,6 +144,26 @@ func (c *TokenPoolClient) GetToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return v, nil
+}
+
+// GetTokenDecimals calls the get_token_decimals function on the contract.
+func (c *TokenPoolClient) GetTokenDecimals(ctx context.Context) (uint32, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_token_decimals", args)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call get_token_decimals: %w", err)
+	}
+
+	if result == nil {
+		return 0, fmt.Errorf("no return value from get_token_decimals")
+	}
+
+	v, ok := result.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 return type")
+	}
+	return uint32(v), nil
 }
 
 // GetRemotePool calls the get_remote_pool function on the contract.
