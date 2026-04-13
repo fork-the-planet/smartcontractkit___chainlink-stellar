@@ -279,7 +279,7 @@ func PredictStellarOnrampMessageID(in StellarOnrampMessageIDInput) ([32]byte, er
 		SequenceNumber:      in.SequenceNumber,
 		ExecutionGasLimit:   in.GasLimit,
 		CcipReceiveGasLimit: 0,
-		Finality:            uint16(in.BlockConfirmations),
+		Finality:            in.BlockConfirmations,
 		CcvExecutorHash:     ccvHash,
 		OnRampAddress:       onXDR,
 		OffRampAddress:      offXDR,

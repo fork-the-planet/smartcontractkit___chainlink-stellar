@@ -133,7 +133,7 @@ func TestTokenPool(t *testing.T) {
 
 		// Real SAC + minted balance on deployer (classic issue + trustline), like a mock ERC20 on EVM.
 		sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "ccip-token-send")
-		mockFeeToken := helpers.GenerateMockContractID(t, deployerAddr, "ccip-send-fee-token")
+		feeToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, "ccip-fee-token")
 
 		stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", sacToken)
 
@@ -152,7 +152,7 @@ func TestTokenPool(t *testing.T) {
 		}
 
 		_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, "ccip-token-send", stack,
-			localChain, remoteDestChain, mockFeeToken, []string{sacToken})
+			localChain, remoteDestChain, feeToken, []string{sacToken})
 
 		defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, "ccip-token-send-executor")
 		extraArgs, err := encodeOnrampExtraArgsV3(onrampbindings.GenericExtraArgsV3{
@@ -177,7 +177,7 @@ func TestTokenPool(t *testing.T) {
 		msg := routerbindings.StellarToAnyMessage{
 			Receiver:     evmReceiver,
 			Data:         []byte("integration token ccip_send"),
-			FeeToken:     mockFeeToken,
+			FeeToken:     feeToken,
 			ExtraArgs:    extraArgs,
 			TokenAmounts: []routerbindings.TokenAmount{{Token: sacToken, Amount: tokenTransferAmount}},
 		}

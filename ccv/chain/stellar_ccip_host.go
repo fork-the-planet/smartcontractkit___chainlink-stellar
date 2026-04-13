@@ -63,6 +63,12 @@ func (h *stellarCCIPDeployHost) SetTokenPool(contractID string, client *tokenpoo
 func (h *stellarCCIPDeployHost) SetTestToken(contractID string) { h.c.testTokenContractID = contractID }
 func (h *stellarCCIPDeployHost) TestTokenContractID() string    { return h.c.testTokenContractID }
 
+func (h *stellarCCIPDeployHost) SetFeeToken(contractID string) { h.c.feeTokenContractID = contractID }
+func (h *stellarCCIPDeployHost) FeeTokenContractID() string    { return h.c.feeTokenContractID }
+func (h *stellarCCIPDeployHost) CreateFeeToken(ctx context.Context, friendbotURL string) (string, error) {
+	return h.c.createFeeToken(ctx, friendbotURL)
+}
+
 func (h *stellarCCIPDeployHost) SetOffRamp(contractID string, client *offrampbindings.OffRampClient) {
 	h.c.offRampContractID = contractID
 	h.c.offRampClient = client
