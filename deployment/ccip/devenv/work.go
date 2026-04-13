@@ -6,7 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v1_7_0/offchain"
+	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
