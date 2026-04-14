@@ -44,6 +44,8 @@ CONTRACTS=(
   "offramp|offramp|OffRamp|0"
   "router|router|Router|0"
   "ccip_receiver_example|ccip_receiver|ExampleCcipReceiver|0"
+  "pools_token_lock_box|token_lock_box|TokenLockBox|0"
+  "pools_siloed_lock_release_pool|siloed_lock_release_pool|SiloedLockReleasePool|0"
 )
 
 # Remove the WASM const block from generated output (interfaces don't need it)
@@ -68,6 +70,68 @@ strip_duplicate_auth_events() {
       next
     }
     { depth_was_positive=0; print }
+  '
+}
+
+# Safety-net: remove duplicate fn declarations inside the trait block and
+# duplicate struct/enum/event definitions outside it.  Keeps the first
+# occurrence of each name.  Handles the case where a cross-contract WASM
+# dependency leaks its functions/types into the generated output.
+strip_duplicate_declarations() {
+  perl -e '
+    use strict; use warnings;
+    local $/;
+    my $input = <STDIN>;
+
+    # ── Phase 1: deduplicate fn declarations inside the trait block ──
+    if ($input =~ s/(pub\s+trait\s+\w+\s*\{)(.*?)(\})/
+        my ($hdr, $body, $close) = ($1, $2, $3);
+        my %seen;
+        my $clean = "";
+        while ($body =~ m!(\s*fn\s+(\w+)\s*\(.*?;)!gs) {
+            $clean .= $1 unless $seen{$2}++;
+        }
+        "$hdr$clean\n$close"
+    /se) {}
+
+    # ── Phase 2: deduplicate struct and enum definitions ──
+    my %seen_types;
+    my @lines = split /\n/, $input;
+    my @out;
+    my @attr_buf;
+    my $skipping = 0;
+
+    for my $line (@lines) {
+        if ($skipping) {
+            $skipping = 0 if $line =~ /^\}/;
+            next;
+        }
+        if ($line =~ /^#\[/) {
+            push @attr_buf, $line;
+            next;
+        }
+        if ($line =~ /^pub\s+(?:struct|enum)\s+(\w+)/) {
+            if ($seen_types{$1}++) {
+                @attr_buf = ();
+                $skipping = 1;
+                next;
+            }
+            push @out, @attr_buf;
+            @attr_buf = ();
+            push @out, $line;
+            next;
+        }
+        if (@attr_buf) {
+            push @out, @attr_buf;
+            @attr_buf = ();
+        }
+        push @out, $line;
+    }
+    push @out, @attr_buf if @attr_buf;
+
+    my $result = join("\n", @out) . "\n";
+    $result =~ s/\n{3,}/\n/g;
+    print $result;
   '
 }
 
@@ -133,6 +197,7 @@ for entry in "${CONTRACTS[@]}"; do
   stellar contract bindings rust --wasm "$wasm_path" 2>/dev/null \
     | strip_wasm_block \
     | strip_duplicate_auth_events \
+    | strip_duplicate_declarations \
     | apply_renames "$pascal_name" \
     | use_common_message_types "${use_common_msg:-0}" \
     > "$out_path"
