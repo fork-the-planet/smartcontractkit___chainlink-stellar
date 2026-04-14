@@ -252,19 +252,196 @@ func ReleaseOrMintOutFromScVal(val xdr.ScVal) (*ReleaseOrMintOut, error) {
 	return result, nil
 }
 
+// RateLimitConfig represents the RateLimitConfig struct from the contract.
+type RateLimitConfig struct {
+	IsEnabled bool
+	Capacity  scval.U128
+	Rate      scval.U128
+}
+
+// ToScVal converts RateLimitConfig to an xdr.ScVal for contract calls.
+func (s RateLimitConfig) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"is_enabled": scval.BoolToScVal(s.IsEnabled),
+		"capacity":   scval.MustToScVal((s.Capacity).ToScVal()),
+		"rate":       scval.MustToScVal((s.Rate).ToScVal()),
+	})
+}
+
+// RateLimitConfigFromScVal parses an xdr.ScVal into RateLimitConfig.
+func RateLimitConfigFromScVal(val xdr.ScVal) (*RateLimitConfig, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &RateLimitConfig{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "is_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("is_enabled is not bool")
+			}
+			result.IsEnabled = v
+		case "capacity":
+			v, err := scval.U128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("capacity: %w", err)
+			}
+			result.Capacity = v
+		case "rate":
+			v, err := scval.U128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("rate: %w", err)
+			}
+			result.Rate = v
+		}
+	}
+
+	return result, nil
+}
+
+// TokenBucket represents the TokenBucket struct from the contract.
+type TokenBucket struct {
+	Tokens      scval.U128
+	LastUpdated uint64
+	IsEnabled   bool
+	Capacity    scval.U128
+	Rate        scval.U128
+}
+
+// ToScVal converts TokenBucket to an xdr.ScVal for contract calls.
+func (s TokenBucket) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"tokens":       scval.MustToScVal((s.Tokens).ToScVal()),
+		"last_updated": scval.Uint64ToScVal(s.LastUpdated),
+		"is_enabled":   scval.BoolToScVal(s.IsEnabled),
+		"capacity":     scval.MustToScVal((s.Capacity).ToScVal()),
+		"rate":         scval.MustToScVal((s.Rate).ToScVal()),
+	})
+}
+
+// TokenBucketFromScVal parses an xdr.ScVal into TokenBucket.
+func TokenBucketFromScVal(val xdr.ScVal) (*TokenBucket, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &TokenBucket{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "tokens":
+			v, err := scval.U128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("tokens: %w", err)
+			}
+			result.Tokens = v
+		case "last_updated":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("last_updated: %w", err)
+			}
+			result.LastUpdated = v
+		case "is_enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("is_enabled is not bool")
+			}
+			result.IsEnabled = v
+		case "capacity":
+			v, err := scval.U128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("capacity: %w", err)
+			}
+			result.Capacity = v
+		case "rate":
+			v, err := scval.U128FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("rate: %w", err)
+			}
+			result.Rate = v
+		}
+	}
+
+	return result, nil
+}
+
+// RateLimiterState represents the RateLimiterState struct from the contract.
+type RateLimiterState struct {
+	Outbound TokenBucket
+	Inbound  TokenBucket
+}
+
+// ToScVal converts RateLimiterState to an xdr.ScVal for contract calls.
+func (s RateLimiterState) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"outbound": scval.MustToScVal((s.Outbound).ToScVal()),
+		"inbound":  scval.MustToScVal((s.Inbound).ToScVal()),
+	})
+}
+
+// RateLimiterStateFromScVal parses an xdr.ScVal into RateLimiterState.
+func RateLimiterStateFromScVal(val xdr.ScVal) (*RateLimiterState, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &RateLimiterState{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "outbound":
+			v, err := TokenBucketFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("outbound: %w", err)
+			}
+			result.Outbound = *v
+		case "inbound":
+			v, err := TokenBucketFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("inbound: %w", err)
+			}
+			result.Inbound = *v
+		}
+	}
+
+	return result, nil
+}
+
 // ChainUpdate represents the ChainUpdate struct from the contract.
 type ChainUpdate struct {
-	RemoteChainSelector uint64
-	RemotePoolAddresses []byte
-	RemoteTokenAddress  []byte
+	RemoteChainSelector       uint64
+	RemotePoolAddresses       []byte
+	RemoteTokenAddress        []byte
+	OutboundRateLimiterConfig RateLimitConfig
+	InboundRateLimiterConfig  RateLimitConfig
 }
 
 // ToScVal converts ChainUpdate to an xdr.ScVal for contract calls.
 func (s ChainUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"remote_chain_selector": scval.Uint64ToScVal(s.RemoteChainSelector),
-		"remote_pool_addresses": scval.BytesToScVal(s.RemotePoolAddresses),
-		"remote_token_address":  scval.BytesToScVal(s.RemoteTokenAddress),
+		"remote_chain_selector":        scval.Uint64ToScVal(s.RemoteChainSelector),
+		"remote_pool_addresses":        scval.BytesToScVal(s.RemotePoolAddresses),
+		"remote_token_address":         scval.BytesToScVal(s.RemoteTokenAddress),
+		"outbound_rate_limiter_config": scval.MustToScVal((s.OutboundRateLimiterConfig).ToScVal()),
+		"inbound_rate_limiter_config":  scval.MustToScVal((s.InboundRateLimiterConfig).ToScVal()),
 	})
 }
 
@@ -301,6 +478,18 @@ func ChainUpdateFromScVal(val xdr.ScVal) (*ChainUpdate, error) {
 				return nil, fmt.Errorf("remote_token_address is not bytes")
 			}
 			result.RemoteTokenAddress = []byte(v)
+		case "outbound_rate_limiter_config":
+			v, err := RateLimitConfigFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("outbound_rate_limiter_config: %w", err)
+			}
+			result.OutboundRateLimiterConfig = *v
+		case "inbound_rate_limiter_config":
+			v, err := RateLimitConfigFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("inbound_rate_limiter_config: %w", err)
+			}
+			result.InboundRateLimiterConfig = *v
 		}
 	}
 
@@ -309,111 +498,118 @@ func ChainUpdateFromScVal(val xdr.ScVal) (*ChainUpdate, error) {
 
 // CCIPError represents the contract error codes.
 const (
-	CCIPErrorNotInitialized                 = 1
-	CCIPErrorAlreadyInitialized             = 2
-	CCIPErrorUnauthorized                   = 3
-	CCIPErrorNotOwner                       = 4
-	CCIPErrorNoPendingOwner                 = 5
-	CCIPErrorCallerNotAuthorized            = 6
-	CCIPErrorCallerAlreadyAuthorized        = 7
-	CCIPErrorCallerNotFound                 = 8
-	CCIPErrorRoleNotGranted                 = 9
-	CCIPErrorFeatureNotEnabled              = 10
-	CCIPErrorRoleAlreadyGranted             = 11
-	CCIPErrorCannotRenounceRole             = 12
-	CCIPErrorInvalidVersionTag              = 13
-	CCIPErrorInvalidSignatureLength         = 14
-	CCIPErrorInvalidSignature               = 15
-	CCIPErrorInvalidSignatureCount          = 16
-	CCIPErrorInvalidSignatureThreshold      = 17
-	CCIPErrorInvalidSignaturePubkey         = 18
-	CCIPErrorSourceSignersNotConfigured     = 19
-	CCIPErrorInvalidVerifierResults         = 20
-	CCIPErrorReentrantCall                  = 21
-	CCIPErrorTokenNotSupported              = 22
-	CCIPErrorFeeTokenNotSupported           = 23
-	CCIPErrorNoGasPriceAvailable            = 24
-	CCIPErrorDestinationChainNotEnabled     = 25
-	CCIPErrorInvalidExtraArgsTag            = 26
-	CCIPErrorInvalidExtraArgsData           = 27
-	CCIPErrorMessageGasLimitTooHigh         = 28
-	CCIPErrorMessageTooLarge                = 29
-	CCIPErrorUnsupportedNumberOfTokens      = 30
-	CCIPErrorInvalidDestChainConfig         = 31
-	CCIPErrorMessageFeeTooHigh              = 32
-	CCIPErrorInvalidStaticConfig            = 33
-	CCIPErrorInvalidTokenReceiver           = 34
-	CCIPErrorSourceTokenDataTooLarge        = 35
-	CCIPErrorInvalidDestBytesOverhead       = 36
-	CCIPErrorDestinationChainNotSupported   = 37
-	CCIPErrorMustBeCalledByRouter           = 38
-	CCIPErrorRouterMustSetOriginalSender    = 39
-	CCIPErrorCannotSendZeroTokens           = 40
-	CCIPErrorCanOnlySendOneTokenPerMessage  = 41
-	CCIPErrorUnsupportedToken               = 42
-	CCIPErrorInvalidDestChainAddress        = 43
-	CCIPErrorFeeExceedsMaxAllowed           = 44
-	CCIPErrorInsufficientFeeTokenAmount     = 45
-	CCIPErrorTokenReceiverNotAllowed        = 46
-	CCIPErrorCursedByRMN                    = 47
-	CCIPErrorRemoteChainNotSupported        = 48
-	CCIPErrorSenderNotAllowed               = 49
-	CCIPErrorInvalidTokenAmount             = 50
-	CCIPErrorInvalidReceiverAddress         = 51
-	CCIPErrorInvalidConfig                  = 52
-	CCIPErrorInvalidVerifierResultsLength   = 53
-	CCIPErrorInboundImplementationNotFound  = 54
-	CCIPErrorOutboundImplementationNotFound = 55
-	CCIPErrorInvalidAddress                 = 56
-	CCIPErrorInvalidChainSelector           = 57
-	CCIPErrorInvalidVersion                 = 58
-	CCIPErrorInvalidCCVVersion              = 59
-	CCIPErrorOffRampAlreadyExists           = 60
-	CCIPErrorOffRampMismatch                = 61
-	CCIPErrorBadRMNSignal                   = 62
-	CCIPErrorUnsupportedDestinationChain    = 63
-	CCIPErrorAlreadyCursed                  = 64
-	CCIPErrorConfigNotSet                   = 65
-	CCIPErrorDuplicateOnchainPublicKey      = 66
-	CCIPErrorInvalidSignerOrder             = 67
-	CCIPErrorNotEnoughSigners               = 68
-	CCIPErrorNotCursed                      = 69
-	CCIPErrorOutOfOrderSignatures           = 70
-	CCIPErrorThresholdNotMet                = 71
-	CCIPErrorUnexpectedSigner               = 72
-	CCIPErrorZeroValueNotAllowed            = 73
-	CCIPErrorSourceChainNotEnabled          = 100
-	CCIPErrorInvalidSourceChainConfig       = 101
-	CCIPErrorInvalidOnRampAddress           = 102
-	CCIPErrorInvalidOffRampAddress          = 103
-	CCIPErrorInvalidMessageDestination      = 104
-	CCIPErrorMessageAlreadyExecuted         = 105
-	CCIPErrorInvalidExecutionState          = 106
-	CCIPErrorCCVLengthMismatch              = 107
-	CCIPErrorCCVQuorumNotMet                = 108
-	CCIPErrorReceiverError                  = 109
-	CCIPErrorGasLimitOverrideTooLow         = 110
-	CCIPErrorInvalidReceiverLength          = 111
-	CCIPErrorTokenHandlingError             = 112
-	CCIPErrorMessageDecodingError           = 113
-	CCIPErrorReceiverDoesNotExist           = 114
-	CCIPErrorReceiverNotWasmContract        = 115
-	CCIPErrorOnlyRegistryModuleOrOwner      = 201
-	CCIPErrorOnlyAdministrator              = 202
-	CCIPErrorOnlyPendingAdministrator       = 203
-	CCIPErrorTokenAlreadyRegistered         = 204
-	CCIPErrorInvalidTokenPoolToken          = 205
-	CCIPErrorPoolTokenMismatch              = 301
-	CCIPErrorChainNotSupported              = 302
-	CCIPErrorCallerIsNotRamp                = 303
-	CCIPErrorInsufficientPoolLiquidity      = 304
-	CCIPErrorInvalidRemotePoolAddress       = 305
-	CCIPErrorInvalidRemoteChainConfig       = 306
-	CCIPErrorInvalidRemoteChainDecimals     = 307
-	CCIPErrorDecimalAmountOverflow          = 308
-	CCIPErrorInvalidPoolTokenDecimals       = 309
-	CCIPErrorInvalidFeeCalculation          = 801
-	CCIPErrorInvalidFeeTokenConversion      = 802
+	CCIPErrorNotInitialized                      = 1
+	CCIPErrorAlreadyInitialized                  = 2
+	CCIPErrorUnauthorized                        = 3
+	CCIPErrorNotOwner                            = 4
+	CCIPErrorNoPendingOwner                      = 5
+	CCIPErrorCallerNotAuthorized                 = 6
+	CCIPErrorCallerAlreadyAuthorized             = 7
+	CCIPErrorCallerNotFound                      = 8
+	CCIPErrorRoleNotGranted                      = 9
+	CCIPErrorFeatureNotEnabled                   = 10
+	CCIPErrorRoleAlreadyGranted                  = 11
+	CCIPErrorCannotRenounceRole                  = 12
+	CCIPErrorInvalidVersionTag                   = 13
+	CCIPErrorInvalidSignatureLength              = 14
+	CCIPErrorInvalidSignature                    = 15
+	CCIPErrorInvalidSignatureCount               = 16
+	CCIPErrorInvalidSignatureThreshold           = 17
+	CCIPErrorInvalidSignaturePubkey              = 18
+	CCIPErrorSourceSignersNotConfigured          = 19
+	CCIPErrorInvalidVerifierResults              = 20
+	CCIPErrorReentrantCall                       = 21
+	CCIPErrorTokenNotSupported                   = 22
+	CCIPErrorFeeTokenNotSupported                = 23
+	CCIPErrorNoGasPriceAvailable                 = 24
+	CCIPErrorDestinationChainNotEnabled          = 25
+	CCIPErrorInvalidExtraArgsTag                 = 26
+	CCIPErrorInvalidExtraArgsData                = 27
+	CCIPErrorMessageGasLimitTooHigh              = 28
+	CCIPErrorMessageTooLarge                     = 29
+	CCIPErrorUnsupportedNumberOfTokens           = 30
+	CCIPErrorInvalidDestChainConfig              = 31
+	CCIPErrorMessageFeeTooHigh                   = 32
+	CCIPErrorInvalidStaticConfig                 = 33
+	CCIPErrorInvalidTokenReceiver                = 34
+	CCIPErrorSourceTokenDataTooLarge             = 35
+	CCIPErrorInvalidDestBytesOverhead            = 36
+	CCIPErrorDestinationChainNotSupported        = 37
+	CCIPErrorMustBeCalledByRouter                = 38
+	CCIPErrorRouterMustSetOriginalSender         = 39
+	CCIPErrorCannotSendZeroTokens                = 40
+	CCIPErrorCanOnlySendOneTokenPerMessage       = 41
+	CCIPErrorUnsupportedToken                    = 42
+	CCIPErrorInvalidDestChainAddress             = 43
+	CCIPErrorFeeExceedsMaxAllowed                = 44
+	CCIPErrorInsufficientFeeTokenAmount          = 45
+	CCIPErrorTokenReceiverNotAllowed             = 46
+	CCIPErrorCursedByRMN                         = 47
+	CCIPErrorRemoteChainNotSupported             = 48
+	CCIPErrorSenderNotAllowed                    = 49
+	CCIPErrorInvalidTokenAmount                  = 50
+	CCIPErrorInvalidReceiverAddress              = 51
+	CCIPErrorInvalidConfig                       = 52
+	CCIPErrorInvalidVerifierResultsLength        = 53
+	CCIPErrorInboundImplementationNotFound       = 54
+	CCIPErrorOutboundImplementationNotFound      = 55
+	CCIPErrorInvalidAddress                      = 56
+	CCIPErrorInvalidChainSelector                = 57
+	CCIPErrorInvalidVersion                      = 58
+	CCIPErrorInvalidCCVVersion                   = 59
+	CCIPErrorOffRampAlreadyExists                = 60
+	CCIPErrorOffRampMismatch                     = 61
+	CCIPErrorBadRMNSignal                        = 62
+	CCIPErrorUnsupportedDestinationChain         = 63
+	CCIPErrorAlreadyCursed                       = 64
+	CCIPErrorConfigNotSet                        = 65
+	CCIPErrorDuplicateOnchainPublicKey           = 66
+	CCIPErrorInvalidSignerOrder                  = 67
+	CCIPErrorNotEnoughSigners                    = 68
+	CCIPErrorNotCursed                           = 69
+	CCIPErrorOutOfOrderSignatures                = 70
+	CCIPErrorThresholdNotMet                     = 71
+	CCIPErrorUnexpectedSigner                    = 72
+	CCIPErrorZeroValueNotAllowed                 = 73
+	CCIPErrorSourceChainNotEnabled               = 100
+	CCIPErrorInvalidSourceChainConfig            = 101
+	CCIPErrorInvalidOnRampAddress                = 102
+	CCIPErrorInvalidOffRampAddress               = 103
+	CCIPErrorInvalidMessageDestination           = 104
+	CCIPErrorMessageAlreadyExecuted              = 105
+	CCIPErrorInvalidExecutionState               = 106
+	CCIPErrorCCVLengthMismatch                   = 107
+	CCIPErrorCCVQuorumNotMet                     = 108
+	CCIPErrorReceiverError                       = 109
+	CCIPErrorGasLimitOverrideTooLow              = 110
+	CCIPErrorInvalidReceiverLength               = 111
+	CCIPErrorTokenHandlingError                  = 112
+	CCIPErrorMessageDecodingError                = 113
+	CCIPErrorReceiverDoesNotExist                = 114
+	CCIPErrorReceiverNotWasmContract             = 115
+	CCIPErrorOnlyRegistryModuleOrOwner           = 201
+	CCIPErrorOnlyAdministrator                   = 202
+	CCIPErrorOnlyPendingAdministrator            = 203
+	CCIPErrorTokenAlreadyRegistered              = 204
+	CCIPErrorInvalidTokenPoolToken               = 205
+	CCIPErrorPoolTokenMismatch                   = 301
+	CCIPErrorChainNotSupported                   = 302
+	CCIPErrorCallerIsNotRamp                     = 303
+	CCIPErrorInsufficientPoolLiquidity           = 304
+	CCIPErrorInvalidRemotePoolAddress            = 305
+	CCIPErrorInvalidRemoteChainConfig            = 306
+	CCIPErrorInvalidRemoteChainDecimals          = 307
+	CCIPErrorDecimalAmountOverflow               = 308
+	CCIPErrorInvalidPoolTokenDecimals            = 309
+	CCIPErrorBucketOverfilled                    = 310
+	CCIPErrorTokenMaxCapacityExceeded            = 311
+	CCIPErrorTokenRateLimitReached               = 312
+	CCIPErrorInvalidRateLimitRate                = 313
+	CCIPErrorDisabledNonZeroRateLimit            = 314
+	CCIPErrorInvalidRequestedFinality            = 315
+	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
+	CCIPErrorInvalidFeeCalculation               = 801
+	CCIPErrorInvalidFeeTokenConversion           = 802
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
@@ -521,6 +717,13 @@ var CCIPErrorMessage = map[int]string{
 	307: "invalid remote chain decimals",
 	308: "decimal amount overflow",
 	309: "invalid pool token decimals",
+	310: "bucket overfilled",
+	311: "token max capacity exceeded",
+	312: "token rate limit reached",
+	313: "invalid rate limit rate",
+	314: "disabled non zero rate limit",
+	315: "invalid requested finality",
+	316: "requested finality can only have one mode",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }

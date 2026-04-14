@@ -47,9 +47,10 @@ func (c *TokenPoolClient) Initialize(ctx context.Context, owner string, token st
 }
 
 // LockOrBurn calls the lock_or_burn function on the contract.
-func (c *TokenPoolClient) LockOrBurn(ctx context.Context, input LockOrBurnIn) (*LockOrBurnOut, error) {
+func (c *TokenPoolClient) LockOrBurn(ctx context.Context, input LockOrBurnIn, requestedFinality uint32) (*LockOrBurnOut, error) {
 	args := []xdr.ScVal{
 		scval.MustToScVal(input.ToScVal()),
+		scval.Uint32ToScVal(requestedFinality),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "lock_or_burn", args)
@@ -65,9 +66,10 @@ func (c *TokenPoolClient) LockOrBurn(ctx context.Context, input LockOrBurnIn) (*
 }
 
 // ReleaseOrMint calls the release_or_mint function on the contract.
-func (c *TokenPoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn) (*ReleaseOrMintOut, error) {
+func (c *TokenPoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
 	args := []xdr.ScVal{
 		scval.MustToScVal(input.ToScVal()),
+		scval.Uint32ToScVal(requestedFinality),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "release_or_mint", args)
@@ -224,4 +226,111 @@ func (c *TokenPoolClient) ApplyChainUpdates(ctx context.Context, adds []ChainUpd
 
 	_ = result // void return
 	return nil
+}
+
+// SetRateLimitConfig calls the set_rate_limit_config function on the contract.
+func (c *TokenPoolClient) SetRateLimitConfig(ctx context.Context, remoteChainSelector uint64, outboundConfig RateLimitConfig, inboundConfig RateLimitConfig, fastFinality bool) error {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.MustToScVal(outboundConfig.ToScVal()),
+		scval.MustToScVal(inboundConfig.ToScVal()),
+		scval.BoolToScVal(fastFinality),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_rate_limit_config", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_rate_limit_config: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// SetRateLimitAdmin calls the set_rate_limit_admin function on the contract.
+func (c *TokenPoolClient) SetRateLimitAdmin(ctx context.Context, admin string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(admin),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_rate_limit_admin", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_rate_limit_admin: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// GetCurrentRateLimiterState calls the get_current_rate_limiter_state function on the contract.
+func (c *TokenPoolClient) GetCurrentRateLimiterState(ctx context.Context, remoteChainSelector uint64, fastFinality bool) (*RateLimiterState, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.BoolToScVal(fastFinality),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_current_rate_limiter_state", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_current_rate_limiter_state: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_current_rate_limiter_state")
+	}
+
+	return RateLimiterStateFromScVal(*result)
+}
+
+// GetRateLimitAdmin calls the get_rate_limit_admin function on the contract.
+func (c *TokenPoolClient) GetRateLimitAdmin(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_rate_limit_admin", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_rate_limit_admin: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_rate_limit_admin")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// SetAllowedFinalityConfig calls the set_allowed_finality_config function on the contract.
+func (c *TokenPoolClient) SetAllowedFinalityConfig(ctx context.Context, allowedFinality uint32) error {
+	args := []xdr.ScVal{
+		scval.Uint32ToScVal(allowedFinality),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_allowed_finality_config", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_allowed_finality_config: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// GetAllowedFinalityConfig calls the get_allowed_finality_config function on the contract.
+func (c *TokenPoolClient) GetAllowedFinalityConfig(ctx context.Context) (uint32, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_allowed_finality_config", args)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call get_allowed_finality_config: %w", err)
+	}
+
+	if result == nil {
+		return 0, fmt.Errorf("no return value from get_allowed_finality_config")
+	}
+
+	v, ok := result.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 return type")
+	}
+	return uint32(v), nil
 }

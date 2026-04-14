@@ -364,9 +364,11 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 				return fmt.Errorf("address bytes length for %d: %w", rs, addrErr)
 			}
 			chainUpdates = append(chainUpdates, tokenpoolbindings.ChainUpdate{
-				RemoteChainSelector: rs,
-				RemotePoolAddresses: make([]byte, remotePoolLen),
-				RemoteTokenAddress:  make([]byte, remotePoolLen),
+				RemoteChainSelector:       rs,
+				RemotePoolAddresses:       make([]byte, remotePoolLen),
+				RemoteTokenAddress:        make([]byte, remotePoolLen),
+				OutboundRateLimiterConfig: tokenpoolbindings.RateLimitConfig{},
+				InboundRateLimiterConfig:  tokenpoolbindings.RateLimitConfig{},
 			})
 		}
 		if err := c.tokenPoolClient.ApplyChainUpdates(context.Background(), chainUpdates, nil); err != nil {

@@ -330,6 +330,13 @@ pub enum CCIPError {
     InvalidRemoteChainDecimals = 307,
     DecimalAmountOverflow = 308,
     InvalidPoolTokenDecimals = 309,
+    BucketOverfilled = 310,
+    TokenMaxCapacityExceeded = 311,
+    TokenRateLimitReached = 312,
+    InvalidRateLimitRate = 313,
+    DisabledNonZeroRateLimit = 314,
+    InvalidRequestedFinality = 315,
+    RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

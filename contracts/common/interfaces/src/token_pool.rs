@@ -1,3 +1,10 @@
+/// TODO: `lock_or_burn`'s `requested_finality` parameter is kept for interface
+/// parity with EVM but will always be 0 (WAIT_FOR_FINALITY) when Stellar is the
+/// source chain, since Stellar has no reorg risk and no fast confirmation rules.
+/// The FTF outbound rate limiting branch in `lock_or_burn` should be simplified
+/// to always use the default bucket. For `release_or_mint`, `requested_finality`
+/// is meaningful — messages from EVM sources may carry FTF flags, and Stellar as
+/// the destination should respect them for inbound rate limiting.
 #[soroban_sdk::contractclient(name = "TokenPoolClient")]
 pub trait TokenPoolInterface {
     fn initialize(
@@ -7,12 +14,16 @@ pub trait TokenPoolInterface {
         token_decimals: u32,
     ) -> Result<(), CCIPError>;
 
-    fn lock_or_burn(env: soroban_sdk::Env, input: LockOrBurnIn)
-        -> Result<LockOrBurnOut, CCIPError>;
+    fn lock_or_burn(
+        env: soroban_sdk::Env,
+        input: LockOrBurnIn,
+        requested_finality: u32,
+    ) -> Result<LockOrBurnOut, CCIPError>;
 
     fn release_or_mint(
         env: soroban_sdk::Env,
         input: ReleaseOrMintIn,
+        requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
 
     fn is_supported_token(
@@ -44,6 +55,34 @@ pub trait TokenPoolInterface {
         adds: soroban_sdk::Vec<ChainUpdate>,
         removes: soroban_sdk::Vec<u64>,
     ) -> Result<(), CCIPError>;
+
+    fn set_rate_limit_config(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+        outbound_config: RateLimitConfig,
+        inbound_config: RateLimitConfig,
+        fast_finality: bool,
+    ) -> Result<(), CCIPError>;
+
+    fn set_rate_limit_admin(
+        env: soroban_sdk::Env,
+        admin: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
+    fn get_current_rate_limiter_state(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+        fast_finality: bool,
+    ) -> RateLimiterState;
+
+    fn get_rate_limit_admin(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+
+    fn set_allowed_finality_config(
+        env: soroban_sdk::Env,
+        allowed_finality: u32,
+    ) -> Result<(), CCIPError>;
+
+    fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
 }
 
 #[soroban_sdk::contracttype(export = false)]
@@ -84,10 +123,37 @@ pub struct ReleaseOrMintOut {
 
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RateLimitConfig {
+    pub is_enabled: bool,
+    pub capacity: u128,
+    pub rate: u128,
+}
+
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TokenBucket {
+    pub tokens: u128,
+    pub last_updated: u64,
+    pub is_enabled: bool,
+    pub capacity: u128,
+    pub rate: u128,
+}
+
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RateLimiterState {
+    pub outbound: TokenBucket,
+    pub inbound: TokenBucket,
+}
+
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ChainUpdate {
     pub remote_chain_selector: u64,
     pub remote_pool_addresses: soroban_sdk::Bytes,
     pub remote_token_address: soroban_sdk::Bytes,
+    pub outbound_rate_limiter_config: RateLimitConfig,
+    pub inbound_rate_limiter_config: RateLimitConfig,
 }
 
 #[soroban_sdk::contracterror(export = false)]
@@ -196,6 +262,13 @@ pub enum CCIPError {
     InvalidRemoteChainDecimals = 307,
     DecimalAmountOverflow = 308,
     InvalidPoolTokenDecimals = 309,
+    BucketOverfilled = 310,
+    TokenMaxCapacityExceeded = 311,
+    TokenRateLimitReached = 312,
+    InvalidRateLimitRate = 313,
+    DisabledNonZeroRateLimit = 314,
+    InvalidRequestedFinality = 315,
+    RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

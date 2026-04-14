@@ -298,13 +298,21 @@ impl OnRampContract {
                 Self::get_pool_by_source_token_internal(&env, &static_config, &token_amount.token)?;
             let pool_client = TokenPoolClient::new(&env, &pool_address);
 
-            let lock_result = pool_client.lock_or_burn(&LockOrBurnIn {
-                receiver: message.receiver.clone(),
-                remote_chain_selector: dest_chain_selector,
-                original_sender: original_sender.clone(),
-                amount: token_amount.amount,
-                local_token: token_amount.token.clone(),
-            });
+            // TODO: On Stellar as the source chain, `block_confirmations` will
+            // always be 0 (WAIT_FOR_FINALITY) since Stellar has deterministic ~5s
+            // finality and no fast confirmation rules. The pool's FTF outbound
+            // branch is unreachable in practice. Consider asserting this invariant
+            // or hardcoding 0 instead of threading the extra_args value.
+            let lock_result = pool_client.lock_or_burn(
+                &LockOrBurnIn {
+                    receiver: message.receiver.clone(),
+                    remote_chain_selector: dest_chain_selector,
+                    original_sender: original_sender.clone(),
+                    amount: token_amount.amount,
+                    local_token: token_amount.token.clone(),
+                },
+                &extra_args.block_confirmations,
+            );
 
             let token_transfer = CcipTokenTransferV1 {
                 version: MESSAGE_V1_VERSION,
