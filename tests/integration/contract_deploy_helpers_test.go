@@ -201,7 +201,7 @@ func deployFullStack(
 
 	// 9. CCIP Receiver
 	recvClient := cciprecv.NewExampleCcipReceiverClient(deployer, s.ReceiverID)
-	if err := recvClient.Initialize(ctx, s.RouterID); err != nil {
+	if err := recvClient.Initialize(ctx, deployerAddr, s.RouterID); err != nil {
 		t.Fatalf("CcipReceiver Initialize: %v", err)
 	}
 

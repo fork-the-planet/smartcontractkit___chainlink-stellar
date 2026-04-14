@@ -100,6 +100,24 @@ use_common_message_types() {
   '
 }
 
+# Stellar bindings for ccip_receiver_example pull unrelated #[contracttype]s from the
+# common_interfaces dependency (e.g. AllowList*) and omit Ccv* structs referenced by the trait.
+# Normalize the checked-in interface module after generation.
+patch_ccip_receiver_interfaces() {
+  local f="$1"
+  perl -i -0pe '
+    # Drop OnRamp-style types leaked into this module via the dependency graph.
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListEntry \{[^}]+\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListUpdate \{[^}]+\}//s;
+    # Drop auth events re-exported from Ownable (same names exist in authorization helpers).
+    s/\n#\[soroban_sdk::contractevent\(topics = \["auth_[^]]+"\], export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct [^{]+\{[^}]+\}//sg;
+    # Insert CCV structs once (trait references them but stellar-cli omits definitions).
+    if ($_ !~ /pub struct CcvChainConfig/s) {
+      s/(fn get_remote_chain_extra_args\(\s*env: soroban_sdk::Env,\s*dest_chain_selector: u64,\s*\) -> Result<soroban_sdk::Bytes, CCIPError>;\n\})/$1\n#\[soroban_sdk::contracttype(export = false)\]\n#\[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)\]\npub struct CcvConfigUpdate {\n    pub source_chain_selector: u64,\n    pub required_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,\n    pub optional_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,\n    pub optional_threshold: u32,\n}\n#\[soroban_sdk::contracttype(export = false)\]\n#\[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)\]\npub struct CcvChainConfig {\n    pub required_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,\n    pub optional_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,\n    pub optional_threshold: u32,\n}/s;
+    }
+  ' "$f"
+}
+
 do_build=true
 for arg in "$@"; do
   case "$arg" in
@@ -136,6 +154,10 @@ for entry in "${CONTRACTS[@]}"; do
     | apply_renames "$pascal_name" \
     | use_common_message_types "${use_common_msg:-0}" \
     > "$out_path"
+
+  if [[ "$output_module" == "ccip_receiver" ]]; then
+    patch_ccip_receiver_interfaces "$out_path"
+  fi
 done
 
 echo "Done. Interfaces written to $INTERFACES_DIR"

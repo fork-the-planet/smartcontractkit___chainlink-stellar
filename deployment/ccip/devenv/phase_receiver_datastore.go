@@ -43,7 +43,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	}
 
 	recvClient := cciprecv.NewExampleCcipReceiverClient(h.Deployer(), receiverContractID)
-	if err := recvClient.Initialize(ctx, w.routerContractID); err != nil {
+	if err := recvClient.Initialize(ctx, h.DeployerKeypair().Address(), w.routerContractID); err != nil {
 		return fmt.Errorf("failed to initialize ccip_receiver_example: %w", err)
 	}
 

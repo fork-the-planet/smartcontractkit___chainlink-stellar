@@ -144,7 +144,7 @@ func TestRouter(t *testing.T) {
 		}
 
 		recvClient := cciprecv.NewExampleCcipReceiverClient(deployer, receiverID)
-		if err := recvClient.Initialize(ctx, routerID); err != nil {
+		if err := recvClient.Initialize(ctx, deployerKP.Address(), routerID); err != nil {
 			t.Fatalf("CcipReceiver Initialize: %v", err)
 		}
 
