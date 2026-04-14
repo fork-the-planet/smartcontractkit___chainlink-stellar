@@ -283,4 +283,3 @@ func (c *TokenAdminRegistryClient) RemoveRegistryModule(ctx context.Context, mod
 	_ = result // void return
 	return nil
 }
-

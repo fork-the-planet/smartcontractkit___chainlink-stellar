@@ -334,4 +334,3 @@ func (c *TokenPoolClient) GetAllowedFinalityConfig(ctx context.Context) (uint32,
 	}
 	return uint32(v), nil
 }
-
