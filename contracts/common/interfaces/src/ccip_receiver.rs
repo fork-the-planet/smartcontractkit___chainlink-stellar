@@ -18,12 +18,17 @@ pub trait ExampleCcipReceiverInterface {
         caller: soroban_sdk::Address,
         dest_chain_selector: u64,
         extra_args: soroban_sdk::Bytes,
+        allowed_finality_config: u32,
     ) -> Result<(), CCIPError>;
     fn disable_remote_chain(
         env: soroban_sdk::Env,
         caller: soroban_sdk::Address,
         dest_chain_selector: u64,
     ) -> Result<(), CCIPError>;
+    fn get_remote_chain_config(
+        env: soroban_sdk::Env,
+        chain_selector: u64,
+    ) -> Result<RemoteChainConfig, CCIPError>;
     fn send_data_pay_fee_token(
         env: soroban_sdk::Env,
         caller: soroban_sdk::Address,
@@ -38,11 +43,20 @@ pub trait ExampleCcipReceiverInterface {
         caller: soroban_sdk::Address,
         updates: soroban_sdk::Vec<CcvConfigUpdate>,
     ) -> Result<(), CCIPError>;
+    fn get_remote_chain_selectors(
+        env: soroban_sdk::Env,
+    ) -> Result<soroban_sdk::Vec<u64>, CCIPError>;
     fn get_remote_chain_extra_args(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
+    fn get_ccvs_and_finality_config(
+        env: soroban_sdk::Env,
+        source_chain_selector: u64,
+        unused: soroban_sdk::Bytes,
+    ) -> Result<CcvsAndFinalityConfig, CCIPError>;
 }
+
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct CcvConfigUpdate {
@@ -57,6 +71,20 @@ pub struct CcvChainConfig {
     pub required_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
     pub optional_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
     pub optional_threshold: u32,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RemoteChainConfig {
+    pub extra_args: soroban_sdk::Bytes,
+    pub allowed_finality_config: u32,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct CcvsAndFinalityConfig {
+    pub required_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub optional_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub optional_threshold: u32,
+    pub allowed_finality_config: u32,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -207,6 +235,7 @@ pub enum CCIPError {
     DisabledNonZeroRateLimit = 314,
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
+    InvalidChainForClient = 317,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }
@@ -232,4 +261,5 @@ pub struct CcipMessageReceivedEvent {
 pub struct CcipRemoteChainConfiguredEvent {
     pub dest_chain_selector: u64,
     pub extra_args_len: u32,
+    pub allowed_finality_config: u32,
 }

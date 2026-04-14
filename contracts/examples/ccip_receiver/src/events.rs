@@ -18,6 +18,8 @@ pub struct CcipMessageReceivedEvent {
 pub struct CcipRemoteChainConfiguredEvent {
     pub dest_chain_selector: u64,
     pub extra_args_len: u32,
+    /// FinalityCodec-style policy (EVM `bytes4`); `0` when disabled or unset.
+    pub allowed_finality_config: u32,
 }
 
 #[contractevent(topics = ["example_CcvCfg"])]

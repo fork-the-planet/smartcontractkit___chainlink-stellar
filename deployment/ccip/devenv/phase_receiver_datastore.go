@@ -47,6 +47,16 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		return fmt.Errorf("failed to initialize ccip_receiver_example: %w", err)
 	}
 
+	// EVM CCIPClientExample.validChain parity: allow inbound `ccip_receive` from each peer-chain selector
+	// (non-empty `extra_args` placeholder; real outbound extra args can be set later by the owner).
+	ownerAddr := h.DeployerKeypair().Address()
+	placeholderExtra := []byte{0x01}
+	for _, rs := range w.remoteSelectors {
+		if err := recvClient.EnableRemoteChain(ctx, ownerAddr, rs, placeholderExtra, 0); err != nil {
+			return fmt.Errorf("ccip_receiver_example EnableRemoteChain for source chain %d: %w", rs, err)
+		}
+	}
+
 	w.receiverContractID = receiverContractID
 	h.SetReceiver(receiverContractID)
 	h.Logger().Info().Str("receiverContractID", receiverContractID).Msg("CCIP receiver example deployed and initialized")

@@ -121,11 +121,12 @@ func (c *ExampleCcipReceiverClient) LastMessageId(ctx context.Context) ([32]byte
 }
 
 // EnableRemoteChain calls the enable_remote_chain function on the contract.
-func (c *ExampleCcipReceiverClient) EnableRemoteChain(ctx context.Context, caller string, destChainSelector uint64, extraArgs []byte) error {
+func (c *ExampleCcipReceiverClient) EnableRemoteChain(ctx context.Context, caller string, destChainSelector uint64, extraArgs []byte, allowedFinalityConfig uint32) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(caller),
 		scval.Uint64ToScVal(destChainSelector),
 		scval.BytesToScVal(extraArgs),
+		scval.Uint32ToScVal(allowedFinalityConfig),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "enable_remote_chain", args)
@@ -151,6 +152,24 @@ func (c *ExampleCcipReceiverClient) DisableRemoteChain(ctx context.Context, call
 
 	_ = result // void return
 	return nil
+}
+
+// GetRemoteChainConfig calls the get_remote_chain_config function on the contract.
+func (c *ExampleCcipReceiverClient) GetRemoteChainConfig(ctx context.Context, chainSelector uint64) (*RemoteChainConfig, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(chainSelector),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_remote_chain_config", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_remote_chain_config: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_remote_chain_config")
+	}
+
+	return RemoteChainConfigFromScVal(*result)
 }
 
 // SendDataPayFeeToken calls the send_data_pay_fee_token function on the contract.
@@ -196,6 +215,34 @@ func (c *ExampleCcipReceiverClient) ApplyCcvConfigUpdates(ctx context.Context, c
 	return nil
 }
 
+// GetRemoteChainSelectors calls the get_remote_chain_selectors function on the contract.
+func (c *ExampleCcipReceiverClient) GetRemoteChainSelectors(ctx context.Context) ([]uint64, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_remote_chain_selectors", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_remote_chain_selectors: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_remote_chain_selectors")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("expected vec return type")
+	}
+	out := make([]uint64, len(*vec))
+	for i, item := range *vec {
+		v, err := scval.Uint64FromScVal(item)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
 // GetRemoteChainExtraArgs calls the get_remote_chain_extra_args function on the contract.
 func (c *ExampleCcipReceiverClient) GetRemoteChainExtraArgs(ctx context.Context, destChainSelector uint64) ([]byte, error) {
 	args := []xdr.ScVal{
@@ -216,6 +263,25 @@ func (c *ExampleCcipReceiverClient) GetRemoteChainExtraArgs(ctx context.Context,
 		return nil, fmt.Errorf("expected bytes return type")
 	}
 	return []byte(v), nil
+}
+
+// GetCcvsAndFinalityConfig calls the get_ccvs_and_finality_config function on the contract.
+func (c *ExampleCcipReceiverClient) GetCcvsAndFinalityConfig(ctx context.Context, sourceChainSelector uint64, unused []byte) (*CcvsAndFinalityConfig, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(sourceChainSelector),
+		scval.BytesToScVal(unused),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_ccvs_and_finality_config", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_ccvs_and_finality_config: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_ccvs_and_finality_config")
+	}
+
+	return CcvsAndFinalityConfigFromScVal(*result)
 }
 
 // WaitForCcipCcvConfigSetEvent waits for a CcipCcvConfigSetEvent event.
@@ -452,6 +518,11 @@ func ParseCcipRemoteChainConfiguredEvent(e protocolrpc.EventInfo) (*CcipRemoteCh
 			v, ok := entry.Val.GetU32()
 			if ok {
 				result.ExtraArgsLen = uint32(v)
+			}
+		case "allowed_finality_config":
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.AllowedFinalityConfig = uint32(v)
 			}
 		}
 	}

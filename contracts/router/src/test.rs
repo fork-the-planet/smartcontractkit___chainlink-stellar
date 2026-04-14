@@ -560,6 +560,8 @@ fn test_route_message_happy_path() {
     let receiver_id = env.register(ExampleCcipReceiver, ());
     let receiver_client = ExampleCcipReceiverClient::new(&env, &receiver_id);
     receiver_client.initialize(&owner, &router_id);
+    let extra = Bytes::from_slice(&env, &[0x01]);
+    receiver_client.enable_remote_chain(&owner, &ROUTE_MSG_SOURCE_CHAIN, &extra, &0u32);
 
     let message = sample_any_to_stellar_message(&env);
     let result =

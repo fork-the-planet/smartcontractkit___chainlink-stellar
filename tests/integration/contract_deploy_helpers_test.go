@@ -204,6 +204,10 @@ func deployFullStack(
 	if err := recvClient.Initialize(ctx, deployerAddr, s.RouterID); err != nil {
 		t.Fatalf("CcipReceiver Initialize: %v", err)
 	}
+	// EVM CCIPClientExample.validChain: allow inbound messages from the configured remote source chain.
+	if err := recvClient.EnableRemoteChain(ctx, deployerAddr, remoteSourceChain, []byte{0x01}, 0); err != nil {
+		t.Fatalf("CcipReceiver EnableRemoteChain (inbound source allowlist): %v", err)
+	}
 
 	// 10. Register OffRamp on Router for remote source chain
 	if err := s.RouterClient.AddOfframp(ctx, remoteSourceChain, s.OfframpID); err != nil {

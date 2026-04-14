@@ -24,6 +24,9 @@
                 },
                 {
                   "bytes": "deadbeef"
+                },
+                {
+                  "u32": 65536
                 }
               ]
             }
@@ -32,6 +35,7 @@
         }
       ]
     ],
+    [],
     []
   ],
   "ledger": {
@@ -74,7 +78,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "RMEXT"
+                    "symbol": "RMCFG"
                   },
                   {
                     "u64": "9876"
@@ -83,7 +87,24 @@
               },
               "durability": "persistent",
               "val": {
-                "bytes": "deadbeef"
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "allowed_finality_config"
+                    },
+                    "val": {
+                      "u32": 65536
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "extra_args"
+                    },
+                    "val": {
+                      "bytes": "deadbeef"
+                    }
+                  }
+                ]
               }
             }
           },
@@ -120,6 +141,18 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "RMSELS"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "u64": "9876"
+                          }
+                        ]
                       }
                     },
                     {

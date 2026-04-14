@@ -154,6 +154,130 @@ func CcvChainConfigFromScVal(val xdr.ScVal) (*CcvChainConfig, error) {
 	return result, nil
 }
 
+// RemoteChainConfig represents the RemoteChainConfig struct from the contract.
+type RemoteChainConfig struct {
+	ExtraArgs             []byte
+	AllowedFinalityConfig uint32
+}
+
+// ToScVal converts RemoteChainConfig to an xdr.ScVal for contract calls.
+func (s RemoteChainConfig) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"extra_args":              scval.BytesToScVal(s.ExtraArgs),
+		"allowed_finality_config": scval.Uint32ToScVal(s.AllowedFinalityConfig),
+	})
+}
+
+// RemoteChainConfigFromScVal parses an xdr.ScVal into RemoteChainConfig.
+func RemoteChainConfigFromScVal(val xdr.ScVal) (*RemoteChainConfig, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &RemoteChainConfig{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "extra_args":
+			v, ok := entry.Val.GetBytes()
+			if !ok {
+				return nil, fmt.Errorf("extra_args is not bytes")
+			}
+			result.ExtraArgs = []byte(v)
+		case "allowed_finality_config":
+			v, ok := entry.Val.GetU32()
+			if !ok {
+				return nil, fmt.Errorf("allowed_finality_config is not u32")
+			}
+			result.AllowedFinalityConfig = uint32(v)
+		}
+	}
+
+	return result, nil
+}
+
+// CcvsAndFinalityConfig represents the CcvsAndFinalityConfig struct from the contract.
+type CcvsAndFinalityConfig struct {
+	RequiredCcvs          []string
+	OptionalCcvs          []string
+	OptionalThreshold     uint32
+	AllowedFinalityConfig uint32
+}
+
+// ToScVal converts CcvsAndFinalityConfig to an xdr.ScVal for contract calls.
+func (s CcvsAndFinalityConfig) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"required_ccvs":           scval.AddressSliceToScVal(s.RequiredCcvs),
+		"optional_ccvs":           scval.AddressSliceToScVal(s.OptionalCcvs),
+		"optional_threshold":      scval.Uint32ToScVal(s.OptionalThreshold),
+		"allowed_finality_config": scval.Uint32ToScVal(s.AllowedFinalityConfig),
+	})
+}
+
+// CcvsAndFinalityConfigFromScVal parses an xdr.ScVal into CcvsAndFinalityConfig.
+func CcvsAndFinalityConfigFromScVal(val xdr.ScVal) (*CcvsAndFinalityConfig, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &CcvsAndFinalityConfig{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "required_ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("required_ccvs is not a vec")
+			}
+			result.RequiredCcvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.RequiredCcvs[i] = v
+			}
+		case "optional_ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("optional_ccvs is not a vec")
+			}
+			result.OptionalCcvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.OptionalCcvs[i] = v
+			}
+		case "optional_threshold":
+			v, ok := entry.Val.GetU32()
+			if !ok {
+				return nil, fmt.Errorf("optional_threshold is not u32")
+			}
+			result.OptionalThreshold = uint32(v)
+		case "allowed_finality_config":
+			v, ok := entry.Val.GetU32()
+			if !ok {
+				return nil, fmt.Errorf("allowed_finality_config is not u32")
+			}
+			result.AllowedFinalityConfig = uint32(v)
+		}
+	}
+
+	return result, nil
+}
+
 // TokenAmount represents the TokenAmount struct from the contract.
 type TokenAmount struct {
 	Amount int64
@@ -578,6 +702,7 @@ const (
 	CCIPErrorDisabledNonZeroRateLimit            = 314
 	CCIPErrorInvalidRequestedFinality            = 315
 	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
+	CCIPErrorInvalidChainForClient               = 317
 	CCIPErrorInvalidFeeCalculation               = 801
 	CCIPErrorInvalidFeeTokenConversion           = 802
 )
@@ -694,6 +819,7 @@ var CCIPErrorMessage = map[int]string{
 	314: "disabled non zero rate limit",
 	315: "invalid requested finality",
 	316: "requested finality can only have one mode",
+	317: "invalid chain for client",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
@@ -732,8 +858,9 @@ const CcipMessageReceivedEventTopic = "example_CcipMessageReceived"
 // CcipRemoteChainConfiguredEvent represents the CcipRemoteChainConfiguredEvent event.
 // Topics: [example_RemChCfg]
 type CcipRemoteChainConfiguredEvent struct {
-	DestChainSelector uint64
-	ExtraArgsLen      uint32
+	DestChainSelector     uint64
+	ExtraArgsLen          uint32
+	AllowedFinalityConfig uint32
 	// Event metadata
 	Ledger uint32
 	TxHash string
