@@ -182,14 +182,21 @@ impl ExampleCcipReceiver {
         Ok(())
     }
 
-    pub fn get_ccv_config(env: Env, source_chain_selector: u64) -> Result<CcvChainConfig, CCIPError> {
+    pub fn get_ccv_config(
+        env: Env,
+        source_chain_selector: u64,
+    ) -> Result<CcvChainConfig, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let key = (CCV_KEY, source_chain_selector);
-        Ok(env.storage().persistent().get(&key).unwrap_or(CcvChainConfig {
-            required_ccvs: Vec::new(&env),
-            optional_ccvs: Vec::new(&env),
-            optional_threshold: 0,
-        }))
+        Ok(env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(CcvChainConfig {
+                required_ccvs: Vec::new(&env),
+                optional_ccvs: Vec::new(&env),
+                optional_threshold: 0,
+            }))
     }
 
     /// Data-only CCIP send using stored per-destination `extra_args`. `caller` is the Router `sender` and pays fees.
@@ -228,12 +235,7 @@ impl ExampleCcipReceiver {
         };
 
         let router_client = RouterClient::new(&env, &router);
-        Ok(router_client.ccip_send(
-            &caller,
-            &dest_chain_selector,
-            &message,
-            &fee_token_amount,
-        ))
+        Ok(router_client.ccip_send(&caller, &dest_chain_selector, &message, &fee_token_amount))
     }
 }
 
