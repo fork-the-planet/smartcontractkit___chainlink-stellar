@@ -314,19 +314,19 @@ func (c *SiloedLockReleasePoolClient) GetRemoteToken(ctx context.Context, remote
 }
 
 // TypeAndVersion calls the type_and_version function on the contract.
-func (c *SiloedLockReleasePoolClient) TypeAndVersion(ctx context.Context) (String, error) {
+func (c *SiloedLockReleasePoolClient) TypeAndVersion(ctx context.Context) (string, error) {
 	args := []xdr.ScVal{}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "type_and_version", args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call type_and_version: %w", err)
+		return "", fmt.Errorf("failed to call type_and_version: %w", err)
 	}
 
 	if result == nil {
-		return nil, fmt.Errorf("no return value from type_and_version")
+		return "", fmt.Errorf("no return value from type_and_version")
 	}
 
-	return StringFromScVal(*result)
+	return scval.StringFromScVal(*result)
 }
 
 // GetPendingOwner calls the get_pending_owner function on the contract.
@@ -1975,3 +1975,4 @@ func ParseLockBoxConfiguredEvent(e protocolrpc.EventInfo) (*LockBoxConfiguredEve
 
 	return result, nil
 }
+

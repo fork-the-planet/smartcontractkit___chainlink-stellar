@@ -17,6 +17,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Bytes, E
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
+use common_interfaces::token_lock_box::TokenLockBoxClient;
 use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
@@ -24,7 +25,6 @@ use common_pool::{
     RateLimitConfig, RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{LockBoxConfiguredEvent, LockedEvent, ReleasedEvent};
-use common_interfaces::token_lock_box::TokenLockBoxClient;
 
 const INITIALIZED: Symbol = symbol_short!("INIT");
 const OWNER: Symbol = symbol_short!("OWNER");
@@ -81,10 +81,7 @@ impl SiloedLockReleaseTokenPoolContract {
     /// Map remote chain selectors to lockbox addresses (EVM `configureLockBoxes`).
     /// Many selectors may point to the same lockbox (shared liquidity).
     /// Each lockbox must support this pool's token (`is_token_supported`).
-    pub fn configure_lock_boxes(
-        env: Env,
-        configs: Vec<LockBoxEntry>,
-    ) -> Result<(), CCIPError> {
+    pub fn configure_lock_boxes(env: Env, configs: Vec<LockBoxEntry>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
@@ -105,22 +102,21 @@ impl SiloedLockReleaseTokenPoolContract {
         Ok(())
     }
 
-    pub fn get_lock_box(
-        env: Env,
-        remote_chain_selector: u64,
-    ) -> Result<Address, CCIPError> {
+    pub fn get_lock_box(env: Env, remote_chain_selector: u64) -> Result<Address, CCIPError> {
         resolve_lock_box(&env, remote_chain_selector)
     }
 
-    pub fn get_all_lock_box_configs(
-        env: Env,
-    ) -> Result<Vec<LockBoxEntry>, CCIPError> {
+    pub fn get_all_lock_box_configs(env: Env) -> Result<Vec<LockBoxEntry>, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         let chains = load_supported_chains(&env);
         let mut out: Vec<LockBoxEntry> = Vec::new(&env);
         for sel in chains.iter() {
             let key = (LOCKBOX, sel);
-            if let Some(addr) = env.storage().persistent().get::<(Symbol, u64), Address>(&key) {
+            if let Some(addr) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, u64), Address>(&key)
+            {
                 out.push_back(LockBoxEntry {
                     remote_chain_selector: sel,
                     lock_box: addr,
@@ -211,7 +207,12 @@ impl SiloedLockReleaseTokenPoolContract {
         let remote_decimals = parse_remote_decimals(&input.source_pool_data, local_decimals)?;
         let local_amount = calculate_local_amount(input.amount, remote_decimals, local_decimals)?;
 
-        consume_inbound_rate_limit(&env, input.remote_chain_selector, local_amount, requested_finality)?;
+        consume_inbound_rate_limit(
+            &env,
+            input.remote_chain_selector,
+            local_amount,
+            requested_finality,
+        )?;
 
         <Self as BaseTokenPool>::postflight_check(
             &env,
@@ -455,8 +456,7 @@ fn consume_inbound_rate_limit(
     requested_finality: u32,
 ) -> Result<(), CCIPError> {
     if finality_codec::is_fast_finality(requested_finality) {
-        let used_ftf =
-            rate_limit::consume_ftf_inbound(env, remote_chain_selector, local_amount)?;
+        let used_ftf = rate_limit::consume_ftf_inbound(env, remote_chain_selector, local_amount)?;
         if used_ftf {
             FtfInboundConsumedEvent {
                 remote_chain_selector,

@@ -47,11 +47,7 @@ impl Ownable for TokenLockBox {
 impl TokenLockBox {
     /// One-time setup. `owner` governs the allowlist; `token` is the single
     /// asset this lockbox holds (EVM `i_token`).
-    pub fn initialize(
-        env: Env,
-        owner: Address,
-        token: Address,
-    ) -> Result<(), CCIPError> {
+    pub fn initialize(env: Env, owner: Address, token: Address) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
@@ -65,10 +61,7 @@ impl TokenLockBox {
     // Caller management (owner-only)
     // ------------------------------------------------------------------
 
-    pub fn add_allowed_callers(
-        env: Env,
-        callers: Vec<Address>,
-    ) -> Result<(), CCIPError> {
+    pub fn add_allowed_callers(env: Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         let mut current = load_callers(&env);
@@ -81,10 +74,7 @@ impl TokenLockBox {
         Ok(())
     }
 
-    pub fn remove_allowed_callers(
-        env: Env,
-        callers: Vec<Address>,
-    ) -> Result<(), CCIPError> {
+    pub fn remove_allowed_callers(env: Env, callers: Vec<Address>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
         let current = load_callers(&env);
@@ -110,11 +100,7 @@ impl TokenLockBox {
     ///
     /// `caller` must be an allowed address and must have authorised this
     /// invocation. The token transfer is `caller → lockbox`.
-    pub fn deposit(
-        env: Env,
-        caller: Address,
-        amount: i128,
-    ) -> Result<(), CCIPError> {
+    pub fn deposit(env: Env, caller: Address, amount: i128) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         require_allowed_caller(&env, &caller)?;
         if amount <= 0 {

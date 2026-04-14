@@ -321,9 +321,7 @@ pub trait BaseTokenPool {
     /// Store the router address. Owner-only — caller must enforce.
     /// On EVM this is part of `setDynamicConfig`.
     fn set_router(env: &Env, router: &Address) {
-        env.storage()
-            .instance()
-            .set(&PoolDataKey::Router, router);
+        env.storage().instance().set(&PoolDataKey::Router, router);
     }
 
     fn get_router(env: &Env) -> Option<Address> {
@@ -338,7 +336,11 @@ pub trait BaseTokenPool {
     /// If no router is configured the check is skipped (permissive — allows
     /// pools to work before router is wired up, matching existing behavior).
     fn require_router(env: &Env) -> Result<(), CCIPError> {
-        if let Some(router) = env.storage().instance().get::<PoolDataKey, Address>(&PoolDataKey::Router) {
+        if let Some(router) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::Router)
+        {
             router.require_auth();
         }
         Ok(())
@@ -377,9 +379,18 @@ pub trait BaseTokenPool {
         amount: i128,
         requested_finality: u32,
     ) -> Result<(), CCIPError> {
-        if let Some(hooks_addr) = env.storage().instance().get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks) {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
             let client = PoolHooksClient::new(env, &hooks_addr);
-            client.preflight_check(original_sender, &remote_chain_selector, &amount, &requested_finality);
+            client.preflight_check(
+                original_sender,
+                &remote_chain_selector,
+                &amount,
+                &requested_finality,
+            );
         }
         Ok(())
     }
@@ -393,9 +404,18 @@ pub trait BaseTokenPool {
         amount: i128,
         requested_finality: u32,
     ) -> Result<(), CCIPError> {
-        if let Some(hooks_addr) = env.storage().instance().get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks) {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
             let client = PoolHooksClient::new(env, &hooks_addr);
-            client.postflight_check(&source_chain_selector, receiver, &amount, &requested_finality);
+            client.postflight_check(
+                &source_chain_selector,
+                receiver,
+                &amount,
+                &requested_finality,
+            );
         }
         Ok(())
     }
