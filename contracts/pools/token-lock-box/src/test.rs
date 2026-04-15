@@ -39,8 +39,10 @@ fn deposit_and_withdraw() {
     let sac = token::StellarAssetClient::new(&env, &token_addr);
     sac.mint(&pool, &1_000);
 
-    client.deposit(&pool, &500);
     let tc = token::Client::new(&env, &token_addr);
+    let exp = env.ledger().sequence().saturating_add(10_000);
+    tc.approve(&pool, &client.address, &500, &exp);
+    client.deposit(&pool, &500);
     assert_eq!(tc.balance(&pool), 500);
     assert_eq!(tc.balance(&client.address), 500);
 
@@ -59,6 +61,9 @@ fn withdraw_insufficient_balance() {
 
     let sac = token::StellarAssetClient::new(&env, &token_addr);
     sac.mint(&pool, &100);
+    let tc = token::Client::new(&env, &token_addr);
+    let exp = env.ledger().sequence().saturating_add(10_000);
+    tc.approve(&pool, &client.address, &100, &exp);
     client.deposit(&pool, &100);
 
     let receiver = Address::generate(&env);

@@ -172,6 +172,27 @@ fn lock_deposits_into_lockbox() {
     assert!(!out.dest_token_address.is_empty());
 }
 
+/// Integration: `lock_or_burn` must not leave a standing SAC allowance from the pool to the lockbox.
+#[test]
+fn lock_or_burn_leaves_no_token_allowance_on_lockbox() {
+    let t = setup();
+    let sender = Address::generate(&t.env);
+    t.sac.mint(&sender, &1_000);
+
+    let input = LockOrBurnIn {
+        receiver: Bytes::from_slice(&t.env, &[0x01; 20]),
+        remote_chain_selector: REMOTE_CHAIN,
+        original_sender: sender.clone(),
+        amount: 500,
+        local_token: t.token_addr.clone(),
+    };
+    t.pool_client.lock_or_burn(&input, &0);
+
+    let pool_addr = t.pool_client.address.clone();
+    let remaining = t.tc.allowance(&pool_addr, &t.lockbox_client.address);
+    assert_eq!(remaining, 0);
+}
+
 #[test]
 fn release_withdraws_from_lockbox() {
     let t = setup();
@@ -180,6 +201,8 @@ fn release_withdraws_from_lockbox() {
     t.sac.mint(&liquidity_provider, &2_000);
     t.lockbox_client
         .add_allowed_callers(&vec![&t.env, liquidity_provider.clone()]);
+    let exp = t.env.ledger().sequence().saturating_add(10_000);
+    t.tc.approve(&liquidity_provider, &t.lockbox_client.address, &2_000, &exp);
     t.lockbox_client.deposit(&liquidity_provider, &2_000);
 
     let receiver = Address::generate(&t.env);
@@ -623,6 +646,8 @@ fn release_rejects_wrong_token() {
     t.sac.mint(&liquidity_provider, &1_000);
     t.lockbox_client
         .add_allowed_callers(&vec![&t.env, liquidity_provider.clone()]);
+    let exp = t.env.ledger().sequence().saturating_add(10_000);
+    t.tc.approve(&liquidity_provider, &t.lockbox_client.address, &1_000, &exp);
     t.lockbox_client.deposit(&liquidity_provider, &1_000);
 
     let other_admin = Address::generate(&t.env);
