@@ -20,9 +20,10 @@ import (
 )
 
 func TestTokenPool(t *testing.T) {
-	// Many subtests each deploy stacks / use RPC; 5m is too tight on CI (shared ctx expires →
-	// "context deadline exceeded" on WASM upload or get_ledger_entries).
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	// Cap total test wall time (WASM deploys, RPC, event waits). Previously 20m when every subtest
+	// called deployFullStack; with two shared stacks, 10m matches headroom above other integration
+	// tests (5m) without keeping an oversized ceiling. Raise if CI flakes on slow uploads/RPC.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL := GetSharedTestEnv(ctx, t)
