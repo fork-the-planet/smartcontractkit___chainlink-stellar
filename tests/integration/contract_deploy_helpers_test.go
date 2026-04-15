@@ -643,6 +643,7 @@ func deployOutboundSendWire(
 		TokenNetworkFeeUsdCents:   100,
 		BaseExecutionGasCost:      200_000,
 		DefaultExecutor:           defaultExecutor,
+		ExecutionFeeUsdCents:      25,
 		LaneMandatedCcvs:          nil,
 		DefaultCcvs:               []string{stack.VvrID},
 		OffRamp:                   offRampEVM,

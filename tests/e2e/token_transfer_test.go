@@ -143,6 +143,129 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 	})
 }
 
+// TestStellarToEVMTokenTransferFees validates that fees are correctly collected
+// during a Stellar-to-EVM token transfer:
+//
+//  1. Record balances of sender, OnRamp, and token pool before
+//  2. Send a token transfer via ccip_send
+//  3. Assert: sender lost more than tokenTransferAmount (fee deducted)
+//  4. Assert: pool balance increased by exactly tokenTransferAmount
+//  5. Assert: OnRamp holds fee tokens
+func TestStellarToEVMTokenTransferFees(t *testing.T) {
+	configOutputPath := "../env/env-stellar-evm-out.toml"
+
+	stellarChainID := chainsel.STELLAR_LOCALNET.ChainID
+	stellarSelector := chainsel.STELLAR_LOCALNET.Selector
+
+	ctx := ccv.Plog.WithContext(t.Context())
+	l := zerolog.Ctx(ctx)
+
+	env := helpers.NewE2ETestEnv(t, ctx, l, configOutputPath, stellarChainID, stellarSelector)
+	stellarDetails := env.SourceChainDetails
+	evmDetails := env.DestChainDetails
+
+	stellarChain := env.Chains[stellarDetails.ChainSelector]
+	require.NotNil(t, stellarChain, "Stellar chain not found")
+
+	evmChain := env.Chains[evmDetails.ChainSelector]
+	require.NotNil(t, evmChain, "EVM chain not found")
+
+	stellarCcvChain, ok := stellarChain.(*ccvchain.Chain)
+	require.True(t, ok, "Stellar chain must be *ccvchain.Chain")
+
+	tokenAddr, err := stellarCcvChain.GetTokenAddress()
+	require.NoError(t, err)
+	tokenRaw, err := strkey.Decode(strkey.VersionByteContract, tokenAddr)
+	require.NoError(t, err)
+
+	senderAddr, err := stellarChain.GetSenderAddress()
+	require.NoError(t, err)
+
+	poolAddr, err := stellarCcvChain.GetTokenPoolAddress()
+	require.NoError(t, err)
+	poolRaw, err := strkey.Decode(strkey.VersionByteContract, poolAddr)
+	require.NoError(t, err)
+
+	onRampAddr, err := stellarCcvChain.GetOnRampAddress()
+	require.NoError(t, err)
+	onRampRaw, err := strkey.Decode(strkey.VersionByteContract, onRampAddr)
+	require.NoError(t, err)
+
+	t.Run("fee_collection_on_token_transfer", func(t *testing.T) {
+		evmReceiver, err := evmChain.GetEOAReceiverAddress()
+		require.NoError(t, err)
+
+		senderBalBefore, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+		l.Info().Str("sender_balance_before", senderBalBefore.String()).Msg("balances before transfer")
+
+		poolBalBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+		l.Info().Str("pool_balance_before", poolBalBefore.String()).Msg("balances before transfer")
+
+		onRampBalBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+		l.Info().Str("onramp_balance_before", onRampBalBefore.String()).Msg("balances before transfer")
+
+		seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
+		require.NoError(t, err)
+
+		_, err = stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+			cciptestinterfaces.MessageFields{
+				Receiver: evmReceiver,
+				Data:     []byte("fee-test"),
+				TokenAmount: cciptestinterfaces.TokenAmount{
+					Amount:       big.NewInt(tokenTransferAmount),
+					TokenAddress: protocol.UnknownAddress(tokenRaw),
+				},
+			},
+			cciptestinterfaces.MessageOptions{},
+		)
+		require.NoError(t, err)
+
+		_, err = stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
+		require.NoError(t, err)
+
+		senderBalAfter, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+
+		poolBalAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+
+		onRampBalAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(tokenRaw))
+		require.NoError(t, err)
+
+		senderDelta := new(big.Int).Sub(senderBalBefore, senderBalAfter)
+		poolDelta := new(big.Int).Sub(poolBalAfter, poolBalBefore)
+		onRampDelta := new(big.Int).Sub(onRampBalAfter, onRampBalBefore)
+
+		l.Info().
+			Str("sender_delta", senderDelta.String()).
+			Str("pool_delta", poolDelta.String()).
+			Str("onramp_delta", onRampDelta.String()).
+			Msg("Balance deltas after token transfer")
+
+		require.True(t, senderDelta.Int64() > tokenTransferAmount,
+			"sender should lose more than transfer amount (fees); got delta=%s, transferAmount=%d",
+			senderDelta, tokenTransferAmount)
+
+		require.Equal(t, tokenTransferAmount, poolDelta.Int64(),
+			"pool balance should increase by exactly the transfer amount")
+
+		feeCollected := new(big.Int).Sub(senderDelta, poolDelta)
+		require.True(t, feeCollected.Sign() > 0,
+			"fee collected should be positive; got %s", feeCollected)
+
+		require.True(t, onRampDelta.Sign() >= 0,
+			"OnRamp fee token balance should not decrease")
+
+		l.Info().
+			Str("fee_collected", feeCollected.String()).
+			Str("onramp_fee_held", onRampDelta.String()).
+			Msg("Fee collection validated")
+	})
+}
+
 // TestEVMToStellarTokenTransfer validates the EVM-to-Stellar token transfer flow:
 //
 //  1. EVM OnRamp lock/burn
