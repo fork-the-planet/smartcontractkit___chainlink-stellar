@@ -35,9 +35,8 @@ CONTRACTS=(
   "router|Router|router|0|"
   "ccip_receiver|ExampleCcipReceiver|ccip_receiver|0|"
   "token_admin_registry|TokenAdminRegistry|token_admin_registry|0|"
-  "token_pool|TokenPool|token_pool|0|"
-  "token_pool|LockReleasePool|lock_release_pool|0|contracts/common/pool/src/events.rs"
-  "token_pool|BurnMintPool|burn_mint_pool|0|contracts/common/pool/src/events.rs"
+  "lock_release_pool|LockReleasePool|lock_release_pool|0|contracts/pools/lock-release-pool/src/events.rs"
+  "burn_mint_pool|BurnMintPool|burn_mint_pool|0|contracts/pools/burn-mint-pool/src/events.rs"
 )
 
 # Extract TokenAmount and StellarToAnyMessage structs from committee_verifier for contracts that use common_message
