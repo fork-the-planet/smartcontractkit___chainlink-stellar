@@ -184,6 +184,17 @@ pub struct LockOrBurnOut {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolFeeConfig {
+    pub fee_usd_cents: u32,
+    pub is_enabled: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolFeeResult {
+    pub fee_usd_cents: u32,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct RateLimitConfig {
     pub capacity: u128,
     pub is_enabled: bool,
@@ -238,6 +249,7 @@ pub enum PoolDataKey {
     AllowedFinalityConfig,
     Router,
     AdvancedPoolHooks,
+    PoolFeeConfig(u64),
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -352,6 +364,7 @@ pub enum CCIPError {
     DisabledNonZeroRateLimit = 314,
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
+    InvalidChainForClient = 317,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }
