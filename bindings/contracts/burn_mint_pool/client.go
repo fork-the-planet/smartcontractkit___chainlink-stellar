@@ -31,6 +31,101 @@ func (c *BurnMintPoolClient) ContractID() string {
 	return c.contractID
 }
 
+// Owner calls the owner function on the contract.
+func (c *BurnMintPoolClient) Owner(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "owner", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call owner: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from owner")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// GetFee calls the get_fee function on the contract.
+func (c *BurnMintPoolClient) GetFee(ctx context.Context, remoteChainSelector uint64) (*PoolFeeResult, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_fee", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_fee: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_fee")
+	}
+
+	return PoolFeeResultFromScVal(*result)
+}
+
+// IsOwner calls the is_owner function on the contract.
+func (c *BurnMintPoolClient) IsOwner(ctx context.Context, addr string) (bool, error) {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(addr),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
+// GetToken calls the get_token function on the contract.
+func (c *BurnMintPoolClient) GetToken(ctx context.Context) (string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_token", args)
+	if err != nil {
+		return "", fmt.Errorf("failed to call get_token: %w", err)
+	}
+
+	if result == nil {
+		return "", fmt.Errorf("no return value from get_token")
+	}
+
+	v, err := scval.AddressFromScVal(*result)
+	if err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
+// InitOwner calls the init_owner function on the contract.
+func (c *BurnMintPoolClient) InitOwner(ctx context.Context, owner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(owner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "init_owner", args)
+	if err != nil {
+		return fmt.Errorf("failed to call init_owner: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // Initialize calls the initialize function on the contract.
 func (c *BurnMintPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32) error {
 	args := []xdr.ScVal{
@@ -67,98 +162,17 @@ func (c *BurnMintPoolClient) LockOrBurn(ctx context.Context, input LockOrBurnIn,
 	return LockOrBurnOutFromScVal(*result)
 }
 
-// ReleaseOrMint calls the release_or_mint function on the contract.
-func (c *BurnMintPoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
-	args := []xdr.ScVal{
-		scval.MustToScVal(input.ToScVal()),
-		scval.Uint32ToScVal(requestedFinality),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "release_or_mint", args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call release_or_mint: %w", err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no return value from release_or_mint")
-	}
-
-	return ReleaseOrMintOutFromScVal(*result)
-}
-
-// GetFee calls the get_fee function on the contract.
-func (c *BurnMintPoolClient) GetFee(ctx context.Context, remoteChainSelector uint64) (*PoolFeeResult, error) {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(remoteChainSelector),
-	}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_fee", args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call get_fee: %w", err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no return value from get_fee")
-	}
-
-	return PoolFeeResultFromScVal(*result)
-}
-
-// IsSupportedToken calls the is_supported_token function on the contract.
-func (c *BurnMintPoolClient) IsSupportedToken(ctx context.Context, token string) (bool, error) {
-	args := []xdr.ScVal{
-		scval.AddressToScVal(token),
-	}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_supported_token", args)
-	if err != nil {
-		return false, fmt.Errorf("failed to call is_supported_token: %w", err)
-	}
-
-	if result == nil {
-		return false, fmt.Errorf("no return value from is_supported_token")
-	}
-
-	v, ok := result.GetB()
-	if !ok {
-		return false, fmt.Errorf("expected bool return type")
-	}
-	return v, nil
-}
-
-// IsSupportedChain calls the is_supported_chain function on the contract.
-func (c *BurnMintPoolClient) IsSupportedChain(ctx context.Context, remoteChainSelector uint64) (bool, error) {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(remoteChainSelector),
-	}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_supported_chain", args)
-	if err != nil {
-		return false, fmt.Errorf("failed to call is_supported_chain: %w", err)
-	}
-
-	if result == nil {
-		return false, fmt.Errorf("no return value from is_supported_chain")
-	}
-
-	v, ok := result.GetB()
-	if !ok {
-		return false, fmt.Errorf("expected bool return type")
-	}
-	return v, nil
-}
-
-// GetToken calls the get_token function on the contract.
-func (c *BurnMintPoolClient) GetToken(ctx context.Context) (string, error) {
+// RequireOwner calls the require_owner function on the contract.
+func (c *BurnMintPoolClient) RequireOwner(ctx context.Context) (string, error) {
 	args := []xdr.ScVal{}
 
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_token", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "require_owner", args)
 	if err != nil {
-		return "", fmt.Errorf("failed to call get_token: %w", err)
+		return "", fmt.Errorf("failed to call require_owner: %w", err)
 	}
 
 	if result == nil {
-		return "", fmt.Errorf("no return value from get_token")
+		return "", fmt.Errorf("no return value from require_owner")
 	}
 
 	v, err := scval.AddressFromScVal(*result)
@@ -168,24 +182,19 @@ func (c *BurnMintPoolClient) GetToken(ctx context.Context) (string, error) {
 	return v, nil
 }
 
-// GetTokenDecimals calls the get_token_decimals function on the contract.
-func (c *BurnMintPoolClient) GetTokenDecimals(ctx context.Context) (uint32, error) {
-	args := []xdr.ScVal{}
+// SetNewOwner calls the set_new_owner function on the contract.
+func (c *BurnMintPoolClient) SetNewOwner(ctx context.Context, newOwner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(newOwner),
+	}
 
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_token_decimals", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_new_owner", args)
 	if err != nil {
-		return 0, fmt.Errorf("failed to call get_token_decimals: %w", err)
+		return fmt.Errorf("failed to call set_new_owner: %w", err)
 	}
 
-	if result == nil {
-		return 0, fmt.Errorf("no return value from get_token_decimals")
-	}
-
-	v, ok := result.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 return type")
-	}
-	return uint32(v), nil
+	_ = result // void return
+	return nil
 }
 
 // GetRemotePool calls the get_remote_pool function on the contract.
@@ -210,6 +219,38 @@ func (c *BurnMintPoolClient) GetRemotePool(ctx context.Context, remoteChainSelec
 	return []byte(v), nil
 }
 
+// ReleaseOrMint calls the release_or_mint function on the contract.
+func (c *BurnMintPoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
+	args := []xdr.ScVal{
+		scval.MustToScVal(input.ToScVal()),
+		scval.Uint32ToScVal(requestedFinality),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "release_or_mint", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call release_or_mint: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from release_or_mint")
+	}
+
+	return ReleaseOrMintOutFromScVal(*result)
+}
+
+// AcceptOwnership calls the accept_ownership function on the contract.
+func (c *BurnMintPoolClient) AcceptOwnership(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "accept_ownership", args)
+	if err != nil {
+		return fmt.Errorf("failed to call accept_ownership: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // GetRemoteToken calls the get_remote_token function on the contract.
 func (c *BurnMintPoolClient) GetRemoteToken(ctx context.Context, remoteChainSelector uint64) ([]byte, error) {
 	args := []xdr.ScVal{
@@ -232,6 +273,105 @@ func (c *BurnMintPoolClient) GetRemoteToken(ctx context.Context, remoteChainSele
 	return []byte(v), nil
 }
 
+// GetPendingOwner calls the get_pending_owner function on the contract.
+func (c *BurnMintPoolClient) GetPendingOwner(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_pending_owner", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_pending_owner: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_pending_owner")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// GetTokenDecimals calls the get_token_decimals function on the contract.
+func (c *BurnMintPoolClient) GetTokenDecimals(ctx context.Context) (uint32, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_token_decimals", args)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call get_token_decimals: %w", err)
+	}
+
+	if result == nil {
+		return 0, fmt.Errorf("no return value from get_token_decimals")
+	}
+
+	v, ok := result.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 return type")
+	}
+	return uint32(v), nil
+}
+
+// IsSupportedChain calls the is_supported_chain function on the contract.
+func (c *BurnMintPoolClient) IsSupportedChain(ctx context.Context, remoteChainSelector uint64) (bool, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_supported_chain", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_supported_chain: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_supported_chain")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
+// IsSupportedToken calls the is_supported_token function on the contract.
+func (c *BurnMintPoolClient) IsSupportedToken(ctx context.Context, token string) (bool, error) {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(token),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_supported_token", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_supported_token: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_supported_token")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
+// TransferOwnership calls the transfer_ownership function on the contract.
+func (c *BurnMintPoolClient) TransferOwnership(ctx context.Context, newOwner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(newOwner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
+	if err != nil {
+		return fmt.Errorf("failed to call transfer_ownership: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // ApplyChainUpdates calls the apply_chain_updates function on the contract.
 func (c *BurnMintPoolClient) ApplyChainUpdates(ctx context.Context, adds []ChainUpdate, removes []uint64) error {
 	args := []xdr.ScVal{
@@ -242,6 +382,57 @@ func (c *BurnMintPoolClient) ApplyChainUpdates(ctx context.Context, adds []Chain
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_chain_updates", args)
 	if err != nil {
 		return fmt.Errorf("failed to call apply_chain_updates: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// SetPoolFeeConfig calls the set_pool_fee_config function on the contract.
+func (c *BurnMintPoolClient) SetPoolFeeConfig(ctx context.Context, remoteChainSelector uint64, config PoolFeeConfig) error {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.MustToScVal(config.ToScVal()),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_pool_fee_config", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_pool_fee_config: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// GetRateLimitAdmin calls the get_rate_limit_admin function on the contract.
+func (c *BurnMintPoolClient) GetRateLimitAdmin(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_rate_limit_admin", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_rate_limit_admin: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_rate_limit_admin")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// SetRateLimitAdmin calls the set_rate_limit_admin function on the contract.
+func (c *BurnMintPoolClient) SetRateLimitAdmin(ctx context.Context, admin string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(admin),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_rate_limit_admin", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_rate_limit_admin: %w", err)
 	}
 
 	_ = result // void return
@@ -266,69 +457,13 @@ func (c *BurnMintPoolClient) SetRateLimitConfig(ctx context.Context, remoteChain
 	return nil
 }
 
-// SetRateLimitAdmin calls the set_rate_limit_admin function on the contract.
-func (c *BurnMintPoolClient) SetRateLimitAdmin(ctx context.Context, admin string) error {
-	args := []xdr.ScVal{
-		scval.AddressToScVal(admin),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_rate_limit_admin", args)
-	if err != nil {
-		return fmt.Errorf("failed to call set_rate_limit_admin: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// GetCurrentRateLimiterState calls the get_current_rate_limiter_state function on the contract.
-func (c *BurnMintPoolClient) GetCurrentRateLimiterState(ctx context.Context, remoteChainSelector uint64, fastFinality bool) (*RateLimiterState, error) {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(remoteChainSelector),
-		scval.BoolToScVal(fastFinality),
-	}
-
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_current_rate_limiter_state", args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call get_current_rate_limiter_state: %w", err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no return value from get_current_rate_limiter_state")
-	}
-
-	return RateLimiterStateFromScVal(*result)
-}
-
-// GetRateLimitAdmin calls the get_rate_limit_admin function on the contract.
-func (c *BurnMintPoolClient) GetRateLimitAdmin(ctx context.Context) (*string, error) {
+// CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
+func (c *BurnMintPoolClient) CancelOwnershipTransfer(ctx context.Context) error {
 	args := []xdr.ScVal{}
 
-	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_rate_limit_admin", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "cancel_ownership_transfer", args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call get_rate_limit_admin: %w", err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no return value from get_rate_limit_admin")
-	}
-
-	v, err := scval.OptionalAddressFromScVal(*result)
-	if err != nil {
-		return nil, err
-	}
-	return v, nil
-}
-
-// SetAllowedFinalityConfig calls the set_allowed_finality_config function on the contract.
-func (c *BurnMintPoolClient) SetAllowedFinalityConfig(ctx context.Context, allowedFinality uint32) error {
-	args := []xdr.ScVal{
-		scval.Uint32ToScVal(allowedFinality),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_allowed_finality_config", args)
-	if err != nil {
-		return fmt.Errorf("failed to call set_allowed_finality_config: %w", err)
+		return fmt.Errorf("failed to call cancel_ownership_transfer: %w", err)
 	}
 
 	_ = result // void return
@@ -355,8 +490,42 @@ func (c *BurnMintPoolClient) GetAllowedFinalityConfig(ctx context.Context) (uint
 	return uint32(v), nil
 }
 
-// WaitForLockedEvent waits for a LockedEvent event.
-func (c *BurnMintPoolClient) WaitForLockedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*LockedEvent) bool) (*LockedEvent, error) {
+// SetAllowedFinalityConfig calls the set_allowed_finality_config function on the contract.
+func (c *BurnMintPoolClient) SetAllowedFinalityConfig(ctx context.Context, allowedFinality uint32) error {
+	args := []xdr.ScVal{
+		scval.Uint32ToScVal(allowedFinality),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_allowed_finality_config", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_allowed_finality_config: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// GetCurrentRateLimiterState calls the get_current_rate_limiter_state function on the contract.
+func (c *BurnMintPoolClient) GetCurrentRateLimiterState(ctx context.Context, remoteChainSelector uint64, fastFinality bool) (*RateLimiterState, error) {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.BoolToScVal(fastFinality),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_current_rate_limiter_state", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_current_rate_limiter_state: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_current_rate_limiter_state")
+	}
+
+	return RateLimiterStateFromScVal(*result)
+}
+
+// WaitForRoleGrantedEvent waits for a RoleGrantedEvent event.
+func (c *BurnMintPoolClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleGrantedEvent) bool) (*RoleGrantedEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -370,13 +539,13 @@ func (c *BurnMintPoolClient) WaitForLockedEvent(ctx context.Context, startLedger
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{LockedEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleGrantedEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseLockedEvent(e)
+				parsed, err := ParseRoleGrantedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -388,7 +557,7 @@ func (c *BurnMintPoolClient) WaitForLockedEvent(ctx context.Context, startLedger
 	}
 }
 
-func ParseLockedEvent(e protocolrpc.EventInfo) (*LockedEvent, error) {
+func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -399,7 +568,7 @@ func ParseLockedEvent(e protocolrpc.EventInfo) (*LockedEvent, error) {
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &LockedEvent{
+	result := &RoleGrantedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -411,15 +580,20 @@ func ParseLockedEvent(e protocolrpc.EventInfo) (*LockedEvent, error) {
 		}
 
 		switch string(key) {
+		case "role":
+			v, err := scval.SymbolFromScVal(entry.Val)
+			if err == nil {
+				result.Role = v
+			}
+		case "account":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Account = v
+			}
 		case "sender":
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
 				result.Sender = v
-			}
-		case "amount":
-			v, err := scval.I128FromScVal(entry.Val)
-			if err == nil {
-				result.Amount = v
 			}
 		}
 	}
@@ -427,8 +601,8 @@ func ParseLockedEvent(e protocolrpc.EventInfo) (*LockedEvent, error) {
 	return result, nil
 }
 
-// WaitForReleasedEvent waits for a ReleasedEvent event.
-func (c *BurnMintPoolClient) WaitForReleasedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ReleasedEvent) bool) (*ReleasedEvent, error) {
+// WaitForRoleRevokedEvent waits for a RoleRevokedEvent event.
+func (c *BurnMintPoolClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleRevokedEvent) bool) (*RoleRevokedEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -442,13 +616,13 @@ func (c *BurnMintPoolClient) WaitForReleasedEvent(ctx context.Context, startLedg
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ReleasedEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleRevokedEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseReleasedEvent(e)
+				parsed, err := ParseRoleRevokedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -460,7 +634,7 @@ func (c *BurnMintPoolClient) WaitForReleasedEvent(ctx context.Context, startLedg
 	}
 }
 
-func ParseReleasedEvent(e protocolrpc.EventInfo) (*ReleasedEvent, error) {
+func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -471,7 +645,7 @@ func ParseReleasedEvent(e protocolrpc.EventInfo) (*ReleasedEvent, error) {
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &ReleasedEvent{
+	result := &RoleRevokedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -483,20 +657,226 @@ func ParseReleasedEvent(e protocolrpc.EventInfo) (*ReleasedEvent, error) {
 		}
 
 		switch string(key) {
+		case "role":
+			v, err := scval.SymbolFromScVal(entry.Val)
+			if err == nil {
+				result.Role = v
+			}
+		case "account":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Account = v
+			}
 		case "sender":
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
 				result.Sender = v
 			}
-		case "recipient":
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForAuthorizedCallerAddedEvent waits for a AuthorizedCallerAddedEvent event.
+func (c *BurnMintPoolClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerAddedEvent) bool) (*AuthorizedCallerAddedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerAddedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseAuthorizedCallerAddedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &AuthorizedCallerAddedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "caller":
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
-				result.Recipient = v
+				result.Caller = v
 			}
-		case "amount":
-			v, err := scval.I128FromScVal(entry.Val)
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForAuthorizedCallerRemovedEvent waits for a AuthorizedCallerRemovedEvent event.
+func (c *BurnMintPoolClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerRemovedEvent) bool) (*AuthorizedCallerRemovedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerRemovedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &AuthorizedCallerRemovedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "caller":
+			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
-				result.Amount = v
+				result.Caller = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForOwnershipTransferStartedEvent waits for a OwnershipTransferStartedEvent event.
+func (c *BurnMintPoolClient) WaitForOwnershipTransferStartedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferStartedEvent) bool) (*OwnershipTransferStartedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferStartedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseOwnershipTransferStartedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &OwnershipTransferStartedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "previous_owner":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.PreviousOwner = v
+			}
+		case "new_owner":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.NewOwner = v
 			}
 		}
 	}
@@ -549,6 +929,78 @@ func ParseBurnedEvent(e protocolrpc.EventInfo) (*BurnedEvent, error) {
 	}
 
 	result := &BurnedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "sender":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Sender = v
+			}
+		case "amount":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err == nil {
+				result.Amount = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForLockedEvent waits for a LockedEvent event.
+func (c *BurnMintPoolClient) WaitForLockedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*LockedEvent) bool) (*LockedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{LockedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseLockedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseLockedEvent(e protocolrpc.EventInfo) (*LockedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &LockedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -653,6 +1105,150 @@ func ParseMintedEvent(e protocolrpc.EventInfo) (*MintedEvent, error) {
 	return result, nil
 }
 
+// WaitForReleasedEvent waits for a ReleasedEvent event.
+func (c *BurnMintPoolClient) WaitForReleasedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ReleasedEvent) bool) (*ReleasedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ReleasedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseReleasedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseReleasedEvent(e protocolrpc.EventInfo) (*ReleasedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &ReleasedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "sender":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Sender = v
+			}
+		case "recipient":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err == nil {
+				result.Recipient = v
+			}
+		case "amount":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err == nil {
+				result.Amount = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForChainRemovedEvent waits for a ChainRemovedEvent event.
+func (c *BurnMintPoolClient) WaitForChainRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ChainRemovedEvent) bool) (*ChainRemovedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ChainRemovedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseChainRemovedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseChainRemovedEvent(e protocolrpc.EventInfo) (*ChainRemovedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &ChainRemovedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "remote_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.RemoteChainSelector = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // WaitForChainConfiguredEvent waits for a ChainConfiguredEvent event.
 func (c *BurnMintPoolClient) WaitForChainConfiguredEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ChainConfiguredEvent) bool) (*ChainConfiguredEvent, error) {
 	startTime := time.Now()
@@ -740,8 +1336,8 @@ func ParseChainConfiguredEvent(e protocolrpc.EventInfo) (*ChainConfiguredEvent, 
 	return result, nil
 }
 
-// WaitForChainRemovedEvent waits for a ChainRemovedEvent event.
-func (c *BurnMintPoolClient) WaitForChainRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ChainRemovedEvent) bool) (*ChainRemovedEvent, error) {
+// WaitForFinalityConfigSetEvent waits for a FinalityConfigSetEvent event.
+func (c *BurnMintPoolClient) WaitForFinalityConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*FinalityConfigSetEvent) bool) (*FinalityConfigSetEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -755,13 +1351,13 @@ func (c *BurnMintPoolClient) WaitForChainRemovedEvent(ctx context.Context, start
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ChainRemovedEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{FinalityConfigSetEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseChainRemovedEvent(e)
+				parsed, err := ParseFinalityConfigSetEvent(e)
 				if err != nil {
 					continue
 				}
@@ -773,7 +1369,7 @@ func (c *BurnMintPoolClient) WaitForChainRemovedEvent(ctx context.Context, start
 	}
 }
 
-func ParseChainRemovedEvent(e protocolrpc.EventInfo) (*ChainRemovedEvent, error) {
+func ParseFinalityConfigSetEvent(e protocolrpc.EventInfo) (*FinalityConfigSetEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -784,7 +1380,7 @@ func ParseChainRemovedEvent(e protocolrpc.EventInfo) (*ChainRemovedEvent, error)
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &ChainRemovedEvent{
+	result := &FinalityConfigSetEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -796,92 +1392,10 @@ func ParseChainRemovedEvent(e protocolrpc.EventInfo) (*ChainRemovedEvent, error)
 		}
 
 		switch string(key) {
-		case "remote_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err == nil {
-				result.RemoteChainSelector = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForRateLimitConfiguredEvent waits for a RateLimitConfiguredEvent event.
-func (c *BurnMintPoolClient) WaitForRateLimitConfiguredEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RateLimitConfiguredEvent) bool) (*RateLimitConfiguredEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RateLimitConfiguredEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseRateLimitConfiguredEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseRateLimitConfiguredEvent(e protocolrpc.EventInfo) (*RateLimitConfiguredEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &RateLimitConfiguredEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "remote_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err == nil {
-				result.RemoteChainSelector = v
-			}
-		case "fast_finality":
-			v, ok := entry.Val.GetB()
+		case "allowed_finality":
+			v, ok := entry.Val.GetU32()
 			if ok {
-				result.FastFinality = v
-			}
-		case "outbound_config":
-			v, err := RateLimitConfigFromScVal(entry.Val)
-			if err == nil {
-				result.OutboundConfig = *v
-			}
-		case "inbound_config":
-			v, err := RateLimitConfigFromScVal(entry.Val)
-			if err == nil {
-				result.InboundConfig = *v
+				result.AllowedFinality = uint32(v)
 			}
 		}
 	}
@@ -889,8 +1403,8 @@ func ParseRateLimitConfiguredEvent(e protocolrpc.EventInfo) (*RateLimitConfigure
 	return result, nil
 }
 
-// WaitForOutboundRateLimitConsumedEvent waits for a OutboundRateLimitConsumedEvent event.
-func (c *BurnMintPoolClient) WaitForOutboundRateLimitConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OutboundRateLimitConsumedEvent) bool) (*OutboundRateLimitConsumedEvent, error) {
+// WaitForFtfInboundConsumedEvent waits for a FtfInboundConsumedEvent event.
+func (c *BurnMintPoolClient) WaitForFtfInboundConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*FtfInboundConsumedEvent) bool) (*FtfInboundConsumedEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -904,13 +1418,13 @@ func (c *BurnMintPoolClient) WaitForOutboundRateLimitConsumedEvent(ctx context.C
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OutboundRateLimitConsumedEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{FtfInboundConsumedEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseOutboundRateLimitConsumedEvent(e)
+				parsed, err := ParseFtfInboundConsumedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -922,7 +1436,7 @@ func (c *BurnMintPoolClient) WaitForOutboundRateLimitConsumedEvent(ctx context.C
 	}
 }
 
-func ParseOutboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*OutboundRateLimitConsumedEvent, error) {
+func ParseFtfInboundConsumedEvent(e protocolrpc.EventInfo) (*FtfInboundConsumedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -933,79 +1447,7 @@ func ParseOutboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*OutboundRate
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &OutboundRateLimitConsumedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "remote_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err == nil {
-				result.RemoteChainSelector = v
-			}
-		case "amount":
-			v, err := scval.I128FromScVal(entry.Val)
-			if err == nil {
-				result.Amount = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForInboundRateLimitConsumedEvent waits for a InboundRateLimitConsumedEvent event.
-func (c *BurnMintPoolClient) WaitForInboundRateLimitConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*InboundRateLimitConsumedEvent) bool) (*InboundRateLimitConsumedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{InboundRateLimitConsumedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseInboundRateLimitConsumedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseInboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*InboundRateLimitConsumedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &InboundRateLimitConsumedEvent{
+	result := &FtfInboundConsumedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -1105,8 +1547,8 @@ func ParseFtfOutboundConsumedEvent(e protocolrpc.EventInfo) (*FtfOutboundConsume
 	return result, nil
 }
 
-// WaitForFtfInboundConsumedEvent waits for a FtfInboundConsumedEvent event.
-func (c *BurnMintPoolClient) WaitForFtfInboundConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*FtfInboundConsumedEvent) bool) (*FtfInboundConsumedEvent, error) {
+// WaitForRateLimitConfiguredEvent waits for a RateLimitConfiguredEvent event.
+func (c *BurnMintPoolClient) WaitForRateLimitConfiguredEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RateLimitConfiguredEvent) bool) (*RateLimitConfiguredEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -1120,13 +1562,13 @@ func (c *BurnMintPoolClient) WaitForFtfInboundConsumedEvent(ctx context.Context,
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{FtfInboundConsumedEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RateLimitConfiguredEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseFtfInboundConsumedEvent(e)
+				parsed, err := ParseRateLimitConfiguredEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1138,7 +1580,7 @@ func (c *BurnMintPoolClient) WaitForFtfInboundConsumedEvent(ctx context.Context,
 	}
 }
 
-func ParseFtfInboundConsumedEvent(e protocolrpc.EventInfo) (*FtfInboundConsumedEvent, error) {
+func ParseRateLimitConfiguredEvent(e protocolrpc.EventInfo) (*RateLimitConfiguredEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1149,7 +1591,89 @@ func ParseFtfInboundConsumedEvent(e protocolrpc.EventInfo) (*FtfInboundConsumedE
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &FtfInboundConsumedEvent{
+	result := &RateLimitConfiguredEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "remote_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.RemoteChainSelector = v
+			}
+		case "fast_finality":
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.FastFinality = v
+			}
+		case "outbound_config":
+			v, err := RateLimitConfigFromScVal(entry.Val)
+			if err == nil {
+				result.OutboundConfig = *v
+			}
+		case "inbound_config":
+			v, err := RateLimitConfigFromScVal(entry.Val)
+			if err == nil {
+				result.InboundConfig = *v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForInboundRateLimitConsumedEvent waits for a InboundRateLimitConsumedEvent event.
+func (c *BurnMintPoolClient) WaitForInboundRateLimitConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*InboundRateLimitConsumedEvent) bool) (*InboundRateLimitConsumedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{InboundRateLimitConsumedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseInboundRateLimitConsumedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseInboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*InboundRateLimitConsumedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &InboundRateLimitConsumedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -1177,8 +1701,8 @@ func ParseFtfInboundConsumedEvent(e protocolrpc.EventInfo) (*FtfInboundConsumedE
 	return result, nil
 }
 
-// WaitForFinalityConfigSetEvent waits for a FinalityConfigSetEvent event.
-func (c *BurnMintPoolClient) WaitForFinalityConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*FinalityConfigSetEvent) bool) (*FinalityConfigSetEvent, error) {
+// WaitForOutboundRateLimitConsumedEvent waits for a OutboundRateLimitConsumedEvent event.
+func (c *BurnMintPoolClient) WaitForOutboundRateLimitConsumedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OutboundRateLimitConsumedEvent) bool) (*OutboundRateLimitConsumedEvent, error) {
 	startTime := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -1192,13 +1716,13 @@ func (c *BurnMintPoolClient) WaitForFinalityConfigSetEvent(ctx context.Context, 
 				return nil, fmt.Errorf("timeout waiting for event")
 			}
 
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{FinalityConfigSetEventTopic})
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OutboundRateLimitConsumedEventTopic})
 			if err != nil {
 				continue
 			}
 
 			for _, e := range events {
-				parsed, err := ParseFinalityConfigSetEvent(e)
+				parsed, err := ParseOutboundRateLimitConsumedEvent(e)
 				if err != nil {
 					continue
 				}
@@ -1210,7 +1734,7 @@ func (c *BurnMintPoolClient) WaitForFinalityConfigSetEvent(ctx context.Context, 
 	}
 }
 
-func ParseFinalityConfigSetEvent(e protocolrpc.EventInfo) (*FinalityConfigSetEvent, error) {
+func ParseOutboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*OutboundRateLimitConsumedEvent, error) {
 	var eventVal xdr.ScVal
 	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
 		return nil, fmt.Errorf("failed to decode event: %w", err)
@@ -1221,7 +1745,7 @@ func ParseFinalityConfigSetEvent(e protocolrpc.EventInfo) (*FinalityConfigSetEve
 		return nil, fmt.Errorf("event is not a map")
 	}
 
-	result := &FinalityConfigSetEvent{
+	result := &OutboundRateLimitConsumedEvent{
 		Ledger: uint32(e.Ledger),
 		TxHash: e.TransactionHash,
 	}
@@ -1233,10 +1757,15 @@ func ParseFinalityConfigSetEvent(e protocolrpc.EventInfo) (*FinalityConfigSetEve
 		}
 
 		switch string(key) {
-		case "allowed_finality":
-			v, ok := entry.Val.GetU32()
-			if ok {
-				result.AllowedFinality = uint32(v)
+		case "remote_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.RemoteChainSelector = v
+			}
+		case "amount":
+			v, err := scval.I128FromScVal(entry.Val)
+			if err == nil {
+				result.Amount = v
 			}
 		}
 	}
