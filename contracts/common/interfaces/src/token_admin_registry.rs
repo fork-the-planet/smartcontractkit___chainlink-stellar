@@ -2,6 +2,8 @@
 #[soroban_sdk::contractclient(name = "TokenAdminRegistryClient")]
 pub trait TokenAdminRegistryInterface {
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
+
     fn get_pool(
         env: soroban_sdk::Env,
         token: soroban_sdk::Address,
