@@ -1243,4 +1243,3 @@ func ParseFinalityConfigSetEvent(e protocolrpc.EventInfo) (*FinalityConfigSetEve
 
 	return result, nil
 }
-
