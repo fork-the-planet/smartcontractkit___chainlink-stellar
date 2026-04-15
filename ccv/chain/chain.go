@@ -1171,6 +1171,15 @@ func (c *Chain) GetOnRampAddress() (string, error) {
 	return c.onRampContractID, nil
 }
 
+// GetFeeTokenAddress returns the fee token SAC contract ID used for CCIP fee
+// payments on this chain.
+func (c *Chain) GetFeeTokenAddress() (string, error) {
+	if c.feeTokenContractID == "" {
+		return "", fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
+	}
+	return c.feeTokenContractID, nil
+}
+
 // stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
 // deterministic mock fee-aggregator contract ID used when initializing Stellar FeeQuoter,
 // CommitteeVerifier, and VVR (mustGenerateMockContractID(..., "fee-aggregator")).

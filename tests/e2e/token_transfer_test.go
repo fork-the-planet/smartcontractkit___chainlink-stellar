@@ -143,14 +143,13 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 	})
 }
 
-// TestStellarToEVMTokenTransferFees validates that fees are correctly collected
-// during a Stellar-to-EVM token transfer:
+// TestStellarToEVMTokenTransferFees validates fee collection during a
+// Stellar-to-EVM token transfer. Fees are paid in the fee token (separate from
+// the transferred token), so this test tracks both:
 //
-//  1. Record balances of sender, OnRamp, and token pool before
-//  2. Send a token transfer via ccip_send
-//  3. Assert: sender lost more than tokenTransferAmount (fee deducted)
-//  4. Assert: pool balance increased by exactly tokenTransferAmount
-//  5. Assert: OnRamp holds fee tokens
+//  1. Transferred token: sender loses exactly tokenTransferAmount, pool gains it
+//  2. Fee token: sender's fee-token balance decreases (fee charged by Router/OnRamp)
+//  3. OnRamp holds accumulated fee-token balance
 func TestStellarToEVMTokenTransferFees(t *testing.T) {
 	configOutputPath := "../env/env-stellar-evm-out.toml"
 
@@ -178,6 +177,11 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 	tokenRaw, err := strkey.Decode(strkey.VersionByteContract, tokenAddr)
 	require.NoError(t, err)
 
+	feeTokenAddr, err := stellarCcvChain.GetFeeTokenAddress()
+	require.NoError(t, err)
+	feeTokenRaw, err := strkey.Decode(strkey.VersionByteContract, feeTokenAddr)
+	require.NoError(t, err)
+
 	senderAddr, err := stellarChain.GetSenderAddress()
 	require.NoError(t, err)
 
@@ -195,17 +199,24 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 		evmReceiver, err := evmChain.GetEOAReceiverAddress()
 		require.NoError(t, err)
 
-		senderBalBefore, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
+		senderTokenBefore, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
 		require.NoError(t, err)
-		l.Info().Str("sender_balance_before", senderBalBefore.String()).Msg("balances before transfer")
 
-		poolBalBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
+		senderFeeBefore, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(feeTokenRaw))
 		require.NoError(t, err)
-		l.Info().Str("pool_balance_before", poolBalBefore.String()).Msg("balances before transfer")
 
-		onRampBalBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(tokenRaw))
+		poolBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
 		require.NoError(t, err)
-		l.Info().Str("onramp_balance_before", onRampBalBefore.String()).Msg("balances before transfer")
+
+		onRampFeeBefore, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(feeTokenRaw))
+		require.NoError(t, err)
+
+		l.Info().
+			Str("sender_token", senderTokenBefore.String()).
+			Str("sender_fee_token", senderFeeBefore.String()).
+			Str("pool_token", poolBefore.String()).
+			Str("onramp_fee_token", onRampFeeBefore.String()).
+			Msg("Balances before transfer")
 
 		seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
 		require.NoError(t, err)
@@ -226,42 +237,45 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 		_, err = stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
 		require.NoError(t, err)
 
-		senderBalAfter, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
+		senderTokenAfter, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
 		require.NoError(t, err)
 
-		poolBalAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
+		senderFeeAfter, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(feeTokenRaw))
 		require.NoError(t, err)
 
-		onRampBalAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(tokenRaw))
+		poolAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(poolRaw), protocol.UnknownAddress(tokenRaw))
 		require.NoError(t, err)
 
-		senderDelta := new(big.Int).Sub(senderBalBefore, senderBalAfter)
-		poolDelta := new(big.Int).Sub(poolBalAfter, poolBalBefore)
-		onRampDelta := new(big.Int).Sub(onRampBalAfter, onRampBalBefore)
+		onRampFeeAfter, err := stellarChain.GetTokenBalance(ctx, protocol.UnknownAddress(onRampRaw), protocol.UnknownAddress(feeTokenRaw))
+		require.NoError(t, err)
+
+		tokenDelta := new(big.Int).Sub(senderTokenBefore, senderTokenAfter)
+		feeDelta := new(big.Int).Sub(senderFeeBefore, senderFeeAfter)
+		poolDelta := new(big.Int).Sub(poolAfter, poolBefore)
+		onRampFeeDelta := new(big.Int).Sub(onRampFeeAfter, onRampFeeBefore)
 
 		l.Info().
-			Str("sender_delta", senderDelta.String()).
+			Str("sender_token_delta", tokenDelta.String()).
+			Str("sender_fee_delta", feeDelta.String()).
 			Str("pool_delta", poolDelta.String()).
-			Str("onramp_delta", onRampDelta.String()).
+			Str("onramp_fee_delta", onRampFeeDelta.String()).
 			Msg("Balance deltas after token transfer")
 
-		require.True(t, senderDelta.Int64() > tokenTransferAmount,
-			"sender should lose more than transfer amount (fees); got delta=%s, transferAmount=%d",
-			senderDelta, tokenTransferAmount)
+		require.Equal(t, tokenTransferAmount, tokenDelta.Int64(),
+			"sender transferred-token balance should decrease by exactly the transfer amount")
 
 		require.Equal(t, tokenTransferAmount, poolDelta.Int64(),
 			"pool balance should increase by exactly the transfer amount")
 
-		feeCollected := new(big.Int).Sub(senderDelta, poolDelta)
-		require.True(t, feeCollected.Sign() > 0,
-			"fee collected should be positive; got %s", feeCollected)
+		require.True(t, feeDelta.Sign() > 0,
+			"sender fee-token balance should decrease (fee charged); got delta=%s", feeDelta)
 
-		require.True(t, onRampDelta.Sign() >= 0,
-			"OnRamp fee token balance should not decrease")
+		require.True(t, onRampFeeDelta.Sign() >= 0,
+			"OnRamp fee-token balance should not decrease; got delta=%s", onRampFeeDelta)
 
 		l.Info().
-			Str("fee_collected", feeCollected.String()).
-			Str("onramp_fee_held", onRampDelta.String()).
+			Str("fee_paid", feeDelta.String()).
+			Str("onramp_fee_received", onRampFeeDelta.String()).
 			Msg("Fee collection validated")
 	})
 }
