@@ -2,6 +2,10 @@
 #[soroban_sdk::contractclient(name = "SiloedLockReleasePoolClient")]
 pub trait SiloedLockReleasePoolInterface {
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_fee(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+    ) -> Result<PoolFeeResult, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn get_token(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
     fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
@@ -61,6 +65,11 @@ pub trait SiloedLockReleasePoolInterface {
         env: soroban_sdk::Env,
         adds: soroban_sdk::Vec<ChainUpdate>,
         removes: soroban_sdk::Vec<u64>,
+    ) -> Result<(), CCIPError>;
+    fn set_pool_fee_config(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+        config: PoolFeeConfig,
     ) -> Result<(), CCIPError>;
     fn configure_lock_boxes(
         env: soroban_sdk::Env,

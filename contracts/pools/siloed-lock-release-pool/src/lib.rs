@@ -22,7 +22,8 @@ use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
     InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, OutboundRateLimitConsumedEvent,
-    RateLimitConfig, RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
+    PoolFeeConfig, PoolFeeResult, RateLimitConfig, RateLimiterState, ReleaseOrMintIn,
+    ReleaseOrMintOut,
 };
 use events::{LockBoxConfiguredEvent, LockedEvent, ReleasedEvent};
 
@@ -70,8 +71,8 @@ impl SiloedLockReleaseTokenPoolContract {
         Ok(())
     }
 
-    pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "SiloedLockReleaseTokenPool 1.0.0")
+    pub fn type_and_version(env: Env) -> soroban_sdk::String {
+        soroban_sdk::String::from_str(&env, "SiloedLockReleaseTokenPool 1.0.0")
     }
 
     // ------------------------------------------------------------------
@@ -357,6 +358,21 @@ impl SiloedLockReleaseTokenPoolContract {
 
     pub fn get_allowed_finality_config(env: Env) -> u32 {
         <Self as BaseTokenPool>::get_allowed_finality_config(&env)
+    }
+
+    pub fn get_fee(env: Env, remote_chain_selector: u64) -> Result<PoolFeeResult, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::get_fee(&env, remote_chain_selector)
+    }
+
+    pub fn set_pool_fee_config(
+        env: Env,
+        remote_chain_selector: u64,
+        config: PoolFeeConfig,
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_pool_fee_config(&env, remote_chain_selector, &config)
     }
 
     pub fn set_allowed_finality_config(env: Env, allowed_finality: u32) -> Result<(), CCIPError> {

@@ -7,7 +7,7 @@ use soroban_sdk::{testutils::Address as _, token, vec, Address, Bytes, Env, Vec}
 use crate::{
     LockBoxEntry, SiloedLockReleaseTokenPoolContract, SiloedLockReleaseTokenPoolContractClient,
 };
-use common_pool::{ChainUpdate, LockOrBurnIn, RateLimitConfig, ReleaseOrMintIn};
+use common_pool::{ChainUpdate, LockOrBurnIn, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn};
 use pools_token_lock_box::{TokenLockBox, TokenLockBoxClient};
 
 const REMOTE_CHAIN: u64 = 99_999;
@@ -664,4 +664,55 @@ fn release_rejects_unsupported_chain() {
         &0,
     );
     assert!(r.is_err());
+}
+
+// ============================================================
+// Pool fee (BaseTokenPool re-exports)
+// ============================================================
+
+#[test]
+fn get_fee_returns_zero_when_not_configured() {
+    let t = setup();
+    let result = t.pool_client.get_fee(&REMOTE_CHAIN);
+    assert_eq!(result.fee_usd_cents, 0);
+}
+
+#[test]
+fn set_and_get_pool_fee_config() {
+    let t = setup();
+    let fee_config = PoolFeeConfig {
+        is_enabled: true,
+        fee_usd_cents: 150,
+    };
+    t.pool_client
+        .set_pool_fee_config(&REMOTE_CHAIN, &fee_config);
+    let result = t.pool_client.get_fee(&REMOTE_CHAIN);
+    assert_eq!(result.fee_usd_cents, 150);
+}
+
+#[test]
+fn pool_fee_disabled_returns_zero() {
+    let t = setup();
+    let fee_config = PoolFeeConfig {
+        is_enabled: false,
+        fee_usd_cents: 200,
+    };
+    t.pool_client
+        .set_pool_fee_config(&REMOTE_CHAIN, &fee_config);
+    let result = t.pool_client.get_fee(&REMOTE_CHAIN);
+    assert_eq!(result.fee_usd_cents, 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #302)")]
+fn set_pool_fee_unsupported_chain_rejected() {
+    let t = setup();
+    // Must differ from `REMOTE_CHAIN` (99_999 == 99999 in Rust).
+    let unsupported_chain: u64 = 12_345;
+    let fee_config = PoolFeeConfig {
+        is_enabled: true,
+        fee_usd_cents: 50,
+    };
+    t.pool_client
+        .set_pool_fee_config(&unsupported_chain, &fee_config);
 }
