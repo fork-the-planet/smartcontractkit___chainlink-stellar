@@ -120,6 +120,22 @@ func (c *ExampleCcipReceiverClient) LastMessageId(ctx context.Context) ([32]byte
 	return v, nil
 }
 
+// TypeAndVersion calls the type_and_version function on the contract.
+func (c *ExampleCcipReceiverClient) TypeAndVersion(ctx context.Context) (string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "type_and_version", args)
+	if err != nil {
+		return "", fmt.Errorf("failed to call type_and_version: %w", err)
+	}
+
+	if result == nil {
+		return "", fmt.Errorf("no return value from type_and_version")
+	}
+
+	return scval.StringFromScVal(*result)
+}
+
 // EnableRemoteChain calls the enable_remote_chain function on the contract.
 func (c *ExampleCcipReceiverClient) EnableRemoteChain(ctx context.Context, caller string, destChainSelector uint64, extraArgs []byte, allowedFinalityConfig uint32) error {
 	args := []xdr.ScVal{

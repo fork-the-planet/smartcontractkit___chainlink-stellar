@@ -13,6 +13,7 @@ pub trait ExampleCcipReceiverInterface {
         source_chain_selector: u64,
     ) -> Result<CcvChainConfig, CCIPError>;
     fn last_message_id(env: soroban_sdk::Env) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
+    fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn enable_remote_chain(
         env: soroban_sdk::Env,
         caller: soroban_sdk::Address,
