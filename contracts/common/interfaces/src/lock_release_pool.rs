@@ -1,86 +1,95 @@
-use common_message::{StellarToAnyMessage, TokenAmount};
-
-#[soroban_sdk::contractargs(name = "OnRampArgs")]
-#[soroban_sdk::contractclient(name = "OnRampClient")]
-pub trait OnRampInterface {
-    fn init(env: soroban_sdk::Env, rmn_proxy: soroban_sdk::Address) -> Result<(), CCIPError>;
+#[soroban_sdk::contractargs(name = "LockReleasePoolArgs")]
+#[soroban_sdk::contractclient(name = "LockReleasePoolClient")]
+pub trait LockReleasePoolInterface {
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_fee(
         env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        message: StellarToAnyMessage,
-    ) -> Result<i128, CCIPError>;
+        remote_chain_selector: u64,
+    ) -> Result<PoolFeeResult, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
-    fn is_cursed(env: soroban_sdk::Env) -> Result<bool, CCIPError>;
-    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
+    fn get_token(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn init_owner(
+        env: soroban_sdk::Env,
+        owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
-        static_config: StaticConfig,
-        dynamic_config: DynamicConfig,
+        token: soroban_sdk::Address,
+        token_decimals: u32,
     ) -> Result<(), CCIPError>;
+    fn lock_or_burn(
+        env: soroban_sdk::Env,
+        input: LockOrBurnIn,
+        requested_finality: u32,
+    ) -> Result<LockOrBurnOut, CCIPError>;
     fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
     fn set_new_owner(
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn get_remote_pool(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+    ) -> Result<soroban_sdk::Bytes, CCIPError>;
+    fn release_or_mint(
+        env: soroban_sdk::Env,
+        input: ReleaseOrMintIn,
+        requested_finality: u32,
+    ) -> Result<ReleaseOrMintOut, CCIPError>;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_remote_token(
+        env: soroban_sdk::Env,
+        remote_chain_selector: u64,
+    ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
-    fn get_static_config(env: soroban_sdk::Env) -> Result<StaticConfig, CCIPError>;
-    fn is_subject_cursed(
+    fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
+    fn is_supported_chain(
         env: soroban_sdk::Env,
-        subject: soroban_sdk::BytesN<16>,
+        remote_chain_selector: u64,
     ) -> Result<bool, CCIPError>;
-    fn get_dynamic_config(env: soroban_sdk::Env) -> Result<DynamicConfig, CCIPError>;
-    fn require_not_cursed(env: soroban_sdk::Env) -> Result<(), CCIPError>;
-    fn set_dynamic_config(
+    fn is_supported_token(
         env: soroban_sdk::Env,
-        dynamic_config: DynamicConfig,
-    ) -> Result<(), CCIPError>;
+        token: soroban_sdk::Address,
+    ) -> Result<bool, CCIPError>;
     fn transfer_ownership(
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
-    fn forward_from_router(
+    fn apply_chain_updates(
         env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        message: StellarToAnyMessage,
-        fee_token_amount: i128,
-        original_sender: soroban_sdk::Address,
-    ) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
-    fn withdraw_fee_tokens(
-        env: soroban_sdk::Env,
-        fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
+        adds: soroban_sdk::Vec<ChainUpdate>,
+        removes: soroban_sdk::Vec<u64>,
     ) -> Result<(), CCIPError>;
-    fn get_dest_chain_config(
+    fn set_pool_fee_config(
         env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-    ) -> Result<DestChainConfig, CCIPError>;
-    fn get_pool_by_source_token(
+        remote_chain_selector: u64,
+        config: PoolFeeConfig,
+    ) -> Result<(), CCIPError>;
+    fn get_rate_limit_admin(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn set_rate_limit_admin(
         env: soroban_sdk::Env,
-        source_token: soroban_sdk::Address,
-    ) -> Result<soroban_sdk::Address, CCIPError>;
-    fn require_chain_not_cursed(
+        admin: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn set_rate_limit_config(
         env: soroban_sdk::Env,
-        chain_selector: u64,
+        remote_chain_selector: u64,
+        outbound_config: RateLimitConfig,
+        inbound_config: RateLimitConfig,
+        fast_finality: bool,
     ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
-    fn get_all_dest_chain_configs(
+    fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
+    fn set_allowed_finality_config(
         env: soroban_sdk::Env,
-    ) -> Result<(soroban_sdk::Vec<u64>, soroban_sdk::Vec<DestChainConfig>), CCIPError>;
-    fn require_subject_not_cursed(
-        env: soroban_sdk::Env,
-        subject: soroban_sdk::BytesN<16>,
+        allowed_finality: u32,
     ) -> Result<(), CCIPError>;
-    fn apply_dest_chain_config_updates(
+    fn get_current_rate_limiter_state(
         env: soroban_sdk::Env,
-        dest_chain_config_args: soroban_sdk::Vec<DestChainConfigArgs>,
-    ) -> Result<(), CCIPError>;
-    fn get_expected_next_message_number(
-        env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-    ) -> Result<u64, CCIPError>;
+        remote_chain_selector: u64,
+        fast_finality: bool,
+    ) -> RateLimiterState;
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -96,7 +105,12 @@ pub struct AllowListUpdate {
     pub dest_chain_selector: u64,
     pub removed_allowlisted_senders: soroban_sdk::Vec<soroban_sdk::Address>,
 }
-
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TokenAmount {
+    pub amount: i128,
+    pub token: soroban_sdk::Address,
+}
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct GenericExtraArgsV3 {
@@ -118,61 +132,108 @@ pub struct AnyToStellarMessage {
     pub sender: soroban_sdk::Bytes,
     pub source_chain_selector: u64,
 }
-
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Receipt {
-    pub dest_bytes_overhead: u32,
-    pub dest_gas_limit: u32,
+pub struct StellarToAnyMessage {
+    pub data: soroban_sdk::Bytes,
     pub extra_args: soroban_sdk::Bytes,
-    pub fee_token_amount: i128,
-    pub issuer: soroban_sdk::Address,
+    pub fee_token: soroban_sdk::Address,
+    pub receiver: soroban_sdk::Bytes,
+    pub token_amounts: soroban_sdk::Vec<TokenAmount>,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct StaticConfig {
-    pub chain_selector: u64,
-    pub max_usd_cents_per_message: u32,
-    pub rmn_proxy: soroban_sdk::Address,
-    pub token_admin_registry: soroban_sdk::Address,
+pub struct ChainUpdate {
+    pub inbound_rate_limiter_config: RateLimitConfig,
+    pub outbound_rate_limiter_config: RateLimitConfig,
+    pub remote_chain_selector: u64,
+    pub remote_pool_addresses: soroban_sdk::Bytes,
+    pub remote_token_address: soroban_sdk::Bytes,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DynamicConfig {
-    pub fee_aggregator: soroban_sdk::Address,
-    pub fee_quoter: soroban_sdk::Address,
+pub struct TokenBucket {
+    pub capacity: u128,
+    pub is_enabled: bool,
+    pub last_updated: u64,
+    pub rate: u128,
+    pub tokens: u128,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DestChainConfig {
-    pub address_bytes_length: u32,
-    pub base_execution_gas_cost: u32,
-    pub default_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub default_executor: soroban_sdk::Address,
-    pub execution_fee_usd_cents: u32,
-    pub lane_mandated_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub message_network_fee_usd_cents: u32,
-    pub message_number: u64,
-    pub off_ramp: soroban_sdk::Bytes,
-    pub router: soroban_sdk::Address,
-    pub token_network_fee_usd_cents: u32,
-    pub token_receiver_allowed: bool,
+pub struct LockOrBurnIn {
+    pub amount: i128,
+    pub local_token: soroban_sdk::Address,
+    pub original_sender: soroban_sdk::Address,
+    pub receiver: soroban_sdk::Bytes,
+    pub remote_chain_selector: u64,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DestChainConfigArgs {
-    pub address_bytes_length: u32,
-    pub base_execution_gas_cost: u32,
-    pub default_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub default_executor: soroban_sdk::Address,
-    pub dest_chain_selector: u64,
-    pub execution_fee_usd_cents: u32,
-    pub lane_mandated_ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
-    pub message_network_fee_usd_cents: u32,
-    pub off_ramp: soroban_sdk::Bytes,
-    pub router: soroban_sdk::Address,
-    pub token_network_fee_usd_cents: u32,
-    pub token_receiver_allowed: bool,
+pub struct LockOrBurnOut {
+    pub dest_pool_data: soroban_sdk::Bytes,
+    pub dest_token_address: soroban_sdk::Bytes,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolFeeConfig {
+    pub fee_usd_cents: u32,
+    pub is_enabled: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolFeeResult {
+    pub fee_usd_cents: u32,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RateLimitConfig {
+    pub capacity: u128,
+    pub is_enabled: bool,
+    pub rate: u128,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ReleaseOrMintIn {
+    pub amount: i128,
+    pub local_token: soroban_sdk::Address,
+    pub original_sender: soroban_sdk::Bytes,
+    pub receiver: soroban_sdk::Address,
+    pub remote_chain_selector: u64,
+    pub source_pool_address: soroban_sdk::Bytes,
+    pub source_pool_data: soroban_sdk::Bytes,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RateLimiterState {
+    pub inbound: TokenBucket,
+    pub outbound: TokenBucket,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ReleaseOrMintOut {
+    pub destination_amount: i128,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RemoteChainConfig {
+    pub remote_pool_address: soroban_sdk::Bytes,
+    pub remote_token_address: soroban_sdk::Bytes,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum PoolDataKey {
+    Token,
+    RemoteChainConfig(u64),
+    SupportedChains,
+    TokenDecimals,
+    OutboundRateLimit(u64),
+    InboundRateLimit(u64),
+    RateLimitAdmin,
+    FtfOutboundRateLimit(u64),
+    FtfInboundRateLimit(u64),
+    AllowedFinalityConfig,
+    PoolFeeConfig(u64),
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -320,38 +381,85 @@ pub struct OwnershipTransferStartedEvent {
     pub previous_owner: soroban_sdk::Address,
     pub new_owner: soroban_sdk::Address,
 }
-#[soroban_sdk::contractevent(topics = ["onramp_1_7_ConfigSet"], export = false)]
+#[soroban_sdk::contractevent(topics = ["pool_Burned"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ConfigSetEvent {
-    pub static_config: StaticConfig,
-    pub dynamic_config: DynamicConfig,
-}
-#[soroban_sdk::contractevent(topics = ["onramp_1_7_CCIPMessageSent"], export = false)]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct CCIPMessageSentEvent {
-    pub dest_chain_selector: u64,
-    pub sequence_number: u64,
+pub struct BurnedEvent {
     pub sender: soroban_sdk::Address,
-    pub message_id: soroban_sdk::BytesN<32>,
-    pub fee_token: soroban_sdk::Address,
-    pub token_amount_before_fees: i128,
-    pub encoded_message: soroban_sdk::Bytes,
-    pub receipts: soroban_sdk::Vec<Receipt>,
-    pub verifier_blobs: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub amount: i128,
 }
-#[soroban_sdk::contractevent(topics = ["onramp_1_7_DestChainConfigSet"], export = false)]
+#[soroban_sdk::contractevent(topics = ["pool_Locked"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DestChainConfigSetEvent {
-    pub dest_chain_selector: u64,
-    pub message_number: u64,
-    pub config: DestChainConfig,
+pub struct LockedEvent {
+    pub sender: soroban_sdk::Address,
+    pub amount: i128,
+}
+#[soroban_sdk::contractevent(topics = ["pool_Minted"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct MintedEvent {
+    pub sender: soroban_sdk::Address,
+    pub recipient: soroban_sdk::Address,
+    pub amount: i128,
+}
+#[soroban_sdk::contractevent(topics = ["pool_Released"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ReleasedEvent {
+    pub sender: soroban_sdk::Address,
+    pub recipient: soroban_sdk::Address,
+    pub amount: i128,
+}
+#[soroban_sdk::contractevent(topics = ["pool_ChainRemoved"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ChainRemovedEvent {
+    pub remote_chain_selector: u64,
+}
+#[soroban_sdk::contractevent(topics = ["pool_ChainConfigured"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ChainConfiguredEvent {
+    pub remote_chain_selector: u64,
+    pub remote_pool_address: soroban_sdk::Bytes,
+    pub remote_token_address: soroban_sdk::Bytes,
+    pub outbound_rate_limiter_config: RateLimitConfig,
+    pub inbound_rate_limiter_config: RateLimitConfig,
+}
+#[soroban_sdk::contractevent(topics = ["pool_FinalityConfigSet"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct FinalityConfigSetEvent {
+    pub allowed_finality: u32,
+}
+#[soroban_sdk::contractevent(topics = ["pool_FtfInboundConsumed"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct FtfInboundConsumedEvent {
+    pub remote_chain_selector: u64,
+    pub amount: i128,
+}
+#[soroban_sdk::contractevent(topics = ["pool_FtfOutboundConsumed"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct FtfOutboundConsumedEvent {
+    pub remote_chain_selector: u64,
+    pub amount: i128,
+}
+#[soroban_sdk::contractevent(topics = ["pool_RateLimitConfigured"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RateLimitConfiguredEvent {
+    pub remote_chain_selector: u64,
+    pub fast_finality: bool,
+    pub outbound_config: RateLimitConfig,
+    pub inbound_config: RateLimitConfig,
+}
+#[soroban_sdk::contractevent(topics = ["pool_InboundRateLimitConsumed"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct InboundRateLimitConsumedEvent {
+    pub remote_chain_selector: u64,
+    pub amount: i128,
 }
 #[soroban_sdk::contractevent(
-    topics = ["onramp_1_7_OwnershipTransferred",
+    topics = ["pool_OutboundRateLimitConsumed",
     ],
     export = false
 )]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OwnershipTransferredEvent {
-    pub new_owner: soroban_sdk::Address,
+pub struct OutboundRateLimitConsumedEvent {
+    pub remote_chain_selector: u64,
+    pub amount: i128,
 }
+

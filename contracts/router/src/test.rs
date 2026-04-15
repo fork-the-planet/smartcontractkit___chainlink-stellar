@@ -393,12 +393,13 @@ fn test_ccip_send_full_flow() {
     // ---- Configure OnRamp's dest chain config with Router as the authorized caller ----
     let dest_chain_config = DestChainConfigArgs {
         dest_chain_selector: evm_chain_selector,
-        router: router_id.clone(), // Router must be the caller for forward_from_router
-        address_bytes_length: 20,  // EVM-style addresses
+        router: router_id.clone(),
+        address_bytes_length: 20,
         token_receiver_allowed: true,
         message_network_fee_usd_cents: 50,
         token_network_fee_usd_cents: 100,
         base_execution_gas_cost: 200_000,
+        execution_fee_usd_cents: 25,
         default_executor: Address::generate(&env),
         lane_mandated_ccvs: Vec::new(&env),
         default_ccvs: vec![&env, Address::generate(&env)],
@@ -522,6 +523,7 @@ fn test_get_fee_via_onramp() {
             message_network_fee_usd_cents: 50,
             token_network_fee_usd_cents: 100,
             base_execution_gas_cost: 200_000,
+            execution_fee_usd_cents: 25,
             default_executor: Address::generate(&env),
             lane_mandated_ccvs: Vec::new(&env),
             default_ccvs: vec![&env, Address::generate(&env)],

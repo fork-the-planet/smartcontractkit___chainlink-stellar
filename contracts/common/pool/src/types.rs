@@ -97,6 +97,23 @@ pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
 }
 
+/// Fee result returned by a pool's `get_fee` method.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolFeeResult {
+    pub fee_usd_cents: u32,
+}
+
+/// Per-chain fee configuration set by the pool owner.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolFeeConfig {
+    /// Whether the pool charges a fee for transfers to this chain.
+    pub is_enabled: bool,
+    /// Fee in USD cents.
+    pub fee_usd_cents: u32,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemoteChainConfig {
@@ -142,4 +159,7 @@ pub enum PoolDataKey {
     FtfInboundRateLimit(u64),
     /// Allowed finality configuration (EVM `s_allowedFinalityConfig`). Stored as `u32` matching `bytes4`.
     AllowedFinalityConfig,
+    /// Per-chain fee config set by pool owner. Allows pools to charge additional
+    /// fees on top of the protocol fee.
+    PoolFeeConfig(u64),
 }

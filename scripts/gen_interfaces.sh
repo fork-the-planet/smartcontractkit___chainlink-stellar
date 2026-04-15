@@ -44,6 +44,9 @@ CONTRACTS=(
   "offramp|offramp|OffRamp|0"
   "router|router|Router|0"
   "ccip_receiver_example|ccip_receiver|ExampleCcipReceiver|0"
+  "token_admin_registry|token_admin_registry|TokenAdminRegistry|0"
+  "pools_lock_release_pool|lock_release_pool|LockReleasePool|0"
+  "pools_burn_mint_pool|burn_mint_pool|BurnMintPool|0"
 )
 
 # Remove the WASM const block from generated output (interfaces don't need it)
