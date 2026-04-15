@@ -51,22 +51,6 @@ func (c *TokenAdminRegistryClient) Owner(ctx context.Context) (*string, error) {
 	return v, nil
 }
 
-// TypeAndVersion calls the type_and_version function on the contract.
-func (c *TokenAdminRegistryClient) TypeAndVersion(ctx context.Context) (string, error) {
-	args := []xdr.ScVal{}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "type_and_version", args)
-	if err != nil {
-		return "", fmt.Errorf("failed to call type_and_version: %w", err)
-	}
-
-	if result == nil {
-		return "", fmt.Errorf("no return value from type_and_version")
-	}
-
-	return scval.StringFromScVal(*result)
-}
-
 // GetPool calls the get_pool function on the contract.
 func (c *TokenAdminRegistryClient) GetPool(ctx context.Context, token string) (*string, error) {
 	args := []xdr.ScVal{
@@ -274,6 +258,22 @@ func (c *TokenAdminRegistryClient) IsAdministrator(ctx context.Context, localTok
 		return false, fmt.Errorf("expected bool return type")
 	}
 	return v, nil
+}
+
+// TypeAndVersion calls the type_and_version function on the contract.
+func (c *TokenAdminRegistryClient) TypeAndVersion(ctx context.Context) (string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "type_and_version", args)
+	if err != nil {
+		return "", fmt.Errorf("failed to call type_and_version: %w", err)
+	}
+
+	if result == nil {
+		return "", fmt.Errorf("no return value from type_and_version")
+	}
+
+	return scval.StringFromScVal(*result)
 }
 
 // AcceptAdminRole calls the accept_admin_role function on the contract.

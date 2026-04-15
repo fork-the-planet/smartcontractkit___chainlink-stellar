@@ -273,6 +273,22 @@ func (c *LockReleasePoolClient) GetRemoteToken(ctx context.Context, remoteChainS
 	return []byte(v), nil
 }
 
+// TypeAndVersion calls the type_and_version function on the contract.
+func (c *LockReleasePoolClient) TypeAndVersion(ctx context.Context) (string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "type_and_version", args)
+	if err != nil {
+		return "", fmt.Errorf("failed to call type_and_version: %w", err)
+	}
+
+	if result == nil {
+		return "", fmt.Errorf("no return value from type_and_version")
+	}
+
+	return scval.StringFromScVal(*result)
+}
+
 // GetPendingOwner calls the get_pending_owner function on the contract.
 func (c *LockReleasePoolClient) GetPendingOwner(ctx context.Context) (*string, error) {
 	args := []xdr.ScVal{}

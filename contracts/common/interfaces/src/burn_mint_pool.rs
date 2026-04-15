@@ -42,6 +42,7 @@ pub trait BurnMintPoolInterface {
         env: soroban_sdk::Env,
         remote_chain_selector: u64,
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
+    fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
     fn is_supported_chain(
