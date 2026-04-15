@@ -1234,3 +1234,4 @@ func ParseOwnershipTransferredEvent(e protocolrpc.EventInfo) (*OwnershipTransfer
 
 	return result, nil
 }
+

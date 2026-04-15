@@ -187,3 +187,4 @@ func ParseCcipMessageReceivedEvent(e protocolrpc.EventInfo) (*CcipMessageReceive
 
 	return result, nil
 }
+

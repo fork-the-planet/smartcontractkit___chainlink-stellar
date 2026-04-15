@@ -681,3 +681,4 @@ func ParseRmnSetEvent(e protocolrpc.EventInfo) (*RmnSetEvent, error) {
 
 	return result, nil
 }
+
