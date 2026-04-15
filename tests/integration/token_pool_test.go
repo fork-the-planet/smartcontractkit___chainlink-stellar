@@ -112,7 +112,8 @@ func TestTokenPool(t *testing.T) {
 
 		t.Run("registry maps token to pool", func(t *testing.T) {
 			mockToken := helpers.GenerateMockContractID(t, deployerAddr, outboundSalt+"-mock-token")
-			stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, mockToken)
+			// Suffix avoids same deployTokenPool WASM salt as SAC pool below (lock-release-pool → ExistingValue).
+			stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt+"-mock-pool", mockToken)
 
 			if stack.TokenAdminRegistryID == "" {
 				t.Fatal("TokenAdminRegistryID not set after deployTokenPool")
@@ -137,7 +138,7 @@ func TestTokenPool(t *testing.T) {
 			sacToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, outboundSalt+"-sac")
 			feeToken := deployIntegrationTestSAC(ctx, t, rpcClient, deployer, deployerAddr, networkPassphrase, friendbotURL, outboundSalt+"-fee")
 
-			stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, sacToken)
+			stack.deployTokenPool(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt+"-sac-pool", sacToken)
 
 			remotePool := make([]byte, 20)
 			remoteToken := make([]byte, 20)
