@@ -233,6 +233,8 @@ pub enum PoolDataKey {
     FtfOutboundRateLimit(u64),
     FtfInboundRateLimit(u64),
     AllowedFinalityConfig,
+    Router,
+    AdvancedPoolHooks,
     PoolFeeConfig(u64),
 }
 #[soroban_sdk::contracterror(export = false)]
@@ -463,4 +465,3 @@ pub struct OutboundRateLimitConsumedEvent {
     pub remote_chain_selector: u64,
     pub amount: i128,
 }
-

@@ -69,3 +69,10 @@ mock:
 
 # Run all tests (contracts + Go)
 test-all: test-contracts test-go-all
+
+# Full pipeline: build WASM, make generate-interfaces + generate-bindings, fmt, test-all
+all: build-contracts
+    make generate-interfaces
+    make generate-bindings
+    just fmt-contracts
+    just test-all

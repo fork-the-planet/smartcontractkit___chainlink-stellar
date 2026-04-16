@@ -20,6 +20,7 @@ pub use events::*;
 pub use types::*;
 
 use common_error::CCIPError;
+use common_interfaces::pool_hooks::PoolHooksClient;
 use soroban_sdk::{contracttrait, Address, Bytes, Env, Vec};
 
 pub use types::PoolFeeResult;
@@ -348,5 +349,111 @@ pub trait BaseTokenPool {
             .set(&PoolDataKey::AllowedFinalityConfig, &allowed_finality);
 
         FinalityConfigSetEvent { allowed_finality }.publish(env);
+    }
+
+    // ------------------------------------------------------------------
+    // Router / Ramp Gating (EVM `_onlyOnRamp` / `_onlyOffRamp`)
+    // ------------------------------------------------------------------
+
+    /// Store the router address. Owner-only — caller must enforce.
+    /// On EVM this is part of `setDynamicConfig`.
+    fn set_router(env: &Env, router: &Address) {
+        env.storage().instance().set(&PoolDataKey::Router, router);
+    }
+
+    fn get_router(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&PoolDataKey::Router)
+    }
+
+    /// Require that the configured router has provided authorization in the
+    /// current invocation's auth tree. This is the Soroban analogue of EVM's
+    /// `_onlyOnRamp` / `_onlyOffRamp`: only calls originating from the
+    /// router (which in turn is called by onramp/offramp) are accepted.
+    ///
+    /// If no router is configured the check is skipped (permissive — allows
+    /// pools to work before router is wired up, matching existing behavior).
+    fn require_router(env: &Env) -> Result<(), CCIPError> {
+        if let Some(router) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::Router)
+        {
+            router.require_auth();
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Advanced Pool Hooks (EVM `IAdvancedPoolHooks`)
+    // ------------------------------------------------------------------
+
+    /// Set the advanced pool hooks contract address. Owner-only — caller must enforce.
+    /// Pass a zero-like "none" to disable hooks (EVM `updateAdvancedPoolHooks`).
+    fn set_advanced_pool_hooks(env: &Env, hooks: &Address) {
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::AdvancedPoolHooks, hooks);
+    }
+
+    fn remove_advanced_pool_hooks(env: &Env) {
+        env.storage()
+            .instance()
+            .remove(&PoolDataKey::AdvancedPoolHooks);
+    }
+
+    fn get_advanced_pool_hooks(env: &Env) -> Option<Address> {
+        env.storage()
+            .instance()
+            .get(&PoolDataKey::AdvancedPoolHooks)
+    }
+
+    /// Pre-flight hook: called before lock_or_burn if a hooks contract is configured.
+    /// Delegates to `PoolHooksClient::preflight_check`. No-op if hooks not set.
+    fn preflight_check(
+        env: &Env,
+        original_sender: &Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+    ) -> Result<(), CCIPError> {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            client.preflight_check(
+                original_sender,
+                &remote_chain_selector,
+                &amount,
+                &requested_finality,
+            );
+        }
+        Ok(())
+    }
+
+    /// Post-flight hook: called before release_or_mint if a hooks contract is configured.
+    /// Delegates to `PoolHooksClient::postflight_check`. No-op if hooks not set.
+    fn postflight_check(
+        env: &Env,
+        source_chain_selector: u64,
+        receiver: &Address,
+        amount: i128,
+        requested_finality: u32,
+    ) -> Result<(), CCIPError> {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            client.postflight_check(
+                &source_chain_selector,
+                receiver,
+                &amount,
+                &requested_finality,
+            );
+        }
+        Ok(())
     }
 }

@@ -353,6 +353,7 @@ name = "common-pool"
 version = "0.0.0"
 dependencies = [
  "common-error",
+ "common-interfaces",
  "soroban-sdk",
 ]
 
@@ -1116,6 +1117,29 @@ dependencies = [
  "common-error",
  "common-guard",
  "common-pool",
+ "soroban-sdk",
+]
+
+[[package]]
+name = "pools-siloed-lock-release-pool"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "common-interfaces",
+ "common-pool",
+ "pools-token-lock-box",
+ "soroban-sdk",
+]
+
+[[package]]
+name = "pools-token-lock-box"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
  "soroban-sdk",
 ]
 

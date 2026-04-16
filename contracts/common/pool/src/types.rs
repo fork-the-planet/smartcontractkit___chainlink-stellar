@@ -159,6 +159,12 @@ pub enum PoolDataKey {
     FtfInboundRateLimit(u64),
     /// Allowed finality configuration (EVM `s_allowedFinalityConfig`). Stored as `u32` matching `bytes4`.
     AllowedFinalityConfig,
+    /// Router address — used for ramp-gating (EVM `s_router`).
+    /// Only the router (or ramps invoked through the router) should call `lock_or_burn` / `release_or_mint`.
+    Router,
+    /// Optional advanced pool hooks contract (EVM `s_advancedPoolHooks`).
+    /// When set, pre-flight and post-flight checks are delegated to this address.
+    AdvancedPoolHooks,
     /// Per-chain fee config set by pool owner. Allows pools to charge additional
     /// fees on top of the protocol fee.
     PoolFeeConfig(u64),
