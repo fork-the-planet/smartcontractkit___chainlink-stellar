@@ -94,6 +94,18 @@ pub trait TokenPoolInterface {
 
     fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
 
+    /// Returns the configured advanced pool hooks contract, if any (EVM `getAdvancedPoolHooks`).
+    fn get_advanced_pool_hooks(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+
+    /// Sets the advanced pool hooks contract (EVM `setAdvancedPoolHooks`). Owner-only.
+    fn set_advanced_pool_hooks(
+        env: soroban_sdk::Env,
+        hooks: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
+    /// Removes advanced pool hooks (EVM `setAdvancedPoolHooks` to zero). Owner-only.
+    fn remove_advanced_pool_hooks(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+
     /// Returns required CCV verifier resolver addresses for a transfer (EVM `TokenPool.getRequiredCCVs`).
     /// Pools without hooks return an empty vector.
     fn get_required_ccvs(

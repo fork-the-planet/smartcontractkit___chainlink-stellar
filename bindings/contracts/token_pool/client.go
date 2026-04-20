@@ -369,6 +369,54 @@ func (c *TokenPoolClient) GetAllowedFinalityConfig(ctx context.Context) (uint32,
 	return uint32(v), nil
 }
 
+// GetAdvancedPoolHooks calls the get_advanced_pool_hooks function on the contract.
+func (c *TokenPoolClient) GetAdvancedPoolHooks(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_advanced_pool_hooks", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_advanced_pool_hooks: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_advanced_pool_hooks")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// SetAdvancedPoolHooks calls the set_advanced_pool_hooks function on the contract.
+func (c *TokenPoolClient) SetAdvancedPoolHooks(ctx context.Context, hooks string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(hooks),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_advanced_pool_hooks", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_advanced_pool_hooks: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// RemoveAdvancedPoolHooks calls the remove_advanced_pool_hooks function on the contract.
+func (c *TokenPoolClient) RemoveAdvancedPoolHooks(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "remove_advanced_pool_hooks", args)
+	if err != nil {
+		return fmt.Errorf("failed to call remove_advanced_pool_hooks: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // GetRequiredCcvs calls the get_required_ccvs function on the contract.
 func (c *TokenPoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) ([]string, error) {
 	args := []xdr.ScVal{

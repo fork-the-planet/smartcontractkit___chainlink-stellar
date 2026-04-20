@@ -199,10 +199,9 @@ impl OnRampContract {
         }
 
         // Query each CCV (via VVR resolution) for fees
-        let ccv_fees_usd_cents = merged_ccvs
-            .iter()
-            .zip(merged_ccv_args.iter())
-            .try_fold(0u128, |acc, (ccv, ccv_args)| {
+        let ccv_fees_usd_cents = merged_ccvs.iter().zip(merged_ccv_args.iter()).try_fold(
+            0u128,
+            |acc, (ccv, ccv_args)| {
                 let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
                 let verifier_address =
                     vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
@@ -219,7 +218,8 @@ impl OnRampContract {
                 Ok(acc
                     .checked_add(ccv_fee_response.fee as u128)
                     .ok_or(CCIPError::InvalidFeeCalculation)?)
-            })?;
+            },
+        )?;
 
         // Pool fee (if token transfer)
         let mut additional_usd_cents: u128 = ccv_fees_usd_cents;
