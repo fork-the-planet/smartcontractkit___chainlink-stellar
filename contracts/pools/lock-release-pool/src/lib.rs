@@ -10,9 +10,9 @@ use common_guard::initializable::Initializable;
 use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
-    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, OutboundRateLimitConsumedEvent,
-    PoolFeeConfig, PoolFeeResult, RateLimitConfig, RateLimiterState, ReleaseOrMintIn,
-    ReleaseOrMintOut,
+    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, MessageDirection,
+    OutboundRateLimitConsumedEvent, PoolFeeConfig, PoolFeeResult, RateLimitConfig,
+    RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{LockedEvent, ReleasedEvent};
 
@@ -121,6 +121,8 @@ impl LockReleaseTokenPoolContract {
             .publish(&env);
         }
 
+        <Self as BaseTokenPool>::preflight_check(&env, &input, requested_finality, input.amount)?;
+
         let pool_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &pool_token);
         token_client.transfer(&input.original_sender, &pool_address, &input.amount);
@@ -193,6 +195,8 @@ impl LockReleaseTokenPoolContract {
             }
             .publish(&env);
         }
+
+        <Self as BaseTokenPool>::postflight_check(&env, &input, local_amount, requested_finality)?;
 
         let pool_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &pool_token);
@@ -328,6 +332,47 @@ impl LockReleaseTokenPoolContract {
         <Self as Ownable>::require_owner(&env)?;
         <Self as BaseTokenPool>::set_allowed_finality_config(&env, allowed_finality);
         Ok(())
+    }
+
+    /// Set the advanced pool hooks contract (EVM `updateAdvancedPoolHooks`). Owner-only.
+    pub fn set_advanced_pool_hooks(env: Env, hooks: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_advanced_pool_hooks(&env, &hooks);
+        Ok(())
+    }
+
+    /// Remove the hooks contract, disabling pre/post-flight checks. Owner-only.
+    pub fn remove_advanced_pool_hooks(env: Env) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::remove_advanced_pool_hooks(&env);
+        Ok(())
+    }
+
+    pub fn get_advanced_pool_hooks(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_advanced_pool_hooks(&env)
+    }
+
+    /// Returns required CCV verifier resolver addresses (EVM `TokenPool.getRequiredCCVs`).
+    pub fn get_required_ccvs(
+        env: Env,
+        local_token: Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: Bytes,
+        direction: MessageDirection,
+    ) -> Vec<Address> {
+        <Self as BaseTokenPool>::get_required_ccvs(
+            &env,
+            &local_token,
+            remote_chain_selector,
+            amount,
+            requested_finality,
+            &extra_data,
+            &direction,
+        )
     }
 
     // ------------------------------------------------------------------

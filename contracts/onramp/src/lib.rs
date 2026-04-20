@@ -7,7 +7,7 @@ use common_interfaces::{
     committee_verifier::FeeResponse,
     fee_quoter::FeeQuoterClient,
     token_admin_registry::TokenAdminRegistryClient,
-    token_pool::{LockOrBurnIn, TokenPoolClient},
+    token_pool::{LockOrBurnIn, MessageDirection, TokenPoolClient},
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
@@ -174,17 +174,34 @@ impl OnRampContract {
         let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
         let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
 
-        let merged_ccvs = Self::merge_ccv_lists(
+        let static_config = Self::get_static_config_internal(&env)?;
+        let (mut merged_ccvs, mut merged_ccv_args) = Self::merge_ccv_lists_with_ccv_args(
             &env,
             &extra_args.ccvs,
+            &extra_args.ccv_args,
             &dest_config.lane_mandated_ccvs,
             &dest_config.default_ccvs,
-        );
+        )?;
+
+        if !message.token_amounts.is_empty() {
+            let token_amount = message.token_amounts.get(0).unwrap();
+            let pool_req = Self::get_outbound_pool_required_ccvs(
+                &env,
+                dest_chain_selector,
+                &token_amount.token,
+                token_amount.amount,
+                extra_args.block_confirmations,
+                extra_args.token_args.clone(),
+                &static_config,
+                &dest_config.default_ccvs,
+            )?;
+            Self::append_unique_pool_ccvs(&env, &mut merged_ccvs, &mut merged_ccv_args, &pool_req);
+        }
 
         // Query each CCV (via VVR resolution) for fees
         let ccv_fees_usd_cents = merged_ccvs
             .iter()
-            .zip(extra_args.ccv_args.iter())
+            .zip(merged_ccv_args.iter())
             .try_fold(0u128, |acc, (ccv, ccv_args)| {
                 let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
                 let verifier_address =
@@ -209,7 +226,6 @@ impl OnRampContract {
 
         if !message.token_amounts.is_empty() {
             let token_amount = message.token_amounts.get(0).unwrap();
-            let static_config = Self::get_static_config_internal(&env)?;
             let pool_address =
                 Self::get_pool_by_source_token_internal(&env, &static_config, &token_amount.token)?;
             let pool_client = TokenPoolClient::new(&env, &pool_address);
@@ -305,12 +321,28 @@ impl OnRampContract {
         let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
         let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
 
-        let merged_ccvs = Self::merge_ccv_lists(
+        let (mut merged_ccvs, mut merged_ccv_args) = Self::merge_ccv_lists_with_ccv_args(
             &env,
             &extra_args.ccvs,
+            &extra_args.ccv_args,
             &dest_config.lane_mandated_ccvs,
             &dest_config.default_ccvs,
-        );
+        )?;
+
+        if !message.token_amounts.is_empty() {
+            let token_amount = message.token_amounts.get(0).unwrap();
+            let pool_req = Self::get_outbound_pool_required_ccvs(
+                &env,
+                dest_chain_selector,
+                &token_amount.token,
+                token_amount.amount,
+                extra_args.block_confirmations,
+                extra_args.token_args.clone(),
+                &static_config,
+                &dest_config.default_ccvs,
+            )?;
+            Self::append_unique_pool_ccvs(&env, &mut merged_ccvs, &mut merged_ccv_args, &pool_req);
+        }
 
         // Lock or burn tokens via the pool (if token transfer)
         let token_transfer_bytes = if !message.token_amounts.is_empty() {
@@ -363,7 +395,7 @@ impl OnRampContract {
             finality: extra_args.block_confirmations,
             ccv_and_executor_hash: CcipMessageV1::compute_ccv_and_executor_hash(
                 &env,
-                &extra_args.ccvs,
+                &merged_ccvs,
                 &extra_args.executor,
             ),
             onramp_address: env.current_contract_address().to_xdr(&env),
@@ -391,6 +423,7 @@ impl OnRampContract {
             &message,
             &extra_args,
             &merged_ccvs,
+            &merged_ccv_args,
             fee_token_amount,
         )?;
 
@@ -802,19 +835,31 @@ impl OnRampContract {
         BytesN::from_array(env, &padded)
     }
 
-    /// Merge CCV lists: user-specified + lane-mandated (deduped), falling back to
-    /// default_ccvs when no user CCVs are provided.
-    fn merge_ccv_lists(
-        _env: &Env,
+    /// Merge CCV address lists (user + lane-mandated + defaults) and build parallel
+    /// `ccv_args` (empty bytes for lane-only and default-fallback entries), matching
+    /// EVM `OnRamp._mergeCCVLists` empty-arg slots for non-user CCVs.
+    fn merge_ccv_lists_with_ccv_args(
+        env: &Env,
         user_ccvs: &Vec<Address>,
+        user_ccv_args: &Vec<Bytes>,
         lane_mandated_ccvs: &Vec<Address>,
         default_ccvs: &Vec<Address>,
-    ) -> Vec<Address> {
+    ) -> Result<(Vec<Address>, Vec<Bytes>), CCIPError> {
+        if user_ccvs.len() != user_ccv_args.len() {
+            return Err(CCIPError::CCVLengthMismatch);
+        }
+
         if user_ccvs.is_empty() && lane_mandated_ccvs.is_empty() {
-            return default_ccvs.clone();
+            let merged = default_ccvs.clone();
+            let mut args = Vec::new(env);
+            for _ in 0..merged.len() {
+                args.push_back(Bytes::new(env));
+            }
+            return Ok((merged, args));
         }
 
         let mut merged = user_ccvs.clone();
+        let mut args = user_ccv_args.clone();
 
         for i in 0..lane_mandated_ccvs.len() {
             if let Some(ccv) = lane_mandated_ccvs.get(i) {
@@ -826,16 +871,73 @@ impl OnRampContract {
                     }
                 }
                 if !already_present {
-                    merged.push_back(ccv);
+                    merged.push_back(ccv.clone());
+                    args.push_back(Bytes::new(env));
                 }
             }
         }
 
         if merged.is_empty() {
-            return default_ccvs.clone();
+            let merged = default_ccvs.clone();
+            let mut args = Vec::new(env);
+            for _ in 0..merged.len() {
+                args.push_back(Bytes::new(env));
+            }
+            return Ok((merged, args));
         }
 
-        merged
+        Ok((merged, args))
+    }
+
+    /// Pool-required CCVs for an outbound transfer (EVM `OnRamp._getCCVsForPool`).
+    /// Empty hook output falls back to destination `default_ccvs`.
+    fn get_outbound_pool_required_ccvs(
+        env: &Env,
+        dest_chain_selector: u64,
+        token: &Address,
+        amount: i128,
+        requested_finality: u32,
+        token_args: Bytes,
+        static_config: &StaticConfig,
+        default_ccvs: &Vec<Address>,
+    ) -> Result<Vec<Address>, CCIPError> {
+        let pool_address = Self::get_pool_by_source_token_internal(env, static_config, token)?;
+        let pool_client = TokenPoolClient::new(env, &pool_address);
+        let required = pool_client.get_required_ccvs(
+            token,
+            &dest_chain_selector,
+            &amount,
+            &requested_finality,
+            &token_args,
+            &MessageDirection::Outbound,
+        );
+        if required.is_empty() {
+            return Ok(default_ccvs.clone());
+        }
+        Ok(required)
+    }
+
+    fn append_unique_pool_ccvs(
+        env: &Env,
+        merged_ccvs: &mut Vec<Address>,
+        merged_ccv_args: &mut Vec<Bytes>,
+        pool_ccvs: &Vec<Address>,
+    ) {
+        for i in 0..pool_ccvs.len() {
+            if let Some(ccv) = pool_ccvs.get(i) {
+                let mut present = false;
+                for j in 0..merged_ccvs.len() {
+                    if merged_ccvs.get(j) == Some(ccv.clone()) {
+                        present = true;
+                        break;
+                    }
+                }
+                if !present {
+                    merged_ccvs.push_back(ccv.clone());
+                    merged_ccv_args.push_back(Bytes::new(env));
+                }
+            }
+        }
     }
 
     fn get_ccv_blobs_and_receipts_internal(
@@ -846,13 +948,18 @@ impl OnRampContract {
         message: &StellarToAnyMessage,
         extra_args: &GenericExtraArgsV3,
         merged_ccvs: &Vec<Address>,
+        merged_ccv_args: &Vec<Bytes>,
         fee_token_amount: i128,
     ) -> Result<(Vec<Bytes>, Vec<Receipt>), CCIPError> {
+        if merged_ccvs.len() != merged_ccv_args.len() {
+            return Err(CCIPError::CCVLengthMismatch);
+        }
+
         let mut receipts = Vec::new(env);
         let mut verification_blobs = Vec::new(env);
         let message_bytes = message.to_bytes(env);
 
-        for (ccv, ccv_args) in merged_ccvs.iter().zip(extra_args.ccv_args.iter()) {
+        for (ccv, ccv_args) in merged_ccvs.iter().zip(merged_ccv_args.iter()) {
             let vvr = VersionedVerifierResolverClient::new(env, &ccv);
             let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
 

@@ -92,3 +92,10 @@ pub struct FtfInboundConsumedEvent {
 pub struct FinalityConfigSetEvent {
     pub allowed_finality: u32,
 }
+
+#[contractevent(topics = ["pool_HooksUpdated"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdvancedPoolHooksUpdatedEvent {
+    pub old_hooks: Option<Address>,
+    pub new_hooks: Option<Address>,
+}

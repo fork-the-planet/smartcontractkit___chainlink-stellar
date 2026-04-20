@@ -368,3 +368,38 @@ func (c *TokenPoolClient) GetAllowedFinalityConfig(ctx context.Context) (uint32,
 	}
 	return uint32(v), nil
 }
+
+// GetRequiredCcvs calls the get_required_ccvs function on the contract.
+func (c *TokenPoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) ([]string, error) {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(localToken),
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.I128ToScVal(amount),
+		scval.Uint32ToScVal(requestedFinality),
+		scval.BytesToScVal(extraData),
+		scval.MustToScVal(direction.ToScVal()),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_required_ccvs", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_required_ccvs: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_required_ccvs")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("expected vec return type")
+	}
+	out := make([]string, len(*vec))
+	for i, item := range *vec {
+		v, err := scval.AddressFromScVal(item)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
+}

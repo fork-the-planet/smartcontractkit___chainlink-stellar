@@ -93,6 +93,18 @@ pub trait TokenPoolInterface {
     ) -> Result<(), CCIPError>;
 
     fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
+
+    /// Returns required CCV verifier resolver addresses for a transfer (EVM `TokenPool.getRequiredCCVs`).
+    /// Pools without hooks return an empty vector.
+    fn get_required_ccvs(
+        env: soroban_sdk::Env,
+        local_token: soroban_sdk::Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: soroban_sdk::Bytes,
+        direction: MessageDirection,
+    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
 }
 
 #[soroban_sdk::contracttype(export = false)]
@@ -136,6 +148,14 @@ pub struct ReleaseOrMintIn {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
+}
+
+/// Direction of a CCIP transfer (EVM `IPoolV2.MessageDirection`).
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
 }
 
 #[soroban_sdk::contracttype(export = false)]

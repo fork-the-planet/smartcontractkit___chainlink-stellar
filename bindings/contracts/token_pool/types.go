@@ -766,3 +766,22 @@ var CCIPErrorMessage = map[int]string{
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
+
+// MessageDirection represents the MessageDirection enum.
+type MessageDirection uint32
+
+const ()
+
+// ToScVal converts MessageDirection to an xdr.ScVal.
+func (e MessageDirection) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// MessageDirectionFromScVal parses an xdr.ScVal into MessageDirection.
+func MessageDirectionFromScVal(val xdr.ScVal) (MessageDirection, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for MessageDirection enum")
+	}
+	return MessageDirection(v), nil
+}

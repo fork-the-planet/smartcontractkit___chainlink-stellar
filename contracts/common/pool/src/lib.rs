@@ -21,6 +21,10 @@ pub use types::*;
 
 use common_error::CCIPError;
 use common_interfaces::pool_hooks::PoolHooksClient;
+use common_interfaces::token_pool::{
+    LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
+    ReleaseOrMintIn as IfaceReleaseOrMintIn,
+};
 use soroban_sdk::{contracttrait, Address, Bytes, Env, Vec};
 
 pub use types::PoolFeeResult;
@@ -390,15 +394,33 @@ pub trait BaseTokenPool {
     /// Set the advanced pool hooks contract address. Owner-only — caller must enforce.
     /// Pass a zero-like "none" to disable hooks (EVM `updateAdvancedPoolHooks`).
     fn set_advanced_pool_hooks(env: &Env, hooks: &Address) {
+        let old_hooks = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks);
         env.storage()
             .instance()
             .set(&PoolDataKey::AdvancedPoolHooks, hooks);
+        AdvancedPoolHooksUpdatedEvent {
+            old_hooks,
+            new_hooks: Some(hooks.clone()),
+        }
+        .publish(env);
     }
 
     fn remove_advanced_pool_hooks(env: &Env) {
+        let old_hooks = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks);
         env.storage()
             .instance()
             .remove(&PoolDataKey::AdvancedPoolHooks);
+        AdvancedPoolHooksUpdatedEvent {
+            old_hooks,
+            new_hooks: None,
+        }
+        .publish(env);
     }
 
     fn get_advanced_pool_hooks(env: &Env) -> Option<Address> {
@@ -411,10 +433,9 @@ pub trait BaseTokenPool {
     /// Delegates to `PoolHooksClient::preflight_check`. No-op if hooks not set.
     fn preflight_check(
         env: &Env,
-        original_sender: &Address,
-        remote_chain_selector: u64,
-        amount: i128,
+        lock_or_burn_in: &LockOrBurnIn,
         requested_finality: u32,
+        amount: i128,
     ) -> Result<(), CCIPError> {
         if let Some(hooks_addr) = env
             .storage()
@@ -422,12 +443,9 @@ pub trait BaseTokenPool {
             .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
         {
             let client = PoolHooksClient::new(env, &hooks_addr);
-            client.preflight_check(
-                original_sender,
-                &remote_chain_selector,
-                &amount,
-                &requested_finality,
-            );
+            let input = lock_or_burn_in_to_iface(lock_or_burn_in);
+            // Hook failures abort the invocation at the host; the client returns `()`.
+            client.preflight_check(&input, &requested_finality, &amount);
         }
         Ok(())
     }
@@ -436,9 +454,8 @@ pub trait BaseTokenPool {
     /// Delegates to `PoolHooksClient::postflight_check`. No-op if hooks not set.
     fn postflight_check(
         env: &Env,
-        source_chain_selector: u64,
-        receiver: &Address,
-        amount: i128,
+        release_or_mint_in: &ReleaseOrMintIn,
+        local_amount: i128,
         requested_finality: u32,
     ) -> Result<(), CCIPError> {
         if let Some(hooks_addr) = env
@@ -447,13 +464,68 @@ pub trait BaseTokenPool {
             .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
         {
             let client = PoolHooksClient::new(env, &hooks_addr);
-            client.postflight_check(
-                &source_chain_selector,
-                receiver,
-                &amount,
-                &requested_finality,
-            );
+            let input = release_or_mint_in_to_iface(release_or_mint_in);
+            // Hook failures abort the invocation at the host; the client returns `()`.
+            client.postflight_check(&input, &local_amount, &requested_finality);
         }
         Ok(())
+    }
+
+    /// Returns required CCV resolver addresses from advanced hooks, or empty if unset.
+    fn get_required_ccvs(
+        env: &Env,
+        local_token: &Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: &Bytes,
+        direction: &MessageDirection,
+    ) -> Vec<Address> {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            let direction_iface = message_direction_to_iface(direction);
+            return client.get_required_ccvs(
+                local_token,
+                &remote_chain_selector,
+                &amount,
+                &requested_finality,
+                extra_data,
+                &direction_iface,
+            );
+        }
+        Vec::new(env)
+    }
+}
+
+fn lock_or_burn_in_to_iface(input: &LockOrBurnIn) -> IfaceLockOrBurnIn {
+    IfaceLockOrBurnIn {
+        receiver: input.receiver.clone(),
+        remote_chain_selector: input.remote_chain_selector,
+        original_sender: input.original_sender.clone(),
+        amount: input.amount,
+        local_token: input.local_token.clone(),
+    }
+}
+
+fn release_or_mint_in_to_iface(input: &ReleaseOrMintIn) -> IfaceReleaseOrMintIn {
+    IfaceReleaseOrMintIn {
+        original_sender: input.original_sender.clone(),
+        remote_chain_selector: input.remote_chain_selector,
+        receiver: input.receiver.clone(),
+        amount: input.amount,
+        local_token: input.local_token.clone(),
+        source_pool_address: input.source_pool_address.clone(),
+        source_pool_data: input.source_pool_data.clone(),
+    }
+}
+
+fn message_direction_to_iface(d: &MessageDirection) -> IfaceMessageDirection {
+    match d {
+        MessageDirection::Outbound => IfaceMessageDirection::Outbound,
+        MessageDirection::Inbound => IfaceMessageDirection::Inbound,
     }
 }

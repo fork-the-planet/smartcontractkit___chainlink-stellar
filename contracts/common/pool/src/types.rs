@@ -97,6 +97,14 @@ pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
 }
 
+/// Direction of a CCIP transfer for pool hooks and CCV resolution (EVM `IPoolV2.MessageDirection`).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
+}
+
 /// Fee result returned by a pool's `get_fee` method.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

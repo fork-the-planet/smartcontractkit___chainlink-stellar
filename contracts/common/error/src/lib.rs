@@ -151,6 +151,9 @@ pub enum CCIPError {
     ReceiverDoesNotExist = 114,
     /// `ccip_receive` may only be invoked on a Soroban Wasm contract, not a plain account / SAC.
     ReceiverNotWasmContract = 115,
+    /// A CCV required by the token pool for this transfer is absent from the attested `ccvs` list
+    /// (EVM `OffRamp.RequiredCCVMissing`).
+    RequiredCCVMissing = 116,
 
     // ============================================================
     // TokenAdminRegistry errors

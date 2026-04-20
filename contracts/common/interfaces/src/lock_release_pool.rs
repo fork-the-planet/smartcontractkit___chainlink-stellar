@@ -44,6 +44,15 @@ pub trait LockReleasePoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_required_ccvs(
+        env: soroban_sdk::Env,
+        local_token: soroban_sdk::Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: soroban_sdk::Bytes,
+        direction: MessageDirection,
+    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
     fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
     fn is_supported_chain(
         env: soroban_sdk::Env,
@@ -79,7 +88,13 @@ pub trait LockReleasePoolInterface {
         inbound_config: RateLimitConfig,
         fast_finality: bool,
     ) -> Result<(), CCIPError>;
+    fn get_advanced_pool_hooks(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn set_advanced_pool_hooks(
+        env: soroban_sdk::Env,
+        hooks: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn remove_advanced_pool_hooks(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
     fn set_allowed_finality_config(
         env: soroban_sdk::Env,
@@ -237,6 +252,12 @@ pub enum PoolDataKey {
     AdvancedPoolHooks,
     PoolFeeConfig(u64),
 }
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
+}
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CCIPError {
@@ -329,6 +350,7 @@ pub enum CCIPError {
     MessageDecodingError = 113,
     ReceiverDoesNotExist = 114,
     ReceiverNotWasmContract = 115,
+    RequiredCCVMissing = 116,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,
@@ -448,6 +470,12 @@ pub struct RateLimitConfiguredEvent {
     pub fast_finality: bool,
     pub outbound_config: RateLimitConfig,
     pub inbound_config: RateLimitConfig,
+}
+#[soroban_sdk::contractevent(topics = ["pool_HooksUpdated"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AdvancedPoolHooksUpdatedEvent {
+    pub old_hooks: Option<soroban_sdk::Address>,
+    pub new_hooks: Option<soroban_sdk::Address>,
 }
 #[soroban_sdk::contractevent(topics = ["pool_InboundRateLimitConsumed"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

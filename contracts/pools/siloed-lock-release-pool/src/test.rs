@@ -7,8 +7,71 @@ use soroban_sdk::{testutils::Address as _, token, vec, Address, Bytes, Env, Vec}
 use crate::{
     LockBoxEntry, SiloedLockReleaseTokenPoolContract, SiloedLockReleaseTokenPoolContractClient,
 };
-use common_pool::{ChainUpdate, LockOrBurnIn, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn};
+use common_error::CCIPError;
+use common_interfaces::token_pool::{
+    LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
+    ReleaseOrMintIn as IfaceReleaseOrMintIn,
+};
+use common_pool::{
+    ChainUpdate, LockOrBurnIn, MessageDirection, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn,
+};
 use pools_token_lock_box::{TokenLockBox, TokenLockBoxClient};
+
+/// Minimal hook contracts for pool integration tests (must match `PoolHooksInterface` ABI).
+mod mock_hooks {
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, Symbol, Vec};
+
+    use super::{CCIPError, IfaceLockOrBurnIn, IfaceMessageDirection, IfaceReleaseOrMintIn};
+
+    const RETURNED_CCV_KEY: Symbol = symbol_short!("RCCV");
+
+    #[contract]
+    pub struct MockReturnsCcv;
+
+    #[contractimpl]
+    impl MockReturnsCcv {
+        pub fn set_returned_ccv(env: Env, ccv: Address) {
+            env.storage().instance().set(&RETURNED_CCV_KEY, &ccv);
+        }
+
+        pub fn preflight_check(
+            env: Env,
+            lock_or_burn_in: IfaceLockOrBurnIn,
+            requested_finality: u32,
+            amount: i128,
+        ) -> Result<(), CCIPError> {
+            let _ = (env, lock_or_burn_in, requested_finality, amount);
+            Ok(())
+        }
+
+        pub fn postflight_check(
+            env: Env,
+            release_or_mint_in: IfaceReleaseOrMintIn,
+            local_amount: i128,
+            requested_finality: u32,
+        ) -> Result<(), CCIPError> {
+            let _ = (env, release_or_mint_in, local_amount, requested_finality);
+            Ok(())
+        }
+
+        pub fn get_required_ccvs(
+            env: Env,
+            _local_token: Address,
+            _remote_chain_selector: u64,
+            _amount: i128,
+            _requested_finality: u32,
+            _extra_data: Bytes,
+            _direction: IfaceMessageDirection,
+        ) -> Vec<Address> {
+            let ccv: Address = env
+                .storage()
+                .instance()
+                .get(&RETURNED_CCV_KEY)
+                .expect("set_returned_ccv must be called first");
+            Vec::from_array(&env, [ccv])
+        }
+    }
+}
 
 const REMOTE_CHAIN: u64 = 99_999;
 const SILOED_CHAIN: u64 = 88_888;
@@ -740,4 +803,58 @@ fn set_pool_fee_unsupported_chain_rejected() {
     };
     t.pool_client
         .set_pool_fee_config(&unsupported_chain, &fee_config);
+}
+
+// ================================================================
+// `get_required_ccvs` (EVM `TokenPool.getRequiredCCVs`)
+// ================================================================
+
+#[test]
+fn get_required_ccvs_empty_without_hooks() {
+    let t = setup();
+    let v = t.pool_client.get_required_ccvs(
+        &t.token_addr,
+        &REMOTE_CHAIN,
+        &100i128,
+        &0u32,
+        &Bytes::new(&t.env),
+        &MessageDirection::Outbound,
+    );
+    assert_eq!(v.len(), 0);
+}
+
+#[test]
+fn get_required_ccvs_delegates_to_hooks() {
+    let t = setup();
+    let hooks_id = t.env.register(mock_hooks::MockReturnsCcv, ());
+    let hooks_client = mock_hooks::MockReturnsCcvClient::new(&t.env, &hooks_id);
+    let expected_ccv = Address::generate(&t.env);
+    hooks_client.set_returned_ccv(&expected_ccv);
+
+    t.pool_client.set_advanced_pool_hooks(&hooks_id.clone());
+
+    let v = t.pool_client.get_required_ccvs(
+        &t.token_addr,
+        &REMOTE_CHAIN,
+        &100i128,
+        &0u32,
+        &Bytes::new(&t.env),
+        &MessageDirection::Inbound,
+    );
+    assert_eq!(v.len(), 1);
+    assert_eq!(v.get(0).unwrap(), expected_ccv);
+}
+
+#[test]
+fn advanced_pool_hooks_admin_roundtrip() {
+    let t = setup();
+    assert!(t.pool_client.get_advanced_pool_hooks().is_none());
+
+    let hooks_id = t.env.register(mock_hooks::MockReturnsCcv, ());
+    let hooks = hooks_id.clone();
+    t.pool_client.set_advanced_pool_hooks(&hooks);
+    assert_eq!(t.pool_client.get_advanced_pool_hooks().unwrap(), hooks);
+
+    t.pool_client.remove_advanced_pool_hooks();
+    assert!(t.pool_client.get_advanced_pool_hooks().is_none());
 }
