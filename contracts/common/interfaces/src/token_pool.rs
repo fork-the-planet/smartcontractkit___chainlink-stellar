@@ -12,6 +12,7 @@ pub trait TokenPoolInterface {
         owner: soroban_sdk::Address,
         token: soroban_sdk::Address,
         token_decimals: u32,
+        router: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
 
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
@@ -24,6 +25,7 @@ pub trait TokenPoolInterface {
 
     fn release_or_mint(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
@@ -124,6 +126,11 @@ pub trait TokenPoolInterface {
         extra_data: soroban_sdk::Bytes,
         direction: MessageDirection,
     ) -> PoolRequiredCCVs;
+
+    /// Update router used for inbound `release_or_mint` caller checks (EVM `setDynamicConfig`). Owner-only.
+    fn set_router(env: soroban_sdk::Env, router: soroban_sdk::Address) -> Result<(), CCIPError>;
+
+    fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
 }
 
 /// Declarative CCV requirements returned by a pool (EVM parity for the `address(0)` sentinel
@@ -336,6 +343,7 @@ pub enum CCIPError {
     DisabledNonZeroRateLimit = 314,
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

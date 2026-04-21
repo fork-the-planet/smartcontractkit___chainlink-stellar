@@ -659,6 +659,7 @@ impl OffRampContract {
         let receiver_address = Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
 
         let release_result = pool_client.release_or_mint(
+            &env.current_contract_address(),
             &ReleaseOrMintIn {
                 original_sender: original_sender.clone(),
                 remote_chain_selector: source_chain_selector,

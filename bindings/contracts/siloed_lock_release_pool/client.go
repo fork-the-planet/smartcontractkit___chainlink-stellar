@@ -278,8 +278,9 @@ func (c *SiloedLockReleasePoolClient) GetRemotePool(ctx context.Context, remoteC
 }
 
 // ReleaseOrMint calls the release_or_mint function on the contract.
-func (c *SiloedLockReleasePoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
+func (c *SiloedLockReleasePoolClient) ReleaseOrMint(ctx context.Context, caller string, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
 	args := []xdr.ScVal{
+		scval.AddressToScVal(caller),
 		scval.MustToScVal(input.ToScVal()),
 		scval.Uint32ToScVal(requestedFinality),
 	}

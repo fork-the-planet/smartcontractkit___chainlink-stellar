@@ -38,6 +38,7 @@ pub trait SiloedLockReleasePoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn release_or_mint(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
@@ -396,6 +397,7 @@ pub enum CCIPError {
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidChainForClient = 317,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

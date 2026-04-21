@@ -153,7 +153,6 @@ impl SiloedLockReleaseTokenPoolContract {
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as BaseTokenPool>::require_router(&env)?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {
@@ -204,11 +203,16 @@ impl SiloedLockReleaseTokenPoolContract {
     /// Release tokens by withdrawing from the lockbox to the receiver.
     pub fn release_or_mint(
         env: Env,
+        caller: Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as BaseTokenPool>::require_router(&env)?;
+        <Self as BaseTokenPool>::require_authorized_offramp(
+            &env,
+            input.remote_chain_selector,
+            &caller,
+        )?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {

@@ -58,7 +58,11 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 
 	// Match typical Stellar SAC / pool configuration (EVM `uint8` token decimals on the pool).
 	const testTokenPoolDecimals uint32 = 7
-	if err := poolClient.Initialize(ctx, h.DeployerKeypair().Address(), tokenContractID, testTokenPoolDecimals); err != nil {
+	routerContractID := h.RouterContractID()
+	if routerContractID == "" {
+		return fmt.Errorf("router contract ID is empty; token pool initialize requires router (deploy core CCIP first)")
+	}
+	if err := poolClient.Initialize(ctx, h.DeployerKeypair().Address(), tokenContractID, testTokenPoolDecimals, routerContractID); err != nil {
 		return fmt.Errorf("failed to initialize pool with token: %w", err)
 	}
 

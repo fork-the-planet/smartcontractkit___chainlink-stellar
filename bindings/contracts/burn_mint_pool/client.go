@@ -111,6 +111,26 @@ func (c *BurnMintPoolClient) GetToken(ctx context.Context) (string, error) {
 	return v, nil
 }
 
+// GetRouter calls the get_router function on the contract.
+func (c *BurnMintPoolClient) GetRouter(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_router", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_router: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_router")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // InitOwner calls the init_owner function on the contract.
 func (c *BurnMintPoolClient) InitOwner(ctx context.Context, owner string) error {
 	args := []xdr.ScVal{
@@ -127,16 +147,32 @@ func (c *BurnMintPoolClient) InitOwner(ctx context.Context, owner string) error 
 }
 
 // Initialize calls the initialize function on the contract.
-func (c *BurnMintPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32) error {
+func (c *BurnMintPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32, router string) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(owner),
 		scval.AddressToScVal(token),
 		scval.Uint32ToScVal(tokenDecimals),
+		scval.AddressToScVal(router),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
 	if err != nil {
 		return fmt.Errorf("failed to call initialize: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// SetRouter calls the set_router function on the contract.
+func (c *BurnMintPoolClient) SetRouter(ctx context.Context, router string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(router),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_router", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_router: %w", err)
 	}
 
 	_ = result // void return
@@ -220,8 +256,9 @@ func (c *BurnMintPoolClient) GetRemotePool(ctx context.Context, remoteChainSelec
 }
 
 // ReleaseOrMint calls the release_or_mint function on the contract.
-func (c *BurnMintPoolClient) ReleaseOrMint(ctx context.Context, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
+func (c *BurnMintPoolClient) ReleaseOrMint(ctx context.Context, caller string, input ReleaseOrMintIn, requestedFinality uint32) (*ReleaseOrMintOut, error) {
 	args := []xdr.ScVal{
+		scval.AddressToScVal(caller),
 		scval.MustToScVal(input.ToScVal()),
 		scval.Uint32ToScVal(requestedFinality),
 	}

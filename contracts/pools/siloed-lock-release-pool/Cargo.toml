@@ -19,3 +19,4 @@ common-interfaces = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 pools-token-lock-box = { path = "../token-lock-box" }
+router = { workspace = true }
