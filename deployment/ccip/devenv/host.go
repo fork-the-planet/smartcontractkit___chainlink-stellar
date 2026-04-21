@@ -38,6 +38,8 @@ type Host interface {
 	SetOffRamp(contractID string, client *offrampbindings.OffRampClient)
 	OffRampClient() *offrampbindings.OffRampClient
 	SetRouter(contractID string, client *routerbindings.RouterClient)
+	// RouterContractID is the deployed Router contract (Stellar strkey); required to initialize token pools.
+	RouterContractID() string
 	SetVVR(contractID string)
 	SetCV(contractID string)
 	SetReceiver(contractID string)

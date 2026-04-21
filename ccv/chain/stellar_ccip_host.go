@@ -82,6 +82,8 @@ func (h *stellarCCIPDeployHost) SetRouter(contractID string, client *routerbindi
 	h.c.routerClient = client
 }
 
+func (h *stellarCCIPDeployHost) RouterContractID() string { return h.c.routerContractID }
+
 func (h *stellarCCIPDeployHost) SetVVR(contractID string) { h.c.vvrContractID = contractID }
 func (h *stellarCCIPDeployHost) SetCV(contractID string)  { h.c.cvContractID = contractID }
 
