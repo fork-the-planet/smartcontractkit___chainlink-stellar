@@ -107,7 +107,14 @@ pub trait TokenPoolInterface {
     fn remove_advanced_pool_hooks(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 
     /// Returns required CCV verifier resolver addresses for a transfer (EVM `TokenPool.getRequiredCCVs`).
-    /// Pools without hooks return an empty vector.
+    ///
+    /// Returns [`PoolRequiredCCVs`] so a pool can ask the OnRamp to append its custom CCVs
+    /// **alongside** the lane defaults (`include_defaults = true`), matching EVM's
+    /// `address(0)` sentinel in `_getCCVsForPool`. Stellar has no zero address, so parity is
+    /// expressed as an explicit boolean instead of an in-band placeholder.
+    ///
+    /// Pools without hooks SHOULD return `{ ccvs: [], include_defaults: true }` to preserve
+    /// the existing "no pool requirements, use lane defaults" behavior.
     fn get_required_ccvs(
         env: soroban_sdk::Env,
         local_token: soroban_sdk::Address,
@@ -116,7 +123,18 @@ pub trait TokenPoolInterface {
         requested_finality: u32,
         extra_data: soroban_sdk::Bytes,
         direction: MessageDirection,
-    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
+    ) -> PoolRequiredCCVs;
+}
+
+/// Declarative CCV requirements returned by a pool (EVM parity for the `address(0)` sentinel
+/// used in `_getCCVsForPool`). `include_defaults = true` means "append lane default CCVs on top
+/// of `ccvs`"; `false` means "use only `ccvs` (skipping lane defaults unless user / lane
+/// sources add them)".
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub include_defaults: bool,
 }
 
 #[soroban_sdk::contracttype(export = false)]

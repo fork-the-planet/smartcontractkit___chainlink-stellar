@@ -8,6 +8,60 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// PoolRequiredCCVs represents the PoolRequiredCCVs struct from the contract.
+type PoolRequiredCCVs struct {
+	Ccvs            []string
+	IncludeDefaults bool
+}
+
+// ToScVal converts PoolRequiredCCVs to an xdr.ScVal for contract calls.
+func (s PoolRequiredCCVs) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"ccvs":             scval.AddressSliceToScVal(s.Ccvs),
+		"include_defaults": scval.BoolToScVal(s.IncludeDefaults),
+	})
+}
+
+// PoolRequiredCCVsFromScVal parses an xdr.ScVal into PoolRequiredCCVs.
+func PoolRequiredCCVsFromScVal(val xdr.ScVal) (*PoolRequiredCCVs, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &PoolRequiredCCVs{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("ccvs is not a vec")
+			}
+			result.Ccvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Ccvs[i] = v
+			}
+		case "include_defaults":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("include_defaults is not bool")
+			}
+			result.IncludeDefaults = v
+		}
+	}
+
+	return result, nil
+}
+
 // PoolFeeResult represents the PoolFeeResult struct from the contract.
 type PoolFeeResult struct {
 	FeeUsdCents uint32

@@ -23,11 +23,11 @@ use common_error::CCIPError;
 use common_interfaces::pool_hooks::PoolHooksClient;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
-    ReleaseOrMintIn as IfaceReleaseOrMintIn,
+    PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
 };
 use soroban_sdk::{contracttrait, Address, Bytes, Env, Vec};
 
-pub use types::PoolFeeResult;
+pub use types::{PoolFeeResult, PoolRequiredCCVs};
 
 /// Base token pool trait providing shared pool configuration and chain management.
 ///
@@ -471,7 +471,11 @@ pub trait BaseTokenPool {
         Ok(())
     }
 
-    /// Returns required CCV resolver addresses from advanced hooks, or empty if unset.
+    /// Returns required CCV resolver addresses + `include_defaults` flag from advanced hooks.
+    ///
+    /// When no advanced hooks contract is configured, returns
+    /// `{ ccvs: [], include_defaults: true }`, i.e. "no pool-specific CCVs, fall back to
+    /// lane defaults" — matching the pre-hooks behavior and EVM's `_getCCVsForPool` default.
     fn get_required_ccvs(
         env: &Env,
         local_token: &Address,
@@ -480,7 +484,7 @@ pub trait BaseTokenPool {
         requested_finality: u32,
         extra_data: &Bytes,
         direction: &MessageDirection,
-    ) -> Vec<Address> {
+    ) -> PoolRequiredCCVs {
         if let Some(hooks_addr) = env
             .storage()
             .instance()
@@ -488,7 +492,7 @@ pub trait BaseTokenPool {
         {
             let client = PoolHooksClient::new(env, &hooks_addr);
             let direction_iface = message_direction_to_iface(direction);
-            return client.get_required_ccvs(
+            let iface_result: IfacePoolRequiredCCVs = client.get_required_ccvs(
                 local_token,
                 &remote_chain_selector,
                 &amount,
@@ -496,8 +500,15 @@ pub trait BaseTokenPool {
                 extra_data,
                 &direction_iface,
             );
+            return PoolRequiredCCVs {
+                ccvs: iface_result.ccvs,
+                include_defaults: iface_result.include_defaults,
+            };
         }
-        Vec::new(env)
+        PoolRequiredCCVs {
+            ccvs: Vec::new(env),
+            include_defaults: true,
+        }
     }
 }
 

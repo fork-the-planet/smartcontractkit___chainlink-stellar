@@ -310,7 +310,7 @@ func (c *BurnMintPoolClient) GetPendingOwner(ctx context.Context) (*string, erro
 }
 
 // GetRequiredCcvs calls the get_required_ccvs function on the contract.
-func (c *BurnMintPoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) ([]string, error) {
+func (c *BurnMintPoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) (*PoolRequiredCCVs, error) {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(localToken),
 		scval.Uint64ToScVal(remoteChainSelector),
@@ -329,19 +329,7 @@ func (c *BurnMintPoolClient) GetRequiredCcvs(ctx context.Context, localToken str
 		return nil, fmt.Errorf("no return value from get_required_ccvs")
 	}
 
-	vec, ok := result.GetVec()
-	if !ok || vec == nil {
-		return nil, fmt.Errorf("expected vec return type")
-	}
-	out := make([]string, len(*vec))
-	for i, item := range *vec {
-		v, err := scval.AddressFromScVal(item)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
-	}
-	return out, nil
+	return PoolRequiredCCVsFromScVal(*result)
 }
 
 // GetTokenDecimals calls the get_token_decimals function on the contract.

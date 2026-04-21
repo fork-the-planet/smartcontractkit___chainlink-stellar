@@ -132,10 +132,9 @@ impl RouterContract {
     /// 1. Verifies the sender's authorization
     /// 2. Checks RMN curse status
     /// 3. Looks up the OnRamp for the destination chain
-    /// 4. Gets fee quote from OnRamp
-    /// 5. Validates the fee token amount
-    /// 6. Calls forwardFromRouter on OnRamp
-    /// 7. Returns the message ID
+    /// 4. Transfers fee tokens to OnRamp (when fee > 0)
+    /// 5. Calls OnRamp.forward_from_router (which validates fee before side effects)
+    /// 6. Returns the message ID
     ///
     /// # Arguments
     /// * `sender` - The original sender of the message (must authorize)
@@ -174,14 +173,10 @@ impl RouterContract {
 
         // Get OnRamp for destination
         let onramp = Self::get_onramp_internal(&env, dest_chain_selector)?;
-
-        // Get fee from OnRamp and validate fee_token_amount >= required_fee
         let onramp_client = OnRampClient::new(&env, &onramp);
-        let required_fee = onramp_client.get_fee(&dest_chain_selector, &message);
-        if fee_token_amount < required_fee {
-            return Err(CCIPError::InsufficientFeeTokenAmount);
-        }
 
+        // Track A: fee sufficiency is enforced inside `OnRamp::forward_from_router` (single
+        // fee breakdown per send). Callers SHOULD still use `get_fee` off-chain to quote.
         // Transfer fee tokens from sender to OnRamp.
         // The sender has already authorized via `sender.require_auth()` above, and
         // Soroban's auth tree propagates sub-invocation authorization.

@@ -22,8 +22,8 @@ use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
     InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, MessageDirection,
-    OutboundRateLimitConsumedEvent, PoolFeeConfig, PoolFeeResult, RateLimitConfig,
-    RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
+    OutboundRateLimitConsumedEvent, PoolFeeConfig, PoolFeeResult, PoolRequiredCCVs,
+    RateLimitConfig, RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{LockBoxConfiguredEvent, LockedEvent, ReleasedEvent};
 
@@ -328,7 +328,7 @@ impl SiloedLockReleaseTokenPoolContract {
         requested_finality: u32,
         extra_data: Bytes,
         direction: MessageDirection,
-    ) -> Vec<Address> {
+    ) -> PoolRequiredCCVs {
         <Self as BaseTokenPool>::get_required_ccvs(
             &env,
             &local_token,

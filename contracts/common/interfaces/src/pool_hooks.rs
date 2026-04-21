@@ -9,7 +9,7 @@
 /// - Policy engine validation
 ///
 /// The hooks contract must authorize the calling pool via `require_auth`.
-use crate::token_pool::{LockOrBurnIn, MessageDirection, ReleaseOrMintIn};
+use crate::token_pool::{LockOrBurnIn, MessageDirection, PoolRequiredCCVs, ReleaseOrMintIn};
 use common_error::CCIPError;
 
 #[soroban_sdk::contractclient(name = "PoolHooksClient")]
@@ -33,7 +33,8 @@ pub trait PoolHooksInterface {
     ) -> Result<(), CCIPError>;
 
     /// Returns required CCV addresses for a transfer in a given direction.
-    /// Matches EVM `IAdvancedPoolHooks.getRequiredCCVs`.
+    /// Matches EVM `IAdvancedPoolHooks.getRequiredCCVs`, with `include_defaults` replacing the
+    /// `address(0)` sentinel (Stellar has no zero address).
     fn get_required_ccvs(
         env: soroban_sdk::Env,
         local_token: soroban_sdk::Address,
@@ -42,5 +43,5 @@ pub trait PoolHooksInterface {
         requested_finality: u32,
         extra_data: soroban_sdk::Bytes,
         direction: MessageDirection,
-    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
+    ) -> PoolRequiredCCVs;
 }

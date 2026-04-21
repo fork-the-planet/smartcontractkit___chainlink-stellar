@@ -10,7 +10,7 @@ use crate::{
 use common_error::CCIPError;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
-    ReleaseOrMintIn as IfaceReleaseOrMintIn,
+    PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
 };
 use common_pool::{
     ChainUpdate, LockOrBurnIn, MessageDirection, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn,
@@ -21,7 +21,10 @@ use pools_token_lock_box::{TokenLockBox, TokenLockBoxClient};
 mod mock_hooks {
     use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, Symbol, Vec};
 
-    use super::{CCIPError, IfaceLockOrBurnIn, IfaceMessageDirection, IfaceReleaseOrMintIn};
+    use super::{
+        CCIPError, IfaceLockOrBurnIn, IfaceMessageDirection, IfacePoolRequiredCCVs,
+        IfaceReleaseOrMintIn,
+    };
 
     const RETURNED_CCV_KEY: Symbol = symbol_short!("RCCV");
 
@@ -62,13 +65,16 @@ mod mock_hooks {
             _requested_finality: u32,
             _extra_data: Bytes,
             _direction: IfaceMessageDirection,
-        ) -> Vec<Address> {
+        ) -> IfacePoolRequiredCCVs {
             let ccv: Address = env
                 .storage()
                 .instance()
                 .get(&RETURNED_CCV_KEY)
                 .expect("set_returned_ccv must be called first");
-            Vec::from_array(&env, [ccv])
+            IfacePoolRequiredCCVs {
+                ccvs: Vec::from_array(&env, [ccv]),
+                include_defaults: false,
+            }
         }
     }
 }
@@ -820,7 +826,11 @@ fn get_required_ccvs_empty_without_hooks() {
         &Bytes::new(&t.env),
         &MessageDirection::Outbound,
     );
-    assert_eq!(v.len(), 0);
+    assert_eq!(v.ccvs.len(), 0);
+    assert!(
+        v.include_defaults,
+        "pools without hooks should fall back to lane defaults"
+    );
 }
 
 #[test]
@@ -841,8 +851,9 @@ fn get_required_ccvs_delegates_to_hooks() {
         &Bytes::new(&t.env),
         &MessageDirection::Inbound,
     );
-    assert_eq!(v.len(), 1);
-    assert_eq!(v.get(0).unwrap(), expected_ccv);
+    assert_eq!(v.ccvs.len(), 1);
+    assert_eq!(v.ccvs.get(0).unwrap(), expected_ccv);
+    assert!(!v.include_defaults);
 }
 
 #[test]

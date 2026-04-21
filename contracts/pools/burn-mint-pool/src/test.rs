@@ -6,7 +6,7 @@ use crate::{BurnMintTokenPoolContract, BurnMintTokenPoolContractClient};
 use common_error::CCIPError;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
-    ReleaseOrMintIn as IfaceReleaseOrMintIn,
+    PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
 };
 use common_pool::{
     encode_local_decimals, ChainUpdate, LockOrBurnIn, MessageDirection, RateLimitConfig,
@@ -17,7 +17,10 @@ use common_pool::{
 mod mock_hooks {
     use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, Symbol, Vec};
 
-    use super::{CCIPError, IfaceLockOrBurnIn, IfaceMessageDirection, IfaceReleaseOrMintIn};
+    use super::{
+        CCIPError, IfaceLockOrBurnIn, IfaceMessageDirection, IfacePoolRequiredCCVs,
+        IfaceReleaseOrMintIn,
+    };
 
     #[contract]
     pub struct MockPreflightRejects;
@@ -52,8 +55,11 @@ mod mock_hooks {
             _requested_finality: u32,
             _extra_data: Bytes,
             _direction: IfaceMessageDirection,
-        ) -> Vec<Address> {
-            Vec::new(&env)
+        ) -> IfacePoolRequiredCCVs {
+            IfacePoolRequiredCCVs {
+                ccvs: Vec::new(&env),
+                include_defaults: true,
+            }
         }
     }
 
@@ -90,8 +96,11 @@ mod mock_hooks {
             _requested_finality: u32,
             _extra_data: Bytes,
             _direction: IfaceMessageDirection,
-        ) -> Vec<Address> {
-            Vec::new(&env)
+        ) -> IfacePoolRequiredCCVs {
+            IfacePoolRequiredCCVs {
+                ccvs: Vec::new(&env),
+                include_defaults: true,
+            }
         }
     }
 
@@ -134,13 +143,16 @@ mod mock_hooks {
             _requested_finality: u32,
             _extra_data: Bytes,
             _direction: IfaceMessageDirection,
-        ) -> Vec<Address> {
+        ) -> IfacePoolRequiredCCVs {
             let ccv: Address = env
                 .storage()
                 .instance()
                 .get(&RETURNED_CCV_KEY)
                 .expect("set_returned_ccv must be called first");
-            Vec::from_array(&env, [ccv])
+            IfacePoolRequiredCCVs {
+                ccvs: Vec::from_array(&env, [ccv]),
+                include_defaults: false,
+            }
         }
     }
 }
@@ -1630,7 +1642,11 @@ fn test_get_required_ccvs_empty_without_hooks() {
         &Bytes::new(&env),
         &MessageDirection::Outbound,
     );
-    assert_eq!(v.len(), 0);
+    assert_eq!(v.ccvs.len(), 0);
+    assert!(
+        v.include_defaults,
+        "pools without hooks should fall back to lane defaults"
+    );
 }
 
 #[test]
@@ -1652,6 +1668,7 @@ fn test_get_required_ccvs_delegates_to_hooks() {
         &Bytes::new(&env),
         &MessageDirection::Inbound,
     );
-    assert_eq!(v.len(), 1);
-    assert_eq!(v.get(0).unwrap(), expected_ccv);
+    assert_eq!(v.ccvs.len(), 1);
+    assert_eq!(v.ccvs.get(0).unwrap(), expected_ccv);
+    assert!(!v.include_defaults);
 }

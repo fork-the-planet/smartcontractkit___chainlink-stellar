@@ -463,7 +463,9 @@ impl OffRampContract {
     }
 
     /// Pool-required CCVs for an inbound token transfer (EVM `OffRamp._getCCVsFromPool`).
-    /// When hooks return none, falls back to `default_ccvs` for the source chain.
+    /// Flattens [`PoolRequiredCCVs`] into a single `Vec<Address>` by appending `default_ccvs`
+    /// when the pool reports `include_defaults = true` (or returned no CCVs at all, matching
+    /// EVM's "empty list ⇒ use defaults" fallback).
     fn get_inbound_pool_required_ccvs(
         env: &Env,
         source_chain_selector: u64,
@@ -492,10 +494,20 @@ impl OffRampContract {
             &token_transfer.extra_data,
             &MessageDirection::Inbound,
         );
-        if required.is_empty() {
-            return Ok(default_ccvs.clone());
+
+        let mut flattened: Vec<Address> = required.ccvs.clone();
+
+        if required.include_defaults {
+            for i in 0..default_ccvs.len() {
+                if let Some(ccv) = default_ccvs.get(i) {
+                    if !Self::is_in_list(&ccv, &flattened) {
+                        flattened.push_back(ccv);
+                    }
+                }
+            }
         }
-        Ok(required)
+
+        Ok(flattened)
     }
 
     /// Verify that the CCV quorum is met for a message.

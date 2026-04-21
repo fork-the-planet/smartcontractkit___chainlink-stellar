@@ -56,7 +56,7 @@ pub trait SiloedLockReleasePoolInterface {
         requested_finality: u32,
         extra_data: soroban_sdk::Bytes,
         direction: MessageDirection,
-    ) -> soroban_sdk::Vec<soroban_sdk::Address>;
+    ) -> PoolRequiredCCVs;
     fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
     fn is_supported_chain(
         env: soroban_sdk::Env,
@@ -228,6 +228,12 @@ pub struct ReleaseOrMintIn {
     pub remote_chain_selector: u64,
     pub source_pool_address: soroban_sdk::Bytes,
     pub source_pool_data: soroban_sdk::Bytes,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub include_defaults: bool,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
