@@ -5,7 +5,7 @@ pub mod types;
 
 use common_interfaces::{
     committee_verifier::FeeResponse,
-    fee_quoter::FeeQuoterClient,
+    fee_quoter::{FeeQuoterClient, MessageFeeResult},
     token_admin_registry::TokenAdminRegistryClient,
     token_pool::{LockOrBurnIn, TokenPoolClient},
     versioned_verifier_resolver::VersionedVerifierResolverClient,
@@ -129,6 +129,92 @@ impl OnRampContract {
     // Core Messaging Functions
     // ========================================
 
+    /// Computes total required fee (fee token base units) plus FeeQuoter message fee and
+    /// per-CCV [`FeeResponse`] values. Shared by [`Self::get_fee`] and [`Self::forward_from_router`]
+    /// so `Router::ccip_send` does not need a separate top-level `get_fee` call (Track A).
+    fn compute_outbound_fee_breakdown(
+        env: &Env,
+        dest_chain_selector: u64,
+        message: &StellarToAnyMessage,
+        dest_config: &DestChainConfig,
+        dynamic_config: &DynamicConfig,
+        static_config: &StaticConfig,
+        extra_args: &GenericExtraArgsV3,
+    ) -> Result<(i128, MessageFeeResult, Vec<FeeResponse>), CCIPError> {
+        let message_bytes = message.to_bytes(env);
+
+        let fee_quoter = FeeQuoterClient::new(env, &dynamic_config.fee_quoter);
+        let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, message);
+
+        let merged_ccvs = Self::merge_ccv_lists(
+            env,
+            &extra_args.ccvs,
+            &dest_config.lane_mandated_ccvs,
+            &dest_config.default_ccvs,
+        );
+
+        let mut ccv_fee_responses: Vec<FeeResponse> = Vec::new(env);
+        let mut ccv_fees_usd_cents: u128 = 0;
+
+        // Same iteration bound as the historical `merged_ccvs.iter().zip(extra_args.ccv_args.iter())`
+        // loops: default / lane-only CCVs beyond `ccv_args` are not probed for verifier fees.
+        let ccv_fee_iter_bound = merged_ccvs.len().min(extra_args.ccv_args.len());
+
+        for i in 0..ccv_fee_iter_bound {
+            let ccv = merged_ccvs.get(i).ok_or(CCIPError::CCVLengthMismatch)?;
+            let ccv_args = extra_args
+                .ccv_args
+                .get(i)
+                .ok_or(CCIPError::CCVLengthMismatch)?;
+
+            let vvr = VersionedVerifierResolverClient::new(env, &ccv);
+            let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
+
+            let ccv_fee_response = Self::get_ccv_fee_internal(
+                env,
+                &verifier_address,
+                dest_chain_selector,
+                &message_bytes,
+                &ccv_args,
+                extra_args,
+            )?;
+            ccv_fees_usd_cents = ccv_fees_usd_cents
+                .checked_add(ccv_fee_response.fee as u128)
+                .ok_or(CCIPError::InvalidFeeCalculation)?;
+            ccv_fee_responses.push_back(ccv_fee_response);
+        }
+
+        let mut additional_usd_cents: u128 = ccv_fees_usd_cents;
+
+        if !message.token_amounts.is_empty() {
+            let token_amount = message.token_amounts.get(0).unwrap();
+            let pool_address =
+                Self::get_pool_by_source_token_internal(env, static_config, &token_amount.token)?;
+            let pool_client = TokenPoolClient::new(env, &pool_address);
+            let pool_fee = pool_client.get_fee(&dest_chain_selector);
+            additional_usd_cents = additional_usd_cents
+                .checked_add(pool_fee.fee_usd_cents as u128)
+                .ok_or(CCIPError::InvalidFeeCalculation)?;
+        }
+
+        additional_usd_cents = additional_usd_cents
+            .checked_add(dest_config.execution_fee_usd_cents as u128)
+            .ok_or(CCIPError::InvalidFeeCalculation)?;
+
+        let additional_in_fee_token = additional_usd_cents
+            .checked_mul(10_u128.pow(16))
+            .ok_or(CCIPError::InvalidFeeCalculation)?
+            .checked_div(message_fee.fee_token_price)
+            .ok_or(CCIPError::InvalidFeeCalculation)? as i128;
+
+        let total_fee = message_fee
+            .fee_token_amount
+            .checked_add(additional_in_fee_token)
+            .ok_or(CCIPError::InvalidFeeCalculation)?;
+
+        Ok((total_fee, message_fee, ccv_fee_responses))
+    }
+
     /// Get the fee for sending a message to a destination chain.
     ///
     /// This function calculates the total fee including:
@@ -158,9 +244,9 @@ impl OnRampContract {
 
         message.validate()?;
 
-        let message_bytes = message.to_bytes(&env);
         let dest_config = Self::get_dest_chain_config_internal(&env, dest_chain_selector)?;
         let dynamic_config = Self::get_dynamic_config_internal(&env)?;
+        let static_config = Self::get_static_config_internal(&env)?;
 
         // Parse extra args with defaults
         let extra_args = if message.extra_args.len() == 0 {
@@ -170,70 +256,15 @@ impl OnRampContract {
                 .map_err(|_| CCIPError::InvalidExtraArgsData)?
         };
 
-        // Get message fee (incl. transfer fees and network fees) with the fee token price.
-        let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
-        let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
-
-        let merged_ccvs = Self::merge_ccv_lists(
+        let (total_fee, _, _) = Self::compute_outbound_fee_breakdown(
             &env,
-            &extra_args.ccvs,
-            &dest_config.lane_mandated_ccvs,
-            &dest_config.default_ccvs,
-        );
-
-        // Query each CCV (via VVR resolution) for fees
-        let ccv_fees_usd_cents = merged_ccvs
-            .iter()
-            .zip(extra_args.ccv_args.iter())
-            .try_fold(0u128, |acc, (ccv, ccv_args)| {
-                let vvr = VersionedVerifierResolverClient::new(&env, &ccv);
-                let verifier_address =
-                    vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
-
-                let ccv_fee_response = Self::get_ccv_fee_internal(
-                    &env,
-                    &verifier_address,
-                    dest_chain_selector,
-                    &message_bytes,
-                    &ccv_args,
-                    &extra_args,
-                )?;
-
-                Ok(acc
-                    .checked_add(ccv_fee_response.fee as u128)
-                    .ok_or(CCIPError::InvalidFeeCalculation)?)
-            })?;
-
-        // Pool fee (if token transfer)
-        let mut additional_usd_cents: u128 = ccv_fees_usd_cents;
-
-        if !message.token_amounts.is_empty() {
-            let token_amount = message.token_amounts.get(0).unwrap();
-            let static_config = Self::get_static_config_internal(&env)?;
-            let pool_address =
-                Self::get_pool_by_source_token_internal(&env, &static_config, &token_amount.token)?;
-            let pool_client = TokenPoolClient::new(&env, &pool_address);
-            let pool_fee = pool_client.get_fee(&dest_chain_selector);
-            additional_usd_cents = additional_usd_cents
-                .checked_add(pool_fee.fee_usd_cents as u128)
-                .ok_or(CCIPError::InvalidFeeCalculation)?;
-        }
-
-        // Executor fee
-        additional_usd_cents = additional_usd_cents
-            .checked_add(dest_config.execution_fee_usd_cents as u128)
-            .ok_or(CCIPError::InvalidFeeCalculation)?;
-
-        let additional_in_fee_token = additional_usd_cents
-            .checked_mul(10_u128.pow(16))
-            .ok_or(CCIPError::InvalidFeeCalculation)?
-            .checked_div(message_fee.fee_token_price)
-            .ok_or(CCIPError::InvalidFeeCalculation)? as i128;
-
-        let total_fee = message_fee
-            .fee_token_amount
-            .checked_add(additional_in_fee_token)
-            .ok_or(CCIPError::InvalidFeeCalculation)?;
+            dest_chain_selector,
+            &message,
+            &dest_config,
+            &dynamic_config,
+            &static_config,
+            &extra_args,
+        )?;
 
         Ok(total_fee)
     }
@@ -301,9 +332,20 @@ impl OnRampContract {
                 .map_err(|_| CCIPError::InvalidExtraArgsData)?
         };
 
-        // Get message fee (incl. transfer fees and network fees) with the fee token price.
-        let fee_quoter = FeeQuoterClient::new(&env, &dynamic_config.fee_quoter);
-        let message_fee = fee_quoter.get_message_fee(&dest_chain_selector, &message);
+        // Track A: single fee breakdown for this send (Router no longer calls `get_fee` first).
+        // Validate fee before any token lock or sequence bump.
+        let (required_fee, message_fee, ccv_fee_responses) = Self::compute_outbound_fee_breakdown(
+            &env,
+            dest_chain_selector,
+            &message,
+            &dest_config,
+            &dynamic_config,
+            &static_config,
+            &extra_args,
+        )?;
+        if fee_token_amount < required_fee {
+            return Err(CCIPError::InsufficientFeeTokenAmount);
+        }
 
         let merged_ccvs = Self::merge_ccv_lists(
             &env,
@@ -391,6 +433,7 @@ impl OnRampContract {
             &message,
             &extra_args,
             &merged_ccvs,
+            &ccv_fee_responses,
             fee_token_amount,
         )?;
 
@@ -846,24 +889,29 @@ impl OnRampContract {
         message: &StellarToAnyMessage,
         extra_args: &GenericExtraArgsV3,
         merged_ccvs: &Vec<Address>,
+        ccv_fee_responses: &Vec<FeeResponse>,
         fee_token_amount: i128,
     ) -> Result<(Vec<Bytes>, Vec<Receipt>), CCIPError> {
         let mut receipts = Vec::new(env);
         let mut verification_blobs = Vec::new(env);
-        let message_bytes = message.to_bytes(env);
 
-        for (ccv, ccv_args) in merged_ccvs.iter().zip(extra_args.ccv_args.iter()) {
+        let ccv_fee_iter_bound = merged_ccvs.len().min(extra_args.ccv_args.len());
+        if ccv_fee_responses.len() != ccv_fee_iter_bound {
+            return Err(CCIPError::CCVLengthMismatch);
+        }
+
+        for i in 0..ccv_fee_iter_bound {
+            let ccv = merged_ccvs.get(i).ok_or(CCIPError::CCVLengthMismatch)?;
+            let ccv_args = extra_args
+                .ccv_args
+                .get(i)
+                .ok_or(CCIPError::CCVLengthMismatch)?;
+            let ccv_fee_response = ccv_fee_responses
+                .get(i)
+                .ok_or(CCIPError::CCVLengthMismatch)?;
+
             let vvr = VersionedVerifierResolverClient::new(env, &ccv);
             let verifier_address = vvr.get_outbound_implementation(&dest_chain_selector, &ccv_args);
-
-            let ccv_fee_response = Self::get_ccv_fee_internal(
-                env,
-                &verifier_address,
-                dest_chain_selector,
-                &message_bytes,
-                &ccv_args,
-                extra_args,
-            )?;
 
             receipts.push_back(Receipt {
                 issuer: ccv,
