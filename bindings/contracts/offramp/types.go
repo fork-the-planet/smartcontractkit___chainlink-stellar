@@ -789,6 +789,7 @@ const (
 	CCIPErrorMessageDecodingError                = 113
 	CCIPErrorReceiverDoesNotExist                = 114
 	CCIPErrorReceiverNotWasmContract             = 115
+	CCIPErrorRequiredCCVMissing                  = 116
 	CCIPErrorOnlyRegistryModuleOrOwner           = 201
 	CCIPErrorOnlyAdministrator                   = 202
 	CCIPErrorOnlyPendingAdministrator            = 203
@@ -906,6 +907,7 @@ var CCIPErrorMessage = map[int]string{
 	113: "message decoding error",
 	114: "receiver does not exist",
 	115: "receiver not wasm contract",
+	116: "required c c v missing",
 	201: "only registry module or owner",
 	202: "only administrator",
 	203: "only pending administrator",

@@ -9,45 +9,39 @@
 /// - Policy engine validation
 ///
 /// The hooks contract must authorize the calling pool via `require_auth`.
+use crate::token_pool::{LockOrBurnIn, MessageDirection, PoolRequiredCCVs, ReleaseOrMintIn};
+use common_error::CCIPError;
+
 #[soroban_sdk::contractclient(name = "PoolHooksClient")]
 pub trait PoolHooksInterface {
     /// Called before lock_or_burn. Revert (return Err) to block the transfer.
-    ///
-    /// # Arguments
-    /// * `original_sender` — the user initiating the cross-chain send
-    /// * `remote_chain_selector` — destination chain
-    /// * `amount` — token amount (after any fee deduction)
-    /// * `requested_finality` — finality config from the sender
+    /// Matches EVM `IAdvancedPoolHooks.preflightCheck`.
     fn preflight_check(
         env: soroban_sdk::Env,
-        original_sender: soroban_sdk::Address,
-        remote_chain_selector: u64,
-        amount: i128,
+        lock_or_burn_in: LockOrBurnIn,
         requested_finality: u32,
+        amount: i128,
     ) -> Result<(), CCIPError>;
 
     /// Called before release_or_mint. Revert (return Err) to block the transfer.
-    ///
-    /// # Arguments
-    /// * `source_chain_selector` — the source chain
-    /// * `receiver` — the local recipient
-    /// * `amount` — local token amount to be released/minted
-    /// * `requested_finality` — finality config from the message
+    /// Matches EVM `IAdvancedPoolHooks.postflightCheck`.
     fn postflight_check(
         env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        receiver: soroban_sdk::Address,
-        amount: i128,
+        release_or_mint_in: ReleaseOrMintIn,
+        local_amount: i128,
         requested_finality: u32,
     ) -> Result<(), CCIPError>;
-}
 
-#[soroban_sdk::contracterror(export = false)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum CCIPError {
-    NotInitialized = 1,
-    Unauthorized = 3,
-    CallerNotAuthorized = 6,
-    SenderNotAllowed = 49,
-    InvalidConfig = 52,
+    /// Returns required CCV addresses for a transfer in a given direction.
+    /// Matches EVM `IAdvancedPoolHooks.getRequiredCCVs`, with `include_defaults` replacing the
+    /// `address(0)` sentinel (Stellar has no zero address).
+    fn get_required_ccvs(
+        env: soroban_sdk::Env,
+        local_token: soroban_sdk::Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: soroban_sdk::Bytes,
+        direction: MessageDirection,
+    ) -> PoolRequiredCCVs;
 }

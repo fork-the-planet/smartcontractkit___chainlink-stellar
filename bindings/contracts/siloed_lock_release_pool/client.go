@@ -367,6 +367,29 @@ func (c *SiloedLockReleasePoolClient) GetPendingOwner(ctx context.Context) (*str
 	return v, nil
 }
 
+// GetRequiredCcvs calls the get_required_ccvs function on the contract.
+func (c *SiloedLockReleasePoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) (*PoolRequiredCCVs, error) {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(localToken),
+		scval.Uint64ToScVal(remoteChainSelector),
+		scval.I128ToScVal(amount),
+		scval.Uint32ToScVal(requestedFinality),
+		scval.BytesToScVal(extraData),
+		scval.MustToScVal(direction.ToScVal()),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_required_ccvs", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_required_ccvs: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_required_ccvs")
+	}
+
+	return PoolRequiredCCVsFromScVal(*result)
+}
+
 // GetTokenDecimals calls the get_token_decimals function on the contract.
 func (c *SiloedLockReleasePoolClient) GetTokenDecimals(ctx context.Context) (uint32, error) {
 	args := []xdr.ScVal{}
@@ -1787,6 +1810,78 @@ func ParseRateLimitConfiguredEvent(e protocolrpc.EventInfo) (*RateLimitConfigure
 			v, err := RateLimitConfigFromScVal(entry.Val)
 			if err == nil {
 				result.InboundConfig = *v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForAdvancedPoolHooksUpdatedEvent waits for a AdvancedPoolHooksUpdatedEvent event.
+func (c *SiloedLockReleasePoolClient) WaitForAdvancedPoolHooksUpdatedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AdvancedPoolHooksUpdatedEvent) bool) (*AdvancedPoolHooksUpdatedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AdvancedPoolHooksUpdatedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseAdvancedPoolHooksUpdatedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseAdvancedPoolHooksUpdatedEvent(e protocolrpc.EventInfo) (*AdvancedPoolHooksUpdatedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &AdvancedPoolHooksUpdatedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "old_hooks":
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
+			if err == nil {
+				result.OldHooks = v
+			}
+		case "new_hooks":
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
+			if err == nil {
+				result.NewHooks = v
 			}
 		}
 	}

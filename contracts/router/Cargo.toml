@@ -19,6 +19,7 @@ common-guard = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 ccip_receiver_example = { path = "../examples/ccip_receiver" }
+ccvs-versioned-verifier-resolver = { workspace = true }
 fee-quoter = { workspace = true }
 onramp = { workspace = true }
 rmn_proxy = { workspace = true }

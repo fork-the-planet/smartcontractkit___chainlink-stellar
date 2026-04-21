@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes};
+use soroban_sdk::{contracttype, Address, Bytes, Vec};
 
 // ============================================================
 // Rate Limit Types (EVM RateLimiter.sol parity)
@@ -97,11 +97,29 @@ pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
 }
 
+/// Direction of a CCIP transfer for pool hooks and CCV resolution (EVM `IPoolV2.MessageDirection`).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
+}
+
 /// Fee result returned by a pool's `get_fee` method.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PoolFeeResult {
     pub fee_usd_cents: u32,
+}
+
+/// Declarative CCV requirements returned by `get_required_ccvs`, mirroring
+/// `common_interfaces::token_pool::PoolRequiredCCVs`. `include_defaults` stands in for EVM's
+/// `address(0)` sentinel in `_getCCVsForPool` (Stellar has no zero address).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: Vec<Address>,
+    pub include_defaults: bool,
 }
 
 /// Per-chain fee configuration set by the pool owner.

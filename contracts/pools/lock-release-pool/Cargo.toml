@@ -17,3 +17,4 @@ common-pool = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+common-interfaces = { workspace = true }

@@ -1105,6 +1105,7 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-interfaces",
  "common-pool",
  "soroban-sdk",
 ]
@@ -1116,6 +1117,7 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-interfaces",
  "common-pool",
  "soroban-sdk",
 ]
@@ -1289,6 +1291,7 @@ name = "router"
 version = "0.0.0"
 dependencies = [
  "ccip_receiver_example",
+ "ccvs-versioned-verifier-resolver",
  "common-authorization",
  "common-error",
  "common-guard",

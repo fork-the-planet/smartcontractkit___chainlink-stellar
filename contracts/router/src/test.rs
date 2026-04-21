@@ -15,9 +15,71 @@ use soroban_sdk::{
 
 use crate::test_panic_receiver::{ErrReturningCcipReceiver, PanicCcipReceiver};
 
+#[cfg(test)]
+mod mock_outbound_ccv {
+    use common_error::CCIPError;
+    use common_interfaces::committee_verifier::FeeResponse;
+    use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+
+    #[contract]
+    pub struct MockOutboundCcvVerifier;
+
+    #[contractimpl]
+    impl MockOutboundCcvVerifier {
+        pub fn get_fee(
+            _env: Env,
+            _dest_chain_selector: u64,
+            _message: Bytes,
+            _extra_args: Bytes,
+            _block_confirmations: u32,
+        ) -> Result<FeeResponse, CCIPError> {
+            Ok(FeeResponse {
+                dest_bytes_overhead: 0,
+                dest_gas_limit: 0,
+                fee: 0,
+            })
+        }
+
+        pub fn forward_to_verifier(
+            env: Env,
+            _dest_chain_selector: u64,
+            _sender: Address,
+            _message_id: BytesN<32>,
+            _fee_token: Address,
+            _fee_token_amount: i128,
+            _verifier_args: Bytes,
+        ) -> Result<Bytes, CCIPError> {
+            Ok(Bytes::new(&env))
+        }
+    }
+}
+
 // ============================================================
 // Unit Test Helpers
 // ============================================================
+
+/// Deploy a [`VersionedVerifierResolverContract`] whose outbound target for `dest_chain_selector`
+/// is a trivial verifier, and return the **resolver** address for use as a default CCV entry.
+/// This matches production where each default CCV is a resolver contract.
+fn deploy_default_ccv_resolver(env: &Env, owner: &Address, dest_chain_selector: u64) -> Address {
+    use ccvs_versioned_verifier_resolver::{
+        OutboundImplementationUpdate, VersionedVerifierResolverContract,
+        VersionedVerifierResolverContractClient,
+    };
+
+    let verifier_id = env.register(mock_outbound_ccv::MockOutboundCcvVerifier, ());
+    let vvr_id = env.register(VersionedVerifierResolverContract, ());
+    let vvr = VersionedVerifierResolverContractClient::new(env, &vvr_id);
+    vvr.initialize(owner, &Address::generate(env));
+    vvr.apply_outbound_impl_updates(&vec![
+        env,
+        OutboundImplementationUpdate {
+            dest_chain_selector,
+            verifier: Some(verifier_id),
+        },
+    ]);
+    vvr_id
+}
 
 /// Deploy and configure FeeQuoter for use in OnRamp integration tests.
 /// Returns (fee_quoter_address, fee_token_address) - the fee_token has its price set.
@@ -390,6 +452,8 @@ fn test_ccip_send_full_flow() {
     let onramp_client = onramp::OnRampContractClient::new(&env, &onramp_id);
     onramp_client.initialize(&owner, &static_config, &dynamic_config);
 
+    let default_ccv = deploy_default_ccv_resolver(&env, &owner, evm_chain_selector);
+
     // ---- Configure OnRamp's dest chain config with Router as the authorized caller ----
     let dest_chain_config = DestChainConfigArgs {
         dest_chain_selector: evm_chain_selector,
@@ -402,7 +466,7 @@ fn test_ccip_send_full_flow() {
         execution_fee_usd_cents: 25,
         default_executor: Address::generate(&env),
         lane_mandated_ccvs: Vec::new(&env),
-        default_ccvs: vec![&env, Address::generate(&env)],
+        default_ccvs: vec![&env, default_ccv],
         off_ramp: Bytes::from_array(&env, &[0u8; 20]),
     };
 
@@ -513,6 +577,8 @@ fn test_get_fee_via_onramp() {
         },
     );
 
+    let default_ccv = deploy_default_ccv_resolver(&env, &owner, dest_chain);
+
     onramp_client.apply_dest_chain_config_updates(&vec![
         &env,
         DestChainConfigArgs {
@@ -526,7 +592,7 @@ fn test_get_fee_via_onramp() {
             execution_fee_usd_cents: 25,
             default_executor: Address::generate(&env),
             lane_mandated_ccvs: Vec::new(&env),
-            default_ccvs: vec![&env, Address::generate(&env)],
+            default_ccvs: vec![&env, default_ccv],
             off_ramp: Bytes::from_array(&env, &[0u8; 20]),
         },
     ]);

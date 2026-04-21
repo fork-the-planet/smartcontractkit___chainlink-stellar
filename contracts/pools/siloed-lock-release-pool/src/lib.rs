@@ -21,9 +21,9 @@ use common_interfaces::token_lock_box::TokenLockBoxClient;
 use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
-    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, OutboundRateLimitConsumedEvent,
-    PoolFeeConfig, PoolFeeResult, RateLimitConfig, RateLimiterState, ReleaseOrMintIn,
-    ReleaseOrMintOut,
+    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, MessageDirection,
+    OutboundRateLimitConsumedEvent, PoolFeeConfig, PoolFeeResult, PoolRequiredCCVs,
+    RateLimitConfig, RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{LockBoxConfiguredEvent, LockedEvent, ReleasedEvent};
 
@@ -165,13 +165,7 @@ impl SiloedLockReleaseTokenPoolContract {
 
         consume_outbound_rate_limit(&env, &input, requested_finality)?;
 
-        <Self as BaseTokenPool>::preflight_check(
-            &env,
-            &input.original_sender,
-            input.remote_chain_selector,
-            input.amount,
-            requested_finality,
-        )?;
+        <Self as BaseTokenPool>::preflight_check(&env, &input, requested_finality, input.amount)?;
 
         let pool_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &pool_token);
@@ -235,13 +229,7 @@ impl SiloedLockReleaseTokenPoolContract {
             requested_finality,
         )?;
 
-        <Self as BaseTokenPool>::postflight_check(
-            &env,
-            input.remote_chain_selector,
-            &input.receiver,
-            local_amount,
-            requested_finality,
-        )?;
+        <Self as BaseTokenPool>::postflight_check(&env, &input, local_amount, requested_finality)?;
 
         let lock_box_addr = resolve_lock_box(&env, input.remote_chain_selector)?;
         let pool_address = env.current_contract_address();
@@ -329,6 +317,27 @@ impl SiloedLockReleaseTokenPoolContract {
 
     pub fn get_advanced_pool_hooks(env: Env) -> Option<Address> {
         <Self as BaseTokenPool>::get_advanced_pool_hooks(&env)
+    }
+
+    /// Returns required CCV verifier resolver addresses (EVM `TokenPool.getRequiredCCVs`).
+    pub fn get_required_ccvs(
+        env: Env,
+        local_token: Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: Bytes,
+        direction: MessageDirection,
+    ) -> PoolRequiredCCVs {
+        <Self as BaseTokenPool>::get_required_ccvs(
+            &env,
+            &local_token,
+            remote_chain_selector,
+            amount,
+            requested_finality,
+            &extra_data,
+            &direction,
+        )
     }
 
     // ------------------------------------------------------------------
