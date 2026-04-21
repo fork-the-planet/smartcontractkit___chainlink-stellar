@@ -1,0 +1,4 @@
+# Soroban `soroban-sdk` testutils: JSON golden recordings per test.
+# Mark as generated and suppress line-by-line diffs so PRs stay reviewable
+# when auth trees or call graphs change (snapshots still run in CI unchanged).
+**/test_snapshots/** linguist-generated=true -diff merge=binary
