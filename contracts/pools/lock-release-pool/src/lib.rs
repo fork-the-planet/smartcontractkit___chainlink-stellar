@@ -48,11 +48,13 @@ impl LockReleaseTokenPoolContract {
         owner: Address,
         token: Address,
         token_decimals: u32,
+        router: Address,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as BaseTokenPool>::init_pool(&env, &token, token_decimals)?;
+        <Self as BaseTokenPool>::set_router(&env, &router);
         Ok(())
     }
 
@@ -149,10 +151,16 @@ impl LockReleaseTokenPoolContract {
     /// on the destination chain after verifying the cross-chain message.
     pub fn release_or_mint(
         env: Env,
+        caller: Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::require_authorized_offramp(
+            &env,
+            input.remote_chain_selector,
+            &caller,
+        )?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {
@@ -332,6 +340,18 @@ impl LockReleaseTokenPoolContract {
         <Self as Ownable>::require_owner(&env)?;
         <Self as BaseTokenPool>::set_allowed_finality_config(&env, allowed_finality);
         Ok(())
+    }
+
+    /// Set the router address used for inbound `release_or_mint` caller checks (EVM `setDynamicConfig`).
+    pub fn set_router(env: Env, router: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_router(&env, &router);
+        Ok(())
+    }
+
+    pub fn get_router(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_router(&env)
     }
 
     /// Set the advanced pool hooks contract (EVM `updateAdvancedPoolHooks`). Owner-only.

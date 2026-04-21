@@ -8,6 +8,7 @@ pub trait BurnMintPoolInterface {
     ) -> Result<PoolFeeResult, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn get_token(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn init_owner(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -17,6 +18,11 @@ pub trait BurnMintPoolInterface {
         owner: soroban_sdk::Address,
         token: soroban_sdk::Address,
         token_decimals: u32,
+        router: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn set_router(
+        env: soroban_sdk::Env,
+        router: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
     fn lock_or_burn(
         env: soroban_sdk::Env,
@@ -34,6 +40,7 @@ pub trait BurnMintPoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn release_or_mint(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
@@ -379,6 +386,7 @@ pub enum CCIPError {
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidChainForClient = 317,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

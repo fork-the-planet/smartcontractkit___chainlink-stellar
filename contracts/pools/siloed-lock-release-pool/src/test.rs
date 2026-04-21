@@ -16,6 +16,41 @@ use common_pool::{
     ChainUpdate, LockOrBurnIn, MessageDirection, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn,
 };
 use pools_token_lock_box::{TokenLockBox, TokenLockBoxClient};
+use router::{RouterContract, RouterContractClient};
+
+/// Invokes `release_or_mint` with `caller = self` so `caller.require_auth()` succeeds.
+mod inbound_release_stub {
+    use soroban_sdk::{contract, contractimpl, Address, Env};
+
+    use crate::SiloedLockReleaseTokenPoolContractClient;
+    use common_error::CCIPError;
+    use common_pool::{ReleaseOrMintIn, ReleaseOrMintOut};
+
+    #[contract]
+    pub struct PoolInboundReleaseStub;
+
+    #[contractimpl]
+    impl PoolInboundReleaseStub {
+        pub fn release(
+            env: Env,
+            pool: Address,
+            input: ReleaseOrMintIn,
+            requested_finality: u32,
+        ) -> Result<ReleaseOrMintOut, CCIPError> {
+            let me = env.current_contract_address();
+            let client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool);
+            Ok(client.release_or_mint(&me, &input, &requested_finality))
+        }
+    }
+}
+
+fn register_offramp_for_chain(
+    router_client: &RouterContractClient,
+    stub_client: &inbound_release_stub::PoolInboundReleaseStubClient,
+    source_chain_selector: u64,
+) {
+    router_client.add_offramp(&source_chain_selector, &stub_client.address);
+}
 
 /// Minimal hook contracts for pool integration tests (must match `PoolHooksInterface` ABI).
 mod mock_hooks {
@@ -113,6 +148,8 @@ struct TestEnv<'a> {
     lockbox_client: TokenLockBoxClient<'a>,
     sac: token::StellarAssetClient<'a>,
     tc: token::Client<'a>,
+    router_client: RouterContractClient<'a>,
+    stub_client: inbound_release_stub::PoolInboundReleaseStubClient<'a>,
 }
 
 fn setup() -> TestEnv<'static> {
@@ -130,11 +167,16 @@ fn setup() -> TestEnv<'static> {
     let lockbox_client = TokenLockBoxClient::new(&env, &lockbox_id);
     lockbox_client.initialize(&owner, &token_addr);
 
-    let router = Address::generate(&env);
+    let rmn_proxy = Address::generate(&env);
+    let router_id = env.register(RouterContract, ());
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+    let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
+    let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
 
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &token_addr, &7, &router);
+    pool_client.initialize(&owner, &token_addr, &7, &router_client.address);
 
     lockbox_client.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
     add_chain(&env, &pool_client, REMOTE_CHAIN);
@@ -147,6 +189,8 @@ fn setup() -> TestEnv<'static> {
         },
     ]);
 
+    register_offramp_for_chain(&router_client, &stub_client, REMOTE_CHAIN);
+
     TestEnv {
         env,
         token_addr,
@@ -154,6 +198,8 @@ fn setup() -> TestEnv<'static> {
         lockbox_client,
         sac,
         tc,
+        router_client,
+        stub_client,
     }
 }
 
@@ -166,6 +212,7 @@ struct MultiLockboxEnv<'a> {
     siloed_lockbox: TokenLockBoxClient<'a>,
     sac: token::StellarAssetClient<'a>,
     tc: token::Client<'a>,
+    stub_client: inbound_release_stub::PoolInboundReleaseStubClient<'a>,
 }
 
 fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
@@ -187,10 +234,16 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
     let siloed_lockbox = TokenLockBoxClient::new(&env, &siloed_id);
     siloed_lockbox.initialize(&owner, &token_addr);
 
-    let router = Address::generate(&env);
+    let rmn_proxy = Address::generate(&env);
+    let router_id = env.register(RouterContract, ());
+    let router_client = RouterContractClient::new(&env, &router_id);
+    router_client.initialize(&owner, &rmn_proxy);
+    let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
+    let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
+
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &token_addr, &7, &router);
+    pool_client.initialize(&owner, &token_addr, &7, &router_client.address);
 
     shared_lockbox.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
     siloed_lockbox.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
@@ -210,6 +263,9 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
         },
     ]);
 
+    register_offramp_for_chain(&router_client, &stub_client, REMOTE_CHAIN);
+    register_offramp_for_chain(&router_client, &stub_client, SILOED_CHAIN);
+
     MultiLockboxEnv {
         env,
         token_addr,
@@ -218,6 +274,7 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
         siloed_lockbox,
         sac,
         tc,
+        stub_client,
     }
 }
 
@@ -284,7 +341,7 @@ fn release_withdraws_from_lockbox() {
         source_pool_address: Bytes::from_slice(&t.env, &[0xaa; 32]),
         source_pool_data: Bytes::new(&t.env),
     };
-    let out = t.pool_client.release_or_mint(&input, &0);
+    let out = t.stub_client.release(&t.pool_client.address, &input, &0);
 
     assert_eq!(out.destination_amount, 800);
     assert_eq!(t.tc.balance(&receiver), 800);
@@ -366,6 +423,7 @@ fn many_to_one_lockbox_shared_liquidity() {
             lock_box: t.lockbox_client.address.clone(),
         },
     ]);
+    register_offramp_for_chain(&t.router_client, &t.stub_client, SILOED_CHAIN);
 
     let sender = Address::generate(&t.env);
     t.sac.mint(&sender, &1_000);
@@ -567,18 +625,18 @@ fn release_drains_siloed_lockbox() {
     assert_eq!(m.tc.balance(&m.shared_lockbox.address), 0);
 
     let receiver = Address::generate(&m.env);
-    let out = m.pool_client.release_or_mint(
-        &ReleaseOrMintIn {
-            original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
-            remote_chain_selector: SILOED_CHAIN,
-            receiver: receiver.clone(),
-            amount: 1_000,
-            local_token: m.token_addr.clone(),
-            source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
-            source_pool_data: Bytes::new(&m.env),
-        },
-        &0,
-    );
+    let release_in = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
+        remote_chain_selector: SILOED_CHAIN,
+        receiver: receiver.clone(),
+        amount: 1_000,
+        local_token: m.token_addr.clone(),
+        source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
+        source_pool_data: Bytes::new(&m.env),
+    };
+    let out = m
+        .stub_client
+        .release(&m.pool_client.address, &release_in, &0);
 
     assert_eq!(out.destination_amount, 1_000);
     assert_eq!(m.tc.balance(&receiver), 1_000);
@@ -607,18 +665,18 @@ fn release_drains_shared_lockbox() {
     assert_eq!(m.tc.balance(&m.siloed_lockbox.address), 0);
 
     let receiver = Address::generate(&m.env);
-    let out = m.pool_client.release_or_mint(
-        &ReleaseOrMintIn {
-            original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
-            remote_chain_selector: REMOTE_CHAIN,
-            receiver: receiver.clone(),
-            amount: 500,
-            local_token: m.token_addr.clone(),
-            source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
-            source_pool_data: Bytes::new(&m.env),
-        },
-        &0,
-    );
+    let release_in = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
+        remote_chain_selector: REMOTE_CHAIN,
+        receiver: receiver.clone(),
+        amount: 500,
+        local_token: m.token_addr.clone(),
+        source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
+        source_pool_data: Bytes::new(&m.env),
+    };
+    let out = m
+        .stub_client
+        .release(&m.pool_client.address, &release_in, &0);
 
     assert_eq!(out.destination_amount, 500);
     assert_eq!(m.tc.balance(&receiver), 500);
@@ -693,18 +751,18 @@ fn release_rejects_insufficient_liquidity() {
     );
 
     let receiver = Address::generate(&m.env);
-    let r = m.pool_client.try_release_or_mint(
-        &ReleaseOrMintIn {
-            original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
-            remote_chain_selector: SILOED_CHAIN,
-            receiver: receiver,
-            amount: 500,
-            local_token: m.token_addr.clone(),
-            source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
-            source_pool_data: Bytes::new(&m.env),
-        },
-        &0,
-    );
+    let release_in = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&m.env, &[0xcd; 20]),
+        remote_chain_selector: SILOED_CHAIN,
+        receiver: receiver,
+        amount: 500,
+        local_token: m.token_addr.clone(),
+        source_pool_address: Bytes::from_slice(&m.env, &[0xaa; 32]),
+        source_pool_data: Bytes::new(&m.env),
+    };
+    let r = m
+        .stub_client
+        .try_release(&m.pool_client.address, &release_in, &0);
     assert!(r.is_err());
 }
 
@@ -724,18 +782,18 @@ fn release_rejects_wrong_token() {
     let wrong_token = other_contract.address();
 
     let receiver = Address::generate(&t.env);
-    let r = t.pool_client.try_release_or_mint(
-        &ReleaseOrMintIn {
-            original_sender: Bytes::from_slice(&t.env, &[0xcd; 20]),
-            remote_chain_selector: REMOTE_CHAIN,
-            receiver: receiver,
-            amount: 100,
-            local_token: wrong_token,
-            source_pool_address: Bytes::from_slice(&t.env, &[0xaa; 32]),
-            source_pool_data: Bytes::new(&t.env),
-        },
-        &0,
-    );
+    let release_in = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&t.env, &[0xcd; 20]),
+        remote_chain_selector: REMOTE_CHAIN,
+        receiver: receiver,
+        amount: 100,
+        local_token: wrong_token,
+        source_pool_address: Bytes::from_slice(&t.env, &[0xaa; 32]),
+        source_pool_data: Bytes::new(&t.env),
+    };
+    let r = t
+        .stub_client
+        .try_release(&t.pool_client.address, &release_in, &0);
     assert!(r.is_err());
 }
 
@@ -745,18 +803,18 @@ fn release_rejects_unsupported_chain() {
     let receiver = Address::generate(&t.env);
     let unknown_chain: u64 = 12_345;
 
-    let r = t.pool_client.try_release_or_mint(
-        &ReleaseOrMintIn {
-            original_sender: Bytes::from_slice(&t.env, &[0xcd; 20]),
-            remote_chain_selector: unknown_chain,
-            receiver: receiver,
-            amount: 100,
-            local_token: t.token_addr.clone(),
-            source_pool_address: Bytes::from_slice(&t.env, &[0xaa; 32]),
-            source_pool_data: Bytes::new(&t.env),
-        },
-        &0,
-    );
+    let release_in = ReleaseOrMintIn {
+        original_sender: Bytes::from_slice(&t.env, &[0xcd; 20]),
+        remote_chain_selector: unknown_chain,
+        receiver: receiver,
+        amount: 100,
+        local_token: t.token_addr.clone(),
+        source_pool_address: Bytes::from_slice(&t.env, &[0xaa; 32]),
+        source_pool_data: Bytes::new(&t.env),
+    };
+    let r = t
+        .stub_client
+        .try_release(&t.pool_client.address, &release_in, &0);
     assert!(r.is_err());
 }
 

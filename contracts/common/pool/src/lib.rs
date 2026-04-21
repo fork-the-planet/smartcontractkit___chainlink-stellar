@@ -21,6 +21,7 @@ pub use types::*;
 
 use common_error::CCIPError;
 use common_interfaces::pool_hooks::PoolHooksClient;
+use common_interfaces::router::RouterClient;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
     PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
@@ -369,20 +370,19 @@ pub trait BaseTokenPool {
         env.storage().instance().get(&PoolDataKey::Router)
     }
 
-    /// Require that the configured router has provided authorization in the
-    /// current invocation's auth tree. This is the Soroban analogue of EVM's
-    /// `_onlyOnRamp` / `_onlyOffRamp`: only calls originating from the
-    /// router (which in turn is called by onramp/offramp) are accepted.
-    ///
-    /// If no router is configured the check is skipped (permissive — allows
-    /// pools to work before router is wired up, matching existing behavior).
-    fn require_router(env: &Env) -> Result<(), CCIPError> {
-        if let Some(router) = env
-            .storage()
-            .instance()
-            .get::<PoolDataKey, Address>(&PoolDataKey::Router)
-        {
-            router.require_auth();
+    /// Require `caller` to be a registered OffRamp for `source_chain_selector` on the
+    /// configured router (EVM `TokenPool._onlyOffRamp`). `caller` must match the direct
+    /// invoker and authorize this call (`caller.require_auth()`).
+    fn require_authorized_offramp(
+        env: &Env,
+        source_chain_selector: u64,
+        caller: &Address,
+    ) -> Result<(), CCIPError> {
+        caller.require_auth();
+        let router = Self::get_router(env).ok_or(CCIPError::RouterNotConfigured)?;
+        let router_client = RouterClient::new(env, &router);
+        if !router_client.is_offramp(&source_chain_selector, caller) {
+            return Err(CCIPError::CallerNotAuthorized);
         }
         Ok(())
     }

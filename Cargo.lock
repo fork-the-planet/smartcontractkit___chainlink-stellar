@@ -1107,6 +1107,7 @@ dependencies = [
  "common-guard",
  "common-interfaces",
  "common-pool",
+ "router",
  "soroban-sdk",
 ]
 
@@ -1119,6 +1120,7 @@ dependencies = [
  "common-guard",
  "common-interfaces",
  "common-pool",
+ "router",
  "soroban-sdk",
 ]
 
@@ -1132,6 +1134,7 @@ dependencies = [
  "common-interfaces",
  "common-pool",
  "pools-token-lock-box",
+ "router",
  "soroban-sdk",
 ]
 
