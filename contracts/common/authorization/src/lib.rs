@@ -20,7 +20,7 @@
 //!
 //! // In protected functions:
 //! <MyContract as Ownable>::require_owner(&env)?;
-//! AuthorizedCallers::require_authorized(&env)?;
+//! AuthorizedCallers::require_authorized_caller(&env, &updater)?;
 //! AccessControl::require_role(&env, symbol_short!("MINTER"))?;
 //! ```
 
@@ -61,7 +61,7 @@ pub const ROLE_BURNER: Symbol = symbol_short!("BURNER");
 /// Manages a set of authorized caller addresses.
 ///
 /// This is an optional feature that must be explicitly initialized.
-/// If not initialized, `is_enabled()` returns false and `require_authorized()` will fail.
+/// If not initialized, `is_enabled()` returns false and `require_authorized_caller` returns `CCIPError::FeatureNotEnabled`.
 pub struct AuthorizedCallers;
 
 impl AuthorizedCallers {
@@ -196,26 +196,38 @@ impl AuthorizedCallers {
         false
     }
 
-    /// Require that the caller is authorized.
-    /// This finds an authorized caller that provided auth and validates it.
+    /// Require that `caller` is in the authorized-callers allowlist **and** has authorized this
+    /// contract invocation via Soroban auth (`caller.require_auth()`).
+    ///
+    /// This matches EVM `AuthorizedCallers` / `FeeQuoter` semantics: the configured addresses form an **OR**-list of allowed
+    /// principals, but each transaction must identify **one** principal (here: the `caller`
+    /// argument — the Stellar analogue of `msg.sender`) that is both allowlisted and has signed /
+    /// authorized this call.
+    ///
+    /// # Security
+    ///
+    /// Callers **must** pass their own [`Address`] as `caller`. Soroban does not support
+    /// iterating `require_auth()` over every allowlisted address: the first failed `require_auth`
+    /// would **panic**, and order would become security-sensitive. The allowlist check runs
+    /// **before** `require_auth` so unknown addresses get `CCIPError::CallerNotAuthorized`
+    /// instead of a host auth panic.
     ///
     /// # Errors
     /// * `FeatureNotEnabled` - AuthorizedCallers not initialized
-    /// * `CallerNotAuthorized` - No authorized caller provided auth
-    pub fn require_authorized(env: &Env) -> Result<Address, CCIPError> {
+    /// * `CallerNotAuthorized` - `caller` is not in the allowlist
+    ///
+    /// # Panics
+    ///
+    /// If `caller` is allowlisted but did not authorize this invocation (same as `require_auth`).
+    pub fn require_authorized_caller(env: &Env, caller: &Address) -> Result<(), CCIPError> {
         if !Self::is_enabled(env) {
             return Err(CCIPError::FeatureNotEnabled);
         }
-
-        let callers = Self::get_callers(env);
-
-        // Try each authorized caller
-        for caller in callers.iter() {
-            caller.require_auth();
-            return Ok(caller);
+        if !Self::is_authorized(env, caller) {
+            return Err(CCIPError::CallerNotAuthorized);
         }
-
-        Err(CCIPError::CallerNotAuthorized)
+        caller.require_auth();
+        Ok(())
     }
 }
 
