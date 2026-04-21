@@ -21,6 +21,7 @@ pub mod fee_quoter;
 pub mod offramp;
 pub mod onramp;
 pub mod pool_hooks;
+pub mod ramp_registry;
 pub mod rmn_proxy;
 pub mod rmn_remote;
 pub mod router;

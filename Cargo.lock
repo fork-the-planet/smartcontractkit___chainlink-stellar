@@ -229,6 +229,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ccip-ramp-registry"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ccip_receiver_example"
 version = "0.0.0"
 dependencies = [
@@ -1102,12 +1112,12 @@ dependencies = [
 name = "pools-burn-mint-pool"
 version = "0.0.0"
 dependencies = [
+ "ccip-ramp-registry",
  "common-authorization",
  "common-error",
  "common-guard",
  "common-interfaces",
  "common-pool",
- "router",
  "soroban-sdk",
 ]
 
@@ -1115,12 +1125,12 @@ dependencies = [
 name = "pools-lock-release-pool"
 version = "0.0.0"
 dependencies = [
+ "ccip-ramp-registry",
  "common-authorization",
  "common-error",
  "common-guard",
  "common-interfaces",
  "common-pool",
- "router",
  "soroban-sdk",
 ]
 
@@ -1128,13 +1138,13 @@ dependencies = [
 name = "pools-siloed-lock-release-pool"
 version = "0.0.0"
 dependencies = [
+ "ccip-ramp-registry",
  "common-authorization",
  "common-error",
  "common-guard",
  "common-interfaces",
  "common-pool",
  "pools-token-lock-box",
- "router",
  "soroban-sdk",
 ]
 
