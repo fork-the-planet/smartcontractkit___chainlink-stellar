@@ -314,7 +314,11 @@ impl FeeQuoterContract {
     ///
     /// # Arguments
     /// * `updater` — Address claiming this update (must be in the authorized-callers set and must
-    ///   authorize this invocation via Soroban auth; same role as `msg.sender` on EVM `FeeQuoter.updatePrices`).
+    ///   authorize this invocation via Soroban auth; same *authorization role* as `msg.sender` on EVM
+    ///   `FeeQuoter.updatePrices`). On Soroban 25 there is no guest-visible “direct invoker” address;
+    ///   `require_auth` binds to this call’s real argument vector but still allows invoker-contract
+    ///   delegation, so `updater` may differ from the contract that performed the host `call` into
+    ///   this contract when that pattern is used.
     /// * `price_updates` - Token and gas price updates
     pub fn update_prices(
         env: Env,
