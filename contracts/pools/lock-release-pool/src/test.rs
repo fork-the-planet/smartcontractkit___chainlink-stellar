@@ -3,6 +3,7 @@
 use soroban_sdk::{testutils::Address as _, testutils::Ledger, token, Address, Bytes, Env, Vec};
 
 use crate::{LockReleaseTokenPoolContract, LockReleaseTokenPoolContractClient};
+use ccip_ramp_registry::{RampRegistryContract, RampRegistryContractClient};
 use common_error::CCIPError;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
@@ -12,7 +13,6 @@ use common_pool::{
     encode_local_decimals, ChainUpdate, LockOrBurnIn, MessageDirection, PoolFeeConfig,
     RateLimitConfig, ReleaseOrMintIn,
 };
-use router::{RouterContract, RouterContractClient};
 
 /// Minimal hook contracts for pool integration tests (must match `PoolHooksInterface` ABI).
 mod mock_hooks {
@@ -185,6 +185,8 @@ mod inbound_release_stub {
     }
 }
 
+const DEFAULT_REMOTE_CHAIN: u64 = 5009297550715157269;
+
 fn setup_env() -> (
     Env,
     LockReleaseTokenPoolContractClient<'static>,
@@ -192,17 +194,20 @@ fn setup_env() -> (
     Address,
     token::Client<'static>,
     token::StellarAssetClient<'static>,
-    RouterContractClient<'static>,
+    RampRegistryContractClient<'static>,
     inbound_release_stub::PoolInboundReleaseStubClient<'static>,
+    Address,
 ) {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
 
     let owner = Address::generate(&env);
-    let rmn_proxy = Address::generate(&env);
-    let router_id = env.register(RouterContract, ());
-    let router_client = RouterContractClient::new(&env, &router_id);
-    router_client.initialize(&owner, &rmn_proxy);
+    let registry_id = env.register(RampRegistryContract, ());
+    let registry_client = RampRegistryContractClient::new(&env, &registry_id);
+    registry_client.initialize(&owner);
+
+    let auth_onramp = Address::generate(&env);
+    registry_client.set_onramp(&DEFAULT_REMOTE_CHAIN, &auth_onramp);
 
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
@@ -216,7 +221,14 @@ fn setup_env() -> (
     let token_client = token::Client::new(&env, &token_address);
     let token_admin_client = token::StellarAssetClient::new(&env, &token_address);
 
-    pool_client.initialize(&owner, &token_address, &7u32, &router_client.address);
+    let router = Address::generate(&env);
+    pool_client.initialize(
+        &owner,
+        &token_address,
+        &7u32,
+        &router,
+        &registry_client.address,
+    );
 
     (
         env,
@@ -225,17 +237,18 @@ fn setup_env() -> (
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     )
 }
 
 fn register_offramp_for_chain(
-    router_client: &RouterContractClient,
+    registry_client: &RampRegistryContractClient,
     stub_client: &inbound_release_stub::PoolInboundReleaseStubClient,
     source_chain_selector: u64,
 ) {
-    router_client.add_offramp(&source_chain_selector, &stub_client.address);
+    registry_client.add_offramp(&source_chain_selector, &stub_client.address);
 }
 
 #[test]
@@ -247,8 +260,9 @@ fn test_initialize() {
         token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        _auth_onramp,
     ) = setup_env();
 
     let pool_token = pool_client.get_token();
@@ -269,8 +283,9 @@ fn test_lock_and_release() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -298,7 +313,7 @@ fn test_lock_and_release() {
         local_token: token_address.clone(),
     };
 
-    let lock_result = pool_client.lock_or_burn(&lock_input, &0u32);
+    let lock_result = pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(lock_result.dest_token_address, remote_token);
 
     let pool_address = pool_client.address.clone();
@@ -316,7 +331,7 @@ fn test_lock_and_release() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let release_result = stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(release_result.destination_amount, lock_amount);
     assert_eq!(token_client.balance(&receiver), lock_amount);
@@ -332,8 +347,9 @@ fn test_unsupported_chain_rejected() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let sender = Address::generate(&env);
@@ -347,7 +363,7 @@ fn test_unsupported_chain_rejected() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let result = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -360,9 +376,12 @@ fn test_wrong_token_rejected() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
+
+    registry_client.set_onramp(&1u64, &auth_onramp);
 
     let wrong_token = Address::generate(&env);
     let sender = Address::generate(&env);
@@ -375,7 +394,7 @@ fn test_wrong_token_rejected() {
         local_token: wrong_token,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let result = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -416,10 +435,18 @@ fn test_initialize_twice_rejected() {
         token_address,
         _token_client,
         _token_admin_client,
-        router_client,
+        registry_client,
         _stub_client,
+        _auth_onramp,
     ) = setup_env();
-    pool_client.initialize(&owner, &token_address, &7u32, &router_client.address);
+    let router = Address::generate(&_env);
+    pool_client.initialize(
+        &owner,
+        &token_address,
+        &7u32,
+        &router,
+        &registry_client.address,
+    );
 }
 
 #[test]
@@ -431,8 +458,9 @@ fn test_lock_or_burn_zero_amount_succeeds_when_chain_configured() {
         token_address,
         token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -450,7 +478,7 @@ fn test_lock_or_burn_zero_amount_succeeds_when_chain_configured() {
         local_token: token_address.clone(),
     };
 
-    let out = pool_client.lock_or_burn(&lock_input, &0u32);
+    let out = pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(out.dest_token_address, Bytes::from_slice(&env, &[2u8; 20]));
     assert_eq!(token_client.balance(&pool_client.address), 0);
     assert_eq!(token_client.balance(&sender), 0);
@@ -465,8 +493,9 @@ fn test_release_or_mint_zero_amount_succeeds_without_pool_balance() {
         token_address,
         token_client,
         _token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -486,7 +515,7 @@ fn test_release_or_mint_zero_amount_succeeds_without_pool_balance() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let out = stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(out.destination_amount, 0);
     assert_eq!(token_client.balance(&receiver), 0);
@@ -501,8 +530,9 @@ fn test_lock_or_burn_amount_exceeds_sender_balance_fails() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -522,7 +552,7 @@ fn test_lock_or_burn_amount_exceeds_sender_balance_fails() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let result = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -535,8 +565,9 @@ fn test_lock_or_burn_negative_amount_fails() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -556,7 +587,7 @@ fn test_lock_or_burn_negative_amount_fails() {
         local_token: token_address,
     };
 
-    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let result = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert!(result.is_err());
 }
 
@@ -569,8 +600,9 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
         token_address,
         _token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -590,7 +622,7 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
         amount: locked,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_input, &0u32);
+    pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
 
     let receiver = Address::generate(&env);
     let release_input = ReleaseOrMintIn {
@@ -603,7 +635,7 @@ fn test_release_or_mint_insufficient_pool_liquidity() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let result = stub_client.try_release(&pool_client.address, &release_input, &0u32);
     assert_eq!(result, Err(Ok(CCIPError::InsufficientPoolLiquidity)));
 }
@@ -617,8 +649,9 @@ fn test_apply_chain_updates_remove_unlists_chain() {
         token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -639,7 +672,7 @@ fn test_apply_chain_updates_remove_unlists_chain() {
         amount: 1,
         local_token: token_address.clone(),
     };
-    let result = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let result = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(result, Err(Ok(CCIPError::ChainNotSupported)));
 
     // Owner can re-add the same selector with fresh config
@@ -663,8 +696,9 @@ fn test_apply_chain_updates_duplicate_selector_overwrites_remote_token() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -699,7 +733,7 @@ fn test_apply_chain_updates_duplicate_selector_overwrites_remote_token() {
         amount: 1,
         local_token: token_address,
     };
-    let out = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let out = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert!(out.is_ok());
 }
 
@@ -712,8 +746,9 @@ fn test_lock_or_burn_dest_pool_data_encodes_local_decimals() {
         token_address,
         token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -731,7 +766,7 @@ fn test_lock_or_burn_dest_pool_data_encodes_local_decimals() {
         amount: 100,
         local_token: token_address,
     };
-    let out = pool_client.lock_or_burn(&lock_input, &0u32);
+    let out = pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(out.dest_pool_data, encode_local_decimals(&env, 7).unwrap());
     assert_eq!(token_client.balance(&pool_client.address), 100);
 }
@@ -750,22 +785,26 @@ fn test_release_or_mint_scales_down_remote_more_decimals() {
     let token_client = token::Client::new(&env, &token_address);
     let token_admin_client = token::StellarAssetClient::new(&env, &token_address);
 
-    let rmn_proxy = Address::generate(&env);
-    let router_id = env.register(RouterContract, ());
-    let router_client = RouterContractClient::new(&env, &router_id);
-    router_client.initialize(&owner, &rmn_proxy);
+    let registry_id = env.register(RampRegistryContract, ());
+    let registry_client = RampRegistryContractClient::new(&env, &registry_id);
+    registry_client.initialize(&owner);
+    let auth_onramp = Address::generate(&env);
+    registry_client.set_onramp(&DEFAULT_REMOTE_CHAIN, &auth_onramp);
+
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
 
     let local_decimals: u32 = 6;
+    let router = Address::generate(&env);
     pool_client.initialize(
         &owner,
         &token_address,
         &local_decimals,
-        &router_client.address,
+        &router,
+        &registry_client.address,
     );
 
-    let remote_chain: u64 = 5009297550715157269;
+    let remote_chain: u64 = DEFAULT_REMOTE_CHAIN;
     pool_client.apply_chain_updates(
         &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
         &Vec::new(&env),
@@ -786,7 +825,7 @@ fn test_release_or_mint_scales_down_remote_more_decimals() {
         source_pool_data: encode_local_decimals(&env, remote_decimals).unwrap(),
     };
 
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let out = stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(out.destination_amount, expected_local);
     assert_eq!(token_client.balance(&receiver), expected_local);
@@ -805,8 +844,9 @@ fn test_initialize_rejects_decimals_above_uint8() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token_address = token_contract.address();
     let router = Address::generate(&env);
+    let ramp_registry = Address::generate(&env);
 
-    let r = pool_client.try_initialize(&owner, &token_address, &256u32, &router);
+    let r = pool_client.try_initialize(&owner, &token_address, &256u32, &router, &ramp_registry);
     assert_eq!(r, Err(Ok(CCIPError::InvalidPoolTokenDecimals)));
 }
 
@@ -823,8 +863,9 @@ fn test_lock_or_burn_exceeds_outbound_capacity_rejected() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -858,7 +899,7 @@ fn test_lock_or_burn_exceeds_outbound_capacity_rejected() {
         amount: 501,
         local_token: token_address,
     };
-    let r = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
 }
 
@@ -871,8 +912,9 @@ fn test_lock_or_burn_outbound_refills_over_time() {
         token_address,
         token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -907,7 +949,7 @@ fn test_lock_or_burn_outbound_refills_over_time() {
         amount: 1000,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_input, &0u32);
+    pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(token_client.balance(&pool_client.address), 1000);
 
     // Advance 50s => 500 tokens refilled
@@ -919,7 +961,7 @@ fn test_lock_or_burn_outbound_refills_over_time() {
         amount: 500,
         local_token: token_address,
     };
-    pool_client.lock_or_burn(&lock_input2, &0u32);
+    pool_client.lock_or_burn(&auth_onramp, &lock_input2, &0u32);
     assert_eq!(token_client.balance(&pool_client.address), 1500);
 }
 
@@ -932,8 +974,9 @@ fn test_release_or_mint_exceeds_inbound_capacity_rejected() {
         token_address,
         _token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -970,7 +1013,7 @@ fn test_release_or_mint_exceeds_inbound_capacity_rejected() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let r = stub_client.try_release(&pool_client.address, &release_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
 }
@@ -984,8 +1027,9 @@ fn test_release_or_mint_inbound_refills_over_time() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1022,7 +1066,7 @@ fn test_release_or_mint_inbound_refills_over_time() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(token_client.balance(&receiver), 1000);
 
@@ -1050,8 +1094,9 @@ fn test_get_current_rate_limiter_state() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1099,8 +1144,9 @@ fn test_set_rate_limit_config_updates_limits() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1139,7 +1185,7 @@ fn test_set_rate_limit_config_updates_limits() {
         amount: 501,
         local_token: token_address,
     };
-    let r = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
 }
 
@@ -1152,8 +1198,9 @@ fn test_chain_remove_clears_rate_limits() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1208,8 +1255,9 @@ fn test_ftf_inbound_uses_ftf_bucket_when_configured() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1247,7 +1295,7 @@ fn test_ftf_inbound_uses_ftf_bucket_when_configured() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 200);
 
@@ -1288,8 +1336,9 @@ fn test_ftf_inbound_falls_back_to_default_bucket_when_not_configured() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1328,7 +1377,7 @@ fn test_ftf_inbound_falls_back_to_default_bucket_when_not_configured() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 500);
 
@@ -1356,8 +1405,9 @@ fn test_ftf_outbound_uses_ftf_bucket_when_configured() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1394,7 +1444,7 @@ fn test_ftf_outbound_uses_ftf_bucket_when_configured() {
         amount: 300,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_input, &WAIT_FOR_SAFE);
+    pool_client.lock_or_burn(&auth_onramp, &lock_input, &WAIT_FOR_SAFE);
 
     // FTF outbound: exceeding refill should fail (FTF bucket exhausted)
     env.ledger().with_mut(|li| li.timestamp = 101);
@@ -1405,7 +1455,7 @@ fn test_ftf_outbound_uses_ftf_bucket_when_configured() {
         amount: 4,
         local_token: token_address.clone(),
     };
-    let r = pool_client.try_lock_or_burn(&lock_input2, &WAIT_FOR_SAFE);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &lock_input2, &WAIT_FOR_SAFE);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenRateLimitReached);
 
     // Default outbound should still be unaffected (disabled = no limit)
@@ -1416,7 +1466,7 @@ fn test_ftf_outbound_uses_ftf_bucket_when_configured() {
         amount: 1000,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_default, &0u32);
+    pool_client.lock_or_burn(&auth_onramp, &lock_default, &0u32);
 }
 
 #[test]
@@ -1428,8 +1478,9 @@ fn test_ftf_outbound_rejected_when_finality_not_allowed() {
         token_address,
         _token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1450,7 +1501,7 @@ fn test_ftf_outbound_rejected_when_finality_not_allowed() {
         amount: 100,
         local_token: token_address,
     };
-    let r = pool_client.try_lock_or_burn(&lock_input, &WAIT_FOR_SAFE);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &WAIT_FOR_SAFE);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::InvalidRequestedFinality);
 }
 
@@ -1463,8 +1514,9 @@ fn test_ftf_and_default_buckets_are_independent() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
     env.ledger().with_mut(|li| li.timestamp = 100);
 
@@ -1518,7 +1570,7 @@ fn test_ftf_and_default_buckets_are_independent() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_ftf, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 300);
 
@@ -1567,8 +1619,9 @@ fn test_get_fee_returns_zero_when_not_configured() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 42;
@@ -1587,8 +1640,9 @@ fn test_set_and_get_pool_fee_config() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 42;
@@ -1613,8 +1667,9 @@ fn test_pool_fee_disabled_returns_zero() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 42;
@@ -1640,8 +1695,9 @@ fn test_set_pool_fee_unsupported_chain_rejected() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let unsupported_chain: u64 = 99999;
@@ -1665,8 +1721,9 @@ fn test_advanced_pool_hooks_admin_roundtrip() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     assert!(pool_client.get_advanced_pool_hooks().is_none());
 
@@ -1688,8 +1745,9 @@ fn test_set_advanced_pool_hooks_rejects_without_owner_auth() {
         _token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     let hooks_id = env.register(mock_hooks::MockPreflightRejects, ());
     let hooks = hooks_id.clone();
@@ -1707,8 +1765,9 @@ fn test_preflight_hook_rejects_lock_or_burn() {
         token_address,
         token_client,
         token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -1731,7 +1790,7 @@ fn test_preflight_hook_rejects_lock_or_burn() {
         local_token: token_address.clone(),
     };
 
-    let r = pool_client.try_lock_or_burn(&lock_input, &0u32);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &lock_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::SenderNotAllowed);
     assert_eq!(token_client.balance(&sender), 1_000_000_000);
 }
@@ -1745,8 +1804,9 @@ fn test_postflight_hook_rejects_release_or_mint() {
         token_address,
         token_client,
         token_admin_client,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let remote_chain: u64 = 5009297550715157269;
@@ -1767,7 +1827,7 @@ fn test_postflight_hook_rejects_release_or_mint() {
         amount: 1_000_000_000,
         local_token: token_address.clone(),
     };
-    pool_client.lock_or_burn(&lock_input, &0u32);
+    pool_client.lock_or_burn(&auth_onramp, &lock_input, &0u32);
 
     let pool_address = pool_client.address.clone();
     assert_eq!(token_client.balance(&pool_address), 1_000_000_000);
@@ -1783,7 +1843,7 @@ fn test_postflight_hook_rejects_release_or_mint() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&router_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
     let r = stub_client.try_release(&pool_client.address, &release_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::SenderNotAllowed);
     assert_eq!(token_client.balance(&receiver), 0);
@@ -1798,8 +1858,9 @@ fn test_get_required_ccvs_empty_without_hooks() {
         token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
     let v = pool_client.get_required_ccvs(
         &token_address,
@@ -1825,8 +1886,9 @@ fn test_get_required_ccvs_delegates_to_hooks() {
         token_address,
         _token_client,
         _token_admin_client,
-        _router_client,
+        _registry_client,
         _stub_client,
+        auth_onramp,
     ) = setup_env();
 
     let hooks_id = env.register(mock_hooks::MockReturnsCcv, ());

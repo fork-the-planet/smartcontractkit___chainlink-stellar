@@ -103,8 +103,9 @@ type Chain struct {
 	onRampContractID    string
 	offRampClient       *offrampbindings.OffRampClient
 	offRampContractID   string
-	routerClient        *routerbindings.RouterClient
-	routerContractID    string
+	routerClient           *routerbindings.RouterClient
+	routerContractID       string
+	rampRegistryContractID string
 	feeQuoterClient     *fqbindings.FeeQuoterClient
 	vvrContractID       string
 	cvContractID        string

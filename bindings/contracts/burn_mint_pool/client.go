@@ -147,12 +147,13 @@ func (c *BurnMintPoolClient) InitOwner(ctx context.Context, owner string) error 
 }
 
 // Initialize calls the initialize function on the contract.
-func (c *BurnMintPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32, router string) error {
+func (c *BurnMintPoolClient) Initialize(ctx context.Context, owner string, token string, tokenDecimals uint32, router string, rampRegistry string) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(owner),
 		scval.AddressToScVal(token),
 		scval.Uint32ToScVal(tokenDecimals),
 		scval.AddressToScVal(router),
+		scval.AddressToScVal(rampRegistry),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
@@ -180,8 +181,9 @@ func (c *BurnMintPoolClient) SetRouter(ctx context.Context, router string) error
 }
 
 // LockOrBurn calls the lock_or_burn function on the contract.
-func (c *BurnMintPoolClient) LockOrBurn(ctx context.Context, input LockOrBurnIn, requestedFinality uint32) (*LockOrBurnOut, error) {
+func (c *BurnMintPoolClient) LockOrBurn(ctx context.Context, caller string, input LockOrBurnIn, requestedFinality uint32) (*LockOrBurnOut, error) {
 	args := []xdr.ScVal{
+		scval.AddressToScVal(caller),
 		scval.MustToScVal(input.ToScVal()),
 		scval.Uint32ToScVal(requestedFinality),
 	}
@@ -346,6 +348,26 @@ func (c *BurnMintPoolClient) GetPendingOwner(ctx context.Context) (*string, erro
 	return v, nil
 }
 
+// GetRampRegistry calls the get_ramp_registry function on the contract.
+func (c *BurnMintPoolClient) GetRampRegistry(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_ramp_registry", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_ramp_registry: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_ramp_registry")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // GetRequiredCcvs calls the get_required_ccvs function on the contract.
 func (c *BurnMintPoolClient) GetRequiredCcvs(ctx context.Context, localToken string, remoteChainSelector uint64, amount int64, requestedFinality uint32, extraData []byte, direction MessageDirection) (*PoolRequiredCCVs, error) {
 	args := []xdr.ScVal{
@@ -367,6 +389,21 @@ func (c *BurnMintPoolClient) GetRequiredCcvs(ctx context.Context, localToken str
 	}
 
 	return PoolRequiredCCVsFromScVal(*result)
+}
+
+// SetRampRegistry calls the set_ramp_registry function on the contract.
+func (c *BurnMintPoolClient) SetRampRegistry(ctx context.Context, rampRegistry string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(rampRegistry),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_ramp_registry", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_ramp_registry: %w", err)
+	}
+
+	_ = result // void return
+	return nil
 }
 
 // GetTokenDecimals calls the get_token_decimals function on the contract.

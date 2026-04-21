@@ -13,12 +13,14 @@ pub trait TokenPoolInterface {
         token: soroban_sdk::Address,
         token_decimals: u32,
         router: soroban_sdk::Address,
+        ramp_registry: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
 
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
 
     fn lock_or_burn(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError>;
@@ -127,10 +129,18 @@ pub trait TokenPoolInterface {
         direction: MessageDirection,
     ) -> PoolRequiredCCVs;
 
-    /// Update router used for inbound `release_or_mint` caller checks (EVM `setDynamicConfig`). Owner-only.
+    /// Update CCIP Router address (EVM `setDynamicConfig` / `s_router`). Owner-only.
     fn set_router(env: soroban_sdk::Env, router: soroban_sdk::Address) -> Result<(), CCIPError>;
 
     fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+
+    /// Update ramp registry used for ramp caller checks. Owner-only.
+    fn set_ramp_registry(
+        env: soroban_sdk::Env,
+        ramp_registry: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
+    fn get_ramp_registry(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
 }
 
 /// Declarative CCV requirements returned by a pool (EVM parity for the `address(0)` sentinel

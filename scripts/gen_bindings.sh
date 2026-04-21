@@ -33,6 +33,7 @@ CONTRACTS=(
   "rmn_remote|RmnRemote|rmn_remote|0|"
   "offramp|OffRamp|offramp|0|"
   "router|Router|router|0|"
+  "ramp_registry|RampRegistry|ramp_registry|0|"
   "ccip_receiver|ExampleCcipReceiver|ccip_receiver|0|"
   "token_admin_registry|TokenAdminRegistry|token_admin_registry|0|"
   "lock_release_pool|LockReleasePool|lock_release_pool|0|contracts/pools/lock-release-pool/src/events.rs"

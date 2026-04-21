@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
+	rampregistrybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ramp_registry"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -114,6 +115,34 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 		Int("onRampEntries", len(onRampEntries)).
 		Int("offRampEntries", len(offRampEntries)).
 		Msg("Router ramp updates applied")
+
+	rampRegistryWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccip_ramp_registry.wasm")
+	if _, statErr := os.Stat(rampRegistryWasmPath); os.IsNotExist(statErr) {
+		return fmt.Errorf("RampRegistry WASM not found at %s. Run 'make build' from the chainlink-stellar root to compile contracts.", rampRegistryWasmPath)
+	}
+	h.Logger().Info().Str("wasmPath", rampRegistryWasmPath).Msg("Deploying RampRegistry contract...")
+	rampRegistrySalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "ramp-registry")
+	rampRegistryContractID, err := h.Deployer().DeployContract(ctx, rampRegistryWasmPath, rampRegistrySalt)
+	if err != nil {
+		return fmt.Errorf("failed to deploy RampRegistry contract: %w", err)
+	}
+	rampRegistryClient := rampregistrybindings.NewRampRegistryClient(h.Deployer(), rampRegistryContractID)
+	if err := rampRegistryClient.Initialize(ctx, h.DeployerKeypair().Address()); err != nil {
+		return fmt.Errorf("failed to initialize RampRegistry: %w", err)
+	}
+	rrOnRamp := make([]rampregistrybindings.OnRampEntry, len(onRampEntries))
+	for i, e := range onRampEntries {
+		rrOnRamp[i] = rampregistrybindings.OnRampEntry{DestChainSelector: e.DestChainSelector, Onramp: e.Onramp}
+	}
+	rrOffRamp := make([]rampregistrybindings.OffRampEntry, len(offRampEntries))
+	for i, e := range offRampEntries {
+		rrOffRamp[i] = rampregistrybindings.OffRampEntry{SourceChainSelector: e.SourceChainSelector, Offramp: e.Offramp}
+	}
+	if err := rampRegistryClient.ApplyRampUpdates(ctx, rrOnRamp, []rampregistrybindings.OffRampEntry{}, rrOffRamp); err != nil {
+		return fmt.Errorf("failed to apply ramp updates on RampRegistry: %w", err)
+	}
+	h.SetRampRegistry(rampRegistryContractID)
+	h.Logger().Info().Str("contractID", rampRegistryContractID).Msg("RampRegistry deployed and ramp maps synced with Router")
 
 	return nil
 }

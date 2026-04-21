@@ -20,6 +20,7 @@ import (
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	rampregistrybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ramp_registry"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
@@ -70,9 +71,11 @@ type fullStack struct {
 
 	TokenAdminRegistryID string
 	TokenPoolID          string
+	RampRegistryID       string
 
 	TokenAdminRegistryClient *tarbindings.TokenAdminRegistryClient
 	TokenPoolClient          *tokenpoolbindings.TokenPoolClient
+	RampRegistryClient       *rampregistrybindings.RampRegistryClient
 
 	signerKey     *ecdsa.PrivateKey
 	signerAddrPad [32]byte // left-padded 20-byte Ethereum address
@@ -370,13 +373,22 @@ func (s *fullStack) deployTokenPool(
 	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
 	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
 
+	s.RampRegistryID = deploy("ramp-registry", "ccip_ramp_registry.wasm")
+	s.RampRegistryClient = rampregistrybindings.NewRampRegistryClient(deployer, s.RampRegistryID)
+	if err := s.RampRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+		t.Fatalf("RampRegistry Initialize: %v", err)
+	}
+	if err := s.RampRegistryClient.AddOfframp(ctx, remoteSourceChain, s.OfframpID); err != nil {
+		t.Fatalf("RampRegistry AddOfframp: %v", err)
+	}
+
 	// Initialize pool with the token (decimals must match pool math; SAC test asset uses 7).
-	// Router must match the deployed Router so inbound OffRamp release_or_mint passes is_offramp.
+	// Router and ramp registry must match the deployed stack so ramp checks succeed.
 	const tokenPoolDecimals uint32 = 7
 	if s.RouterID == "" {
 		t.Fatal("fullStack.RouterID is empty; deployFullStack must run before deployTokenPool")
 	}
-	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID, tokenPoolDecimals, s.RouterID); err != nil {
+	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID, tokenPoolDecimals, s.RouterID, s.RampRegistryID); err != nil {
 		t.Fatalf("TokenPool Initialize: %v", err)
 	}
 
@@ -661,6 +673,12 @@ func deployOutboundSendWire(
 
 	if err := stack.RouterClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
 		t.Fatalf("Router SetOnramp: %v", err)
+	}
+
+	if stack.RampRegistryClient != nil {
+		if err := stack.RampRegistryClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
+			t.Fatalf("RampRegistry SetOnramp: %v", err)
+		}
 	}
 
 	return wire

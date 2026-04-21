@@ -477,6 +477,7 @@ impl OnRampContract {
             // branch is unreachable in practice. Consider asserting this invariant
             // or hardcoding 0 instead of threading the extra_args value.
             let lock_result = pool_client.lock_or_burn(
+                &env.current_contract_address(),
                 &LockOrBurnIn {
                     receiver: message.receiver.clone(),
                     remote_chain_selector: dest_chain_selector,
