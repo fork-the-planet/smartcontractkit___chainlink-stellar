@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use common_error::CCIPError;
 use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, Symbol, Vec};
 
 // ============================================================
@@ -71,8 +72,8 @@ impl TestAuthContract {
         AuthorizedCallers::is_authorized(&env, &addr)
     }
 
-    pub fn require_authorized(env: Env) -> Result<Address, CCIPError> {
-        AuthorizedCallers::require_authorized(&env)
+    pub fn require_authorized_caller(env: Env, caller: Address) -> Result<(), CCIPError> {
+        AuthorizedCallers::require_authorized_caller(&env, &caller)
     }
 
     // ---- AccessControl ----
@@ -229,12 +230,16 @@ fn test_authorized_callers_not_enabled() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")]
 fn test_authorized_callers_require_not_enabled() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
+    let addr = Address::generate(&env);
 
-    client.require_authorized();
+    let err = client
+        .try_require_authorized_caller(&addr)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, CCIPError::FeatureNotEnabled);
 }
 
 #[test]
@@ -333,7 +338,7 @@ fn test_authorized_callers_remove() {
 }
 
 #[test]
-fn test_authorized_callers_require_authorized() {
+fn test_authorized_callers_require_authorized_caller() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
@@ -345,21 +350,43 @@ fn test_authorized_callers_require_authorized() {
     initial.push_back(caller.clone());
     client.init_callers(&initial);
 
-    let result = client.require_authorized();
-    assert_eq!(result, caller);
+    client.require_authorized_caller(&caller);
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #6)")]
+fn test_authorized_callers_second_member_can_authorize() {
+    let (env, contract_id) = setup_env();
+    let client = TestAuthContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let caller1 = Address::generate(&env);
+    let caller2 = Address::generate(&env);
+
+    client.init_owner(&owner);
+
+    let mut initial: Vec<Address> = Vec::new(&env);
+    initial.push_back(caller1.clone());
+    initial.push_back(caller2.clone());
+    client.init_callers(&initial);
+
+    // Either allowlisted principal can satisfy auth when passed explicitly (OR semantics).
+    client.require_authorized_caller(&caller2);
+}
+
+#[test]
 fn test_authorized_callers_require_empty_list() {
     let (env, contract_id) = setup_env();
     let client = TestAuthContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let addr = Address::generate(&env);
 
     client.init_owner(&owner);
     client.init_callers(&Vec::new(&env));
 
-    client.require_authorized();
+    let err = client
+        .try_require_authorized_caller(&addr)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, CCIPError::CallerNotAuthorized);
 }
 
 #[test]

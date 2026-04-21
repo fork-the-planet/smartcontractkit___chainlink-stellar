@@ -11,9 +11,11 @@ import (
 
 // ApplyFeeQuoterTestTokenConfig sets oracle price and per-destination token transfer fee
 // configs for the devenv test SAC token on FeeQuoter.
+// priceUpdater must be an address in FeeQuoter's authorized-callers set and must match the invoker's auth.
 func ApplyFeeQuoterTestTokenConfig(
 	ctx context.Context,
 	feeQuoterClient *fee_quoter.FeeQuoterClient,
+	priceUpdater string,
 	testToken string,
 	allSelectors []uint64,
 ) error {
@@ -23,6 +25,9 @@ func ApplyFeeQuoterTestTokenConfig(
 	if testToken == "" {
 		return fmt.Errorf("test token contract id is empty")
 	}
+	if priceUpdater == "" {
+		return fmt.Errorf("price updater address is empty")
+	}
 	tokenPriceUpdates := fee_quoter.PriceUpdates{
 		TokenPriceUpdates: []fee_quoter.TokenPriceUpdate{{
 			Token:       testToken,
@@ -30,7 +35,7 @@ func ApplyFeeQuoterTestTokenConfig(
 		}},
 		GasPriceUpdates: []fee_quoter.GasPriceUpdate{},
 	}
-	if err := feeQuoterClient.UpdatePrices(ctx, tokenPriceUpdates); err != nil {
+	if err := feeQuoterClient.UpdatePrices(ctx, priceUpdater, tokenPriceUpdates); err != nil {
 		return fmt.Errorf("failed to set test token price on FeeQuoter: %w", err)
 	}
 
