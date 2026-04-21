@@ -39,9 +39,10 @@ func TestTokenPool(t *testing.T) {
 		t.Logf("Pool deployed at: %s", contractID)
 
 		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "pool-test-token")
+		mockRouter := helpers.GenerateMockContractID(t, deployerAddr, "pool-test-router")
 		client := tokenpoolbindings.NewTokenPoolClient(deployer, contractID)
 
-		if err := client.Initialize(ctx, deployerAddr, mockToken, 7); err != nil {
+		if err := client.Initialize(ctx, deployerAddr, mockToken, 7, mockRouter); err != nil {
 			t.Fatalf("Initialize pool: %v", err)
 		}
 
@@ -72,8 +73,9 @@ func TestTokenPool(t *testing.T) {
 		}
 
 		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "pool-chain-test-token")
+		mockRouter := helpers.GenerateMockContractID(t, deployerAddr, "pool-chain-test-router")
 		client := tokenpoolbindings.NewTokenPoolClient(deployer, contractID)
-		if err := client.Initialize(ctx, deployerAddr, mockToken, 7); err != nil {
+		if err := client.Initialize(ctx, deployerAddr, mockToken, 7, mockRouter); err != nil {
 			t.Fatalf("Initialize pool: %v", err)
 		}
 
