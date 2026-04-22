@@ -130,7 +130,9 @@ fn default_remote_chain_config(env: &Env, remote_chain_selector: u64) -> RemoteC
     }
 }
 
-fn setup_with_version_tag(version_tag: &[u8; 4]) -> (
+fn setup_with_version_tag(
+    version_tag: &[u8; 4],
+) -> (
     Env,
     CommitteeVerifierContractClient<'static>,
     Address,
@@ -157,7 +159,13 @@ fn setup_with_version_tag(version_tag: &[u8; 4]) -> (
 
     let dynamic_config = default_dynamic_config(&env);
     let tag = BytesN::from_array(&env, version_tag);
-    client.initialize(&owner, &dynamic_config, &storage_locations, &rmn_proxy, &tag);
+    client.initialize(
+        &owner,
+        &dynamic_config,
+        &storage_locations,
+        &rmn_proxy,
+        &tag,
+    );
 
     (env, client, owner, rmn_proxy, storage_locations)
 }
@@ -459,7 +467,8 @@ fn test_verify_message_accepts_alternate_initialized_version_tag() {
 
     let wire_subset = [pairs[0].clone(), pairs[1].clone()];
     let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
-    let verifier_results = build_verifier_results_with_tag(&env, &VERSION_TAG_LEGACY_V1_7, &sig_payload);
+    let verifier_results =
+        build_verifier_results_with_tag(&env, &VERSION_TAG_LEGACY_V1_7, &sig_payload);
 
     client.verify_message(&source_chain, &message_hash, &verifier_results);
 }

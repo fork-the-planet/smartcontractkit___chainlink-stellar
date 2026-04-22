@@ -252,9 +252,8 @@ impl CommitteeVerifierContract {
     /// Returns the configured verifier version tag (`bytes4`), matching EVM `versionTag()`.
     pub fn version_tag(env: Env) -> BytesN<4> {
         <Self as Initializable>::require_initialized(&env).unwrap();
-        Self::load_verifier_version_tag(&env).unwrap_or_else(|_| {
-            panic!("invariant: version tag is set during initialize")
-        })
+        Self::load_verifier_version_tag(&env)
+            .unwrap_or_else(|_| panic!("invariant: version tag is set during initialize"))
     }
 
     // ========================================
