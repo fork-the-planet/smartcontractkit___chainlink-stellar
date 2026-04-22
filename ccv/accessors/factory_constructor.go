@@ -51,60 +51,97 @@ func mergeReaderConfig(base, overlay sourcereader.ReaderConfig) sourcereader.Rea
 	return out
 }
 
-// CreateStellarAccessorFactory is registered with chainaccess.Register for the Stellar family.
-// It merges per-chain reader settings from the Stellar TOML file, Stellar sections under
-// blockchain_infos in the job spec, and on-ramp / RMN remote hex addresses from GenericConfig
-// (same behavior as the legacy committee-verifier bootstrap callback).
-func CreateStellarAccessorFactory(lggr logger.Logger, genericConfig chainaccess.GenericConfig) (chainaccess.AccessorFactory, error) {
-	_ = lggr
-
-	configPath, ok := os.LookupEnv(StellarConfigPathEnv)
-	if !ok {
-		configPath = common.DefaultStellarConfigPath
+// stellarConfigPath returns STELLAR_CONFIG_PATH or the default bind-mount path.
+func stellarConfigPath() string {
+	if p, ok := os.LookupEnv(StellarConfigPathEnv); ok {
+		return p
 	}
+	return common.DefaultStellarConfigPath
+}
 
-	stellarFileCfg, err := loadStellarFileConfig(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("load stellar config: %w", err)
+// mergeFileAndJobReaderConfigs starts from file-backed reader_configs and merges
+// each Stellar chain's blockchain_infos entry from the job spec (non-empty job fields win).
+func mergeFileAndJobReaderConfigs(
+	file map[string]sourcereader.ReaderConfig,
+	job chainaccess.Infos[sourcereader.ReaderConfig],
+) map[string]sourcereader.ReaderConfig {
+	out := make(map[string]sourcereader.ReaderConfig)
+	if file != nil {
+		maps.Copy(out, file)
 	}
+	for sel, jobCfg := range job {
+		out[sel] = mergeReaderConfig(out[sel], jobCfg)
+	}
+	return out
+}
 
-	readerConfigs := make(map[string]sourcereader.ReaderConfig)
-	if stellarFileCfg.ReaderConfigs != nil {
-		maps.Copy(readerConfigs, stellarFileCfg.ReaderConfigs)
-	}
-
-	var jobInfos chainaccess.Infos[sourcereader.ReaderConfig]
-	if err := genericConfig.GetAllConcreteConfig(chainsel.FamilyStellar, &jobInfos); err != nil {
-		return nil, fmt.Errorf("get stellar blockchain_infos: %w", err)
-	}
-	for sel, jobCfg := range jobInfos {
-		readerConfigs[sel] = mergeReaderConfig(readerConfigs[sel], jobCfg)
-	}
-
-	// The bind-mounted config file may be created before contracts are deployed, so
-	// OnRamp and RMN Remote addresses may be missing. Fill from GenericConfig (job spec),
-	// which is generated after contract deployment.
+// applyOnRampRMNHexOverrides fills empty OnRampContractID / RMNRemoteContractID from
+// committee-style hex maps (job spec), converting to Stellar contract strkeys.
+func applyOnRampRMNHexOverrides(
+	readerConfigs map[string]sourcereader.ReaderConfig,
+	onRampHexBySelector map[string]string,
+	rmnRemoteHexBySelector map[string]string,
+) error {
 	for sel, rc := range readerConfigs {
 		if rc.OnRampContractID == "" {
-			if onrampHex, ok := genericConfig.OnRampAddresses[sel]; ok && onrampHex != "" {
+			if onrampHex, ok := onRampHexBySelector[sel]; ok && onrampHex != "" {
 				addr, err := scval.HexToContractStrkey(onrampHex)
 				if err != nil {
-					return nil, fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", sel, err)
+					return fmt.Errorf("convert OnRamp hex to strkey for chain %s: %w", sel, err)
 				}
 				rc.OnRampContractID = addr
 			}
 		}
 		if rc.RMNRemoteContractID == "" {
-			if rmnHex, ok := genericConfig.RMNRemoteAddresses[sel]; ok && rmnHex != "" {
+			if rmnHex, ok := rmnRemoteHexBySelector[sel]; ok && rmnHex != "" {
 				addr, err := scval.HexToContractStrkey(rmnHex)
 				if err != nil {
-					return nil, fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", sel, err)
+					return fmt.Errorf("convert RMN Remote hex to strkey for chain %s: %w", sel, err)
 				}
 				rc.RMNRemoteContractID = addr
 			}
 		}
 		readerConfigs[sel] = rc
 	}
+	return nil
+}
 
+func loadStellarJobReaderInfos(genericConfig chainaccess.GenericConfig) (chainaccess.Infos[sourcereader.ReaderConfig], error) {
+	var jobInfos chainaccess.Infos[sourcereader.ReaderConfig]
+	if err := genericConfig.GetAllConcreteConfig(chainsel.FamilyStellar, &jobInfos); err != nil {
+		return nil, fmt.Errorf("get stellar blockchain_infos: %w", err)
+	}
+	return jobInfos, nil
+}
+
+// buildStellarReaderConfigs loads the Stellar file, merges job blockchain_infos for
+// FamilyStellar, then applies on-ramp / RMN remote hex overrides from genericConfig.
+func buildStellarReaderConfigs(configPath string, genericConfig chainaccess.GenericConfig) (map[string]sourcereader.ReaderConfig, error) {
+	stellarFileCfg, err := loadStellarFileConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load stellar config: %w", err)
+	}
+
+	jobInfos, err := loadStellarJobReaderInfos(genericConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	readerConfigs := mergeFileAndJobReaderConfigs(stellarFileCfg.ReaderConfigs, jobInfos)
+	if err := applyOnRampRMNHexOverrides(readerConfigs, genericConfig.OnRampAddresses, genericConfig.RMNRemoteAddresses); err != nil {
+		return nil, err
+	}
+	return readerConfigs, nil
+}
+
+// CreateStellarAccessorFactory is registered with chainaccess.Register for the Stellar family.
+// It merges per-chain reader settings from the Stellar TOML file, Stellar sections under
+// blockchain_infos in the job spec, and on-ramp / RMN remote hex addresses from GenericConfig
+// (same behavior as the legacy committee-verifier bootstrap callback).
+func CreateStellarAccessorFactory(lggr logger.Logger, genericConfig chainaccess.GenericConfig) (chainaccess.AccessorFactory, error) {
+	readerConfigs, err := buildStellarReaderConfigs(stellarConfigPath(), genericConfig)
+	if err != nil {
+		return nil, err
+	}
 	return NewFactory(lggr, readerConfigs), nil
 }
