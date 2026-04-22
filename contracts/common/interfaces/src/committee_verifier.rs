@@ -17,6 +17,7 @@ pub trait CommitteeVerifierInterface {
         dynamic_config: DynamicConfig,
         storage_locations: soroban_sdk::Vec<soroban_sdk::Bytes>,
         rmn_proxy: soroban_sdk::Address,
+        version_tag: soroban_sdk::BytesN<4>,
     ) -> Result<(), CCIPError>;
     fn version_tag(env: soroban_sdk::Env) -> soroban_sdk::BytesN<4>;
     fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;

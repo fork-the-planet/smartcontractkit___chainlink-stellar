@@ -29,6 +29,7 @@ import (
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -42,11 +43,6 @@ const (
 	integrationSACAssetCode = "INTG"
 
 	remoteSourceChain = uint64(99999)
-
-	ccipVerifierVersion0 = byte(0x49)
-	ccipVerifierVersion1 = byte(0xff)
-	ccipVerifierVersion2 = byte(0x34)
-	ccipVerifierVersion3 = byte(0xed)
 )
 
 // fullStack holds all deployed contract IDs and clients needed for execute-path tests.
@@ -142,7 +138,7 @@ func deployFullStack(
 	mockFeeAgg := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-agg")
 	if err := s.CcvClient.Initialize(ctx, deployerAddr, ccvsbindings.DynamicConfig{
 		FeeAggregator: &mockFeeAgg,
-	}, [][]byte{}, s.RmnProxyID); err != nil {
+	}, [][]byte{}, s.RmnProxyID, stellarutil.DefaultCommitteeVerifierVersionTag()); err != nil {
 		t.Fatalf("CommitteeVerifier Initialize: %v", err)
 	}
 
@@ -170,7 +166,7 @@ func deployFullStack(
 	if err := s.VvrClient.ApplyInboundImplUpdates(ctx, []vvrbindings.InboundImplementationUpdate{
 		{
 			Verifier: &verAddr,
-			Version:  [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3},
+			Version:  stellarutil.DefaultCommitteeVerifierVersionTag(),
 		},
 	}); err != nil {
 		t.Fatalf("ApplyInboundImplUpdates: %v", err)
@@ -253,7 +249,7 @@ func deployFullStack(
 func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte {
 	t.Helper()
 
-	versionTag := [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3}
+	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 
 	var signedPayload []byte
 	signedPayload = append(signedPayload, versionTag[:]...)

@@ -12,6 +12,7 @@ import (
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/keypair"
 )
@@ -227,7 +228,7 @@ func TestCommitteeVerifier(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to call forward_to_verifier: %v", err)
 		}
-		expectedVersionTag := [4]byte{0x49, 0xff, 0x34, 0xed}
+		expectedVersionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 		if len(verifierResults) < 4 {
 			t.Fatalf("Verifier results too short: got %d bytes", len(verifierResults))
 		}
@@ -298,7 +299,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	// Initialize CommitteeVerifier
 	err = client.Initialize(ctx, deployerKP.Address(), ccvsbindings.DynamicConfig{
 		FeeAggregator: &mockFeeAggregator,
-	}, [][]byte{}, rmnProxyContractID)
+	}, [][]byte{}, rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag())
 	if err != nil {
 		t.Fatalf("Failed to initialize CommitteeVerifier: %v", err)
 		return err
