@@ -98,28 +98,28 @@ var (
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
 type Chain struct {
-	chainSelector       uint64
-	logger              zerolog.Logger
-	rpcClient           *rpcclient.Client
-	networkPassphrase   string
-	sorobanRPCURL       string
-	deployerKeypair     *keypair.Full
-	deployer            *stellardeployment.Deployer
-	onRampClient        *onrampbindings.OnRampClient
-	onRampContractID    string
-	offRampClient       *offrampbindings.OffRampClient
-	offRampContractID   string
+	chainSelector          uint64
+	logger                 zerolog.Logger
+	rpcClient              *rpcclient.Client
+	networkPassphrase      string
+	sorobanRPCURL          string
+	deployerKeypair        *keypair.Full
+	deployer               *stellardeployment.Deployer
+	onRampClient           *onrampbindings.OnRampClient
+	onRampContractID       string
+	offRampClient          *offrampbindings.OffRampClient
+	offRampContractID      string
 	routerClient           *routerbindings.RouterClient
 	routerContractID       string
 	rampRegistryContractID string
-	feeQuoterClient     *fqbindings.FeeQuoterClient
-	vvrContractID       string
-	cvContractID        string
-	receiverContractID  string
-	rmnProxyContractID  string
-	rmnProxyClient      *rmnproxybindings.RmnProxyClient
-	rmnRemoteContractID string
-	rmnRemoteClient     *rmnremotebindings.RmnRemoteClient
+	feeQuoterClient        *fqbindings.FeeQuoterClient
+	vvrContractID          string
+	cvContractID           string
+	receiverContractID     string
+	rmnProxyContractID     string
+	rmnProxyClient         *rmnproxybindings.RmnProxyClient
+	rmnRemoteContractID    string
+	rmnRemoteClient        *rmnremotebindings.RmnRemoteClient
 
 	tokenAdminRegistryContractID string
 	tokenAdminRegistryClient     *tarbindings.TokenAdminRegistryClient
@@ -971,7 +971,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	encodedExtraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, cciptestinterfaces.MessageOptions{})
+	encodedExtraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, opts)
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
 	}

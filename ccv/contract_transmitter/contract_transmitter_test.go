@@ -242,7 +242,7 @@ func buildV27Blob(versionTag [4]byte, sigs [][64]byte) []byte {
 }
 
 func TestConvertVerifierBlobToEIP2098(t *testing.T) {
-	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag
+	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 	n := crypto.S256().Params().N
 	halfN := new(big.Int).Rsh(n, 1)
 
@@ -331,7 +331,7 @@ func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 	})
 
 	t.Run("empty blob is passed through", func(t *testing.T) {
-		blob := append(append([]byte(nil), stellarutil.DefaultCommitteeVerifierVersionTag[:]...), 0x00, 0x00)
+		blob := append(append([]byte(nil), stellarutil.DefaultCommitteeVerifierVersionTag()[:]...), 0x00, 0x00)
 		result, err := convertVerifierBlobToEIP2098(blob)
 		require.NoError(t, err)
 		assert.Equal(t, blob, result)

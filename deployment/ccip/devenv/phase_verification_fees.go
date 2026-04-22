@@ -76,7 +76,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	err = cvClient.Initialize(ctx, h.DeployerKeypair().Address(), cvbindings.DynamicConfig{
 		AllowlistAdmin: &allowlistAdmin,
 		FeeAggregator:  &mockFeeAggregator,
-	}, [][]byte{mockStorageLocation}, w.rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag)
+	}, [][]byte{mockStorageLocation}, w.rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag())
 	if err != nil {
 		return fmt.Errorf("failed to initialize Committee Verifier: %w", err)
 	}
@@ -101,7 +101,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 
 	inboundImplUpdates := []vvrbindings.InboundImplementationUpdate{
 		{
-			Version:  stellarutil.DefaultCommitteeVerifierVersionTag,
+			Version:  stellarutil.DefaultCommitteeVerifierVersionTag(),
 			Verifier: &cvContractID,
 		},
 	}

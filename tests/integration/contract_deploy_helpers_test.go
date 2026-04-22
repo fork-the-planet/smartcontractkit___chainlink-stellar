@@ -138,7 +138,7 @@ func deployFullStack(
 	mockFeeAgg := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-agg")
 	if err := s.CcvClient.Initialize(ctx, deployerAddr, ccvsbindings.DynamicConfig{
 		FeeAggregator: &mockFeeAgg,
-	}, [][]byte{}, s.RmnProxyID, stellarutil.DefaultCommitteeVerifierVersionTag); err != nil {
+	}, [][]byte{}, s.RmnProxyID, stellarutil.DefaultCommitteeVerifierVersionTag()); err != nil {
 		t.Fatalf("CommitteeVerifier Initialize: %v", err)
 	}
 
@@ -166,7 +166,7 @@ func deployFullStack(
 	if err := s.VvrClient.ApplyInboundImplUpdates(ctx, []vvrbindings.InboundImplementationUpdate{
 		{
 			Verifier: &verAddr,
-			Version:  stellarutil.DefaultCommitteeVerifierVersionTag,
+			Version:  stellarutil.DefaultCommitteeVerifierVersionTag(),
 		},
 	}); err != nil {
 		t.Fatalf("ApplyInboundImplUpdates: %v", err)
@@ -249,7 +249,7 @@ func deployFullStack(
 func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte {
 	t.Helper()
 
-	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag
+	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 
 	var signedPayload []byte
 	signedPayload = append(signedPayload, versionTag[:]...)

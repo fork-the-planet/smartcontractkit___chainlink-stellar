@@ -228,7 +228,7 @@ func TestCommitteeVerifier(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to call forward_to_verifier: %v", err)
 		}
-		expectedVersionTag := stellarutil.DefaultCommitteeVerifierVersionTag
+		expectedVersionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 		if len(verifierResults) < 4 {
 			t.Fatalf("Verifier results too short: got %d bytes", len(verifierResults))
 		}
@@ -299,7 +299,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	// Initialize CommitteeVerifier
 	err = client.Initialize(ctx, deployerKP.Address(), ccvsbindings.DynamicConfig{
 		FeeAggregator: &mockFeeAggregator,
-	}, [][]byte{}, rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag)
+	}, [][]byte{}, rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag())
 	if err != nil {
 		t.Fatalf("Failed to initialize CommitteeVerifier: %v", err)
 		return err

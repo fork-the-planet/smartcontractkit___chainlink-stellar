@@ -119,7 +119,7 @@ func TestRouter(t *testing.T) {
 		if err := vvrClient.ApplyInboundImplUpdates(ctx, []vvrbindings.InboundImplementationUpdate{
 			{
 				Verifier: &verAddr,
-				Version:  stellarutil.DefaultCommitteeVerifierVersionTag,
+				Version:  stellarutil.DefaultCommitteeVerifierVersionTag(),
 			},
 		}); err != nil {
 			t.Fatalf("ApplyInboundImplUpdates: %v", err)
@@ -203,7 +203,7 @@ func TestRouter(t *testing.T) {
 		}
 
 		msgID := keccak256MessageID(encoded)
-		versionTag := stellarutil.DefaultCommitteeVerifierVersionTag
+		versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 		var signedPayload []byte
 		signedPayload = append(signedPayload, versionTag[:]...)
 		signedPayload = append(signedPayload, msgID[:]...)
