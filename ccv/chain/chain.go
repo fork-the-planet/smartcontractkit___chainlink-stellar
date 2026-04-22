@@ -70,6 +70,12 @@ const CcipReceiverContractType = stellarccipdevenv.CcipReceiverContractType
 const TokenAdminRegistryContractType = stellarccipdevenv.TokenAdminRegistryContractType
 const LockReleaseTokenPoolContractType = stellarccipdevenv.LockReleaseTokenPoolContractType
 
+func ptrU32(v uint32) *uint32 { return &v }
+
+func ptrU16(v uint16) *uint16 { return &v }
+
+func ptrU8(v uint8) *uint8 { return &v }
+
 // generateAccountAddress generates a Stellar account address (G...) from a seed.
 // This uses the Stellar SDK's keypair package to create a proper strkey-encoded address.
 func generateAccountAddress(seed string) (string, error) {
@@ -241,31 +247,26 @@ func stellarFeeQuoterDestChainConfigOverride(selector uint64) lanes.FeeQuoterDes
 // Returns the lane profile for Stellar as a destination chain, mirroring the
 // values used in GetConnectionProfile and stellarFeeQuoterDestChainConfigOverride.
 func (c *Chain) GetChainLaneProfile(_ *deployment.Environment, selector uint64) (cciptestinterfaces.ChainLaneProfile, error) {
-	// bytes4(keccak256("CCIP ChainFamilySelector EVM")) — used as stand-in for Stellar.
-	// TODO(NONEVM-4241): replace with a real Stellar family selector once registered.
-	var evmFamilySelector [4]byte
-	evmFamilyHex, _ := hex.DecodeString("2812d52c")
-	copy(evmFamilySelector[:], evmFamilyHex)
-
+	// FeeQuoter family selector and DestGasOverhead are populated from the Stellar
+	// lane adapter defaults; overrides here only set fields that differ from those.
+	enabled := true
 	return cciptestinterfaces.ChainLaneProfile{
-		AddressBytesLength:   stellarAddressLen,
-		BaseExecutionGasCost: 100_000,
-		FeeQuoterDestChainConfig: adapters.FeeQuoterDestChainConfig{
-			IsEnabled:                   true,
-			MaxDataBytes:                30_000,
-			MaxPerMsgGasLimit:           3_000_000,
-			DestGasOverhead:             300_000,
-			DefaultTokenFeeUSDCents:     25,
-			DestGasPerPayloadByteBase:   16,
-			DefaultTokenDestGasOverhead: 90_000,
-			DefaultTxGasLimit:           200_000,
-			NetworkFeeUSDCents:          10,
-			ChainFamilySelector:         evmFamilySelector,
-			LinkFeeMultiplierPercent:    90,
+		BaseExecutionGasCost: ptrU32(100_000),
+		FeeQuoterDestChainConfig: ccipChangesets.FeeQuoterDestChainConfigOverrides{
+			IsEnabled:                   &enabled,
+			MaxDataBytes:                ptrU32(30_000),
+			MaxPerMsgGasLimit:           ptrU32(3_000_000),
+			DestGasPerPayloadByteBase:   ptrU8(16),
+			DefaultTokenFeeUSDCents:     ptrU16(25),
+			DefaultTokenDestGasOverhead: ptrU32(90_000),
+			DefaultTxGasLimit:           ptrU32(200_000),
+			NetworkFeeUSDCents:          ptrU16(10),
+			LinkFeeMultiplierPercent:    ptrU8(90),
 			USDPerUnitGas:               big.NewInt(1e6),
 		},
-		ExecutorDestChainConfig: adapters.ExecutorDestChainConfig{
-			Enabled: true,
+		ExecutorDestChainConfig: &adapters.ExecutorDestChainConfig{
+			USDCentsFee: 0,
+			Enabled:     true,
 		},
 		DefaultExecutorQualifier: devenvcommon.DefaultExecutorQualifier,
 		DefaultInboundCCVs: []datastore.AddressRef{
@@ -284,7 +285,7 @@ func (c *Chain) GetChainLaneProfile(_ *deployment.Environment, selector uint64) 
 				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
 			},
 		},
-		GasForVerification: 10_000,
+		GasForVerification: ptrU32(10_000),
 	}, nil
 }
 
@@ -715,6 +716,85 @@ func (c *Chain) GetExpectedNextSequenceNumber(ctx context.Context, to uint64) (u
 	return seqNo, nil
 }
 
+// ConfirmSendOnSource implements cciptestinterfaces.Chain.
+func (c *Chain) ConfirmSendOnSource(ctx context.Context, to uint64, key cciptestinterfaces.MessageEventKey, timeout time.Duration) (cciptestinterfaces.MessageSentEvent, error) {
+	if key.MessageID != (protocol.Bytes32{}) {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("stellar: ConfirmSendOnSource supports sequence number only, not message ID")
+	}
+	seq := key.SeqNum
+	if c.onRampClient == nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("OnRamp client not initialized")
+	}
+
+	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("destChainSelector", to).
+		Uint64("sequenceNumber", seq).
+		Uint32("startLedger", latestLedger.Sequence).
+		Dur("timeout", timeout).
+		Msg("Waiting for CCIPMessageSent event from Stellar OnRamp")
+
+	event, err := c.onRampClient.WaitForCCIPMessageSentEvent(
+		ctx, latestLedger.Sequence, timeout,
+		func(e *onrampbindings.CCIPMessageSentEvent) bool {
+			return e.DestChainSelector == to && e.SequenceNumber == seq
+		},
+	)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed waiting for sent event: %w", err)
+	}
+
+	return cciptestinterfaces.MessageSentEvent{
+		MessageID: event.MessageId,
+		Sender:    protocol.UnknownAddress([]byte(event.Sender)),
+	}, nil
+}
+
+// ConfirmExecOnDest implements cciptestinterfaces.Chain.
+func (c *Chain) ConfirmExecOnDest(ctx context.Context, from uint64, key cciptestinterfaces.MessageEventKey, timeout time.Duration) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
+	if key.MessageID != (protocol.Bytes32{}) {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("stellar: ConfirmExecOnDest supports sequence number only, not message ID")
+	}
+	seq := key.SeqNum
+	if c.offRampClient == nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("OffRamp client not initialized")
+	}
+
+	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("sourceChainSelector", from).
+		Uint64("sequenceNumber", seq).
+		Uint32("startLedger", latestLedger.Sequence).
+		Dur("timeout", timeout).
+		Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp")
+
+	event, err := c.offRampClient.WaitForExecutionStateChangedEvent(
+		ctx, latestLedger.Sequence, timeout,
+		func(e *offrampbindings.ExecutionStateChangedEvent) bool {
+			return e.SourceChainSelector == from && e.SequenceNumber == seq
+		},
+	)
+	if err != nil {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed waiting for execution event: %w", err)
+	}
+
+	return cciptestinterfaces.ExecutionStateChangedEvent{
+		SourceChainSelector: protocol.ChainSelector(event.SourceChainSelector),
+		MessageID:           event.MessageId,
+		MessageNumber:       event.SequenceNumber,
+		State:               cciptestinterfaces.MessageExecutionState(event.State),
+		ReturnData:          event.ReturnData,
+	}, nil
+}
+
 // GetMaxDataBytes implements cciptestinterfaces.CCIP17.
 // Gets the maximum data size for a CCIP message to the specified remote chain.
 func (c *Chain) GetMaxDataBytes(ctx context.Context, remoteChainSelector uint64) (uint32, error) {
@@ -955,79 +1035,6 @@ func (c *Chain) Uncurse(ctx context.Context, subjects [][16]byte) error {
 		Int("numSubjects", len(subjects)).
 		Msg("Uncursed RMN Remote")
 	return nil
-}
-
-// WaitOneExecEventBySeqNo implements cciptestinterfaces.CCIP17.
-// Waits for exactly one execution state change event.
-func (c *Chain) WaitOneExecEventBySeqNo(ctx context.Context, from, seq uint64, timeout time.Duration) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
-	if c.offRampClient == nil {
-		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("OffRamp client not initialized")
-	}
-
-	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
-	if err != nil {
-		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
-	}
-
-	c.logger.Info().
-		Uint64("sourceChainSelector", from).
-		Uint64("sequenceNumber", seq).
-		Uint32("startLedger", latestLedger.Sequence).
-		Dur("timeout", timeout).
-		Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp")
-
-	event, err := c.offRampClient.WaitForExecutionStateChangedEvent(
-		ctx, latestLedger.Sequence, timeout,
-		func(e *offrampbindings.ExecutionStateChangedEvent) bool {
-			return e.SourceChainSelector == from && e.SequenceNumber == seq
-		},
-	)
-	if err != nil {
-		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed waiting for execution event: %w", err)
-	}
-
-	return cciptestinterfaces.ExecutionStateChangedEvent{
-		SourceChainSelector: protocol.ChainSelector(event.SourceChainSelector),
-		MessageID:           event.MessageId,
-		MessageNumber:       event.SequenceNumber,
-		State:               cciptestinterfaces.MessageExecutionState(event.State),
-		ReturnData:          event.ReturnData,
-	}, nil
-}
-
-// WaitOneSentEventBySeqNo implements cciptestinterfaces.CCIP17.
-// Waits for exactly one CCIPMessageSent event matching the destination selector and sequence number.
-func (c *Chain) WaitOneSentEventBySeqNo(ctx context.Context, to, seq uint64, timeout time.Duration) (cciptestinterfaces.MessageSentEvent, error) {
-	if c.onRampClient == nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("OnRamp client not initialized")
-	}
-
-	latestLedger, err := c.rpcClient.GetLatestLedger(ctx)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
-	}
-
-	c.logger.Info().
-		Uint64("destChainSelector", to).
-		Uint64("sequenceNumber", seq).
-		Uint32("startLedger", latestLedger.Sequence).
-		Dur("timeout", timeout).
-		Msg("Waiting for CCIPMessageSent event from Stellar OnRamp")
-
-	event, err := c.onRampClient.WaitForCCIPMessageSentEvent(
-		ctx, latestLedger.Sequence, timeout,
-		func(e *onrampbindings.CCIPMessageSentEvent) bool {
-			return e.DestChainSelector == to && e.SequenceNumber == seq
-		},
-	)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed waiting for sent event: %w", err)
-	}
-
-	return cciptestinterfaces.MessageSentEvent{
-		MessageID: event.MessageId,
-		Sender:    protocol.UnknownAddress([]byte(event.Sender)),
-	}, nil
 }
 
 // testTokenAssetCode is the classic Stellar asset code used by the test SAC token.

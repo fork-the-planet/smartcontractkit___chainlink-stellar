@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -13,6 +14,7 @@ import (
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
 	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/finality"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
@@ -31,6 +33,11 @@ var (
 	_ lanes.LaneAdapter       = (*StellarLaneAdapter)(nil)
 	_ ccvadapters.ChainFamily = (*StellarLaneAdapter)(nil)
 )
+
+// stellarFeeQuoterChainFamilySelector is bytes4(keccak256("CCIP ChainFamilySelector EVM")).
+// It is used as a stand-in for Stellar until a Stellar-specific selector is registered
+// in the EVM FeeQuoter contract (see ccv/chain/chain.go).
+var stellarFeeQuoterChainFamilySelector = [4]byte{0x28, 0x12, 0xd5, 0x2c}
 
 var stellarNoOpSource = cldf_ops.NewSequence(
 	"StellarConfigureLaneLegAsSource",
@@ -109,17 +116,13 @@ func (a *StellarLaneAdapter) GetFQAddress(ds datastore.DataStore, chainSelector 
 }
 
 func (a *StellarLaneAdapter) GetFeeQuoterDestChainConfig() lanes.FeeQuoterDestChainConfig {
-	// Use the EVM family selector (0x2812d52c) as a stand-in until a
-	// Stellar-specific selector is registered in the EVM FeeQuoter contract.
-	const evmFamilySelector uint32 = 0x2812d52c
-
 	return lanes.FeeQuoterDestChainConfig{
 		IsEnabled:                   true,
 		MaxDataBytes:                50_000,
 		MaxPerMsgGasLimit:           4_000_000,
 		DestGasOverhead:             350_000,
 		DestGasPerPayloadByteBase:   16,
-		ChainFamilySelector:         evmFamilySelector,
+		ChainFamilySelector:         binary.BigEndian.Uint32(stellarFeeQuoterChainFamilySelector[:]),
 		DefaultTokenFeeUSDCents:     50,
 		DefaultTokenDestGasOverhead: 50_000,
 		DefaultTxGasLimit:           200_000,
@@ -176,4 +179,58 @@ func (a *StellarLaneAdapter) ResolveExecutor(ds datastore.DataStore, chainSelect
 		Version:   proxy.Version,
 		Qualifier: qualifier,
 	}, chainSelector, toAddress)
+}
+
+func (a *StellarLaneAdapter) GetAddressBytesLength() uint8 {
+	// Stellar contract IDs are 32 bytes on-chain / in cross-chain payloads.
+	return 32
+}
+
+func (a *StellarLaneAdapter) GetChainFamilySelector() [4]byte {
+	return stellarFeeQuoterChainFamilySelector
+}
+
+func (a *StellarLaneAdapter) GetDefaultFeeQuoterDestChainConfig() ccvadapters.FeeQuoterDestChainConfig {
+	return ccvadapters.FeeQuoterDestChainConfig{
+		IsEnabled:                   true,
+		MaxDataBytes:                50_000,
+		MaxPerMsgGasLimit:           4_000_000,
+		DestGasOverhead:             350_000,
+		DestGasPerPayloadByteBase:   16,
+		ChainFamilySelector:         stellarFeeQuoterChainFamilySelector,
+		DefaultTokenFeeUSDCents:     50,
+		DefaultTokenDestGasOverhead: 50_000,
+		DefaultTxGasLimit:           200_000,
+		NetworkFeeUSDCents:          100,
+		LinkFeeMultiplierPercent:    90,
+		USDPerUnitGas:               big.NewInt(1e6),
+	}
+}
+
+func (a *StellarLaneAdapter) GetDefaultRemoteChainConfig() ccvadapters.RemoteChainDefaults {
+	return ccvadapters.RemoteChainDefaults{
+		AllowTrafficFrom:          true,
+		ExecutorDestChainConfig:   ccvadapters.ExecutorDestChainConfig{USDCentsFee: 0, Enabled: true},
+		BaseExecutionGasCost:      175_000,
+		TokenReceiverAllowed:      false,
+		MessageNetworkFeeUSDCents: 10,
+		TokenNetworkFeeUSDCents:   25,
+	}
+}
+
+func (a *StellarLaneAdapter) GetDefaultCommitteeVerifierRemoteChainConfig() ccvadapters.CommitteeVerifierRemoteChainDefaults {
+	return ccvadapters.CommitteeVerifierRemoteChainDefaults{
+		AllowlistEnabled:   false,
+		FeeUSDCents:        0,
+		GasForVerification: 60_000,
+		PayloadSizeBytes:   390,
+	}
+}
+
+func (a *StellarLaneAdapter) GetDefaultFinalityConfig() finality.Config {
+	return finality.Config{
+		WaitForFinality: true,
+		WaitForSafe:     true,
+		BlockDepth:      1,
+	}
 }

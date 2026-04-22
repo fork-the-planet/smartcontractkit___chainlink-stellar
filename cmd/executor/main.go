@@ -169,7 +169,7 @@ func main() {
 					RMNCurseReaders:      rmnReaders,
 				}, nil
 			}),
-		bootstrap.WithLogLevel[executor.JobSpec](zapcore.InfoLevel),
+		bootstrap.WithLogLevel(zapcore.InfoLevel),
 	); err != nil {
 		panic(fmt.Sprintf("failed to run Stellar executor: %s", err.Error()))
 	}
