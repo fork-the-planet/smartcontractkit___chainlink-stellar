@@ -5,15 +5,18 @@ package integration
 import (
 	"bytes"
 	"context"
+	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/ccv/strkeyutil"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -306,21 +309,43 @@ func TestTokenPool(t *testing.T) {
 			if len(rcpts) != wantReceipts {
 				t.Fatalf("receipts: want len %d (1 CCV + pool + executor + network), got %d", wantReceipts, len(rcpts))
 			}
-			if rcpts[1].Issuer != stack.TokenPoolID {
-				t.Fatalf("receipt[1] issuer want token pool %s, got %s", stack.TokenPoolID, rcpts[1].Issuer)
-			}
-			if rcpts[1].DestGasLimit != 0 || rcpts[1].DestBytesOverhead != 0 {
-				t.Fatalf("token pool receipt dest gas/overhead want 0, got gas=%d overhead=%d",
-					rcpts[1].DestGasLimit, rcpts[1].DestBytesOverhead)
-			}
-			if rcpts[2].Issuer != defaultExecutor {
-				t.Fatalf("receipt[2] issuer want executor %s, got %s", defaultExecutor, rcpts[2].Issuer)
-			}
 			if rcpts[3].Issuer != stack.RouterID {
 				t.Fatalf("receipt[3] issuer want router (network fee) %s, got %s", stack.RouterID, rcpts[3].Issuer)
 			}
-			if rcpts[0].Issuer != stack.VvrID {
-				t.Fatalf("receipt[0] issuer want default CCV (VVR) %s, got %s", stack.VvrID, rcpts[0].Issuer)
+			// Same layout verifier / chainlink-ccv expect: CCVs, then token pool, executor, network fee.
+			numCCVBlobs := len(sentEvt.VerifierBlobs)
+			rwbs := onrampReceiptsToReceiptWithBlobs(t, sentEvt.Receipts, sentEvt.VerifierBlobs)
+			parsed, err := protocol.ParseReceiptStructure(rwbs, numCCVBlobs, 1)
+			if err != nil {
+				t.Fatalf("ParseReceiptStructure: %v", err)
+			}
+			if len(parsed.CCVReceipts) != numCCVBlobs {
+				t.Fatalf("ParseReceiptStructure CCV count: want %d, got %d", numCCVBlobs, len(parsed.CCVReceipts))
+			}
+			vvrRaw, err := strkeyutil.ToUnknownAddress(stack.VvrID)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(VVR): %v", err)
+			}
+			if !parsed.CCVReceipts[0].Issuer.Equal(vvrRaw) {
+				t.Fatalf("ParseReceiptStructure CCV[0] issuer want VVR %s, got %x", stack.VvrID, parsed.CCVReceipts[0].Issuer)
+			}
+			poolRaw, err := strkeyutil.ToUnknownAddress(stack.TokenPoolID)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(pool): %v", err)
+			}
+			if len(parsed.TokenReceipts) != 1 || !parsed.TokenReceipts[0].Issuer.Equal(poolRaw) {
+				t.Fatalf("ParseReceiptStructure token receipt issuer want pool %s, got %+v", stack.TokenPoolID, parsed.TokenReceipts)
+			}
+			execRaw, err := strkeyutil.ToUnknownAddress(defaultExecutor)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(executor): %v", err)
+			}
+			if !parsed.ExecutorReceipt.Issuer.Equal(execRaw) {
+				t.Fatalf("ParseReceiptStructure executor issuer want %s, got %x", defaultExecutor, parsed.ExecutorReceipt.Issuer)
+			}
+			if parsed.TokenReceipts[0].DestGasLimit != 0 || parsed.TokenReceipts[0].DestBytesOverhead != 0 {
+				t.Fatalf("ParseReceiptStructure token receipt dest gas/overhead want 0, got gas=%d overhead=%d",
+					parsed.TokenReceipts[0].DestGasLimit, parsed.TokenReceipts[0].DestBytesOverhead)
 			}
 		})
 	})
@@ -511,6 +536,30 @@ func TestTokenPool(t *testing.T) {
 			t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
 		})
 	})
+}
+
+func onrampReceiptsToReceiptWithBlobs(t *testing.T, receipts []onrampbindings.Receipt, verifierBlobs [][]byte) []protocol.ReceiptWithBlob {
+	t.Helper()
+	out := make([]protocol.ReceiptWithBlob, 0, len(receipts))
+	for i, r := range receipts {
+		var blob []byte
+		if i < len(verifierBlobs) {
+			blob = verifierBlobs[i]
+		}
+		issuer, err := strkeyutil.ToUnknownAddress(r.Issuer)
+		if err != nil {
+			t.Fatalf("ToUnknownAddress(issuer %q): %v", r.Issuer, err)
+		}
+		out = append(out, protocol.ReceiptWithBlob{
+			Issuer:            issuer,
+			Blob:              protocol.ByteSlice(blob),
+			ExtraArgs:         protocol.ByteSlice(r.ExtraArgs),
+			DestGasLimit:      uint64(r.DestGasLimit),
+			DestBytesOverhead: r.DestBytesOverhead,
+			FeeTokenAmount:    big.NewInt(r.FeeTokenAmount),
+		})
+	}
+	return out
 }
 
 // sacTransferOrFatal invokes Soroban token transfer(from, to, amount) on the SAC (deployer must be `from`).
