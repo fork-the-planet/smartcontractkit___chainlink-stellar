@@ -533,6 +533,70 @@
                 }
               },
               "sub_invocations": []
+            },
+            {
+              "function": {
+                "contract_fn": {
+                  "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+                  "function_name": "forward_from_router",
+                  "args": [
+                    {
+                      "u64": "67890"
+                    },
+                    {
+                      "map": [
+                        {
+                          "key": {
+                            "symbol": "data"
+                          },
+                          "val": {
+                            "bytes": "68656c6c6f2066726f6d207374656c6c6172"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "extra_args"
+                          },
+                          "val": {
+                            "bytes": ""
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "fee_token"
+                          },
+                          "val": {
+                            "address": "CD3FXVGYSLQFFTW3UH6WFF2OKZH7VERGZJZAMJHTGHBWO4F6URWEJL23"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "receiver"
+                          },
+                          "val": {
+                            "bytes": "0101010101010101010101010101010101010101"
+                          }
+                        },
+                        {
+                          "key": {
+                            "symbol": "token_amounts"
+                          },
+                          "val": {
+                            "vec": []
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "i128": "2"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
+                }
+              },
+              "sub_invocations": []
             }
           ]
         }

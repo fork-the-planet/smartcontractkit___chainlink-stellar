@@ -178,8 +178,8 @@ impl RouterContract {
         // Track A: fee sufficiency is enforced inside `OnRamp::forward_from_router` (single
         // fee breakdown per send). Callers SHOULD still use `get_fee` off-chain to quote.
         // Transfer fee tokens from sender to OnRamp.
-        // The sender has already authorized via `sender.require_auth()` above, and
-        // Soroban's auth tree propagates sub-invocation authorization.
+        // The sender has authorized `ccip_send` above; `OnRamp::forward_from_router` additionally
+        // requires `sender.require_auth_for_args` for the same outbound tuple (see OnRamp).
         if fee_token_amount > 0 {
             let fee_token_client = token::Client::new(&env, &message.fee_token);
             fee_token_client.transfer(&sender, &onramp, &fee_token_amount);

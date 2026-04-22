@@ -11,7 +11,7 @@ use common_interfaces::{
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, token,
+    contract, contractimpl, symbol_short, token, vec,
     xdr::{FromXdr, ToXdr},
     Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
@@ -393,6 +393,12 @@ impl OnRampContract {
     ///
     /// # Errors
     /// Various errors for validation failures
+    ///
+    /// # Panics
+    ///
+    /// * If the configured router did not authorize this call (`require_auth` on `dest_config.router`).
+    /// * If `original_sender` did not authorize this exact invocation (see `require_auth_for_args`
+    ///   with the same `(dest_chain_selector, message, fee_token_amount, original_sender)` tuple).
     pub fn forward_from_router(
         env: Env,
         dest_chain_selector: u64,
@@ -400,16 +406,6 @@ impl OnRampContract {
         fee_token_amount: i128,
         original_sender: Address,
     ) -> Result<BytesN<32>, CCIPError> {
-        // TODO(NONEVM-3946): Re-enable sender auth once the Router-to-OnRamp
-        // invocation tree correctly propagates sub-invocation authorization.
-        // Without this, any caller can forge the original_sender field.
-        // original_sender.require_auth_for_args(Vec::from([
-        //     dest_chain_selector.into_val(&env),
-        //     message.to_bytes(&env).into_val(&env),
-        //     fee_token_amount.into_val(&env),
-        //     original_sender.into_val(&env),
-        // ]))?;
-
         <Self as Initializable>::require_initialized(&env)?;
         <Self as CurseCheckable>::require_not_cursed(&env)?;
         message.validate()?;
@@ -424,6 +420,18 @@ impl OnRampContract {
 
         // Verify caller is the router
         dest_config.router.require_auth();
+
+        // Bind `original_sender` to this invocation so it cannot be forged by an intermediary.
+        // Args must match this function's parameter list (after `env`) exactly — same rule as
+        // `Router::ccip_send` → `sender.require_auth()` for the outer call.
+        let auth_args = vec![
+            &env,
+            dest_chain_selector.into_val(&env),
+            message.clone().into_val(&env),
+            fee_token_amount.into_val(&env),
+            original_sender.clone().into_val(&env),
+        ];
+        original_sender.require_auth_for_args(auth_args);
 
         // Parse extra args; use default when empty (common for simple messages)
         let extra_args = if message.extra_args.len() == 0 {

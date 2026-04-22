@@ -155,6 +155,12 @@ impl CommitteeVerifierContract {
     // ========================================
 
     /// Source-side hook that checks sender permissions and returns version tag.
+    ///
+    /// Allowlist: when enabled for `dest_chain_selector`, `sender` must be on the stored list
+    /// (`AllowListable::require_in_allowlist` — membership only, no `require_auth` on `sender`).
+    /// OnRamp binds `original_sender` on `forward_from_router`; binding auth on this nested
+    /// `forward_to_verifier` call for `sender` is optional and needs matching sub-invocation auth
+    /// in the transaction (see `common_authorization::allowlist::require_in_allowlist_authorized`).
     pub fn forward_to_verifier(
         env: Env,
         dest_chain_selector: u64,
