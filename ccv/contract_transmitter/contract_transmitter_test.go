@@ -331,7 +331,8 @@ func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 	})
 
 	t.Run("empty blob is passed through", func(t *testing.T) {
-		blob := append(append([]byte(nil), stellarutil.DefaultCommitteeVerifierVersionTag()[:]...), 0x00, 0x00)
+		vt := stellarutil.DefaultCommitteeVerifierVersionTag()
+		blob := append(append([]byte(nil), vt[:]...), 0x00, 0x00)
 		result, err := convertVerifierBlobToEIP2098(blob)
 		require.NoError(t, err)
 		assert.Equal(t, blob, result)
