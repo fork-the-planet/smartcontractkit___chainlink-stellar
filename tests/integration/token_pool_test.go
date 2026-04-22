@@ -160,7 +160,7 @@ func TestTokenPool(t *testing.T) {
 				t.Fatalf("TokenPool ApplyChainUpdates: %v", err)
 			}
 
-			_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, stack,
+			wire := deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, stack,
 				destChain, remoteDestChain, feeToken, []string{sacToken})
 
 			defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, outboundSalt+"-executor")
@@ -288,6 +288,39 @@ func TestTokenPool(t *testing.T) {
 			if got := poolAfter - poolBefore; got != tokenTransferAmount {
 				t.Fatalf("pool SAC balance should increase by %d; before=%d after=%d (delta=%d)",
 					tokenTransferAmount, poolBefore, poolAfter, got)
+			}
+
+			// OnRamp CCIPMessageSent receipts: [CCV…, TokenPool, Executor, NetworkFee] (EVM / ccv parity).
+			sentEvt, err := wire.OnRampClient.WaitForCCIPMessageSentEvent(ctx, latest2.Sequence, eventWait,
+				func(e *onrampbindings.CCIPMessageSentEvent) bool {
+					if e.DestChainSelector != remoteDestChain || e.Sender != deployerAddr {
+						return false
+					}
+					return bytes.Equal(e.MessageId[:], tokenMsgID[:])
+				})
+			if err != nil {
+				t.Fatalf("WaitForCCIPMessageSentEvent (token send): %v", err)
+			}
+			rcpts := sentEvt.Receipts
+			const wantReceipts = 4 // 1 default CCV + token pool + executor + network fee
+			if len(rcpts) != wantReceipts {
+				t.Fatalf("receipts: want len %d (1 CCV + pool + executor + network), got %d", wantReceipts, len(rcpts))
+			}
+			if rcpts[1].Issuer != stack.TokenPoolID {
+				t.Fatalf("receipt[1] issuer want token pool %s, got %s", stack.TokenPoolID, rcpts[1].Issuer)
+			}
+			if rcpts[1].DestGasLimit != 0 || rcpts[1].DestBytesOverhead != 0 {
+				t.Fatalf("token pool receipt dest gas/overhead want 0, got gas=%d overhead=%d",
+					rcpts[1].DestGasLimit, rcpts[1].DestBytesOverhead)
+			}
+			if rcpts[2].Issuer != defaultExecutor {
+				t.Fatalf("receipt[2] issuer want executor %s, got %s", defaultExecutor, rcpts[2].Issuer)
+			}
+			if rcpts[3].Issuer != stack.RouterID {
+				t.Fatalf("receipt[3] issuer want router (network fee) %s, got %s", stack.RouterID, rcpts[3].Issuer)
+			}
+			if rcpts[0].Issuer != stack.VvrID {
+				t.Fatalf("receipt[0] issuer want default CCV (VVR) %s, got %s", stack.VvrID, rcpts[0].Issuer)
 			}
 		})
 	})
