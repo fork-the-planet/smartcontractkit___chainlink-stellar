@@ -472,7 +472,10 @@ impl OnRampContract {
             return Err(CCIPError::InsufficientFeeTokenAmount);
         }
 
-        // Lock or burn tokens via the pool (if token transfer)
+        // Lock or burn tokens via the pool (if token transfer). When tokens are present,
+        // also record pool fee for the token receipt emitted after CCV receipts (EVM
+        // `OnRamp._getReceipts` ordering; see chainlink-ccv `ParseReceiptStructure`).
+        let mut token_pool_receipt: Option<Receipt> = None;
         let token_transfer_bytes = if !message.token_amounts.is_empty() {
             let token_amount = message.token_amounts.get(0).unwrap();
             let pool_address =
@@ -495,6 +498,15 @@ impl OnRampContract {
                 },
                 &extra_args.block_confirmations,
             );
+
+            let pool_fee = pool_client.get_fee(&dest_chain_selector);
+            token_pool_receipt = Some(Receipt {
+                issuer: pool_address.clone(),
+                dest_gas_limit: 0,
+                dest_bytes_overhead: 0,
+                fee_token_amount: pool_fee.fee_usd_cents as i128,
+                extra_args: extra_args.token_args.clone(),
+            });
 
             let token_transfer = CcipTokenTransferV1 {
                 version: MESSAGE_V1_VERSION,
@@ -555,8 +567,10 @@ impl OnRampContract {
 
         // TODO: check if message ID already exists in storage for idempotency
 
-        // Receipt ordering must match the offchain expectation: [CCV_0, ..., CCV_N, Executor, NetworkFee]
-        // where Executor is at index length-2 and NetworkFee is at length-1.
+        // Receipt ordering matches EVM `OnRamp._getReceipts` / chainlink-ccv `ParseReceiptStructure`:
+        // [CCV_0, ..., CCV_N, TokenPool? , Executor, NetworkFee]
+        // Token pool receipt is present iff `token_transfer` is non-empty (same condition as
+        // `message.TokenTransferLength` on the canonical MessageV1).
 
         // Invoke verifiers to get verification blobs and generate receipts
         let (verifier_blobs, mut receipts) = Self::get_ccv_blobs_and_receipts_internal(
@@ -571,6 +585,10 @@ impl OnRampContract {
             &ccv_fee_responses,
             fee_token_amount,
         )?;
+
+        if let Some(r) = token_pool_receipt {
+            receipts.push_back(r);
+        }
 
         // Executor receipt (always before the network fee receipt)
         receipts.push_back(Receipt {
@@ -604,7 +622,7 @@ impl OnRampContract {
         // Persist updated sequence number
         Self::set_dest_chain_config(&env, dest_chain_selector, &dest_config);
 
-        // Sum all USD-cent-denominated receipt fees (CCVs + executor) and convert
+        // Sum all USD-cent-denominated receipt fees (CCVs + optional token pool + executor) and convert
         // to fee token units. The network fee receipt is not summed here because the
         // FeeQuoter already includes it in message_fee.fee_token_amount.
         let mut additional_usd_cents: u128 = 0;
@@ -616,7 +634,14 @@ impl OnRampContract {
                     .ok_or(CCIPError::InvalidFeeCalculation)?;
             }
         }
-        // Executor fee (receipt at index ccv_receipt_count)
+        if !message.token_amounts.is_empty() {
+            if let Some(r) = receipts.get(ccv_receipt_count) {
+                additional_usd_cents = additional_usd_cents
+                    .checked_add(r.fee_token_amount as u128)
+                    .ok_or(CCIPError::InvalidFeeCalculation)?;
+            }
+        }
+        // Executor fee (matches receipt at index after CCVs and optional pool row)
         additional_usd_cents = additional_usd_cents
             .checked_add(dest_config.execution_fee_usd_cents as u128)
             .ok_or(CCIPError::InvalidFeeCalculation)?;
@@ -1169,3 +1194,6 @@ impl OnRampContract {
 }
 
 mod test;
+
+#[cfg(test)]
+mod onramp_token_pool_forward_test;

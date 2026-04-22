@@ -19,3 +19,12 @@ common-helpers = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+fee-quoter = { workspace = true }
+router = { workspace = true }
+rmn_proxy = { workspace = true }
+rmn_remote = { workspace = true }
+ccvs-versioned-verifier-resolver = { workspace = true }
+ccip-ramp-registry = { workspace = true }
+token-admin-registry = { path = "../token-admin-registry" }
+pools-lock-release-pool = { path = "../pools/lock-release-pool" }
+common-pool = { workspace = true }
