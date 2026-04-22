@@ -93,7 +93,7 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 			Msg("CCIP message sent from EVM")
 
 		// Wait for the sent event on the EVM chain.
-		sentEvent, err := evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, evmSentTimeout)
+		sentEvent, err := evmChain.ConfirmSendOnSource(ctx, stellarDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, evmSentTimeout)
 		require.NoError(t, err)
 		messageID := sentEvent.MessageID
 		l.Info().
@@ -140,7 +140,7 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 		l.Info().Interface("sourceChainConfig", sourceChainConfig).Msg("Source chain config in OffRamp contract")
 
 		// Wait for execution on the Stellar destination chain.
-		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)
+		execEvent, err := stellarChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, execTimeout)
 		require.NoError(t, err)
 		require.Equalf(
 			t,
@@ -233,7 +233,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Msg("✅ CCIP message sent from EVM (message was created while source cursed)")
 
 		// Wait for the sent event on the EVM chain
-		sentEvent, err := evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, evmSentTimeout)
+		sentEvent, err := evmChain.ConfirmSendOnSource(ctx, stellarDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, evmSentTimeout)
 		require.NoError(t, err)
 		messageID := sentEvent.MessageID
 		l.Info().
@@ -270,7 +270,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Str("messageID", hex.EncodeToString(messageID[:])).
 			Msg("🕐 Waiting 30 seconds to verify no execution event appears (should be blocked by curse check)")
 
-		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, shortTimeout)
+		execEvent, err := stellarChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, shortTimeout)
 		require.Error(t, err, "should timeout waiting for execution event since message is cursed")
 		require.Equal(t, cciptestinterfaces.ExecutionStateChangedEvent{}, execEvent, "execution event should be empty/zero value when cursed")
 
@@ -292,7 +292,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Uint64("seqNo", seqNo).
 			Msg("🔄 Waiting for stuck message to be retried and executed after uncurse")
 
-		execEventRetried, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)
+		execEventRetried, err := stellarChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, execTimeout)
 		require.NoError(t, err, "stuck message should have been retried and executed after uncurse")
 		require.Equalf(
 			t,
@@ -328,7 +328,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 			Msg("✅ CCIP message sent from EVM after uncurse")
 
 		// Verify execution succeeds for the new message too
-		execEvent2, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo2, execTimeout)
+		execEvent2, err := stellarChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo2}, execTimeout)
 		require.NoError(t, err)
 		require.Equalf(
 			t,
@@ -408,7 +408,7 @@ func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
 			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
 			Msg("CCIP message sent from EVM with invalid Stellar receiver")
 
-		sentEvent, err := evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, evmSentTimeout)
+		sentEvent, err := evmChain.ConfirmSendOnSource(ctx, stellarDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, evmSentTimeout)
 		require.NoError(t, err)
 		messageID := sentEvent.MessageID
 		l.Info().
@@ -436,7 +436,7 @@ func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
 			Msg("Message verified and aggregated successfully (receiver validity not checked here)")
 
 		// Wait for execution on the Stellar OffRamp — expect Failure.
-		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(t.Context(), evmDetails.ChainSelector, seqNo, execTimeout)
+		execEvent, err := stellarChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, execTimeout)
 		require.NoError(t, err, "should receive an execution event even for failed execution")
 		require.Equalf(
 			t,

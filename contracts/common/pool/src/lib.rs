@@ -21,7 +21,7 @@ pub use types::*;
 
 use common_error::CCIPError;
 use common_interfaces::pool_hooks::PoolHooksClient;
-use common_interfaces::router::RouterClient;
+use common_interfaces::ramp_registry::RampRegistryClient;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
     PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
@@ -357,11 +357,10 @@ pub trait BaseTokenPool {
     }
 
     // ------------------------------------------------------------------
-    // Router / Ramp Gating (EVM `_onlyOnRamp` / `_onlyOffRamp`)
+    // Router + ramp registry (EVM `s_router` / ramp lookups)
     // ------------------------------------------------------------------
 
-    /// Store the router address. Owner-only — caller must enforce.
-    /// On EVM this is part of `setDynamicConfig`.
+    /// Store the CCIP Router address. Owner-only — caller must enforce.
     fn set_router(env: &Env, router: &Address) {
         env.storage().instance().set(&PoolDataKey::Router, router);
     }
@@ -370,18 +369,52 @@ pub trait BaseTokenPool {
         env.storage().instance().get(&PoolDataKey::Router)
     }
 
-    /// Require `caller` to be a registered OffRamp for `source_chain_selector` on the
-    /// configured router (EVM `TokenPool._onlyOffRamp`). `caller` must match the direct
-    /// invoker and authorize this call (`caller.require_auth()`).
+    /// Store the ramp registry address. Owner-only — caller must enforce.
+    /// Used for on/off ramp authorization so pools never re-enter the Router on the outbound path.
+    fn set_ramp_registry(env: &Env, registry: &Address) {
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::RampRegistry, registry);
+    }
+
+    fn get_ramp_registry(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&PoolDataKey::RampRegistry)
+    }
+
+    /// Require `caller` to be the configured OnRamp for `dest_chain_selector` on the ramp
+    /// registry (EVM `TokenPool._onlyOnRamp`). `caller` must authorize this call.
+    fn require_authorized_onramp(
+        env: &Env,
+        caller: &Address,
+        dest_chain_selector: u64,
+    ) -> Result<(), CCIPError> {
+        caller.require_auth();
+        let reg = Self::get_ramp_registry(env).ok_or(CCIPError::RouterNotConfigured)?;
+        let reg_client = RampRegistryClient::new(env, &reg);
+        let expected = match reg_client.try_get_onramp(&dest_chain_selector) {
+            Ok(Ok(addr)) => addr,
+            Ok(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
+            Err(Ok(e)) => return Err(e),
+            Err(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
+        };
+        if expected != *caller {
+            return Err(CCIPError::CallerNotAuthorized);
+        }
+        Ok(())
+    }
+
+    /// Require `caller` to be a registered OffRamp for `source_chain_selector` on the ramp
+    /// registry (EVM `TokenPool._onlyOffRamp`). `caller` must match the direct invoker and
+    /// authorize this call (`caller.require_auth()`).
     fn require_authorized_offramp(
         env: &Env,
         source_chain_selector: u64,
         caller: &Address,
     ) -> Result<(), CCIPError> {
         caller.require_auth();
-        let router = Self::get_router(env).ok_or(CCIPError::RouterNotConfigured)?;
-        let router_client = RouterClient::new(env, &router);
-        if !router_client.is_offramp(&source_chain_selector, caller) {
+        let reg = Self::get_ramp_registry(env).ok_or(CCIPError::RouterNotConfigured)?;
+        let reg_client = RampRegistryClient::new(env, &reg);
+        if !reg_client.is_offramp(&source_chain_selector, caller) {
             return Err(CCIPError::CallerNotAuthorized);
         }
         Ok(())

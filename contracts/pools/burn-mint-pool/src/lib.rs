@@ -49,12 +49,14 @@ impl BurnMintTokenPoolContract {
         token: Address,
         token_decimals: u32,
         router: Address,
+        ramp_registry: Address,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as BaseTokenPool>::init_pool(&env, &token, token_decimals)?;
         <Self as BaseTokenPool>::set_router(&env, &router);
+        <Self as BaseTokenPool>::set_ramp_registry(&env, &ramp_registry);
         Ok(())
     }
 
@@ -74,10 +76,16 @@ impl BurnMintTokenPoolContract {
     /// as a sub-invocation in the auth tree).
     pub fn lock_or_burn(
         env: Env,
+        caller: Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::require_authorized_onramp(
+            &env,
+            &caller,
+            input.remote_chain_selector,
+        )?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {
@@ -347,6 +355,17 @@ impl BurnMintTokenPoolContract {
 
     pub fn get_router(env: Env) -> Option<Address> {
         <Self as BaseTokenPool>::get_router(&env)
+    }
+
+    pub fn set_ramp_registry(env: Env, ramp_registry: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_ramp_registry(&env, &ramp_registry);
+        Ok(())
+    }
+
+    pub fn get_ramp_registry(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_ramp_registry(&env)
     }
 
     /// Set the advanced pool hooks contract (EVM `updateAdvancedPoolHooks`). Owner-only.

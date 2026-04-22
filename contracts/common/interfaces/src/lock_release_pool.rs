@@ -19,6 +19,7 @@ pub trait LockReleasePoolInterface {
         token: soroban_sdk::Address,
         token_decimals: u32,
         router: soroban_sdk::Address,
+        ramp_registry: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
     fn set_router(
         env: soroban_sdk::Env,
@@ -26,6 +27,7 @@ pub trait LockReleasePoolInterface {
     ) -> Result<(), CCIPError>;
     fn lock_or_burn(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError>;
@@ -51,6 +53,7 @@ pub trait LockReleasePoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_ramp_registry(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_required_ccvs(
         env: soroban_sdk::Env,
         local_token: soroban_sdk::Address,
@@ -60,6 +63,10 @@ pub trait LockReleasePoolInterface {
         extra_data: soroban_sdk::Bytes,
         direction: MessageDirection,
     ) -> PoolRequiredCCVs;
+    fn set_ramp_registry(
+        env: soroban_sdk::Env,
+        ramp_registry: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
     fn is_supported_chain(
         env: soroban_sdk::Env,
@@ -261,9 +268,10 @@ pub enum PoolDataKey {
     FtfOutboundRateLimit(u64),
     FtfInboundRateLimit(u64),
     AllowedFinalityConfig,
-    Router,
+    RampRegistry,
     AdvancedPoolHooks,
     PoolFeeConfig(u64),
+    Router,
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

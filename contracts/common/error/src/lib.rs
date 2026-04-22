@@ -198,7 +198,7 @@ pub enum CCIPError {
     /// Inbound source chain not allowlisted for this client (EVM `CCIPClientExample.InvalidChain` /
     /// `validChain` when `s_chains[source].extraArgs` is empty).
     InvalidChainForClient = 317,
-    /// Pool requires a configured router for inbound `release_or_mint` caller checks.
+    /// Pool requires a configured ramp registry for ramp caller checks (`lock_or_burn` / `release_or_mint`).
     RouterNotConfigured = 318,
 
     // ============================================================

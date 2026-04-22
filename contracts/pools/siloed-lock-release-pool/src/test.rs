@@ -7,6 +7,7 @@ use soroban_sdk::{testutils::Address as _, token, vec, Address, Bytes, Env, Vec}
 use crate::{
     LockBoxEntry, SiloedLockReleaseTokenPoolContract, SiloedLockReleaseTokenPoolContractClient,
 };
+use ccip_ramp_registry::{RampRegistryContract, RampRegistryContractClient};
 use common_error::CCIPError;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
@@ -16,7 +17,6 @@ use common_pool::{
     ChainUpdate, LockOrBurnIn, MessageDirection, PoolFeeConfig, RateLimitConfig, ReleaseOrMintIn,
 };
 use pools_token_lock_box::{TokenLockBox, TokenLockBoxClient};
-use router::{RouterContract, RouterContractClient};
 
 /// Invokes `release_or_mint` with `caller = self` so `caller.require_auth()` succeeds.
 mod inbound_release_stub {
@@ -45,11 +45,11 @@ mod inbound_release_stub {
 }
 
 fn register_offramp_for_chain(
-    router_client: &RouterContractClient,
+    registry_client: &RampRegistryContractClient,
     stub_client: &inbound_release_stub::PoolInboundReleaseStubClient,
     source_chain_selector: u64,
 ) {
-    router_client.add_offramp(&source_chain_selector, &stub_client.address);
+    registry_client.add_offramp(&source_chain_selector, &stub_client.address);
 }
 
 /// Minimal hook contracts for pool integration tests (must match `PoolHooksInterface` ABI).
@@ -148,8 +148,9 @@ struct TestEnv<'a> {
     lockbox_client: TokenLockBoxClient<'a>,
     sac: token::StellarAssetClient<'a>,
     tc: token::Client<'a>,
-    router_client: RouterContractClient<'a>,
+    registry_client: RampRegistryContractClient<'a>,
     stub_client: inbound_release_stub::PoolInboundReleaseStubClient<'a>,
+    auth_onramp: Address,
 }
 
 fn setup() -> TestEnv<'static> {
@@ -167,16 +168,19 @@ fn setup() -> TestEnv<'static> {
     let lockbox_client = TokenLockBoxClient::new(&env, &lockbox_id);
     lockbox_client.initialize(&owner, &token_addr);
 
-    let rmn_proxy = Address::generate(&env);
-    let router_id = env.register(RouterContract, ());
-    let router_client = RouterContractClient::new(&env, &router_id);
-    router_client.initialize(&owner, &rmn_proxy);
+    let registry_id = env.register(RampRegistryContract, ());
+    let registry_client = RampRegistryContractClient::new(&env, &registry_id);
+    registry_client.initialize(&owner);
+    let auth_onramp = Address::generate(&env);
+    registry_client.set_onramp(&REMOTE_CHAIN, &auth_onramp);
+
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
 
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &token_addr, &7, &router_client.address);
+    let router = Address::generate(&env);
+    pool_client.initialize(&owner, &token_addr, &7, &router, &registry_client.address);
 
     lockbox_client.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
     add_chain(&env, &pool_client, REMOTE_CHAIN);
@@ -189,7 +193,7 @@ fn setup() -> TestEnv<'static> {
         },
     ]);
 
-    register_offramp_for_chain(&router_client, &stub_client, REMOTE_CHAIN);
+    register_offramp_for_chain(&registry_client, &stub_client, REMOTE_CHAIN);
 
     TestEnv {
         env,
@@ -198,8 +202,9 @@ fn setup() -> TestEnv<'static> {
         lockbox_client,
         sac,
         tc,
-        router_client,
+        registry_client,
         stub_client,
+        auth_onramp,
     }
 }
 
@@ -213,6 +218,7 @@ struct MultiLockboxEnv<'a> {
     sac: token::StellarAssetClient<'a>,
     tc: token::Client<'a>,
     stub_client: inbound_release_stub::PoolInboundReleaseStubClient<'a>,
+    auth_onramp: Address,
 }
 
 fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
@@ -234,16 +240,20 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
     let siloed_lockbox = TokenLockBoxClient::new(&env, &siloed_id);
     siloed_lockbox.initialize(&owner, &token_addr);
 
-    let rmn_proxy = Address::generate(&env);
-    let router_id = env.register(RouterContract, ());
-    let router_client = RouterContractClient::new(&env, &router_id);
-    router_client.initialize(&owner, &rmn_proxy);
+    let registry_id = env.register(RampRegistryContract, ());
+    let registry_client = RampRegistryContractClient::new(&env, &registry_id);
+    registry_client.initialize(&owner);
+    let auth_onramp = Address::generate(&env);
+    registry_client.set_onramp(&REMOTE_CHAIN, &auth_onramp);
+    registry_client.set_onramp(&SILOED_CHAIN, &auth_onramp);
+
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
 
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &token_addr, &7, &router_client.address);
+    let router = Address::generate(&env);
+    pool_client.initialize(&owner, &token_addr, &7, &router, &registry_client.address);
 
     shared_lockbox.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
     siloed_lockbox.add_allowed_callers(&vec![&env, pool_client.address.clone()]);
@@ -263,8 +273,8 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
         },
     ]);
 
-    register_offramp_for_chain(&router_client, &stub_client, REMOTE_CHAIN);
-    register_offramp_for_chain(&router_client, &stub_client, SILOED_CHAIN);
+    register_offramp_for_chain(&registry_client, &stub_client, REMOTE_CHAIN);
+    register_offramp_for_chain(&registry_client, &stub_client, SILOED_CHAIN);
 
     MultiLockboxEnv {
         env,
@@ -275,6 +285,7 @@ fn setup_multi_lockbox() -> MultiLockboxEnv<'static> {
         sac,
         tc,
         stub_client,
+        auth_onramp,
     }
 }
 
@@ -291,7 +302,7 @@ fn lock_deposits_into_lockbox() {
         amount: 500,
         local_token: t.token_addr.clone(),
     };
-    let out = t.pool_client.lock_or_burn(&input, &0);
+    let out = t.pool_client.lock_or_burn(&t.auth_onramp, &input, &0);
 
     assert_eq!(t.tc.balance(&sender), 500);
     assert_eq!(t.tc.balance(&t.lockbox_client.address), 500);
@@ -312,7 +323,7 @@ fn lock_or_burn_leaves_no_token_allowance_on_lockbox() {
         amount: 500,
         local_token: t.token_addr.clone(),
     };
-    t.pool_client.lock_or_burn(&input, &0);
+    t.pool_client.lock_or_burn(&t.auth_onramp, &input, &0);
 
     let pool_addr = t.pool_client.address.clone();
     let remaining = t.tc.allowance(&pool_addr, &t.lockbox_client.address);
@@ -374,11 +385,17 @@ fn unconfigured_lockbox_rejects_lock() {
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_addr = token_contract.address();
-    let router = Address::generate(&env);
+
+    let registry_id = env.register(RampRegistryContract, ());
+    let registry_client = RampRegistryContractClient::new(&env, &registry_id);
+    registry_client.initialize(&owner);
+    let auth_onramp = Address::generate(&env);
+    registry_client.set_onramp(&REMOTE_CHAIN, &auth_onramp);
 
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &token_addr, &7, &router);
+    let router = Address::generate(&env);
+    pool_client.initialize(&owner, &token_addr, &7, &router, &registry_client.address);
 
     let remote_pool = Bytes::from_slice(&env, &[0xaa; 32]);
     let remote_token = Bytes::from_slice(&env, &[0xbb; 32]);
@@ -407,7 +424,7 @@ fn unconfigured_lockbox_rejects_lock() {
         amount: 100,
         local_token: token_addr,
     };
-    let r = pool_client.try_lock_or_burn(&input, &0);
+    let r = pool_client.try_lock_or_burn(&auth_onramp, &input, &0);
     assert!(r.is_err());
 }
 
@@ -416,6 +433,7 @@ fn many_to_one_lockbox_shared_liquidity() {
     let t = setup();
 
     add_chain(&t.env, &t.pool_client, SILOED_CHAIN);
+    t.registry_client.set_onramp(&SILOED_CHAIN, &t.auth_onramp);
     t.pool_client.configure_lock_boxes(&vec![
         &t.env,
         LockBoxEntry {
@@ -423,7 +441,7 @@ fn many_to_one_lockbox_shared_liquidity() {
             lock_box: t.lockbox_client.address.clone(),
         },
     ]);
-    register_offramp_for_chain(&t.router_client, &t.stub_client, SILOED_CHAIN);
+    register_offramp_for_chain(&t.registry_client, &t.stub_client, SILOED_CHAIN);
 
     let sender = Address::generate(&t.env);
     t.sac.mint(&sender, &1_000);
@@ -435,7 +453,7 @@ fn many_to_one_lockbox_shared_liquidity() {
         amount: 300,
         local_token: t.token_addr.clone(),
     };
-    t.pool_client.lock_or_burn(&input_a, &0);
+    t.pool_client.lock_or_burn(&t.auth_onramp, &input_a, &0);
 
     let input_b = LockOrBurnIn {
         receiver: Bytes::from_slice(&t.env, &[0x02; 20]),
@@ -444,7 +462,7 @@ fn many_to_one_lockbox_shared_liquidity() {
         amount: 200,
         local_token: t.token_addr.clone(),
     };
-    t.pool_client.lock_or_burn(&input_b, &0);
+    t.pool_client.lock_or_burn(&t.auth_onramp, &input_b, &0);
 
     assert_eq!(t.tc.balance(&t.lockbox_client.address), 500);
 }
@@ -487,9 +505,10 @@ fn configure_lockboxes_rejects_wrong_token() {
     lockbox_client.initialize(&owner, &other_token);
 
     let router = Address::generate(&env);
+    let ramp_registry = Address::generate(&env);
     let pool_id = env.register(SiloedLockReleaseTokenPoolContract, ());
     let pool_client = SiloedLockReleaseTokenPoolContractClient::new(&env, &pool_id);
-    pool_client.initialize(&owner, &pool_token, &7, &router);
+    pool_client.initialize(&owner, &pool_token, &7, &router, &ramp_registry);
     add_chain(&env, &pool_client, REMOTE_CHAIN);
 
     let r = pool_client.try_configure_lock_boxes(&vec![
@@ -583,7 +602,7 @@ fn siloed_and_shared_lockbox_isolation() {
         amount: 600,
         local_token: m.token_addr.clone(),
     };
-    m.pool_client.lock_or_burn(&lock_shared, &0);
+    m.pool_client.lock_or_burn(&m.auth_onramp, &lock_shared, &0);
 
     let lock_siloed = LockOrBurnIn {
         receiver: Bytes::from_slice(&m.env, &[0x02; 20]),
@@ -592,7 +611,7 @@ fn siloed_and_shared_lockbox_isolation() {
         amount: 400,
         local_token: m.token_addr.clone(),
     };
-    m.pool_client.lock_or_burn(&lock_siloed, &0);
+    m.pool_client.lock_or_burn(&m.auth_onramp, &lock_siloed, &0);
 
     assert_eq!(m.tc.balance(&m.shared_lockbox.address), 600);
     assert_eq!(m.tc.balance(&m.siloed_lockbox.address), 400);
@@ -612,6 +631,7 @@ fn release_drains_siloed_lockbox() {
     m.sac.mint(&sender, &1_000);
 
     m.pool_client.lock_or_burn(
+        &m.auth_onramp,
         &LockOrBurnIn {
             receiver: Bytes::from_slice(&m.env, &[0x01; 20]),
             remote_chain_selector: SILOED_CHAIN,
@@ -652,6 +672,7 @@ fn release_drains_shared_lockbox() {
     m.sac.mint(&sender, &500);
 
     m.pool_client.lock_or_burn(
+        &m.auth_onramp,
         &LockOrBurnIn {
             receiver: Bytes::from_slice(&m.env, &[0x01; 20]),
             remote_chain_selector: REMOTE_CHAIN,
@@ -697,6 +718,7 @@ fn lock_rejects_wrong_token() {
 
     let sender = Address::generate(&t.env);
     let r = t.pool_client.try_lock_or_burn(
+        &t.auth_onramp,
         &LockOrBurnIn {
             receiver: Bytes::from_slice(&t.env, &[0x01; 20]),
             remote_chain_selector: REMOTE_CHAIN,
@@ -717,6 +739,7 @@ fn lock_rejects_unsupported_chain() {
 
     let unknown_chain: u64 = 12_345;
     let r = t.pool_client.try_lock_or_burn(
+        &t.auth_onramp,
         &LockOrBurnIn {
             receiver: Bytes::from_slice(&t.env, &[0x01; 20]),
             remote_chain_selector: unknown_chain,
@@ -740,6 +763,7 @@ fn release_rejects_insufficient_liquidity() {
     m.sac.mint(&sender, &100);
 
     m.pool_client.lock_or_burn(
+        &m.auth_onramp,
         &LockOrBurnIn {
             receiver: Bytes::from_slice(&m.env, &[0x01; 20]),
             remote_chain_selector: SILOED_CHAIN,
