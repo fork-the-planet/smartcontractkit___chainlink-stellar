@@ -32,12 +32,17 @@ const STORAGE_LOCATIONS: Symbol = symbol_short!("STORLOC");
 const RMN_PROXY: Symbol = symbol_short!("RMNPROXY");
 const REMOTE_CHAINS: Symbol = symbol_short!("RCHAINS");
 const ALLOWLIST: Symbol = symbol_short!("ALLOWLST");
+/// Instance storage key for the immutable verifier version tag (`bytes4`), set at `initialize`.
+const VERIFIER_VERSION_TAG_KEY: Symbol = symbol_short!("CVRTAG");
 
 // ============================================================
 // Constants
 // ============================================================
 
-const VERSION_TAG_V1_7_0: [u8; 4] = [0x49, 0xff, 0x34, 0xed];
+/// Default CCIP committee verifier version tag (matches common EVM/Stellar devenv wiring).
+/// Deployments may pass a different non-zero `version_tag` at `initialize` for domain separation.
+/// bytes4(keccak256("CommitteeVerifier 2.0.0")) — aligned with EVM `CommitteeVerifierV2`.
+pub const DEFAULT_VERIFIER_VERSION_TAG: [u8; 4] = [0xe9, 0xa0, 0x5a, 0x20];
 const VERIFIER_VERSION_BYTES: u32 = 4;
 const SIGNATURE_LENGTH_BYTES: u32 = 2;
 
@@ -107,20 +112,38 @@ impl SignatureQuorum for CommitteeVerifierContract {
 
 #[contractimpl]
 impl CommitteeVerifierContract {
-    /// Initializes CommitteeVerifier with owner/dynamic config/storage locations/RMN proxy.
+    fn load_verifier_version_tag(env: &Env) -> Result<BytesN<4>, CCIPError> {
+        env.storage()
+            .instance()
+            .get(&VERIFIER_VERSION_TAG_KEY)
+            .ok_or(CCIPError::NotInitialized)
+    }
+
+    /// Initializes CommitteeVerifier with owner/dynamic config/storage locations/RMN proxy
+    /// and immutable `version_tag` (non-zero `bytes4`, same role as EVM `BaseVerifier` `i_versionTag`).
     pub fn initialize(
         env: Env,
         owner: Address,
         dynamic_config: DynamicConfig,
         storage_locations: Vec<Bytes>,
         rmn_proxy: Address,
+        version_tag: BytesN<4>,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
+
+        let zero = BytesN::from_array(&env, &[0u8; 4]);
+        if version_tag == zero {
+            return Err(CCIPError::InvalidVersionTag);
+        }
 
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as CurseCheckable>::init(&env, &rmn_proxy)?;
         <Self as AllowListable>::init_allowlist(&env, Map::new(&env));
+
+        env.storage()
+            .instance()
+            .set(&VERIFIER_VERSION_TAG_KEY, &version_tag);
 
         env.storage()
             .instance()
@@ -177,8 +200,8 @@ impl CommitteeVerifierContract {
         <Self as CurseCheckable>::require_not_cursed(&env)?;
         <Self as AllowListable>::require_in_allowlist(&env, dest_chain_selector, &sender)?;
 
-        // TODO: this currently just returns the version tag, do we need to add more data?
-        verification_blob.append(&Bytes::from_array(&env, &VERSION_TAG_V1_7_0));
+        let tag = Self::load_verifier_version_tag(&env)?;
+        verification_blob.append(&Bytes::from_slice(&env, &tag.to_array()));
         Ok(verification_blob)
     }
 
@@ -200,7 +223,10 @@ impl CommitteeVerifierContract {
         }
 
         let version = <Self as SignatureQuorum>::extract_version_tag(&env, &verifier_results)?;
-        // Version-based routing is handled by the VVR; no need to re-check here.
+        let expected_tag = Self::load_verifier_version_tag(&env)?;
+        if version != expected_tag {
+            return Err(CCIPError::InvalidCCVVersion);
+        }
 
         let signature_len = <Self as SignatureQuorum>::extract_signature_len(&verifier_results)?;
         let expected = VERIFIER_VERSION_BYTES + SIGNATURE_LENGTH_BYTES + signature_len;
@@ -223,9 +249,12 @@ impl CommitteeVerifierContract {
         )
     }
 
-    /// Returns static version tag used in outbound verifier responses.
+    /// Returns the configured verifier version tag (`bytes4`), matching EVM `versionTag()`.
     pub fn version_tag(env: Env) -> BytesN<4> {
-        BytesN::from_array(&env, &VERSION_TAG_V1_7_0)
+        <Self as Initializable>::require_initialized(&env).unwrap();
+        Self::load_verifier_version_tag(&env).unwrap_or_else(|_| {
+            panic!("invariant: version tag is set during initialize")
+        })
     }
 
     // ========================================

@@ -110,12 +110,13 @@ func (c *CommitteeVerifierClient) InitOwner(ctx context.Context, owner string) e
 }
 
 // Initialize calls the initialize function on the contract.
-func (c *CommitteeVerifierClient) Initialize(ctx context.Context, owner string, dynamicConfig DynamicConfig, storageLocations [][]byte, rmnProxy string) error {
+func (c *CommitteeVerifierClient) Initialize(ctx context.Context, owner string, dynamicConfig DynamicConfig, storageLocations [][]byte, rmnProxy string, versionTag [4]byte) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(owner),
 		scval.MustToScVal(dynamicConfig.ToScVal()),
 		scval.BytesSliceToScVal(storageLocations),
 		scval.AddressToScVal(rmnProxy),
+		scval.Bytes4ToScVal(versionTag),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)

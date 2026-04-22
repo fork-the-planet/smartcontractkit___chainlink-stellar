@@ -718,10 +718,9 @@ func (c *Chain) GetExpectedNextSequenceNumber(ctx context.Context, to uint64) (u
 
 // ConfirmSendOnSource implements cciptestinterfaces.Chain.
 func (c *Chain) ConfirmSendOnSource(ctx context.Context, to uint64, key cciptestinterfaces.MessageEventKey, timeout time.Duration) (cciptestinterfaces.MessageSentEvent, error) {
-	if key.MessageID != (protocol.Bytes32{}) {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("stellar: ConfirmSendOnSource supports sequence number only, not message ID")
+	if key.MessageID == (protocol.Bytes32{}) && key.SeqNum == 0 {
+		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("MessageEventKey must set MessageID or SeqNum")
 	}
-	seq := key.SeqNum
 	if c.onRampClient == nil {
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("OnRamp client not initialized")
 	}
@@ -731,18 +730,34 @@ func (c *Chain) ConfirmSendOnSource(ctx context.Context, to uint64, key cciptest
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
 	}
 
-	c.logger.Info().
-		Uint64("destChainSelector", to).
-		Uint64("sequenceNumber", seq).
-		Uint32("startLedger", latestLedger.Sequence).
-		Dur("timeout", timeout).
-		Msg("Waiting for CCIPMessageSent event from Stellar OnRamp")
+	var filter func(*onrampbindings.CCIPMessageSentEvent) bool
+	if key.MessageID != (protocol.Bytes32{}) {
+		want := [32]byte(key.MessageID)
+		c.logger.Info().
+			Uint64("destChainSelector", to).
+			Str("messageID", hex.EncodeToString(want[:])).
+			Uint32("startLedger", latestLedger.Sequence).
+			Dur("timeout", timeout).
+			Msg("Waiting for CCIPMessageSent event from Stellar OnRamp (by message ID)")
+		filter = func(e *onrampbindings.CCIPMessageSentEvent) bool {
+			return e.DestChainSelector == to && e.MessageId == want
+		}
+	} else {
+		seq := key.SeqNum
+		c.logger.Info().
+			Uint64("destChainSelector", to).
+			Uint64("sequenceNumber", seq).
+			Uint32("startLedger", latestLedger.Sequence).
+			Dur("timeout", timeout).
+			Msg("Waiting for CCIPMessageSent event from Stellar OnRamp (by sequence)")
+		filter = func(e *onrampbindings.CCIPMessageSentEvent) bool {
+			return e.DestChainSelector == to && e.SequenceNumber == seq
+		}
+	}
 
 	event, err := c.onRampClient.WaitForCCIPMessageSentEvent(
 		ctx, latestLedger.Sequence, timeout,
-		func(e *onrampbindings.CCIPMessageSentEvent) bool {
-			return e.DestChainSelector == to && e.SequenceNumber == seq
-		},
+		filter,
 	)
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed waiting for sent event: %w", err)
@@ -756,10 +771,9 @@ func (c *Chain) ConfirmSendOnSource(ctx context.Context, to uint64, key cciptest
 
 // ConfirmExecOnDest implements cciptestinterfaces.Chain.
 func (c *Chain) ConfirmExecOnDest(ctx context.Context, from uint64, key cciptestinterfaces.MessageEventKey, timeout time.Duration) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
-	if key.MessageID != (protocol.Bytes32{}) {
-		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("stellar: ConfirmExecOnDest supports sequence number only, not message ID")
+	if key.MessageID == (protocol.Bytes32{}) && key.SeqNum == 0 {
+		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("MessageEventKey must set MessageID or SeqNum")
 	}
-	seq := key.SeqNum
 	if c.offRampClient == nil {
 		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("OffRamp client not initialized")
 	}
@@ -769,18 +783,34 @@ func (c *Chain) ConfirmExecOnDest(ctx context.Context, from uint64, key cciptest
 		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed to get latest ledger: %w", err)
 	}
 
-	c.logger.Info().
-		Uint64("sourceChainSelector", from).
-		Uint64("sequenceNumber", seq).
-		Uint32("startLedger", latestLedger.Sequence).
-		Dur("timeout", timeout).
-		Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp")
+	var filter func(*offrampbindings.ExecutionStateChangedEvent) bool
+	if key.MessageID != (protocol.Bytes32{}) {
+		want := [32]byte(key.MessageID)
+		c.logger.Info().
+			Uint64("sourceChainSelector", from).
+			Str("messageID", hex.EncodeToString(want[:])).
+			Uint32("startLedger", latestLedger.Sequence).
+			Dur("timeout", timeout).
+			Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp (by message ID)")
+		filter = func(e *offrampbindings.ExecutionStateChangedEvent) bool {
+			return e.SourceChainSelector == from && e.MessageId == want
+		}
+	} else {
+		seq := key.SeqNum
+		c.logger.Info().
+			Uint64("sourceChainSelector", from).
+			Uint64("sequenceNumber", seq).
+			Uint32("startLedger", latestLedger.Sequence).
+			Dur("timeout", timeout).
+			Msg("Waiting for ExecutionStateChanged event from Stellar OffRamp (by sequence)")
+		filter = func(e *offrampbindings.ExecutionStateChangedEvent) bool {
+			return e.SourceChainSelector == from && e.SequenceNumber == seq
+		}
+	}
 
 	event, err := c.offRampClient.WaitForExecutionStateChangedEvent(
 		ctx, latestLedger.Sequence, timeout,
-		func(e *offrampbindings.ExecutionStateChangedEvent) bool {
-			return e.SourceChainSelector == from && e.SequenceNumber == seq
-		},
+		filter,
 	)
 	if err != nil {
 		return cciptestinterfaces.ExecutionStateChangedEvent{}, fmt.Errorf("failed waiting for execution event: %w", err)
@@ -941,19 +971,7 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	executorContractID := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "executor")
-
-	extraArgs := onrampbindings.GenericExtraArgsV3{
-		Ccvs:               []string{c.vvrContractID},
-		CcvArgs:            [][]byte{{}},
-		Executor:           executorContractID,
-		ExecutorArgs:       []byte{},
-		GasLimit:           0,
-		BlockConfirmations: 0,
-		TokenReceiver:      []byte{},
-		TokenArgs:          []byte{},
-	}
-	encodedExtraArgs, err := EncodeExtraArgsV3(extraArgs)
+	encodedExtraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, cciptestinterfaces.MessageOptions{})
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
 	}
@@ -1010,15 +1028,6 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 		MessageID: messageID,
 		Sender:    protocol.UnknownAddress([]byte(sender)),
 	}, nil
-}
-
-// SendMessageWithNonce implements cciptestinterfaces.CCIP17.
-// Sends a CCIP message with a specific nonce.
-func (c *Chain) SendMessageWithNonce(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions, sender *bind.TransactOpts, nonce *uint64, disableTokenAmountCheck bool) (cciptestinterfaces.MessageSentEvent, error) {
-	if sender != nil || nonce != nil || disableTokenAmountCheck {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("SendMessageWithNonce: explicit sender, nonce, or token amount check override is not supported on Stellar")
-	}
-	return c.SendMessage(ctx, dest, fields, opts)
 }
 
 // Uncurse implements cciptestinterfaces.CCIP17.

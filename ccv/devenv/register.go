@@ -3,14 +3,9 @@ package devenv
 import (
 	"sync"
 
-	"github.com/Masterminds/semver/v3"
-
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
-	ccvdevmevm "github.com/smartcontractkit/chainlink-ccv/build/devenv/evm"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
@@ -32,21 +27,33 @@ var registerOnce sync.Once
 //   - ChainConfigLoader:         provides placeholder blockchain info for Stellar chains.
 //   - ImplFactory:               factory for creating Stellar CCIP17 chain implementations.
 //   - CLDFProviderFactory:       factory for creating Stellar CLDF BlockChain providers.
+//
+// Stellar does not register deployment/lanes.LaneAdapter (legacy 1.6 ConnectChains path);
+// use ConfigureChainsForLanesFromTopology with ChainFamilyRegistry only.
+//
+// We intentionally do NOT call cciptestinterfaces.RegisterExtraArgsSerializer here.
+// Previously this file registered FamilyStellar with the same SerializeEVMExtraArgs used
+// for EVM (ABI-encoded GenericExtraArgsV1/V2/V3 with function selectors). That was misleading
+// and unsafe:
+//   - Stellar OnRamp parses user extra_args as Soroban XDR of GenericExtraArgsV3
+//     (see ccvchain.EncodeExtraArgsV3 / EncodeStellarSourceExtraArgsForOnRamp), not EVM ABI.
+//     Registering EVM bytes under FamilyStellar implied “destination Stellar” messages should
+//     carry EVM-style extraArgs, which the Stellar contracts do not accept.
+//   - Composable Stellar→EVM builds extra_args using GetExtraArgsSerializer(destFamily); for
+//     an EVM destination that is FamilyEVM’s serializer anyway, so the FamilyStellar entry did
+//     not fix Stellar-as-source—it only risked confusing any code path that looks up
+//     FamilyStellar expecting Soroban-shaped bytes.
+// Stellar-source encoding stays explicit on ccvchain.Chain via EncodeStellarSourceExtraArgsForOnRamp.
 func RegisterStellarComponents() {
 	registerOnce.Do(func() {
-		// EVM SendMessage encodes extraArgs via destination family; Stellar uses the same
-		// ABI GenericExtraArgsV1–V3 wire format from the EVM router (lane defaults supply CCV/executor).
-		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, ccvdevmevm.SerializeEVMExtraArgs)
-
 		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
 		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
 		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
 		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &adapter.StellarCommitteeVerifierContractAdapter{})
-		stellarAdapter := &adapter.StellarLaneAdapter{}
-		lanes.GetLaneAdapterRegistry().RegisterLaneAdapter(chainsel.FamilyStellar, semver.MustParse("2.0.0"), stellarAdapter)
-		ccvadapters.GetChainFamilyRegistry().RegisterChainFamily(chainsel.FamilyStellar, stellarAdapter)
+		stellarChainFamily := &adapter.StellarChainFamilyAdapter{}
+		ccvadapters.GetChainFamilyRegistry().RegisterChainFamily(chainsel.FamilyStellar, stellarChainFamily)
 		ccvadapters.GetAggregatorConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarAggregatorConfigAdapter{})
 		ccvadapters.GetIndexerConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarIndexerConfigAdapter{})
 		ccvadapters.GetVerifierJobConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarVerifierConfigAdapter{})

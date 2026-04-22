@@ -23,6 +23,7 @@ import (
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -68,12 +69,8 @@ func TestRouter(t *testing.T) {
 	// CommitteeVerifier.validate_signatures is currently a stub (always OK when signature config exists).
 	t.Run("offramp execute routes via router to ccip_receiver", func(t *testing.T) {
 		const (
-			localDestChain       = uint64(12345)
-			remoteSourceChain    = uint64(99999)
-			ccipVerifierVersion0 = byte(0x49)
-			ccipVerifierVersion1 = byte(0xff)
-			ccipVerifierVersion2 = byte(0x34)
-			ccipVerifierVersion3 = byte(0xed)
+			localDestChain    = uint64(12345)
+			remoteSourceChain = uint64(99999)
 		)
 
 		deploy := func(name, wasmFile string) string {
@@ -122,7 +119,7 @@ func TestRouter(t *testing.T) {
 		if err := vvrClient.ApplyInboundImplUpdates(ctx, []vvrbindings.InboundImplementationUpdate{
 			{
 				Verifier: &verAddr,
-				Version:  [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3},
+				Version:  stellarutil.DefaultCommitteeVerifierVersionTag,
 			},
 		}); err != nil {
 			t.Fatalf("ApplyInboundImplUpdates: %v", err)
@@ -206,7 +203,7 @@ func TestRouter(t *testing.T) {
 		}
 
 		msgID := keccak256MessageID(encoded)
-		versionTag := [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3}
+		versionTag := stellarutil.DefaultCommitteeVerifierVersionTag
 		var signedPayload []byte
 		signedPayload = append(signedPayload, versionTag[:]...)
 		signedPayload = append(signedPayload, msgID[:]...)

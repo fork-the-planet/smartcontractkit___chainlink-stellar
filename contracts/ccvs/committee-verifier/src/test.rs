@@ -10,12 +10,11 @@ use sha3::{Digest, Keccak256};
 use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env, Vec as SorobanVec};
 
 use crate::types::{DynamicConfig, RemoteChainConfig};
-use crate::{CommitteeVerifierContract, CommitteeVerifierContractClient};
+use crate::{
+    CommitteeVerifierContract, CommitteeVerifierContractClient, DEFAULT_VERIFIER_VERSION_TAG,
+};
 use rmn_proxy::{RmnProxyContract, RmnProxyContractClient};
 use rmn_remote::{RmnRemoteContract, RmnRemoteContractClient};
-
-/// Version tag bytes must match `VERSION_TAG_V1_7_0` in the contract.
-const VERSION_TAG: [u8; 4] = [0x49, 0xff, 0x34, 0xed];
 
 fn make_signing_key(seed: u8) -> SigningKey {
     let mut bytes = [0u8; 32];
@@ -61,7 +60,7 @@ fn signers_to_soroban_vec(
 
 /// `keccak256(version_tag || message_hash)` — must match `verify_message` signed payload hashing.
 fn keccak_signed_hash(env: &Env, message_hash: &BytesN<32>) -> BytesN<32> {
-    keccak_signed_hash_with_tag(env, &VERSION_TAG, message_hash)
+    keccak_signed_hash_with_tag(env, &DEFAULT_VERIFIER_VERSION_TAG, message_hash)
 }
 
 fn keccak_signed_hash_with_tag(env: &Env, tag: &[u8; 4], message_hash: &BytesN<32>) -> BytesN<32> {
@@ -72,7 +71,7 @@ fn keccak_signed_hash_with_tag(env: &Env, tag: &[u8; 4], message_hash: &BytesN<3
 }
 
 fn build_verifier_results(env: &Env, sig_payload: &[u8]) -> Bytes {
-    build_verifier_results_with_tag(env, &VERSION_TAG, sig_payload)
+    build_verifier_results_with_tag(env, &DEFAULT_VERIFIER_VERSION_TAG, sig_payload)
 }
 
 fn build_verifier_results_with_tag(env: &Env, tag: &[u8; 4], sig_payload: &[u8]) -> Bytes {
@@ -131,7 +130,7 @@ fn default_remote_chain_config(env: &Env, remote_chain_selector: u64) -> RemoteC
     }
 }
 
-fn setup() -> (
+fn setup_with_version_tag(version_tag: &[u8; 4]) -> (
     Env,
     CommitteeVerifierContractClient<'static>,
     Address,
@@ -157,9 +156,20 @@ fn setup() -> (
     rmn_proxy_client.initialize(&owner, &rmn_remote_id);
 
     let dynamic_config = default_dynamic_config(&env);
-    client.initialize(&owner, &dynamic_config, &storage_locations, &rmn_proxy);
+    let tag = BytesN::from_array(&env, version_tag);
+    client.initialize(&owner, &dynamic_config, &storage_locations, &rmn_proxy, &tag);
 
     (env, client, owner, rmn_proxy, storage_locations)
+}
+
+fn setup() -> (
+    Env,
+    CommitteeVerifierContractClient<'static>,
+    Address,
+    Address,
+    SorobanVec<Bytes>,
+) {
+    setup_with_version_tag(&DEFAULT_VERIFIER_VERSION_TAG)
 }
 
 // ============================================================
@@ -175,15 +185,47 @@ fn test_initialize() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2)")] // AlreadyInitialized
 fn test_double_initialize_fails() {
-    let (env, client, _owner, _rmn_proxy, storage_locations) = setup();
+    let (env, client, _owner, rmn_proxy, storage_locations) = setup();
     let owner2 = Address::generate(&env);
     let dynamic_config = default_dynamic_config(&env);
+    let tag = BytesN::from_array(&env, &DEFAULT_VERIFIER_VERSION_TAG);
 
     client.initialize(
         &owner2,
         &dynamic_config,
         &storage_locations,
-        &Address::generate(&env),
+        &rmn_proxy,
+        &tag,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")] // InvalidVersionTag
+fn test_initialize_rejects_zero_version_tag() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(CommitteeVerifierContract, ());
+    let client = CommitteeVerifierContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let storage_locations = vec![&env];
+
+    let rmn_remote_id = env.register(RmnRemoteContract, ());
+    let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
+    rmn_remote_client.initialize(&owner, &1u64);
+
+    let rmn_proxy = env.register(RmnProxyContract, ());
+    let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy);
+    rmn_proxy_client.initialize(&owner, &rmn_remote_id);
+
+    let dynamic_config = default_dynamic_config(&env);
+    let zero = BytesN::from_array(&env, &[0u8; 4]);
+    client.initialize(
+        &owner,
+        &dynamic_config,
+        &storage_locations,
+        &rmn_proxy,
+        &zero,
     );
 }
 
@@ -195,7 +237,7 @@ fn test_double_initialize_fails() {
 fn test_version_tag() {
     let (env, client, ..) = setup();
 
-    let expected = BytesN::from_array(&env, &[0x49, 0xff, 0x34, 0xed]);
+    let expected = BytesN::from_array(&env, &DEFAULT_VERIFIER_VERSION_TAG);
     assert_eq!(client.version_tag(), expected);
 }
 
@@ -389,17 +431,17 @@ fn test_verify_message_fails_when_verifier_results_too_short() {
 
     let source_chain: u64 = 1;
     let message_hash = BytesN::from_array(&env, &[0u8; 32]);
-    let short_results = Bytes::from_slice(&env, &[0x49, 0xff]); // Only 2 bytes, need at least 6
+    let short_results = Bytes::from_slice(&env, &[0xe9, 0xa0]); // Only 2 bytes, need at least 6
 
     client.verify_message(&source_chain, &message_hash, &short_results);
 }
 
-/// EVM CommitteeVerifier 2.0.0 version tag — used in cross-family inbound blobs.
-const VERSION_TAG_EVM_V2: [u8; 4] = [0xe9, 0xa0, 0x5a, 0x20];
+/// Legacy CommitteeVerifier 1.7.x tag — used to test init + blob tag mismatch vs default 2.0.
+const VERSION_TAG_LEGACY_V1_7: [u8; 4] = [0x49, 0xff, 0x34, 0xed];
 
 #[test]
-fn test_verify_message_accepts_non_v170_version_tag() {
-    let (env, client, _owner, ..) = setup();
+fn test_verify_message_accepts_alternate_initialized_version_tag() {
+    let (env, client, _owner, ..) = setup_with_version_tag(&VERSION_TAG_LEGACY_V1_7);
 
     let source_chain: u64 = 400;
     let pairs = sorted_signers_from_seeds(&[29, 31, 37]);
@@ -412,12 +454,12 @@ fn test_verify_message_accepts_non_v170_version_tag() {
     client.apply_signature_configs(&vec![&env], &vec![&env, cfg]);
 
     let message_hash = BytesN::from_array(&env, &[0xabu8; 32]);
-    let signed_hash = keccak_signed_hash_with_tag(&env, &VERSION_TAG_EVM_V2, &message_hash);
+    let signed_hash = keccak_signed_hash_with_tag(&env, &VERSION_TAG_LEGACY_V1_7, &message_hash);
     let signed_bytes: [u8; 32] = signed_hash.to_array();
 
     let wire_subset = [pairs[0].clone(), pairs[1].clone()];
     let sig_payload = signature_payload_valid(&wire_subset, &signed_bytes);
-    let verifier_results = build_verifier_results_with_tag(&env, &VERSION_TAG_EVM_V2, &sig_payload);
+    let verifier_results = build_verifier_results_with_tag(&env, &VERSION_TAG_LEGACY_V1_7, &sig_payload);
 
     client.verify_message(&source_chain, &message_hash, &verifier_results);
 }
@@ -430,7 +472,17 @@ fn test_verify_message_fails_when_source_chain_not_configured() {
     let source_chain: u64 = 99999; // Not configured
     let message_hash = BytesN::from_array(&env, &[0u8; 32]);
     // Correct version + sig len (0, 0) + no signatures - will fail at validate_signatures
-    let verifier_results = Bytes::from_slice(&env, &[0x49, 0xff, 0x34, 0xed, 0x00, 0x00]);
+    let verifier_results = Bytes::from_slice(
+        &env,
+        &[
+            DEFAULT_VERIFIER_VERSION_TAG[0],
+            DEFAULT_VERIFIER_VERSION_TAG[1],
+            DEFAULT_VERIFIER_VERSION_TAG[2],
+            DEFAULT_VERIFIER_VERSION_TAG[3],
+            0x00,
+            0x00,
+        ],
+    );
 
     client.verify_message(&source_chain, &message_hash, &verifier_results);
 }
