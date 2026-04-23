@@ -536,3 +536,6 @@ fn contract_id_of_address(addr: &Address) -> BytesN<32> {
         _ => BytesN::from_array(addr.env(), &[0u8; 32]),
     }
 }
+
+#[cfg(test)]
+mod test;
