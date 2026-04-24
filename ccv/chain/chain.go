@@ -36,7 +36,7 @@ import (
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/changesets"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
@@ -412,7 +412,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 
 // PreDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
 // // Stellar has no CREATE2-style pre-bootstrap like EVM, so this stage only patches topology and registers deploy context for the adapter.
-func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
 	ensureStellarFeeAggregatorsInTopology(c, topology)
@@ -421,7 +421,7 @@ func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployme
 }
 
 // GetDeployChainContractsCfg implements cciptestinterfaces.OnChainConfigurable.
-func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (ccipChangesets.DeployChainContractsPerChainCfg, error) {
+func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (ccipChangesets.DeployChainContractsPerChainCfg, error) {
 	_ = env
 	_ = selector
 	_ = topology
@@ -441,7 +441,7 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
 // Deploys the lock-release test pool and SAC token (EVM post-deploy parity), applies FeeQuoter
 // pricing for the test token, and returns a datastore delta with the pool AddressRef.
-func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
 	defer clearStellarDeployChangesetCtx(selector)
 
@@ -474,7 +474,7 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
 // shared DeployChainContracts changeset merge path.
-func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccipOffchain.EnvironmentTopology) (seq_core.OnChainOutput, error) {
+func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccvdeployment.EnvironmentTopology) (seq_core.OnChainOutput, error) {
 	allSelectors := selectorsFromBlockChains(chains)
 	ds, err := c.deployStellarCCIPContracts(ctx, allSelectors, selector, topology)
 	if err != nil {
@@ -1214,7 +1214,7 @@ func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	return hexutil.Encode(raw), nil
 }
 
-func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccipOffchain.EnvironmentTopology) {
+func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccvdeployment.EnvironmentTopology) {
 	if topology == nil || topology.NOPTopology == nil {
 		return
 	}

@@ -10,7 +10,7 @@ import (
 
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 )
 
 // StellarDeployChainContractsAdapter connects Stellar to the shared
@@ -21,12 +21,12 @@ var _ ccvadapters.DeployChainContractsAdapter = (*StellarDeployChainContractsAda
 
 type stellarDeployChangesetCtx struct {
 	chain    *Chain
-	topology *ccipOffchain.EnvironmentTopology
+	topology *ccvdeployment.EnvironmentTopology
 }
 
 var stellarDeployCtxBySelector sync.Map // uint64 -> *stellarDeployChangesetCtx
 
-func registerStellarDeployChangesetCtx(selector uint64, c *Chain, topology *ccipOffchain.EnvironmentTopology) {
+func registerStellarDeployChangesetCtx(selector uint64, c *Chain, topology *ccvdeployment.EnvironmentTopology) {
 	stellarDeployCtxBySelector.Store(selector, &stellarDeployChangesetCtx{chain: c, topology: topology})
 }
 

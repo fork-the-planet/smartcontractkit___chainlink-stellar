@@ -2,6 +2,7 @@ package accessors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -102,6 +103,18 @@ func newAccessor(sourceReader chainaccess.SourceReader) chainaccess.Accessor {
 	}
 }
 
-func (a *accessor) SourceReader() chainaccess.SourceReader {
-	return a.sourceReader
+// errCommitteeOnlyAccessor is returned for DestinationReader and ContractTransmitter: this
+// factory builds accessors that only support the committee / verifier (source) path.
+var errCommitteeOnlyAccessor = errors.New("stellar accessor only provides SourceReader (committee/verifier use case)")
+
+func (a *accessor) SourceReader() (chainaccess.SourceReader, error) {
+	return a.sourceReader, nil
+}
+
+func (a *accessor) DestinationReader() (chainaccess.DestinationReader, error) {
+	return nil, errCommitteeOnlyAccessor
+}
+
+func (a *accessor) ContractTransmitter() (chainaccess.ContractTransmitter, error) {
+	return nil, errCommitteeOnlyAccessor
 }

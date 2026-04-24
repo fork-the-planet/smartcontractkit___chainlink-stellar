@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,21 +19,21 @@ func TestResolveSignersFromTopology(t *testing.T) {
 	})
 
 	t.Run("nil_NOPTopology", func(t *testing.T) {
-		topo := &ccipOffchain.EnvironmentTopology{NOPTopology: nil}
+		topo := &ccvdeployment.EnvironmentTopology{NOPTopology: nil}
 		signers, th := ResolveSignersFromTopology(topo, 1, evm)
 		assert.Nil(t, signers)
 		assert.Equal(t, uint32(0), th)
 	})
 
 	t.Run("no_matching_chain", func(t *testing.T) {
-		topo := &ccipOffchain.EnvironmentTopology{
-			NOPTopology: &ccipOffchain.NOPTopology{
-				NOPs: []ccipOffchain.NOPConfig{
-					{Alias: "a", SignerAddressByFamily: map[string]string{evm: "1111111111111111111111111111111111111111"}},
+		topo := &ccvdeployment.EnvironmentTopology{
+			NOPTopology: &ccvdeployment.NOPTopology{
+				NOPs: []ccvdeployment.NOPConfig{
+					{Alias: "a", Name: "a", SignerAddressByFamily: map[string]string{evm: "1111111111111111111111111111111111111111"}},
 				},
-				Committees: map[string]ccipOffchain.CommitteeConfig{
+				Committees: map[string]ccvdeployment.CommitteeConfig{
 					"c": {
-						ChainConfigs: map[string]ccipOffchain.ChainCommitteeConfig{
+						ChainConfigs: map[string]ccvdeployment.ChainCommitteeConfig{
 							"999": {NOPAliases: []string{"a"}, Threshold: 1},
 						},
 					},
@@ -46,15 +46,15 @@ func TestResolveSignersFromTopology(t *testing.T) {
 	})
 
 	t.Run("sorts_signers_and_returns_threshold", func(t *testing.T) {
-		topo := &ccipOffchain.EnvironmentTopology{
-			NOPTopology: &ccipOffchain.NOPTopology{
-				NOPs: []ccipOffchain.NOPConfig{
-					{Alias: "nopA", SignerAddressByFamily: map[string]string{evm: "1111111111111111111111111111111111111111"}},
-					{Alias: "nopB", SignerAddressByFamily: map[string]string{evm: "2222222222222222222222222222222222222222"}},
+		topo := &ccvdeployment.EnvironmentTopology{
+			NOPTopology: &ccvdeployment.NOPTopology{
+				NOPs: []ccvdeployment.NOPConfig{
+					{Alias: "nopA", Name: "nopA", SignerAddressByFamily: map[string]string{evm: "1111111111111111111111111111111111111111"}},
+					{Alias: "nopB", Name: "nopB", SignerAddressByFamily: map[string]string{evm: "2222222222222222222222222222222222222222"}},
 				},
-				Committees: map[string]ccipOffchain.CommitteeConfig{
+				Committees: map[string]ccvdeployment.CommitteeConfig{
 					"only": {
-						ChainConfigs: map[string]ccipOffchain.ChainCommitteeConfig{
+						ChainConfigs: map[string]ccvdeployment.ChainCommitteeConfig{
 							"12345": {
 								NOPAliases: []string{"nopB", "nopA"},
 								Threshold:  7,
@@ -75,17 +75,17 @@ func TestResolveSignersFromTopology(t *testing.T) {
 	})
 
 	t.Run("skips_invalid_and_missing_evm_signer", func(t *testing.T) {
-		topo := &ccipOffchain.EnvironmentTopology{
-			NOPTopology: &ccipOffchain.NOPTopology{
-				NOPs: []ccipOffchain.NOPConfig{
-					{Alias: "badhex", SignerAddressByFamily: map[string]string{evm: "not-hex"}},
-					{Alias: "wronglen", SignerAddressByFamily: map[string]string{evm: "111111"}},
-					{Alias: "nosvm", SignerAddressByFamily: map[string]string{"other": "1111111111111111111111111111111111111111"}},
-					{Alias: "good", SignerAddressByFamily: map[string]string{evm: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+		topo := &ccvdeployment.EnvironmentTopology{
+			NOPTopology: &ccvdeployment.NOPTopology{
+				NOPs: []ccvdeployment.NOPConfig{
+					{Alias: "badhex", Name: "badhex", SignerAddressByFamily: map[string]string{evm: "not-hex"}},
+					{Alias: "wronglen", Name: "wronglen", SignerAddressByFamily: map[string]string{evm: "111111"}},
+					{Alias: "nosvm", Name: "nosvm", SignerAddressByFamily: map[string]string{"other": "1111111111111111111111111111111111111111"}},
+					{Alias: "good", Name: "good", SignerAddressByFamily: map[string]string{evm: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
 				},
-				Committees: map[string]ccipOffchain.CommitteeConfig{
+				Committees: map[string]ccvdeployment.CommitteeConfig{
 					"only": {
-						ChainConfigs: map[string]ccipOffchain.ChainCommitteeConfig{
+						ChainConfigs: map[string]ccvdeployment.ChainCommitteeConfig{
 							"1": {
 								NOPAliases: []string{"badhex", "wronglen", "nosvm", "missing", "good"},
 								Threshold:  3,

@@ -6,7 +6,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/keypair"
 
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
@@ -106,6 +106,6 @@ func (h *stellarCCIPDeployHost) CreateTestToken(ctx context.Context, friendbotUR
 	return h.c.createTestToken(ctx, friendbotURL)
 }
 
-func (c *Chain) deployStellarCCIPContracts(ctx context.Context, allSelectors []uint64, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) deployStellarCCIPContracts(ctx context.Context, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	return stellarccipdevenv.DeployStellarCCIPContracts(ctx, &stellarCCIPDeployHost{c: c}, allSelectors, selector, topology)
 }
