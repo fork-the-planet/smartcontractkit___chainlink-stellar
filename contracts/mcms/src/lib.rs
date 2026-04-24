@@ -181,12 +181,7 @@ impl McmsContract {
         let inner = hash_set_root_inner(&env, &root, valid_until);
         let signed_hash = eth_signed_message_hash_32(&env, &inner);
 
-        if env
-            .storage()
-            .persistent()
-            .get::<_, bool>(&SEEN_HASHES)
-            .is_none()
-        {
+        if !env.storage().persistent().has(&SEEN_HASHES) {
             let empty: Map<BytesN<32>, bool> = Map::new(&env);
             env.storage().persistent().set(&SEEN_HASHES, &empty);
         }
