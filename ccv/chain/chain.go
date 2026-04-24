@@ -961,34 +961,31 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 
 // SendMessage implements cciptestinterfaces.CCIP17.
 // Sends a CCIP message to the specified destination chain via the Router's ccip_send.
-func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
+// BuildChainMessage implements cciptestinterfaces.ChainAsSource.
+// It constructs a Stellar-specific StellarToAnyMessage from the given fields and
+// options without submitting any transaction. The returned message must be passed
+// directly to SendChainMessage.
+func (c *Chain) BuildChainMessage(ctx context.Context, destChain uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.ChainAsSourceMessage, error) {
 	if c.routerClient == nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("Router client not initialized")
+		return nil, fmt.Errorf("Router client not initialized")
 	}
-
-	c.logger.Info().
-		Uint64("destChainSelector", dest).
-		Str("receiver", hex.EncodeToString(fields.Receiver)).
-		Msg("Sending CCIP message from Stellar via Router")
+	if c.feeTokenContractID == "" {
+		return nil, fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
+	}
 
 	encodedExtraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, opts)
 	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
+		return nil, fmt.Errorf("failed to encode extra args: %w", err)
 	}
-
-	if c.feeTokenContractID == "" {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
-	}
-	sender := c.deployerKeypair.Address()
 
 	var tokenAmounts []routerbindings.TokenAmount
 	if fields.TokenAmount.Amount != nil && fields.TokenAmount.Amount.Sign() > 0 && len(fields.TokenAmount.TokenAddress) > 0 {
 		if !fields.TokenAmount.Amount.IsInt64() {
-			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("token amount out of int64 range: %s", fields.TokenAmount.Amount.String())
+			return nil, fmt.Errorf("token amount out of int64 range: %s", fields.TokenAmount.Amount.String())
 		}
 		tokenAddr, encErr := strkey.Encode(strkey.VersionByteContract, []byte(fields.TokenAmount.TokenAddress))
 		if encErr != nil {
-			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("encode token address for send: %w", encErr)
+			return nil, fmt.Errorf("encode token address for send: %w", encErr)
 		}
 		tokenAmount := fields.TokenAmount.Amount.Int64()
 		tokenAmounts = []routerbindings.TokenAmount{{
@@ -1001,23 +998,37 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 			Msg("Including token transfer in CCIP message")
 	}
 
-	routerMsg := routerbindings.StellarToAnyMessage{
+	return routerbindings.StellarToAnyMessage{
 		Receiver:     fields.Receiver,
 		Data:         fields.Data,
 		TokenAmounts: tokenAmounts,
 		FeeToken:     c.feeTokenContractID,
 		ExtraArgs:    encodedExtraArgs,
+	}, nil
+}
+
+// SendChainMessage implements cciptestinterfaces.ChainAsSource.
+// It accepts a StellarToAnyMessage built by BuildChainMessage, fetches the required
+// fee, submits the transaction, and returns the MessageSentEvent and the message ID
+// bytes. The sendOption parameter is reserved for future Stellar-specific options
+// and is currently unused.
+func (c *Chain) SendChainMessage(ctx context.Context, destChain uint64, message cciptestinterfaces.ChainAsSourceMessage, _ cciptestinterfaces.ChainSendOption) (cciptestinterfaces.MessageSentEvent, protocol.ByteSlice, error) {
+	routerMsg, ok := message.(routerbindings.StellarToAnyMessage)
+	if !ok {
+		return cciptestinterfaces.MessageSentEvent{}, nil, fmt.Errorf("expected routerbindings.StellarToAnyMessage, got %T", message)
 	}
 
-	requiredFee, err := c.routerClient.GetFee(ctx, dest, routerMsg)
+	sender := c.deployerKeypair.Address()
+
+	requiredFee, err := c.routerClient.GetFee(ctx, destChain, routerMsg)
 	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get fee from Router: %w", err)
+		return cciptestinterfaces.MessageSentEvent{}, nil, fmt.Errorf("failed to get fee from Router: %w", err)
 	}
 	c.logger.Info().Int64("requiredFee", requiredFee).Msg("Fee quote from Router")
 
-	messageID, err := c.routerClient.CcipSend(ctx, sender, dest, routerMsg, requiredFee)
+	messageID, err := c.routerClient.CcipSend(ctx, sender, destChain, routerMsg, requiredFee)
 	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message via Router: %w", err)
+		return cciptestinterfaces.MessageSentEvent{}, nil, fmt.Errorf("failed to send message via Router: %w", err)
 	}
 
 	c.logger.Info().
@@ -1027,7 +1038,24 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 	return cciptestinterfaces.MessageSentEvent{
 		MessageID: messageID,
 		Sender:    protocol.UnknownAddress([]byte(sender)),
-	}, nil
+	}, messageID[:], nil
+}
+
+// SendMessage implements cciptestinterfaces.Chain.
+// It delegates to BuildChainMessage + SendChainMessage.
+func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
+	c.logger.Info().
+		Uint64("destChainSelector", dest).
+		Str("receiver", hex.EncodeToString(fields.Receiver)).
+		Msg("Sending CCIP message from Stellar via Router")
+
+	msg, err := c.BuildChainMessage(ctx, dest, fields, opts)
+	if err != nil {
+		return cciptestinterfaces.MessageSentEvent{}, err
+	}
+
+	event, _, err := c.SendChainMessage(ctx, dest, msg, nil)
+	return event, err
 }
 
 // Uncurse implements cciptestinterfaces.CCIP17.

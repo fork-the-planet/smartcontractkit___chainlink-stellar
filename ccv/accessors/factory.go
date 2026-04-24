@@ -29,6 +29,11 @@ type factory struct {
 }
 
 // GetAccessor implements chainaccess.AccessorFactory.
+//
+// GetAccessor returns a valid Accessor whenever the chain selector is recognized,
+// even if one or more capabilities (e.g. SourceReader when on_ramp_addresses is
+// absent) could not be constructed. Missing capabilities are reported as errors
+// only when the corresponding getter is called.
 func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainSelector) (chainaccess.Accessor, error) {
 	if f.config == nil {
 		return nil, fmt.Errorf("stellar ccip config is not set - can't get accessor for chain %d", chainSelector)
@@ -48,6 +53,17 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 		return nil, fmt.Errorf("stellar config not found for chain %d", chainSelector)
 	}
 
+	// Attempt to build the SourceReader. If it fails, the error is deferred: the
+	// Accessor is still valid but SourceReader() will return the error. This allows
+	// callers (e.g. an executor path) that only need DestinationReader or
+	// ContractTransmitter to obtain a valid Accessor regardless.
+	sourceReader, sourceReaderErr := buildSourceReader(chainSelector, strSelector, stellarConfig)
+	return newAccessor(sourceReader, sourceReaderErr), nil
+}
+
+// buildSourceReader constructs a SourceReader from the given Stellar config.
+// Returns (nil, err) when the config is incomplete or construction fails.
+func buildSourceReader(chainSelector protocol.ChainSelector, strSelector string, stellarConfig sourcereader.ReaderConfig) (chainaccess.SourceReader, error) {
 	// TODO: move it into its own method separately
 	if stellarConfig.SorobanRPCURL == "" {
 		return nil, fmt.Errorf("soroban rpc url is required for chain %d", chainSelector)
@@ -71,7 +87,7 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 		deployerKeypair,
 	)
 
-	sourceReader, err := sourcereader.NewSourceReaderWithClient(
+	sr, err := sourcereader.NewSourceReaderWithClient(
 		rpcClient,
 		deployer,
 		stellarConfig.OnRampContractID,
@@ -82,8 +98,7 @@ func (f *factory) GetAccessor(ctx context.Context, chainSelector protocol.ChainS
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source reader: %w", err)
 	}
-
-	return newAccessor(sourceReader), nil
+	return sr, nil
 }
 
 func NewFactory(lggr logger.Logger, config map[string]sourcereader.ReaderConfig) chainaccess.AccessorFactory {
@@ -94,12 +109,14 @@ func NewFactory(lggr logger.Logger, config map[string]sourcereader.ReaderConfig)
 }
 
 type accessor struct {
-	sourceReader chainaccess.SourceReader
+	sourceReader    chainaccess.SourceReader
+	sourceReaderErr error
 }
 
-func newAccessor(sourceReader chainaccess.SourceReader) chainaccess.Accessor {
+func newAccessor(sourceReader chainaccess.SourceReader, sourceReaderErr error) chainaccess.Accessor {
 	return &accessor{
-		sourceReader: sourceReader,
+		sourceReader:    sourceReader,
+		sourceReaderErr: sourceReaderErr,
 	}
 }
 
@@ -108,6 +125,9 @@ func newAccessor(sourceReader chainaccess.SourceReader) chainaccess.Accessor {
 var errCommitteeOnlyAccessor = errors.New("stellar accessor only provides SourceReader (committee/verifier use case)")
 
 func (a *accessor) SourceReader() (chainaccess.SourceReader, error) {
+	if a.sourceReaderErr != nil {
+		return nil, a.sourceReaderErr
+	}
 	return a.sourceReader, nil
 }
 
