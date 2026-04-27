@@ -4,6 +4,15 @@ use soroban_sdk::{crypto::Hash, BytesN, Env, Vec};
 
 use crate::error::McmsError;
 
+/// Largest `s` value accepted by the low-s check: `(secp256k1_order - 1) / 2`.
+///
+/// Matches OpenZeppelin `ECDSA.sol` — rejects the upper half of the curve to prevent
+/// signature malleability (two valid `(r, s)` pairs for the same message).
+const LOW_S_MAX: [u8; 32] = [
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
+];
+
 /// Keccak(pair) with **lexicographic sort** — matches `mcms/internal/core/merkle` & OpenZeppelin.
 pub fn efficient_hash_pair(env: &Env, a: &BytesN<32>, b: &BytesN<32>) -> BytesN<32> {
     let mut combined = soroban_sdk::Bytes::new(env);
@@ -59,9 +68,15 @@ pub fn recover_eth_address_vrs(
     r: &BytesN<32>,
     s: &BytesN<32>,
 ) -> Result<BytesN<32>, McmsError> {
+    let s_arr = s.to_array();
+    let low_s = BytesN::from_array(env, &LOW_S_MAX);
+    if cmp_bytes32(s, &low_s) > 0 {
+        return Err(McmsError::InvalidSignature);
+    }
+
     let mut sig = [0u8; 64];
     sig[..32].copy_from_slice(&r.to_array());
-    sig[32..].copy_from_slice(&s.to_array());
+    sig[32..].copy_from_slice(&s_arr);
     let mut recovery_id = v;
     if recovery_id >= 27 {
         recovery_id -= 27;

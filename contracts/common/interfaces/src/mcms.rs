@@ -19,7 +19,6 @@ pub trait McmsInterface {
         metadata_proof: MerkleProof,
         signatures: SignatureVec,
     ) -> Result<(), McmsError>;
-    fn mcms_ping(env: soroban_sdk::Env);
     fn get_config(env: soroban_sdk::Env) -> Result<Config, McmsError>;
     fn init_owner(
         env: soroban_sdk::Env,
@@ -44,6 +43,7 @@ pub trait McmsInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn extend_all_ttls(env: soroban_sdk::Env) -> Result<(), McmsError>;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn chain_network_id(
         env: soroban_sdk::Env,
@@ -330,6 +330,7 @@ pub enum McmsError {
     NonceOverflow = 48,
     InvalidUint40 = 49,
     InvalidInvokeData = 50,
+    NonZeroValue = 51,
 }
 #[soroban_sdk::contractevent(topics = ["auth_RoleGranted"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -360,4 +361,25 @@ pub struct AuthorizedCallerRemovedEvent {
 pub struct OwnershipTransferStartedEvent {
     pub previous_owner: soroban_sdk::Address,
     pub new_owner: soroban_sdk::Address,
+}
+#[soroban_sdk::contractevent(topics = ["mcms_NewRoot"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct NewRootEvent {
+    pub root: soroban_sdk::BytesN<32>,
+    pub valid_until: u32,
+    pub metadata: StellarRootMetadata,
+}
+#[soroban_sdk::contractevent(topics = ["mcms_ConfigSet"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ConfigSetEvent {
+    pub config: Config,
+    pub is_root_cleared: bool,
+}
+#[soroban_sdk::contractevent(topics = ["mcms_OpExecuted"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OpExecutedEvent {
+    pub nonce: u64,
+    pub to: soroban_sdk::BytesN<32>,
+    pub data: soroban_sdk::Bytes,
+    pub value: soroban_sdk::BytesN<32>,
 }

@@ -264,6 +264,19 @@ func (c *McmsClient) SetNewOwner(ctx context.Context, newOwner string) error {
 	return nil
 }
 
+// ExtendAllTtls calls the extend_all_ttls function on the contract.
+func (c *McmsClient) ExtendAllTtls(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extend_all_ttls", args)
+	if err != nil {
+		return fmt.Errorf("failed to call extend_all_ttls: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // AcceptOwnership calls the accept_ownership function on the contract.
 func (c *McmsClient) AcceptOwnership(ctx context.Context) error {
 	args := []xdr.ScVal{}
@@ -714,6 +727,237 @@ func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTran
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
 				result.NewOwner = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForNewRootEvent waits for a NewRootEvent event.
+func (c *McmsClient) WaitForNewRootEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*NewRootEvent) bool) (*NewRootEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{NewRootEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseNewRootEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseNewRootEvent(e protocolrpc.EventInfo) (*NewRootEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &NewRootEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "root":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err == nil {
+				result.Root = v
+			}
+		case "valid_until":
+			v, ok := entry.Val.GetU32()
+			if ok {
+				result.ValidUntil = uint32(v)
+			}
+		case "metadata":
+			v, err := StellarRootMetadataFromScVal(entry.Val)
+			if err == nil {
+				result.Metadata = *v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForConfigSetEvent waits for a ConfigSetEvent event.
+func (c *McmsClient) WaitForConfigSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*ConfigSetEvent) bool) (*ConfigSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{ConfigSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseConfigSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseConfigSetEvent(e protocolrpc.EventInfo) (*ConfigSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &ConfigSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "config":
+			v, err := ConfigFromScVal(entry.Val)
+			if err == nil {
+				result.Config = *v
+			}
+		case "is_root_cleared":
+			v, ok := entry.Val.GetB()
+			if ok {
+				result.IsRootCleared = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForOpExecutedEvent waits for a OpExecutedEvent event.
+func (c *McmsClient) WaitForOpExecutedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OpExecutedEvent) bool) (*OpExecutedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OpExecutedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseOpExecutedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseOpExecutedEvent(e protocolrpc.EventInfo) (*OpExecutedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &OpExecutedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "nonce":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.Nonce = v
+			}
+		case "to":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err == nil {
+				result.To = v
+			}
+		case "data":
+			v, ok := entry.Val.GetBytes()
+			if ok {
+				result.Data = []byte(v)
+			}
+		case "value":
+			v, err := scval.Bytes32FromScVal(entry.Val)
+			if err == nil {
+				result.Value = v
 			}
 		}
 	}

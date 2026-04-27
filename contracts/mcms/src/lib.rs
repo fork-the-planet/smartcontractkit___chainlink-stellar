@@ -4,6 +4,7 @@ mod abi_encoding;
 mod constants;
 mod crypto;
 mod error;
+mod events;
 mod types;
 
 pub use error::McmsError;
@@ -18,11 +19,12 @@ use abi_encoding::{
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
-use constants::{domain_meta, domain_op};
+use constants::{domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD};
 use crypto::{cmp_bytes32, recover_eth_address_vrs, verify_merkle_proof};
+use events::{ConfigSetEvent, NewRootEvent, OpExecutedEvent};
 use soroban_sdk::{
-    address_payload::AddressPayload, contract, contractimpl, symbol_short, Address, Bytes, BytesN,
-    Env, Map, Symbol, Vec,
+    address_payload::AddressPayload, contract, contractimpl, symbol_short, xdr::FromXdr, Address,
+    Bytes, BytesN, Env, Map, Symbol, TryFromVal, Val, Vec,
 };
 use stellar_strkey::Contract as StrkeyContract;
 
@@ -69,12 +71,8 @@ impl McmsContract {
         env.storage()
             .instance()
             .set(&CHAIN_NETWORK_ID, &chain_network_id);
+        bump_ttls(&env);
         Ok(())
-    }
-
-    /// Governance smoke test target — callable via `execute` with empty `data`.
-    pub fn mcms_ping(env: Env) {
-        let _ = env.current_contract_address();
     }
 
     /// Owner-only signer configuration (mirrors Solidity `setConfig`).
@@ -165,6 +163,12 @@ impl McmsContract {
             env.storage().persistent().set(&ROOT_META_STORE, &meta);
         }
 
+        ConfigSetEvent {
+            config: cfg,
+            is_root_cleared: clear_root,
+        }
+        .publish(&env);
+        bump_ttls(&env);
         Ok(())
     }
 
@@ -267,6 +271,13 @@ impl McmsContract {
         );
         env.storage().persistent().set(&ROOT_META_STORE, &metadata);
 
+        NewRootEvent {
+            root,
+            valid_until,
+            metadata,
+        }
+        .publish(&env);
+        bump_ttls(&env);
         Ok(())
     }
 
@@ -311,6 +322,10 @@ impl McmsContract {
             return Err(McmsError::WrongNonce);
         }
 
+        if op.value != BytesN::from_array(&env, &[0u8; 32]) {
+            return Err(McmsError::NonZeroValue);
+        }
+
         let d = domain_op(&env);
         let leaf = hash_stellar_op(&env, &d, &op)?;
 
@@ -325,11 +340,19 @@ impl McmsContract {
         env.storage().persistent().set(&EXPIRING_ROOT, &exp);
 
         let target = contract_address_from_contract_id(&env, &op.to);
-        let fn_sym = decode_fn(&op.data)?;
-        let args = Vec::new(&env);
+        let (fn_sym, args) = decode_invoke(&env, &op.data)?;
 
-        let _ = env.invoke_contract::<()>(&target, &fn_sym, args);
+        // Return type is Val to accept any return value from the governed contract.
+        let _: Val = env.invoke_contract(&target, &fn_sym, args);
 
+        OpExecutedEvent {
+            nonce: op.nonce,
+            to: op.to,
+            data: op.data,
+            value: op.value,
+        }
+        .publish(&env);
+        bump_ttls(&env);
         Ok(())
     }
 
@@ -385,6 +408,15 @@ impl McmsContract {
             .instance()
             .get(&CHAIN_NETWORK_ID)
             .ok_or(McmsError::NotInitialized)
+    }
+
+    /// Permissionless TTL extension. Call periodically (or via a keeper bot) to prevent
+    /// persistent storage entries — especially `SEEN_HASHES` — from being archived.
+    /// Anyone may call this; it changes no logical state.
+    pub fn extend_all_ttls(env: Env) -> Result<(), McmsError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        bump_ttls(&env);
+        Ok(())
     }
 }
 
@@ -511,11 +543,79 @@ fn verify_signatures(
     Ok(())
 }
 
-fn decode_fn(data: &Bytes) -> Result<Symbol, McmsError> {
+/// Decode `op.data` into `(function_symbol, args)` for `env.invoke_contract`.
+///
+/// `data` must be XDR-encoded as an `ScVal::Vec` whose first element is an `ScSymbol`
+/// (the function name) and whose remaining elements are the arguments passed verbatim
+/// to `invoke_contract`.  Off-chain producers construct:
+/// ```text
+/// ScVal.scvVec([ScVal.scvSymbol("fn_name"), arg0, arg1, ...]).toXDR()
+/// ```
+/// The on-chain decode calls `env.deserialize_from_bytes` (a host built-in),
+/// so there is no custom XDR parser inside the wasm.
+fn decode_invoke(env: &Env, data: &Bytes) -> Result<(Symbol, Vec<Val>), McmsError> {
     if data.len() == 0 {
-        Ok(symbol_short!("mcms_ping"))
-    } else {
-        Err(McmsError::InvalidInvokeData)
+        return Err(McmsError::InvalidInvokeData);
+    }
+
+    // Deserialise as Vec<Val>; the host decodes the XDR ScVec via deserialize_from_bytes.
+    let payload = Vec::<Val>::from_xdr(env, data).map_err(|_| McmsError::InvalidInvokeData)?;
+
+    if payload.len() == 0 {
+        return Err(McmsError::InvalidInvokeData);
+    }
+
+    // First element must be an ScSymbol.
+    let fn_sym = Symbol::try_from_val(env, &payload.get(0).unwrap())
+        .map_err(|_| McmsError::InvalidInvokeData)?;
+
+    // Remaining elements are the call arguments.
+    let mut args: Vec<Val> = Vec::new(env);
+    let mut i = 1u32;
+    while i < payload.len() {
+        args.push_back(payload.get(i).unwrap());
+        i += 1;
+    }
+
+    Ok((fn_sym, args))
+}
+
+/// Extend the TTL of every persistent storage key that currently exists, plus instance storage.
+///
+/// Soroban persistent entries are archived if their TTL reaches zero.  For MCMS the most
+/// dangerous consequence is the loss of `SEEN_HASHES`, which would make all previously-used
+/// `(root, validUntil)` tuples replayable.  This helper is called at the end of every
+/// successful public function so that normal contract activity is sufficient to keep all
+/// entries alive.  A dedicated `extend_all_ttls` entry-point lets operators (or a bot) do the
+/// same without triggering a governance action.
+fn bump_ttls(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
+    if env.storage().persistent().has(&CONFIG) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&CONFIG, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+    if env.storage().persistent().has(&SIGNER_MAP) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&SIGNER_MAP, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+    if env.storage().persistent().has(&SEEN_HASHES) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&SEEN_HASHES, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+    if env.storage().persistent().has(&EXPIRING_ROOT) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&EXPIRING_ROOT, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+    if env.storage().persistent().has(&ROOT_META_STORE) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&ROOT_META_STORE, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
 }
 
@@ -529,6 +629,103 @@ fn contract_id_of_address(addr: &Address) -> BytesN<32> {
     match addr.to_payload() {
         Some(AddressPayload::ContractIdHash(id)) => id,
         _ => BytesN::from_array(addr.env(), &[0u8; 32]),
+    }
+}
+
+#[cfg(test)]
+mod decode_invoke_tests {
+    use soroban_sdk::xdr::ToXdr;
+    use soroban_sdk::{Bytes, Env, IntoVal, Symbol, TryFromVal, Val, Vec};
+
+    use super::{decode_invoke, McmsError};
+
+    #[test]
+    fn empty_data_is_invalid() {
+        let env = Env::default();
+        assert!(matches!(
+            decode_invoke(&env, &Bytes::new(&env)),
+            Err(McmsError::InvalidInvokeData)
+        ));
+    }
+
+    #[test]
+    fn symbol_only_payload_no_args() {
+        let env = Env::default();
+        let fn_sym = Symbol::new(&env, "transfer");
+        let mut v: Vec<Val> = Vec::new(&env);
+        v.push_back(fn_sym.clone().into_val(&env));
+        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
+        assert_eq!(sym, fn_sym);
+        assert_eq!(args.len(), 0);
+    }
+
+    #[test]
+    fn symbol_plus_args_roundtrips() {
+        let env = Env::default();
+        let fn_sym = Symbol::new(&env, "set_value");
+        let mut v: Vec<Val> = Vec::new(&env);
+        v.push_back(fn_sym.clone().into_val(&env));
+        v.push_back(42u32.into_val(&env));
+        v.push_back(true.into_val(&env));
+        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
+        assert_eq!(sym, fn_sym);
+        assert_eq!(args.len(), 2);
+        assert_eq!(
+            u32::try_from_val(&env, &args.get(0).unwrap()).unwrap(),
+            42u32
+        );
+        assert_eq!(
+            bool::try_from_val(&env, &args.get(1).unwrap()).unwrap(),
+            true
+        );
+    }
+
+    #[test]
+    fn empty_vec_payload_is_invalid() {
+        let env = Env::default();
+        let empty: Vec<Val> = Vec::new(&env);
+        assert!(matches!(
+            decode_invoke(&env, &empty.to_xdr(&env)),
+            Err(McmsError::InvalidInvokeData)
+        ));
+    }
+
+    #[test]
+    fn non_symbol_first_element_is_invalid() {
+        let env = Env::default();
+        let mut v: Vec<Val> = Vec::new(&env);
+        v.push_back(99u32.into_val(&env)); // integer, not a Symbol
+        assert!(matches!(
+            decode_invoke(&env, &v.to_xdr(&env)),
+            Err(McmsError::InvalidInvokeData)
+        ));
+    }
+
+    /// Invalid XDR bytes cause a host trap rather than a Rust `Err`. In production
+    /// this means the transaction fails; in tests it surfaces as a panic.
+    #[test]
+    #[should_panic]
+    fn garbage_bytes_cause_host_trap() {
+        let env = Env::default();
+        let garbage = Bytes::from_array(&env, &[0xff, 0xfe, 0x00, 0x01]);
+        let _ = decode_invoke(&env, &garbage);
+    }
+
+    /// Round-trip: to_xdr then from_xdr should be idempotent for the args.
+    #[test]
+    fn address_arg_roundtrips() {
+        let env = Env::default();
+        use soroban_sdk::testutils::Address as _;
+        use soroban_sdk::Address;
+        let addr = Address::generate(&env);
+        let fn_sym = Symbol::new(&env, "set_owner");
+        let mut v: Vec<Val> = Vec::new(&env);
+        v.push_back(fn_sym.clone().into_val(&env));
+        v.push_back(addr.clone().into_val(&env));
+        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
+        assert_eq!(sym, fn_sym);
+        let decoded = Address::try_from_val(&env, &args.get(0).unwrap()).unwrap();
+        assert_eq!(decoded, addr);
     }
 }
 

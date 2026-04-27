@@ -1285,6 +1285,7 @@ const (
 	McmsErrorNonceOverflow                                = 48
 	McmsErrorInvalidUint40                                = 49
 	McmsErrorInvalidInvokeData                            = 50
+	McmsErrorNonZeroValue                                 = 51
 )
 
 // McmsErrorMessage returns a human-readable message for error codes.
@@ -1322,6 +1323,7 @@ var McmsErrorMessage = map[int]string{
 	48: "nonce overflow",
 	49: "invalid uint40",
 	50: "invalid invoke data",
+	51: "non zero value",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.
@@ -1388,3 +1390,45 @@ type OwnershipTransferStartedEvent struct {
 
 // OwnershipTransferStartedEventTopic is the event topic identifier.
 const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
+
+// NewRootEvent represents the NewRootEvent event.
+// Topics: [mcms_NewRoot]
+type NewRootEvent struct {
+	Root       [32]byte
+	ValidUntil uint32
+	Metadata   StellarRootMetadata
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// NewRootEventTopic is the event topic identifier.
+const NewRootEventTopic = "mcms_NewRoot"
+
+// ConfigSetEvent represents the ConfigSetEvent event.
+// Topics: [mcms_ConfigSet]
+type ConfigSetEvent struct {
+	Config        Config
+	IsRootCleared bool
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// ConfigSetEventTopic is the event topic identifier.
+const ConfigSetEventTopic = "mcms_ConfigSet"
+
+// OpExecutedEvent represents the OpExecutedEvent event.
+// Topics: [mcms_OpExecuted]
+type OpExecutedEvent struct {
+	Nonce uint64
+	To    [32]byte
+	Data  []byte
+	Value [32]byte
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OpExecutedEventTopic is the event topic identifier.
+const OpExecutedEventTopic = "mcms_OpExecuted"

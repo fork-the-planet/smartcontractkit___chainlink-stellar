@@ -40,6 +40,7 @@ pub enum McmsError {
     NonceOverflow = 48,
     InvalidUint40 = 49,
     InvalidInvokeData = 50,
+    NonZeroValue = 51,
 }
 
 impl From<common_error::CCIPError> for McmsError {

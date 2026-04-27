@@ -45,6 +45,11 @@ fn append_abi_bytes(env: &Env, buf: &mut Bytes, data: &soroban_sdk::Bytes) {
     }
 }
 
+// TODO(M3): Audit byte-for-byte parity between hash_root_metadata / hash_stellar_op and the
+// off-chain Go SDK encoder (mcms/internal/core/merkle or equivalent). Run both against identical
+// inputs and compare the resulting keccak256 digests. Any field-order, padding, or offset
+// mismatch here will silently invalidate every Merkle proof.
+
 /// `keccak256(abi.encode(D_META, StellarRootMetadata))` — all-static tuple tail.
 pub fn hash_root_metadata(
     env: &Env,
