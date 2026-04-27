@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
