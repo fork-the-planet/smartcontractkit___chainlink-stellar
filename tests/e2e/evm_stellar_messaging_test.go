@@ -23,7 +23,7 @@ var (
 
 // TestEVMToStellarComposableMessaging runs messaging.BasicMessageTestScenario with
 // EVM as ChainAsSource and Stellar as ChainAsDestination (same devenv as
-// tests/e2e/evm_to_stellar_test.go and tests/e2e/stellar_evm_messaging_test.go).
+// tests/e2e/evm_to_stellar_test.go).
 //
 // Prerequisites:
 //
