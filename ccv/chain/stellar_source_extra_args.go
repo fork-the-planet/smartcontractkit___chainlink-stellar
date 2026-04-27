@@ -18,12 +18,12 @@ import (
 //
 // We do not register this as cciptestinterfaces.ExtraArgsSerializer(FamilyStellar)
 // because:
-//   1) ExtraArgsSerializer is func(MessageOptions) []byte with no chain context, but
-//      sensible defaults require the deployer account (mock executor) and VVR contract.
-//   2) That registry is keyed by destination family for EVM-style sends where the
-//      wire format follows the *destination* executor; Stellar OnRamp always consumes
-//      Soroban GenericExtraArgsV3 XDR regardless of destination, so dest-family lookup
-//      is the wrong axis for Stellar-as-source.
+//  1. ExtraArgsSerializer is func(MessageOptions) []byte with no chain context, but
+//     sensible defaults require the deployer account (mock executor) and VVR contract.
+//  2. That registry is keyed by destination family for EVM-style sends where the
+//     wire format follows the *destination* executor; Stellar OnRamp always consumes
+//     Soroban GenericExtraArgsV3 XDR regardless of destination, so dest-family lookup
+//     is the wrong axis for Stellar-as-source.
 //
 // allowOutOfOrderExecution (MessageOptions.OutOfOrderExecution) is not represented on
 // Soroban GenericExtraArgsV3 today; callers should still set it to true for parity with
