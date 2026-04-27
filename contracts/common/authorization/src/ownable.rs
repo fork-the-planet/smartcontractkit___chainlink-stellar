@@ -65,7 +65,11 @@ pub trait Ownable: Initializable {
     /// This calls `require_auth()` on the owner address.
     ///
     /// # Errors
-    /// * `NotInitialized` - Owner has not been set
+    /// * `NotOwner` - Owner has not been set in storage
+    ///
+    /// # Panics
+    ///
+    /// If the owner address did not authorize this invocation (`require_auth`).
     fn require_owner(env: &Env) -> Result<Address, CCIPError> {
         let owner = Self::owner(env).ok_or(CCIPError::NotOwner)?;
         owner.require_auth();
@@ -80,7 +84,11 @@ pub trait Ownable: Initializable {
     /// * `new_owner` - The proposed new owner
     ///
     /// # Errors
-    /// * `NotInitialized` - Owner has not been set
+    /// * `NotOwner` - Owner has not been set in storage
+    ///
+    /// # Panics
+    ///
+    /// If the current owner did not authorize this invocation (`require_auth`).
     fn transfer_ownership(env: &Env, new_owner: &Address) -> Result<(), CCIPError> {
         let current_owner = Self::require_owner(env)?;
 
@@ -102,6 +110,10 @@ pub trait Ownable: Initializable {
     ///
     /// # Errors
     /// * `NoPendingOwner` - No ownership transfer is pending
+    ///
+    /// # Panics
+    ///
+    /// If the pending owner address did not authorize this invocation (`require_auth`).
     fn accept_ownership(env: &Env) -> Result<(), CCIPError> {
         let pending: Address = env
             .storage()
@@ -134,6 +146,10 @@ pub trait Ownable: Initializable {
 
     /// Cancel a pending ownership transfer.
     /// Can only be called by the current owner.
+    ///
+    /// # Panics
+    ///
+    /// If the current owner did not authorize this invocation (`require_auth`).
     fn cancel_ownership_transfer(env: &Env) -> Result<(), CCIPError> {
         Self::require_owner(env)?;
         env.storage().instance().remove(&Self::PENDING_OWNER);
@@ -141,6 +157,10 @@ pub trait Ownable: Initializable {
     }
 
     /// A method to transfer ownership without waiting for the new owner to accept.
+    ///
+    /// # Panics
+    ///
+    /// If the current owner did not authorize this invocation (`require_auth`).
     fn set_new_owner(env: &Env, new_owner: &Address) -> Result<(), CCIPError> {
         Self::require_owner(env)?;
         env.storage().instance().set(&Self::OWNER, new_owner);

@@ -1005,6 +1005,7 @@ const (
 	CCIPErrorMessageDecodingError                = 113
 	CCIPErrorReceiverDoesNotExist                = 114
 	CCIPErrorReceiverNotWasmContract             = 115
+	CCIPErrorRequiredCCVMissing                  = 116
 	CCIPErrorOnlyRegistryModuleOrOwner           = 201
 	CCIPErrorOnlyAdministrator                   = 202
 	CCIPErrorOnlyPendingAdministrator            = 203
@@ -1027,6 +1028,7 @@ const (
 	CCIPErrorInvalidRequestedFinality            = 315
 	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
 	CCIPErrorInvalidChainForClient               = 317
+	CCIPErrorRouterNotConfigured                 = 318
 	CCIPErrorInvalidFeeCalculation               = 801
 	CCIPErrorInvalidFeeTokenConversion           = 802
 )
@@ -1122,6 +1124,7 @@ var CCIPErrorMessage = map[int]string{
 	113: "message decoding error",
 	114: "receiver does not exist",
 	115: "receiver not wasm contract",
+	116: "required c c v missing",
 	201: "only registry module or owner",
 	202: "only administrator",
 	203: "only pending administrator",
@@ -1144,6 +1147,7 @@ var CCIPErrorMessage = map[int]string{
 	315: "invalid requested finality",
 	316: "requested finality can only have one mode",
 	317: "invalid chain for client",
+	318: "router not configured",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }

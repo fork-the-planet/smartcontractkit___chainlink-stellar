@@ -6,7 +6,11 @@ members = [
   "contracts/fee-quoter",
   "contracts/onramp",
   "contracts/offramp",
-  "contracts/pools/*",
+  "contracts/pools/burn-mint-pool",
+  "contracts/pools/lock-release-pool",
+  "contracts/pools/siloed-lock-release-pool",
+  "contracts/pools/token-lock-box",
+  "contracts/ccip-ramp-registry",
   "contracts/registry",
   "contracts/token-admin-registry",
   "contracts/rmn_proxy",
@@ -31,6 +35,7 @@ onramp = { path = "contracts/onramp" }
 rmn_proxy = { path = "contracts/rmn_proxy" }
 rmn_remote = { path = "contracts/rmn_remote" }
 router = { path = "contracts/router" }
+ccip-ramp-registry = { path = "contracts/ccip-ramp-registry" }
 ccvs-versioned-verifier-resolver = { path = "contracts/ccvs/versioned-verifier-resolver" }
 
 [profile.release]

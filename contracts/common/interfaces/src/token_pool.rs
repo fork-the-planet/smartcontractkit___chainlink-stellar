@@ -12,18 +12,22 @@ pub trait TokenPoolInterface {
         owner: soroban_sdk::Address,
         token: soroban_sdk::Address,
         token_decimals: u32,
+        router: soroban_sdk::Address,
+        ramp_registry: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
 
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
 
     fn lock_or_burn(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError>;
 
     fn release_or_mint(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
@@ -93,6 +97,61 @@ pub trait TokenPoolInterface {
     ) -> Result<(), CCIPError>;
 
     fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
+
+    /// Returns the configured advanced pool hooks contract, if any (EVM `getAdvancedPoolHooks`).
+    fn get_advanced_pool_hooks(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+
+    /// Sets the advanced pool hooks contract (EVM `setAdvancedPoolHooks`). Owner-only.
+    fn set_advanced_pool_hooks(
+        env: soroban_sdk::Env,
+        hooks: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
+    /// Removes advanced pool hooks (EVM `setAdvancedPoolHooks` to zero). Owner-only.
+    fn remove_advanced_pool_hooks(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+
+    /// Returns required CCV verifier resolver addresses for a transfer (EVM `TokenPool.getRequiredCCVs`).
+    ///
+    /// Returns [`PoolRequiredCCVs`] so a pool can ask the OnRamp to append its custom CCVs
+    /// **alongside** the lane defaults (`include_defaults = true`), matching EVM's
+    /// `address(0)` sentinel in `_getCCVsForPool`. Stellar has no zero address, so parity is
+    /// expressed as an explicit boolean instead of an in-band placeholder.
+    ///
+    /// Pools without hooks SHOULD return `{ ccvs: [], include_defaults: true }` to preserve
+    /// the existing "no pool requirements, use lane defaults" behavior.
+    fn get_required_ccvs(
+        env: soroban_sdk::Env,
+        local_token: soroban_sdk::Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: soroban_sdk::Bytes,
+        direction: MessageDirection,
+    ) -> PoolRequiredCCVs;
+
+    /// Update CCIP Router address (EVM `setDynamicConfig` / `s_router`). Owner-only.
+    fn set_router(env: soroban_sdk::Env, router: soroban_sdk::Address) -> Result<(), CCIPError>;
+
+    fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+
+    /// Update ramp registry used for ramp caller checks. Owner-only.
+    fn set_ramp_registry(
+        env: soroban_sdk::Env,
+        ramp_registry: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
+    fn get_ramp_registry(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+}
+
+/// Declarative CCV requirements returned by a pool (EVM parity for the `address(0)` sentinel
+/// used in `_getCCVsForPool`). `include_defaults = true` means "append lane default CCVs on top
+/// of `ccvs`"; `false` means "use only `ccvs` (skipping lane defaults unless user / lane
+/// sources add them)".
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub include_defaults: bool,
 }
 
 #[soroban_sdk::contracttype(export = false)]
@@ -136,6 +195,14 @@ pub struct ReleaseOrMintIn {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
+}
+
+/// Direction of a CCIP transfer (EVM `IPoolV2.MessageDirection`).
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
 }
 
 #[soroban_sdk::contracttype(export = false)]
@@ -286,6 +353,7 @@ pub enum CCIPError {
     DisabledNonZeroRateLimit = 314,
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

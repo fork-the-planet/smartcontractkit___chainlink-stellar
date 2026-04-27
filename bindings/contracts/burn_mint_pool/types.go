@@ -939,6 +939,60 @@ func ReleaseOrMintInFromScVal(val xdr.ScVal) (*ReleaseOrMintIn, error) {
 	return result, nil
 }
 
+// PoolRequiredCCVs represents the PoolRequiredCCVs struct from the contract.
+type PoolRequiredCCVs struct {
+	Ccvs            []string
+	IncludeDefaults bool
+}
+
+// ToScVal converts PoolRequiredCCVs to an xdr.ScVal for contract calls.
+func (s PoolRequiredCCVs) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"ccvs":             scval.AddressSliceToScVal(s.Ccvs),
+		"include_defaults": scval.BoolToScVal(s.IncludeDefaults),
+	})
+}
+
+// PoolRequiredCCVsFromScVal parses an xdr.ScVal into PoolRequiredCCVs.
+func PoolRequiredCCVsFromScVal(val xdr.ScVal) (*PoolRequiredCCVs, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &PoolRequiredCCVs{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("ccvs is not a vec")
+			}
+			result.Ccvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Ccvs[i] = v
+			}
+		case "include_defaults":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("include_defaults is not bool")
+			}
+			result.IncludeDefaults = v
+		}
+	}
+
+	return result, nil
+}
+
 // RateLimiterState represents the RateLimiterState struct from the contract.
 type RateLimiterState struct {
 	Inbound  TokenBucket
@@ -1163,6 +1217,7 @@ const (
 	CCIPErrorMessageDecodingError                = 113
 	CCIPErrorReceiverDoesNotExist                = 114
 	CCIPErrorReceiverNotWasmContract             = 115
+	CCIPErrorRequiredCCVMissing                  = 116
 	CCIPErrorOnlyRegistryModuleOrOwner           = 201
 	CCIPErrorOnlyAdministrator                   = 202
 	CCIPErrorOnlyPendingAdministrator            = 203
@@ -1185,6 +1240,7 @@ const (
 	CCIPErrorInvalidRequestedFinality            = 315
 	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
 	CCIPErrorInvalidChainForClient               = 317
+	CCIPErrorRouterNotConfigured                 = 318
 	CCIPErrorInvalidFeeCalculation               = 801
 	CCIPErrorInvalidFeeTokenConversion           = 802
 )
@@ -1280,6 +1336,7 @@ var CCIPErrorMessage = map[int]string{
 	113: "message decoding error",
 	114: "receiver does not exist",
 	115: "receiver not wasm contract",
+	116: "required c c v missing",
 	201: "only registry module or owner",
 	202: "only administrator",
 	203: "only pending administrator",
@@ -1302,6 +1359,7 @@ var CCIPErrorMessage = map[int]string{
 	315: "invalid requested finality",
 	316: "requested finality can only have one mode",
 	317: "invalid chain for client",
+	318: "router not configured",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
 }
@@ -1506,6 +1564,19 @@ type RateLimitConfiguredEvent struct {
 // RateLimitConfiguredEventTopic is the event topic identifier.
 const RateLimitConfiguredEventTopic = "pool_RateLimitConfigured"
 
+// AdvancedPoolHooksUpdatedEvent represents the AdvancedPoolHooksUpdatedEvent event.
+// Topics: [pool_HooksUpdated]
+type AdvancedPoolHooksUpdatedEvent struct {
+	OldHooks *string
+	NewHooks *string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// AdvancedPoolHooksUpdatedEventTopic is the event topic identifier.
+const AdvancedPoolHooksUpdatedEventTopic = "pool_HooksUpdated"
+
 // InboundRateLimitConsumedEvent represents the InboundRateLimitConsumedEvent event.
 // Topics: [pool_InboundRateLimitConsumed]
 type InboundRateLimitConsumedEvent struct {
@@ -1549,4 +1620,23 @@ func PoolDataKeyFromScVal(val xdr.ScVal) (PoolDataKey, error) {
 		return 0, fmt.Errorf("expected u32 for PoolDataKey enum")
 	}
 	return PoolDataKey(v), nil
+}
+
+// MessageDirection represents the MessageDirection enum.
+type MessageDirection uint32
+
+const ()
+
+// ToScVal converts MessageDirection to an xdr.ScVal.
+func (e MessageDirection) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// MessageDirectionFromScVal parses an xdr.ScVal into MessageDirection.
+func MessageDirectionFromScVal(val xdr.ScVal) (MessageDirection, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for MessageDirection enum")
+	}
+	return MessageDirection(v), nil
 }

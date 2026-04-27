@@ -8,6 +8,7 @@ pub trait BurnMintPoolInterface {
     ) -> Result<PoolFeeResult, CCIPError>;
     fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn get_token(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn get_router(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn init_owner(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -17,9 +18,16 @@ pub trait BurnMintPoolInterface {
         owner: soroban_sdk::Address,
         token: soroban_sdk::Address,
         token_decimals: u32,
+        router: soroban_sdk::Address,
+        ramp_registry: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn set_router(
+        env: soroban_sdk::Env,
+        router: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
     fn lock_or_burn(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError>;
@@ -34,6 +42,7 @@ pub trait BurnMintPoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn release_or_mint(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError>;
@@ -44,6 +53,20 @@ pub trait BurnMintPoolInterface {
     ) -> Result<soroban_sdk::Bytes, CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_ramp_registry(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn get_required_ccvs(
+        env: soroban_sdk::Env,
+        local_token: soroban_sdk::Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: soroban_sdk::Bytes,
+        direction: MessageDirection,
+    ) -> PoolRequiredCCVs;
+    fn set_ramp_registry(
+        env: soroban_sdk::Env,
+        ramp_registry: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_token_decimals(env: soroban_sdk::Env) -> Result<u32, CCIPError>;
     fn is_supported_chain(
         env: soroban_sdk::Env,
@@ -79,7 +102,13 @@ pub trait BurnMintPoolInterface {
         inbound_config: RateLimitConfig,
         fast_finality: bool,
     ) -> Result<(), CCIPError>;
+    fn get_advanced_pool_hooks(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn set_advanced_pool_hooks(
+        env: soroban_sdk::Env,
+        hooks: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn remove_advanced_pool_hooks(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_allowed_finality_config(env: soroban_sdk::Env) -> u32;
     fn set_allowed_finality_config(
         env: soroban_sdk::Env,
@@ -205,6 +234,12 @@ pub struct ReleaseOrMintIn {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub include_defaults: bool,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct RateLimiterState {
     pub inbound: TokenBucket,
     pub outbound: TokenBucket,
@@ -233,7 +268,16 @@ pub enum PoolDataKey {
     FtfOutboundRateLimit(u64),
     FtfInboundRateLimit(u64),
     AllowedFinalityConfig,
+    RampRegistry,
+    AdvancedPoolHooks,
     PoolFeeConfig(u64),
+    Router,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -327,6 +371,7 @@ pub enum CCIPError {
     MessageDecodingError = 113,
     ReceiverDoesNotExist = 114,
     ReceiverNotWasmContract = 115,
+    RequiredCCVMissing = 116,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,
@@ -349,6 +394,7 @@ pub enum CCIPError {
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidChainForClient = 317,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }
@@ -447,6 +493,12 @@ pub struct RateLimitConfiguredEvent {
     pub outbound_config: RateLimitConfig,
     pub inbound_config: RateLimitConfig,
 }
+#[soroban_sdk::contractevent(topics = ["pool_HooksUpdated"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AdvancedPoolHooksUpdatedEvent {
+    pub old_hooks: Option<soroban_sdk::Address>,
+    pub new_hooks: Option<soroban_sdk::Address>,
+}
 #[soroban_sdk::contractevent(topics = ["pool_InboundRateLimitConsumed"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct InboundRateLimitConsumedEvent {
@@ -463,4 +515,3 @@ pub struct OutboundRateLimitConsumedEvent {
     pub remote_chain_selector: u64,
     pub amount: i128,
 }
-

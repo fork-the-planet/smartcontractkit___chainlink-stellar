@@ -8,6 +8,60 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// PoolRequiredCCVs represents the PoolRequiredCCVs struct from the contract.
+type PoolRequiredCCVs struct {
+	Ccvs            []string
+	IncludeDefaults bool
+}
+
+// ToScVal converts PoolRequiredCCVs to an xdr.ScVal for contract calls.
+func (s PoolRequiredCCVs) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"ccvs":             scval.AddressSliceToScVal(s.Ccvs),
+		"include_defaults": scval.BoolToScVal(s.IncludeDefaults),
+	})
+}
+
+// PoolRequiredCCVsFromScVal parses an xdr.ScVal into PoolRequiredCCVs.
+func PoolRequiredCCVsFromScVal(val xdr.ScVal) (*PoolRequiredCCVs, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &PoolRequiredCCVs{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "ccvs":
+			vec, ok := entry.Val.GetVec()
+			if !ok || vec == nil {
+				return nil, fmt.Errorf("ccvs is not a vec")
+			}
+			result.Ccvs = make([]string, len(*vec))
+			for i, item := range *vec {
+				v, err := scval.AddressFromScVal(item)
+				if err != nil {
+					return nil, err
+				}
+				result.Ccvs[i] = v
+			}
+		case "include_defaults":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("include_defaults is not bool")
+			}
+			result.IncludeDefaults = v
+		}
+	}
+
+	return result, nil
+}
+
 // PoolFeeResult represents the PoolFeeResult struct from the contract.
 type PoolFeeResult struct {
 	FeeUsdCents uint32
@@ -647,6 +701,7 @@ const (
 	CCIPErrorDisabledNonZeroRateLimit            = 314
 	CCIPErrorInvalidRequestedFinality            = 315
 	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
+	CCIPErrorRouterNotConfigured                 = 318
 	CCIPErrorInvalidFeeCalculation               = 801
 	CCIPErrorInvalidFeeTokenConversion           = 802
 )
@@ -763,6 +818,26 @@ var CCIPErrorMessage = map[int]string{
 	314: "disabled non zero rate limit",
 	315: "invalid requested finality",
 	316: "requested finality can only have one mode",
+	318: "router not configured",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
+}
+
+// MessageDirection represents the MessageDirection enum.
+type MessageDirection uint32
+
+const ()
+
+// ToScVal converts MessageDirection to an xdr.ScVal.
+func (e MessageDirection) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// MessageDirectionFromScVal parses an xdr.ScVal into MessageDirection.
+func MessageDirectionFromScVal(val xdr.ScVal) (MessageDirection, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for MessageDirection enum")
+	}
+	return MessageDirection(v), nil
 }

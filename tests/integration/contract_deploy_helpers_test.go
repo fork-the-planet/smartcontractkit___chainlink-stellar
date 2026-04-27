@@ -20,6 +20,7 @@ import (
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	rampregistrybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ramp_registry"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
@@ -28,6 +29,7 @@ import (
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -41,11 +43,6 @@ const (
 	integrationSACAssetCode = "INTG"
 
 	remoteSourceChain = uint64(99999)
-
-	ccipVerifierVersion0 = byte(0x49)
-	ccipVerifierVersion1 = byte(0xff)
-	ccipVerifierVersion2 = byte(0x34)
-	ccipVerifierVersion3 = byte(0xed)
 )
 
 // fullStack holds all deployed contract IDs and clients needed for execute-path tests.
@@ -70,9 +67,11 @@ type fullStack struct {
 
 	TokenAdminRegistryID string
 	TokenPoolID          string
+	RampRegistryID       string
 
 	TokenAdminRegistryClient *tarbindings.TokenAdminRegistryClient
 	TokenPoolClient          *tokenpoolbindings.TokenPoolClient
+	RampRegistryClient       *rampregistrybindings.RampRegistryClient
 
 	signerKey     *ecdsa.PrivateKey
 	signerAddrPad [32]byte // left-padded 20-byte Ethereum address
@@ -139,7 +138,7 @@ func deployFullStack(
 	mockFeeAgg := helpers.GenerateMockContractID(t, deployerAddr, saltPrefix+"-fee-agg")
 	if err := s.CcvClient.Initialize(ctx, deployerAddr, ccvsbindings.DynamicConfig{
 		FeeAggregator: &mockFeeAgg,
-	}, [][]byte{}, s.RmnProxyID); err != nil {
+	}, [][]byte{}, s.RmnProxyID, stellarutil.DefaultCommitteeVerifierVersionTag()); err != nil {
 		t.Fatalf("CommitteeVerifier Initialize: %v", err)
 	}
 
@@ -167,7 +166,7 @@ func deployFullStack(
 	if err := s.VvrClient.ApplyInboundImplUpdates(ctx, []vvrbindings.InboundImplementationUpdate{
 		{
 			Verifier: &verAddr,
-			Version:  [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3},
+			Version:  stellarutil.DefaultCommitteeVerifierVersionTag(),
 		},
 	}); err != nil {
 		t.Fatalf("ApplyInboundImplUpdates: %v", err)
@@ -250,7 +249,7 @@ func deployFullStack(
 func (s *fullStack) signVerifierBlob(t *testing.T, messageHash [32]byte) []byte {
 	t.Helper()
 
-	versionTag := [4]byte{ccipVerifierVersion0, ccipVerifierVersion1, ccipVerifierVersion2, ccipVerifierVersion3}
+	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
 
 	var signedPayload []byte
 	signedPayload = append(signedPayload, versionTag[:]...)
@@ -370,9 +369,22 @@ func (s *fullStack) deployTokenPool(
 	s.TokenPoolID = deploy("lock-release-pool", "pools_lock_release_pool.wasm")
 	s.TokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, s.TokenPoolID)
 
+	s.RampRegistryID = deploy("ramp-registry", "ccip_ramp_registry.wasm")
+	s.RampRegistryClient = rampregistrybindings.NewRampRegistryClient(deployer, s.RampRegistryID)
+	if err := s.RampRegistryClient.Initialize(ctx, deployerAddr); err != nil {
+		t.Fatalf("RampRegistry Initialize: %v", err)
+	}
+	if err := s.RampRegistryClient.AddOfframp(ctx, remoteSourceChain, s.OfframpID); err != nil {
+		t.Fatalf("RampRegistry AddOfframp: %v", err)
+	}
+
 	// Initialize pool with the token (decimals must match pool math; SAC test asset uses 7).
+	// Router and ramp registry must match the deployed stack so ramp checks succeed.
 	const tokenPoolDecimals uint32 = 7
-	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID, tokenPoolDecimals); err != nil {
+	if s.RouterID == "" {
+		t.Fatal("fullStack.RouterID is empty; deployFullStack must run before deployTokenPool")
+	}
+	if err := s.TokenPoolClient.Initialize(ctx, deployerAddr, tokenID, tokenPoolDecimals, s.RouterID, s.RampRegistryID); err != nil {
 		t.Fatalf("TokenPool Initialize: %v", err)
 	}
 
@@ -571,7 +583,7 @@ func deployOutboundSendWire(
 			UsdPerToken: scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 1_000_000_000_000_000_000}),
 		})
 	}
-	if err := wire.FeeQuoterClient.UpdatePrices(ctx, fqbindings.PriceUpdates{
+	if err := wire.FeeQuoterClient.UpdatePrices(ctx, deployerAddr, fqbindings.PriceUpdates{
 		TokenPriceUpdates: tokenUpdates,
 		GasPriceUpdates: []fqbindings.GasPriceUpdate{{
 			DestChainSelector: remoteDestChainSelector,
@@ -657,6 +669,12 @@ func deployOutboundSendWire(
 
 	if err := stack.RouterClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
 		t.Fatalf("Router SetOnramp: %v", err)
+	}
+
+	if stack.RampRegistryClient != nil {
+		if err := stack.RampRegistryClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
+			t.Fatalf("RampRegistry SetOnramp: %v", err)
+		}
 	}
 
 	return wire

@@ -103,7 +103,7 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
 			Msg("Token transfer message sent from Stellar")
 
-		sentEvent, err := stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
+		sentEvent, err := stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, tokenTransferSentTimeout)
 		require.NoError(t, err)
 		l.Info().
 			Str("messageID", hex.EncodeToString(sentEvent.MessageID[:])).
@@ -140,7 +140,7 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 		// require.NoError(t, err)
 		// require.NotNil(t, result.AggregatedResult)
 		//
-		// execEvent, err := evmChain.WaitOneExecEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, 5*time.Minute)
+		// execEvent, err := evmChain.ConfirmExecOnDest(ctx, stellarDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, 5*time.Minute)
 		// require.NoError(t, err)
 		// require.Equal(t, cciptestinterfaces.ExecutionStateSuccess, execEvent.State)
 	})
@@ -223,7 +223,7 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		_, err = stellarChain.WaitOneSentEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
+		_, err = stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, tokenTransferSentTimeout)
 		require.NoError(t, err)
 
 		senderTokenAfter, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))

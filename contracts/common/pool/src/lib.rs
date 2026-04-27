@@ -20,9 +20,15 @@ pub use events::*;
 pub use types::*;
 
 use common_error::CCIPError;
+use common_interfaces::pool_hooks::PoolHooksClient;
+use common_interfaces::ramp_registry::RampRegistryClient;
+use common_interfaces::token_pool::{
+    LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
+    PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
+};
 use soroban_sdk::{contracttrait, Address, Bytes, Env, Vec};
 
-pub use types::PoolFeeResult;
+pub use types::{PoolFeeResult, PoolRequiredCCVs};
 
 /// Base token pool trait providing shared pool configuration and chain management.
 ///
@@ -348,5 +354,222 @@ pub trait BaseTokenPool {
             .set(&PoolDataKey::AllowedFinalityConfig, &allowed_finality);
 
         FinalityConfigSetEvent { allowed_finality }.publish(env);
+    }
+
+    // ------------------------------------------------------------------
+    // Router + ramp registry (EVM `s_router` / ramp lookups)
+    // ------------------------------------------------------------------
+
+    /// Store the CCIP Router address. Owner-only — caller must enforce.
+    fn set_router(env: &Env, router: &Address) {
+        env.storage().instance().set(&PoolDataKey::Router, router);
+    }
+
+    fn get_router(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&PoolDataKey::Router)
+    }
+
+    /// Store the ramp registry address. Owner-only — caller must enforce.
+    /// Used for on/off ramp authorization so pools never re-enter the Router on the outbound path.
+    fn set_ramp_registry(env: &Env, registry: &Address) {
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::RampRegistry, registry);
+    }
+
+    fn get_ramp_registry(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&PoolDataKey::RampRegistry)
+    }
+
+    /// Require `caller` to be the configured OnRamp for `dest_chain_selector` on the ramp
+    /// registry (EVM `TokenPool._onlyOnRamp`). `caller` must authorize this call.
+    fn require_authorized_onramp(
+        env: &Env,
+        caller: &Address,
+        dest_chain_selector: u64,
+    ) -> Result<(), CCIPError> {
+        caller.require_auth();
+        let reg = Self::get_ramp_registry(env).ok_or(CCIPError::RouterNotConfigured)?;
+        let reg_client = RampRegistryClient::new(env, &reg);
+        let expected = match reg_client.try_get_onramp(&dest_chain_selector) {
+            Ok(Ok(addr)) => addr,
+            Ok(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
+            Err(Ok(e)) => return Err(e),
+            Err(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
+        };
+        if expected != *caller {
+            return Err(CCIPError::CallerNotAuthorized);
+        }
+        Ok(())
+    }
+
+    /// Require `caller` to be a registered OffRamp for `source_chain_selector` on the ramp
+    /// registry (EVM `TokenPool._onlyOffRamp`). `caller` must match the direct invoker and
+    /// authorize this call (`caller.require_auth()`).
+    fn require_authorized_offramp(
+        env: &Env,
+        source_chain_selector: u64,
+        caller: &Address,
+    ) -> Result<(), CCIPError> {
+        caller.require_auth();
+        let reg = Self::get_ramp_registry(env).ok_or(CCIPError::RouterNotConfigured)?;
+        let reg_client = RampRegistryClient::new(env, &reg);
+        if !reg_client.is_offramp(&source_chain_selector, caller) {
+            return Err(CCIPError::CallerNotAuthorized);
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Advanced Pool Hooks (EVM `IAdvancedPoolHooks`)
+    // ------------------------------------------------------------------
+
+    /// Set the advanced pool hooks contract address. Owner-only — caller must enforce.
+    /// Pass a zero-like "none" to disable hooks (EVM `updateAdvancedPoolHooks`).
+    fn set_advanced_pool_hooks(env: &Env, hooks: &Address) {
+        let old_hooks = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks);
+        env.storage()
+            .instance()
+            .set(&PoolDataKey::AdvancedPoolHooks, hooks);
+        AdvancedPoolHooksUpdatedEvent {
+            old_hooks,
+            new_hooks: Some(hooks.clone()),
+        }
+        .publish(env);
+    }
+
+    fn remove_advanced_pool_hooks(env: &Env) {
+        let old_hooks = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks);
+        env.storage()
+            .instance()
+            .remove(&PoolDataKey::AdvancedPoolHooks);
+        AdvancedPoolHooksUpdatedEvent {
+            old_hooks,
+            new_hooks: None,
+        }
+        .publish(env);
+    }
+
+    fn get_advanced_pool_hooks(env: &Env) -> Option<Address> {
+        env.storage()
+            .instance()
+            .get(&PoolDataKey::AdvancedPoolHooks)
+    }
+
+    /// Pre-flight hook: called before lock_or_burn if a hooks contract is configured.
+    /// Delegates to `PoolHooksClient::preflight_check`. No-op if hooks not set.
+    fn preflight_check(
+        env: &Env,
+        lock_or_burn_in: &LockOrBurnIn,
+        requested_finality: u32,
+        amount: i128,
+    ) -> Result<(), CCIPError> {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            let input = lock_or_burn_in_to_iface(lock_or_burn_in);
+            // Hook failures abort the invocation at the host; the client returns `()`.
+            client.preflight_check(&input, &requested_finality, &amount);
+        }
+        Ok(())
+    }
+
+    /// Post-flight hook: called before release_or_mint if a hooks contract is configured.
+    /// Delegates to `PoolHooksClient::postflight_check`. No-op if hooks not set.
+    fn postflight_check(
+        env: &Env,
+        release_or_mint_in: &ReleaseOrMintIn,
+        local_amount: i128,
+        requested_finality: u32,
+    ) -> Result<(), CCIPError> {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            let input = release_or_mint_in_to_iface(release_or_mint_in);
+            // Hook failures abort the invocation at the host; the client returns `()`.
+            client.postflight_check(&input, &local_amount, &requested_finality);
+        }
+        Ok(())
+    }
+
+    /// Returns required CCV resolver addresses + `include_defaults` flag from advanced hooks.
+    ///
+    /// When no advanced hooks contract is configured, returns
+    /// `{ ccvs: [], include_defaults: true }`, i.e. "no pool-specific CCVs, fall back to
+    /// lane defaults" — matching the pre-hooks behavior and EVM's `_getCCVsForPool` default.
+    fn get_required_ccvs(
+        env: &Env,
+        local_token: &Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: &Bytes,
+        direction: &MessageDirection,
+    ) -> PoolRequiredCCVs {
+        if let Some(hooks_addr) = env
+            .storage()
+            .instance()
+            .get::<PoolDataKey, Address>(&PoolDataKey::AdvancedPoolHooks)
+        {
+            let client = PoolHooksClient::new(env, &hooks_addr);
+            let direction_iface = message_direction_to_iface(direction);
+            let iface_result: IfacePoolRequiredCCVs = client.get_required_ccvs(
+                local_token,
+                &remote_chain_selector,
+                &amount,
+                &requested_finality,
+                extra_data,
+                &direction_iface,
+            );
+            return PoolRequiredCCVs {
+                ccvs: iface_result.ccvs,
+                include_defaults: iface_result.include_defaults,
+            };
+        }
+        PoolRequiredCCVs {
+            ccvs: Vec::new(env),
+            include_defaults: true,
+        }
+    }
+}
+
+fn lock_or_burn_in_to_iface(input: &LockOrBurnIn) -> IfaceLockOrBurnIn {
+    IfaceLockOrBurnIn {
+        receiver: input.receiver.clone(),
+        remote_chain_selector: input.remote_chain_selector,
+        original_sender: input.original_sender.clone(),
+        amount: input.amount,
+        local_token: input.local_token.clone(),
+    }
+}
+
+fn release_or_mint_in_to_iface(input: &ReleaseOrMintIn) -> IfaceReleaseOrMintIn {
+    IfaceReleaseOrMintIn {
+        original_sender: input.original_sender.clone(),
+        remote_chain_selector: input.remote_chain_selector,
+        receiver: input.receiver.clone(),
+        amount: input.amount,
+        local_token: input.local_token.clone(),
+        source_pool_address: input.source_pool_address.clone(),
+        source_pool_data: input.source_pool_data.clone(),
+    }
+}
+
+fn message_direction_to_iface(d: &MessageDirection) -> IfaceMessageDirection {
+    match d {
+        MessageDirection::Outbound => IfaceMessageDirection::Outbound,
+        MessageDirection::Inbound => IfaceMessageDirection::Inbound,
     }
 }

@@ -266,6 +266,7 @@ pub enum CCIPError {
     MessageDecodingError = 113,
     ReceiverDoesNotExist = 114,
     ReceiverNotWasmContract = 115,
+    RequiredCCVMissing = 116,
     OnlyRegistryModuleOrOwner = 201,
     OnlyAdministrator = 202,
     OnlyPendingAdministrator = 203,
@@ -288,6 +289,7 @@ pub enum CCIPError {
     InvalidRequestedFinality = 315,
     RequestedFinalityCanOnlyHaveOneMode = 316,
     InvalidChainForClient = 317,
+    RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
 }

@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use common_error::CCIPError;
 use common_message::{StellarToAnyMessage, TokenAmount};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -51,6 +52,29 @@ fn create_dest_chain_config() -> DestChainConfig {
 }
 
 #[test]
+fn test_update_prices_rejects_unauthorized_updater() {
+    let (env, contract_id, owner, link_token, price_updater) = setup_env();
+    let client = FeeQuoterContractClient::new(&env, &contract_id);
+    let intruder = Address::generate(&env);
+
+    let static_config = create_static_config(link_token.clone());
+    let mut authorized_callers: Vec<Address> = Vec::new(&env);
+    authorized_callers.push_back(price_updater.clone());
+    client.initialize(&owner, &static_config, &authorized_callers);
+
+    let price_updates = PriceUpdates {
+        token_price_updates: Vec::new(&env),
+        gas_price_updates: Vec::new(&env),
+    };
+
+    let err = client
+        .try_update_prices(&intruder, &price_updates)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, CCIPError::CallerNotAuthorized);
+}
+
+#[test]
 fn test_initialize() {
     let (env, contract_id, owner, link_token, price_updater) = setup_env();
     let client = FeeQuoterContractClient::new(&env, &contract_id);
@@ -87,7 +111,7 @@ fn test_initialize_already_initialized() {
 
     let static_config = create_static_config(link_token);
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
     client.initialize(&owner, &static_config, &authorized_callers); // Should fail
@@ -128,7 +152,7 @@ fn test_update_prices() {
     };
 
     // Update prices (as authorized caller)
-    client.update_prices(&price_updates);
+    client.update_prices(&price_updater, &price_updates);
 
     // Verify token prices
     let token1_price = client.get_token_price(&token1);
@@ -154,7 +178,7 @@ fn test_dest_chain_config() {
 
     let static_config = create_static_config(link_token);
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -187,7 +211,7 @@ fn test_quote_gas_for_exec() {
 
     let static_config = create_static_config(link_token.clone());
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -213,10 +237,13 @@ fn test_quote_gas_for_exec() {
         usd_per_unit_gas: 1_000_000_000_000, // 1e12 (0.000001 USD per gas)
     });
 
-    client.update_prices(&PriceUpdates {
-        token_price_updates: token_updates,
-        gas_price_updates: gas_updates,
-    });
+    client.update_prices(
+        &price_updater,
+        &PriceUpdates {
+            token_price_updates: token_updates,
+            gas_price_updates: gas_updates,
+        },
+    );
 
     // Quote gas
     let result = client.quote_gas_for_exec(&1, &100_000, &1000, &link_token);
@@ -235,7 +262,7 @@ fn test_token_transfer_fee_config() {
 
     let static_config = create_static_config(link_token);
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -286,7 +313,7 @@ fn test_remove_token_transfer_fee_config() {
 
     let static_config = create_static_config(link_token);
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -336,7 +363,7 @@ fn test_convert_token_amount() {
 
     let static_config = create_static_config(link_token.clone());
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -352,10 +379,13 @@ fn test_convert_token_amount() {
         usd_per_token: 15_000_000_000_000_000_000, // $15
     });
 
-    client.update_prices(&PriceUpdates {
-        token_price_updates: token_updates,
-        gas_price_updates: Vec::new(&env),
-    });
+    client.update_prices(
+        &price_updater,
+        &PriceUpdates {
+            token_price_updates: token_updates,
+            gas_price_updates: Vec::new(&env),
+        },
+    );
 
     // Convert 1 ETH to LINK: 1 * 3000 / 15 = 200 LINK
     let result = client.convert_token_amount(
@@ -375,7 +405,7 @@ fn test_remove_fee_tokens() {
 
     let static_config = create_static_config(link_token.clone());
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -391,10 +421,13 @@ fn test_remove_fee_tokens() {
         usd_per_token: 15_000_000_000_000_000_000,
     });
 
-    client.update_prices(&PriceUpdates {
-        token_price_updates: token_updates,
-        gas_price_updates: Vec::new(&env),
-    });
+    client.update_prices(
+        &price_updater,
+        &PriceUpdates {
+            token_price_updates: token_updates,
+            gas_price_updates: Vec::new(&env),
+        },
+    );
 
     assert_eq!(client.get_fee_tokens().len(), 2);
 
@@ -419,7 +452,7 @@ fn test_get_validated_token_price_not_set() {
 
     let static_config = create_static_config(link_token);
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -434,7 +467,7 @@ fn test_get_message_fee() {
 
     let static_config = create_static_config(link_token.clone());
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -460,10 +493,13 @@ fn test_get_message_fee() {
         usd_per_unit_gas: 100_000_000_000_000, // 1e14 (higher gas price for meaningful fee)
     });
 
-    client.update_prices(&PriceUpdates {
-        token_price_updates: token_updates,
-        gas_price_updates: gas_updates,
-    });
+    client.update_prices(
+        &price_updater,
+        &PriceUpdates {
+            token_price_updates: token_updates,
+            gas_price_updates: gas_updates,
+        },
+    );
 
     // Build a CCIP message
     let message = StellarToAnyMessage {
@@ -497,7 +533,7 @@ fn test_get_message_fee_with_token_transfer() {
 
     let static_config = create_static_config(link_token.clone());
     let mut authorized_callers: Vec<Address> = Vec::new(&env);
-    authorized_callers.push_back(price_updater);
+    authorized_callers.push_back(price_updater.clone());
 
     client.initialize(&owner, &static_config, &authorized_callers);
 
@@ -528,10 +564,13 @@ fn test_get_message_fee_with_token_transfer() {
         usd_per_unit_gas: 100_000_000_000_000, // 1e14
     });
 
-    client.update_prices(&PriceUpdates {
-        token_price_updates: token_updates,
-        gas_price_updates: gas_updates,
-    });
+    client.update_prices(
+        &price_updater,
+        &PriceUpdates {
+            token_price_updates: token_updates,
+            gas_price_updates: gas_updates,
+        },
+    );
 
     // Add a custom token fee config with a large enough fee to be visible after
     // integer division (fee token is $15/token = minimum step of 1500 cents)

@@ -151,6 +151,9 @@ pub enum CCIPError {
     ReceiverDoesNotExist = 114,
     /// `ccip_receive` may only be invoked on a Soroban Wasm contract, not a plain account / SAC.
     ReceiverNotWasmContract = 115,
+    /// A CCV required by the token pool for this transfer is absent from the attested `ccvs` list
+    /// (EVM `OffRamp.RequiredCCVMissing`).
+    RequiredCCVMissing = 116,
 
     // ============================================================
     // TokenAdminRegistry errors
@@ -195,6 +198,8 @@ pub enum CCIPError {
     /// Inbound source chain not allowlisted for this client (EVM `CCIPClientExample.InvalidChain` /
     /// `validChain` when `s_chains[source].extraArgs` is empty).
     InvalidChainForClient = 317,
+    /// Pool requires a configured ramp registry for ramp caller checks (`lock_or_burn` / `release_or_mint`).
+    RouterNotConfigured = 318,
 
     // ============================================================
     // Calculation errors

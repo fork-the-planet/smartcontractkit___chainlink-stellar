@@ -5,7 +5,7 @@ pub mod types;
 
 use common_interfaces::{
     token_admin_registry::TokenAdminRegistryClient,
-    token_pool::{ReleaseOrMintIn, TokenPoolClient},
+    token_pool::{MessageDirection, ReleaseOrMintIn, TokenPoolClient},
     versioned_verifier_resolver::VersionedVerifierResolverClient,
 };
 use soroban_sdk::{
@@ -374,7 +374,7 @@ impl OffRampContract {
         ccvs: &Vec<Address>,
         verifier_results: &Vec<Bytes>,
         source_config: &SourceChainConfig,
-        _static_config: &StaticConfig,
+        static_config: &StaticConfig,
         _gas_limit_override: u32,
     ) -> Result<(), CCIPError> {
         // --- CCV Verification ---
@@ -382,9 +382,11 @@ impl OffRampContract {
             env,
             message.source_chain_selector,
             message_id,
+            message,
             ccvs,
             verifier_results,
             source_config,
+            static_config,
         )?;
 
         // --- Token Handling ---
@@ -395,7 +397,7 @@ impl OffRampContract {
                 &message.sender,
                 message.source_chain_selector,
                 message.finality,
-                _static_config,
+                static_config,
             )?
         } else {
             Vec::new(env)
@@ -460,6 +462,54 @@ impl OffRampContract {
         Ok(Address::from_str(env, encoded.as_str()))
     }
 
+    /// Pool-required CCVs for an inbound token transfer (EVM `OffRamp._getCCVsFromPool`).
+    /// Flattens [`PoolRequiredCCVs`] into a single `Vec<Address>` by appending `default_ccvs`
+    /// when the pool reports `include_defaults = true` (or returned no CCVs at all, matching
+    /// EVM's "empty list ⇒ use defaults" fallback).
+    fn get_inbound_pool_required_ccvs(
+        env: &Env,
+        source_chain_selector: u64,
+        requested_finality: u32,
+        token_transfer_bytes: &Bytes,
+        static_config: &StaticConfig,
+        default_ccvs: &Vec<Address>,
+    ) -> Result<Vec<Address>, CCIPError> {
+        if token_transfer_bytes.is_empty() {
+            return Ok(Vec::new(env));
+        }
+
+        let token_transfer = CcipTokenTransferV1::from_bytes(env, token_transfer_bytes)?;
+        let registry = TokenAdminRegistryClient::new(env, &static_config.token_admin_registry);
+        let dest_token = Self::address_from_token_bytes(env, &token_transfer.dest_token_address)?;
+        let pool_address = registry
+            .get_pool(&dest_token)
+            .ok_or(CCIPError::UnsupportedToken)?;
+        let pool_client = TokenPoolClient::new(env, &pool_address);
+        let amount = Self::bytes32_to_i128(env, &token_transfer.amount)?;
+        let required = pool_client.get_required_ccvs(
+            &dest_token,
+            &source_chain_selector,
+            &amount,
+            &requested_finality,
+            &token_transfer.extra_data,
+            &MessageDirection::Inbound,
+        );
+
+        let mut flattened: Vec<Address> = required.ccvs.clone();
+
+        if required.include_defaults {
+            for i in 0..default_ccvs.len() {
+                if let Some(ccv) = default_ccvs.get(i) {
+                    if !Self::is_in_list(&ccv, &flattened) {
+                        flattened.push_back(ccv);
+                    }
+                }
+            }
+        }
+
+        Ok(flattened)
+    }
+
     /// Verify that the CCV quorum is met for a message.
     ///
     /// Each CCV address is resolved via VersionedVerifierResolver to get
@@ -471,12 +521,30 @@ impl OffRampContract {
         env: &Env,
         source_chain_selector: u64,
         message_id: &BytesN<32>,
+        message: &CcipMessageV1,
         ccvs: &Vec<Address>,
         verifier_results: &Vec<Bytes>,
         source_config: &SourceChainConfig,
+        static_config: &StaticConfig,
     ) -> Result<(), CCIPError> {
         if ccvs.is_empty() {
             return Err(CCIPError::CCVQuorumNotMet);
+        }
+
+        let pool_required = Self::get_inbound_pool_required_ccvs(
+            env,
+            source_chain_selector,
+            message.finality,
+            &message.token_transfer,
+            static_config,
+            &source_config.default_ccvs,
+        )?;
+        for i in 0..pool_required.len() {
+            if let Some(req) = pool_required.get(i) {
+                if !Self::is_in_list(&req, ccvs) {
+                    return Err(CCIPError::RequiredCCVMissing);
+                }
+            }
         }
 
         // Track which mandated CCVs have been verified
@@ -591,6 +659,7 @@ impl OffRampContract {
         let receiver_address = Self::address_from_token_bytes(env, &token_transfer.token_receiver)?;
 
         let release_result = pool_client.release_or_mint(
+            &env.current_contract_address(),
             &ReleaseOrMintIn {
                 original_sender: original_sender.clone(),
                 remote_chain_selector: source_chain_selector,

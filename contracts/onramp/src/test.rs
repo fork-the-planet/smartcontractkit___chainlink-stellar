@@ -462,11 +462,15 @@ fn test_merge_ccv_lists_user_only() {
     let b = Address::generate(&env);
 
     let user = vec![&env, a.clone(), b.clone()];
+    let user_args = vec![&env, Bytes::new(&env), Bytes::new(&env)];
     let lane = Vec::new(&env);
     let defaults = vec![&env, Address::generate(&env)];
 
-    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    let (merged, args) =
+        OnRampContract::merge_ccv_lists_with_ccv_args(&env, &user, &user_args, &lane, &defaults)
+            .unwrap();
     assert_eq!(merged.len(), 2);
+    assert_eq!(args.len(), 2);
     assert_eq!(merged.get(0), Some(a));
     assert_eq!(merged.get(1), Some(b));
 }
@@ -477,11 +481,15 @@ fn test_merge_ccv_lists_falls_back_to_defaults() {
     let default_ccv = Address::generate(&env);
 
     let user: Vec<Address> = Vec::new(&env);
+    let user_args: Vec<Bytes> = Vec::new(&env);
     let lane: Vec<Address> = Vec::new(&env);
     let defaults = vec![&env, default_ccv.clone()];
 
-    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    let (merged, args) =
+        OnRampContract::merge_ccv_lists_with_ccv_args(&env, &user, &user_args, &lane, &defaults)
+            .unwrap();
     assert_eq!(merged.len(), 1);
+    assert_eq!(args.len(), 1);
     assert_eq!(merged.get(0), Some(default_ccv));
 }
 
@@ -492,11 +500,15 @@ fn test_merge_ccv_lists_lane_mandated_appended() {
     let lane_ccv = Address::generate(&env);
 
     let user = vec![&env, user_ccv.clone()];
+    let user_args = vec![&env, Bytes::new(&env)];
     let lane = vec![&env, lane_ccv.clone()];
     let defaults = vec![&env, Address::generate(&env)];
 
-    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    let (merged, args) =
+        OnRampContract::merge_ccv_lists_with_ccv_args(&env, &user, &user_args, &lane, &defaults)
+            .unwrap();
     assert_eq!(merged.len(), 2);
+    assert_eq!(args.len(), 2);
     assert_eq!(merged.get(0), Some(user_ccv));
     assert_eq!(merged.get(1), Some(lane_ccv));
 }
@@ -507,11 +519,15 @@ fn test_merge_ccv_lists_deduplication() {
     let shared = Address::generate(&env);
 
     let user = vec![&env, shared.clone()];
+    let user_args = vec![&env, Bytes::new(&env)];
     let lane = vec![&env, shared.clone()];
     let defaults = vec![&env, Address::generate(&env)];
 
-    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    let (merged, args) =
+        OnRampContract::merge_ccv_lists_with_ccv_args(&env, &user, &user_args, &lane, &defaults)
+            .unwrap();
     assert_eq!(merged.len(), 1);
+    assert_eq!(args.len(), 1);
     assert_eq!(merged.get(0), Some(shared));
 }
 
@@ -521,11 +537,15 @@ fn test_merge_ccv_lists_lane_only_no_fallback() {
     let lane_ccv = Address::generate(&env);
 
     let user: Vec<Address> = Vec::new(&env);
+    let user_args: Vec<Bytes> = Vec::new(&env);
     let lane = vec![&env, lane_ccv.clone()];
     let defaults = vec![&env, Address::generate(&env)];
 
-    let merged = OnRampContract::merge_ccv_lists(&env, &user, &lane, &defaults);
+    let (merged, args) =
+        OnRampContract::merge_ccv_lists_with_ccv_args(&env, &user, &user_args, &lane, &defaults)
+            .unwrap();
     assert_eq!(merged.len(), 1);
+    assert_eq!(args.len(), 1);
     assert_eq!(merged.get(0), Some(lane_ccv));
 }
 

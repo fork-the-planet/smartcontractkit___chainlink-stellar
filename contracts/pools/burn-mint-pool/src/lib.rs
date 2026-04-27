@@ -10,9 +10,9 @@ use common_guard::initializable::Initializable;
 use common_pool::{
     calculate_local_amount, encode_local_decimals, finality_codec, parse_remote_decimals,
     rate_limit, BaseTokenPool, ChainUpdate, FtfInboundConsumedEvent, FtfOutboundConsumedEvent,
-    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, OutboundRateLimitConsumedEvent,
-    PoolFeeConfig, PoolFeeResult, RateLimitConfig, RateLimiterState, ReleaseOrMintIn,
-    ReleaseOrMintOut,
+    InboundRateLimitConsumedEvent, LockOrBurnIn, LockOrBurnOut, MessageDirection,
+    OutboundRateLimitConsumedEvent, PoolFeeConfig, PoolFeeResult, PoolRequiredCCVs,
+    RateLimitConfig, RateLimiterState, ReleaseOrMintIn, ReleaseOrMintOut,
 };
 use events::{BurnedEvent, MintedEvent};
 
@@ -48,11 +48,15 @@ impl BurnMintTokenPoolContract {
         owner: Address,
         token: Address,
         token_decimals: u32,
+        router: Address,
+        ramp_registry: Address,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
         <Self as BaseTokenPool>::init_pool(&env, &token, token_decimals)?;
+        <Self as BaseTokenPool>::set_router(&env, &router);
+        <Self as BaseTokenPool>::set_ramp_registry(&env, &ramp_registry);
         Ok(())
     }
 
@@ -72,10 +76,16 @@ impl BurnMintTokenPoolContract {
     /// as a sub-invocation in the auth tree).
     pub fn lock_or_burn(
         env: Env,
+        caller: Address,
         input: LockOrBurnIn,
         requested_finality: u32,
     ) -> Result<LockOrBurnOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::require_authorized_onramp(
+            &env,
+            &caller,
+            input.remote_chain_selector,
+        )?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {
@@ -121,6 +131,8 @@ impl BurnMintTokenPoolContract {
             .publish(&env);
         }
 
+        <Self as BaseTokenPool>::preflight_check(&env, &input, requested_finality, input.amount)?;
+
         let token_client = token::Client::new(&env, &pool_token);
         token_client.burn(&input.original_sender, &input.amount);
 
@@ -149,10 +161,16 @@ impl BurnMintTokenPoolContract {
     /// for the SAC / custom Soroban token.
     pub fn release_or_mint(
         env: Env,
+        caller: Address,
         input: ReleaseOrMintIn,
         requested_finality: u32,
     ) -> Result<ReleaseOrMintOut, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
+        <Self as BaseTokenPool>::require_authorized_offramp(
+            &env,
+            input.remote_chain_selector,
+            &caller,
+        )?;
 
         let pool_token = <Self as BaseTokenPool>::get_token(&env)?;
         if pool_token != input.local_token {
@@ -195,6 +213,8 @@ impl BurnMintTokenPoolContract {
             }
             .publish(&env);
         }
+
+        <Self as BaseTokenPool>::postflight_check(&env, &input, local_amount, requested_finality)?;
 
         let admin_client = token::StellarAssetClient::new(&env, &pool_token);
         admin_client.mint(&input.receiver, &local_amount);
@@ -323,6 +343,70 @@ impl BurnMintTokenPoolContract {
         <Self as Ownable>::require_owner(&env)?;
         <Self as BaseTokenPool>::set_allowed_finality_config(&env, allowed_finality);
         Ok(())
+    }
+
+    /// Set the router address used for inbound `release_or_mint` caller checks (EVM `setDynamicConfig`).
+    pub fn set_router(env: Env, router: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_router(&env, &router);
+        Ok(())
+    }
+
+    pub fn get_router(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_router(&env)
+    }
+
+    pub fn set_ramp_registry(env: Env, ramp_registry: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_ramp_registry(&env, &ramp_registry);
+        Ok(())
+    }
+
+    pub fn get_ramp_registry(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_ramp_registry(&env)
+    }
+
+    /// Set the advanced pool hooks contract (EVM `updateAdvancedPoolHooks`). Owner-only.
+    pub fn set_advanced_pool_hooks(env: Env, hooks: Address) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::set_advanced_pool_hooks(&env, &hooks);
+        Ok(())
+    }
+
+    /// Remove the hooks contract, disabling pre/post-flight checks. Owner-only.
+    pub fn remove_advanced_pool_hooks(env: Env) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+        <Self as BaseTokenPool>::remove_advanced_pool_hooks(&env);
+        Ok(())
+    }
+
+    pub fn get_advanced_pool_hooks(env: Env) -> Option<Address> {
+        <Self as BaseTokenPool>::get_advanced_pool_hooks(&env)
+    }
+
+    /// Returns required CCV verifier resolver addresses (EVM `TokenPool.getRequiredCCVs`).
+    pub fn get_required_ccvs(
+        env: Env,
+        local_token: Address,
+        remote_chain_selector: u64,
+        amount: i128,
+        requested_finality: u32,
+        extra_data: Bytes,
+        direction: MessageDirection,
+    ) -> PoolRequiredCCVs {
+        <Self as BaseTokenPool>::get_required_ccvs(
+            &env,
+            &local_token,
+            remote_chain_selector,
+            amount,
+            requested_finality,
+            &extra_data,
+            &direction,
+        )
     }
 
     // ------------------------------------------------------------------

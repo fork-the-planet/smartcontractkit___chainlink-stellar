@@ -99,8 +99,13 @@ pub trait AllowListable: Ownable {
     /// * `callers` - Addresses to add
     ///
     /// # Errors
-    /// * `FeatureNotEnabled` - Allow list not initialized
-    /// * `NotInitialized` - Owner not set
+    /// * `FeatureNotEnabled` - Allow list not initialized for an update that disables a chain with no prior entry
+    /// * `InvalidConfig` - Invalid update payload (e.g. zero `dest_chain_selector`)
+    /// * `NotOwner` - Owner not set in storage (see [`Ownable::require_owner`])
+    ///
+    /// # Panics
+    ///
+    /// If the owner did not authorize this invocation (`require_auth`).
     fn apply_allowlist_updates(env: &Env, updates: &Vec<AllowListUpdate>) -> Result<(), CCIPError> {
         <Self as Ownable>::require_owner(env)?;
 
@@ -171,10 +176,20 @@ pub trait AllowListable: Ownable {
         false
     }
 
-    /// Require that a given address is in the allow list.
+    /// Require that a given address is in the allow list for `key`.
+    ///
+    /// This checks **storage membership only**. It does **not** call [`Address::require_auth`] on
+    /// `address`. A malicious caller can still pass an allowlisted `address` as a plain argument
+    /// unless the contract entrypoint also binds Soroban authorization to that address (for
+    /// example `address.require_auth()` or `require_auth_for_args` with the same argument vector).
+    ///
+    /// When the allowlist is **disabled** for `key`, this returns `Ok(())` without inspecting
+    /// `address` (open allow).
+    ///
+    /// For a combined membership + auth check, see [`require_in_allowlist_authorized`].
     ///
     /// # Errors
-    /// * `CallerNotAuthorized` - No authorized caller provided auth
+    /// * `CallerNotAuthorized` - Allowlist is enabled for `key` and `address` is not a member
     fn require_in_allowlist(env: &Env, key: u64, address: &Address) -> Result<(), CCIPError> {
         // If the allowlist is not enabled, we assume the address is allowed.
         if !Self::is_allowlist_enabled(env, key) {
@@ -187,4 +202,35 @@ pub trait AllowListable: Ownable {
 
         Ok(())
     }
+}
+
+/// Enforces [`AllowListable::require_in_allowlist`] and, when the allowlist is enabled for `key`,
+/// [`Address::require_auth`] on `address`.
+///
+/// Use this when `address` is expected to be the **Soroban-authenticated principal** for the
+/// current invocation (direct call, or nested call with correctly attached authorization).
+///
+/// **Nested contract calls:** If `T::require_in_allowlist` is invoked from a contract that is not
+/// `address` (e.g. OnRamp calling a verifier with an `original_sender` argument), `require_auth`
+/// on `address` will fail unless the transaction’s authorization payload includes that nested
+/// invocation for `address` (invoker-contract auth trees). Until that wiring exists, keep using
+/// [`AllowListable::require_in_allowlist`] alone at those boundaries and document the trust model.
+///
+/// # Errors
+///
+/// Same as [`AllowListable::require_in_allowlist`].
+///
+/// # Panics
+///
+/// If the allowlist applies and `address` is on the list but did not authorize this invocation.
+pub fn require_in_allowlist_authorized<T: AllowListable>(
+    env: &Env,
+    key: u64,
+    address: &Address,
+) -> Result<(), CCIPError> {
+    T::require_in_allowlist(env, key, address)?;
+    if T::is_allowlist_enabled(env, key) {
+        address.require_auth();
+    }
+    Ok(())
 }

@@ -309,14 +309,24 @@ impl FeeQuoterContract {
     // Price Update Functions
     // ========================================
 
-    /// Update token and gas prices. Only callable by authorized callers.
+    /// Update token and gas prices. Only callable by authorized price updaters.
     /// Protected by reentrancy guard.
     ///
     /// # Arguments
+    /// * `updater` — Address claiming this update (must be in the authorized-callers set and must
+    ///   authorize this invocation via Soroban auth; same *authorization role* as `msg.sender` on EVM
+    ///   `FeeQuoter.updatePrices`). On Soroban 25 there is no guest-visible “direct invoker” address;
+    ///   `require_auth` binds to this call’s real argument vector but still allows invoker-contract
+    ///   delegation, so `updater` may differ from the contract that performed the host `call` into
+    ///   this contract when that pattern is used.
     /// * `price_updates` - Token and gas price updates
-    pub fn update_prices(env: Env, price_updates: PriceUpdates) -> Result<(), CCIPError> {
+    pub fn update_prices(
+        env: Env,
+        updater: Address,
+        price_updates: PriceUpdates,
+    ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        AuthorizedCallers::require_authorized(&env)?;
+        AuthorizedCallers::require_authorized_caller(&env, &updater)?;
 
         // Reentrancy protection for price updates
         ReentrancyGuard::enter(&env)?;

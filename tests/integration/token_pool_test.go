@@ -5,15 +5,18 @@ package integration
 import (
 	"bytes"
 	"context"
+	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/ccv/strkeyutil"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -39,9 +42,11 @@ func TestTokenPool(t *testing.T) {
 		t.Logf("Pool deployed at: %s", contractID)
 
 		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "pool-test-token")
+		mockRouter := helpers.GenerateMockContractID(t, deployerAddr, "pool-test-router")
+		mockRampRegistry := helpers.GenerateMockContractID(t, deployerAddr, "pool-test-ramp-registry")
 		client := tokenpoolbindings.NewTokenPoolClient(deployer, contractID)
 
-		if err := client.Initialize(ctx, deployerAddr, mockToken, 7); err != nil {
+		if err := client.Initialize(ctx, deployerAddr, mockToken, 7, mockRouter, mockRampRegistry); err != nil {
 			t.Fatalf("Initialize pool: %v", err)
 		}
 
@@ -72,8 +77,10 @@ func TestTokenPool(t *testing.T) {
 		}
 
 		mockToken := helpers.GenerateMockContractID(t, deployerAddr, "pool-chain-test-token")
+		mockRouter := helpers.GenerateMockContractID(t, deployerAddr, "pool-chain-test-router")
+		mockRampRegistry := helpers.GenerateMockContractID(t, deployerAddr, "pool-chain-test-ramp-registry")
 		client := tokenpoolbindings.NewTokenPoolClient(deployer, contractID)
-		if err := client.Initialize(ctx, deployerAddr, mockToken, 7); err != nil {
+		if err := client.Initialize(ctx, deployerAddr, mockToken, 7, mockRouter, mockRampRegistry); err != nil {
 			t.Fatalf("Initialize pool: %v", err)
 		}
 
@@ -156,7 +163,7 @@ func TestTokenPool(t *testing.T) {
 				t.Fatalf("TokenPool ApplyChainUpdates: %v", err)
 			}
 
-			_ = deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, stack,
+			wire := deployOutboundSendWire(ctx, t, projectRoot, deployer, deployerAddr, outboundSalt, stack,
 				destChain, remoteDestChain, feeToken, []string{sacToken})
 
 			defaultExecutor := helpers.GenerateMockContractID(t, deployerAddr, outboundSalt+"-executor")
@@ -284,6 +291,61 @@ func TestTokenPool(t *testing.T) {
 			if got := poolAfter - poolBefore; got != tokenTransferAmount {
 				t.Fatalf("pool SAC balance should increase by %d; before=%d after=%d (delta=%d)",
 					tokenTransferAmount, poolBefore, poolAfter, got)
+			}
+
+			// OnRamp CCIPMessageSent receipts: [CCV…, TokenPool, Executor, NetworkFee] (EVM / ccv parity).
+			sentEvt, err := wire.OnRampClient.WaitForCCIPMessageSentEvent(ctx, latest2.Sequence, eventWait,
+				func(e *onrampbindings.CCIPMessageSentEvent) bool {
+					if e.DestChainSelector != remoteDestChain || e.Sender != deployerAddr {
+						return false
+					}
+					return bytes.Equal(e.MessageId[:], tokenMsgID[:])
+				})
+			if err != nil {
+				t.Fatalf("WaitForCCIPMessageSentEvent (token send): %v", err)
+			}
+			rcpts := sentEvt.Receipts
+			const wantReceipts = 4 // 1 default CCV + token pool + executor + network fee
+			if len(rcpts) != wantReceipts {
+				t.Fatalf("receipts: want len %d (1 CCV + pool + executor + network), got %d", wantReceipts, len(rcpts))
+			}
+			if rcpts[3].Issuer != stack.RouterID {
+				t.Fatalf("receipt[3] issuer want router (network fee) %s, got %s", stack.RouterID, rcpts[3].Issuer)
+			}
+			// Same layout verifier / chainlink-ccv expect: CCVs, then token pool, executor, network fee.
+			numCCVBlobs := len(sentEvt.VerifierBlobs)
+			rwbs := onrampReceiptsToReceiptWithBlobs(t, sentEvt.Receipts, sentEvt.VerifierBlobs)
+			parsed, err := protocol.ParseReceiptStructure(rwbs, numCCVBlobs, 1)
+			if err != nil {
+				t.Fatalf("ParseReceiptStructure: %v", err)
+			}
+			if len(parsed.CCVReceipts) != numCCVBlobs {
+				t.Fatalf("ParseReceiptStructure CCV count: want %d, got %d", numCCVBlobs, len(parsed.CCVReceipts))
+			}
+			vvrRaw, err := strkeyutil.ToUnknownAddress(stack.VvrID)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(VVR): %v", err)
+			}
+			if !parsed.CCVReceipts[0].Issuer.Equal(vvrRaw) {
+				t.Fatalf("ParseReceiptStructure CCV[0] issuer want VVR %s, got %x", stack.VvrID, parsed.CCVReceipts[0].Issuer)
+			}
+			poolRaw, err := strkeyutil.ToUnknownAddress(stack.TokenPoolID)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(pool): %v", err)
+			}
+			if len(parsed.TokenReceipts) != 1 || !parsed.TokenReceipts[0].Issuer.Equal(poolRaw) {
+				t.Fatalf("ParseReceiptStructure token receipt issuer want pool %s, got %+v", stack.TokenPoolID, parsed.TokenReceipts)
+			}
+			execRaw, err := strkeyutil.ToUnknownAddress(defaultExecutor)
+			if err != nil {
+				t.Fatalf("ToUnknownAddress(executor): %v", err)
+			}
+			if !parsed.ExecutorReceipt.Issuer.Equal(execRaw) {
+				t.Fatalf("ParseReceiptStructure executor issuer want %s, got %x", defaultExecutor, parsed.ExecutorReceipt.Issuer)
+			}
+			if parsed.TokenReceipts[0].DestGasLimit != 0 || parsed.TokenReceipts[0].DestBytesOverhead != 0 {
+				t.Fatalf("ParseReceiptStructure token receipt dest gas/overhead want 0, got gas=%d overhead=%d",
+					parsed.TokenReceipts[0].DestGasLimit, parsed.TokenReceipts[0].DestBytesOverhead)
 			}
 		})
 	})
@@ -474,6 +536,30 @@ func TestTokenPool(t *testing.T) {
 			t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
 		})
 	})
+}
+
+func onrampReceiptsToReceiptWithBlobs(t *testing.T, receipts []onrampbindings.Receipt, verifierBlobs [][]byte) []protocol.ReceiptWithBlob {
+	t.Helper()
+	out := make([]protocol.ReceiptWithBlob, 0, len(receipts))
+	for i, r := range receipts {
+		var blob []byte
+		if i < len(verifierBlobs) {
+			blob = verifierBlobs[i]
+		}
+		issuer, err := strkeyutil.ToUnknownAddress(r.Issuer)
+		if err != nil {
+			t.Fatalf("ToUnknownAddress(issuer %q): %v", r.Issuer, err)
+		}
+		out = append(out, protocol.ReceiptWithBlob{
+			Issuer:            issuer,
+			Blob:              protocol.ByteSlice(blob),
+			ExtraArgs:         protocol.ByteSlice(r.ExtraArgs),
+			DestGasLimit:      uint64(r.DestGasLimit),
+			DestBytesOverhead: r.DestBytesOverhead,
+			FeeTokenAmount:    big.NewInt(r.FeeTokenAmount),
+		})
+	}
+	return out
 }
 
 // sacTransferOrFatal invokes Soroban token transfer(from, to, amount) on the SAC (deployer must be `from`).

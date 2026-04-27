@@ -94,6 +94,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "CVRTAG"
+                      },
+                      "val": {
+                        "bytes": "e9a05a20"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "DYNCFG"
                       },
                       "val": {

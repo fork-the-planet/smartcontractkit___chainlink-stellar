@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes};
+use soroban_sdk::{contracttype, Address, Bytes, Vec};
 
 // ============================================================
 // Rate Limit Types (EVM RateLimiter.sol parity)
@@ -97,11 +97,29 @@ pub struct ReleaseOrMintOut {
     pub destination_amount: i128,
 }
 
+/// Direction of a CCIP transfer for pool hooks and CCV resolution (EVM `IPoolV2.MessageDirection`).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
+}
+
 /// Fee result returned by a pool's `get_fee` method.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PoolFeeResult {
     pub fee_usd_cents: u32,
+}
+
+/// Declarative CCV requirements returned by `get_required_ccvs`, mirroring
+/// `common_interfaces::token_pool::PoolRequiredCCVs`. `include_defaults` stands in for EVM's
+/// `address(0)` sentinel in `_getCCVsForPool` (Stellar has no zero address).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolRequiredCCVs {
+    pub ccvs: Vec<Address>,
+    pub include_defaults: bool,
 }
 
 /// Per-chain fee configuration set by the pool owner.
@@ -159,7 +177,15 @@ pub enum PoolDataKey {
     FtfInboundRateLimit(u64),
     /// Allowed finality configuration (EVM `s_allowedFinalityConfig`). Stored as `u32` matching `bytes4`.
     AllowedFinalityConfig,
+    /// CCIP ramp registry — same ramp tables as the Router, readable without re-entering the Router.
+    RampRegistry,
+    /// Optional advanced pool hooks contract (EVM `s_advancedPoolHooks`).
+    /// When set, pre-flight and post-flight checks are delegated to this address.
+    AdvancedPoolHooks,
     /// Per-chain fee config set by pool owner. Allows pools to charge additional
     /// fees on top of the protocol fee.
     PoolFeeConfig(u64),
+    /// CCIP Router address (EVM `s_router`). Stored separately from the ramp registry;
+    /// ramp authorization uses [`PoolDataKey::RampRegistry`].
+    Router,
 }
