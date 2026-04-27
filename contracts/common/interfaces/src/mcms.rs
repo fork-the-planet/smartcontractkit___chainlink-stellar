@@ -331,6 +331,7 @@ pub enum McmsError {
     InvalidUint40 = 49,
     InvalidInvokeData = 50,
     NonZeroValue = 51,
+    MissingRootMetadata = 52,
 }
 #[soroban_sdk::contractevent(topics = ["auth_RoleGranted"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

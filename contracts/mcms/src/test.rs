@@ -6,7 +6,9 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, BytesN, Env, Vec as SorobanVec};
 
 use crate::error::McmsError;
-use crate::types::{MerkleProof, SignatureVec, SignerAddresses, SignerGroups, StellarOp, StellarRootMetadata};
+use crate::types::{
+    MerkleProof, SignatureVec, SignerAddresses, SignerGroups, StellarOp, StellarRootMetadata,
+};
 use crate::{McmsContract, McmsContractClient};
 
 const NUM_GROUP_BYTES: usize = 32;
@@ -175,8 +177,12 @@ fn test_set_root_fails_without_config() {
         post_op_count: 1,
         override_previous_root: false,
     };
-    let metadata_proof = MerkleProof { inner: SorobanVec::new(&env) };
-    let signatures = SignatureVec { inner: SorobanVec::new(&env) };
+    let metadata_proof = MerkleProof {
+        inner: SorobanVec::new(&env),
+    };
+    let signatures = SignatureVec {
+        inner: SorobanVec::new(&env),
+    };
 
     assert!(matches!(
         client.try_set_root(&root, &0u32, &metadata, &metadata_proof, &signatures),
@@ -197,10 +203,20 @@ fn test_set_config_clear_root_resets_state() {
     client.initialize(&owner, &chain);
 
     let s = signer_a(&env);
-    let addrs = SignerAddresses { inner: SorobanVec::from_array(&env, [s]) };
-    let groups = SignerGroups { inner: SorobanVec::from_array(&env, [0u32]) };
+    let addrs = SignerAddresses {
+        inner: SorobanVec::from_array(&env, [s]),
+    };
+    let groups = SignerGroups {
+        inner: SorobanVec::from_array(&env, [0u32]),
+    };
 
-    client.set_config(&addrs, &groups, &one_of_one_quorum(&env), &all_zero_parents(&env), &true);
+    client.set_config(
+        &addrs,
+        &groups,
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &true,
+    );
 
     let (root, valid_until) = client.get_root();
     assert_eq!(root, BytesN::from_array(&env, &[0u8; 32]));

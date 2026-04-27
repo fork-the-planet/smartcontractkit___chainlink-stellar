@@ -1286,6 +1286,7 @@ const (
 	McmsErrorInvalidUint40                                = 49
 	McmsErrorInvalidInvokeData                            = 50
 	McmsErrorNonZeroValue                                 = 51
+	McmsErrorMissingRootMetadata                          = 52
 )
 
 // McmsErrorMessage returns a human-readable message for error codes.
@@ -1324,6 +1325,7 @@ var McmsErrorMessage = map[int]string{
 	49: "invalid uint40",
 	50: "invalid invoke data",
 	51: "non zero value",
+	52: "missing root metadata",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.
