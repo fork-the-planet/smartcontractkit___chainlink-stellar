@@ -9,12 +9,19 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // DevenvTestTokenPoolQualifier is the datastore qualifier for the lock-release test pool.
 const DevenvTestTokenPoolQualifier = "TEST"
+
+// initialPoolLiquidity is the amount of SAC base units seeded into the
+// lock-release pool so that inbound release_or_mint calls have liquidity.
+// 100 tokens at 7 decimals = 1_000_000_000 base units.
+const initialPoolLiquidity int64 = 1_000_000_000
 
 // DeployLockReleaseTestTokenPool deploys the lock-release pool and, when Friendbot is
 // available, creates the test SAC token, initializes the pool, and registers token+pool
@@ -62,7 +69,16 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 		return fmt.Errorf("failed to initialize pool with token: %w", err)
 	}
 
+	// Fund the pool with SAC liquidity so inbound release_or_mint calls succeed.
 	deployerAddr := h.DeployerKeypair().Address()
+	if err := fundPoolWithSAC(ctx, h.Deployer(), tokenContractID, deployerAddr, poolContractID, initialPoolLiquidity); err != nil {
+		return fmt.Errorf("fund pool with SAC liquidity: %w", err)
+	}
+	h.Logger().Info().
+		Str("pool", poolContractID).
+		Int64("amount", initialPoolLiquidity).
+		Msg("Funded lock-release pool with SAC liquidity")
+
 	if err := tarClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
 		return fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
 	}
@@ -79,9 +95,25 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 	return nil
 }
 
-// LockReleasePoolAddressRefDataStore returns a sealed datastore containing only the
-// lock-release pool AddressRef for devenv (qualifier DevenvTestTokenPoolQualifier).
-func LockReleasePoolAddressRefDataStore(chainSelector uint64, poolContractID string) (datastore.DataStore, error) {
+// fundPoolWithSAC transfers SAC tokens from the deployer to the pool contract,
+// providing liquidity for inbound release_or_mint operations.
+func fundPoolWithSAC(ctx context.Context, deployer *stellardeployment.Deployer, sacContractID, fromStrkey, poolStrkey string, amount int64) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(fromStrkey),
+		scval.AddressToScVal(poolStrkey),
+		scval.I128ToScVal(amount),
+	}
+	_, err := deployer.InvokeContract(ctx, sacContractID, "transfer", args)
+	if err != nil {
+		return fmt.Errorf("SAC transfer %s -> %s amount=%d: %w", fromStrkey, poolStrkey, amount, err)
+	}
+	return nil
+}
+
+// LockReleasePoolAddressRefDataStore returns a sealed datastore containing the
+// lock-release pool AddressRef and, when tokenContractID is non-empty, the
+// test token AddressRef for devenv (qualifier DevenvTestTokenPoolQualifier).
+func LockReleasePoolAddressRefDataStore(chainSelector uint64, poolContractID, tokenContractID string) (datastore.DataStore, error) {
 	ds := datastore.NewMemoryDataStore()
 	poolHex, err := stellarutil.StrkeyToHex(poolContractID)
 	if err != nil {
@@ -95,6 +127,21 @@ func LockReleasePoolAddressRefDataStore(chainSelector uint64, poolContractID str
 		Qualifier:     DevenvTestTokenPoolQualifier,
 	}); err != nil {
 		return nil, fmt.Errorf("add pool address ref: %w", err)
+	}
+	if tokenContractID != "" {
+		tokenHex, err := stellarutil.StrkeyToHex(tokenContractID)
+		if err != nil {
+			return nil, fmt.Errorf("convert token address: %w", err)
+		}
+		if err := ds.AddressRefStore.Add(datastore.AddressRef{
+			Address:       tokenHex,
+			ChainSelector: chainSelector,
+			Type:          datastore.ContractType(TestTokenContractType),
+			Version:       semver.MustParse("1.0.0"),
+			Qualifier:     DevenvTestTokenPoolQualifier,
+		}); err != nil {
+			return nil, fmt.Errorf("add token address ref: %w", err)
+		}
 	}
 	return ds.Seal(), nil
 }

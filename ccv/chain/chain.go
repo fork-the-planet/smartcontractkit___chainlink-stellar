@@ -33,6 +33,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
+	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/changesets"
@@ -88,6 +89,7 @@ func generateAccountAddress(seed string) (string, error) {
 var (
 	_ cciptestinterfaces.CCIP17              = &Chain{}
 	_ cciptestinterfaces.CCIP17Configuration = &Chain{}
+	_ cciptestinterfaces.TokenConfigProvider = &Chain{}
 )
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
@@ -350,26 +352,10 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("apply router ramp updates in post-connect: %w", err)
 	}
 
-	// Configure pool chain updates so the pool accepts lock/burn and
-	// release/mint for each remote chain. The remote pool and token addresses
-	// are placeholders (zero bytes) because the EVM-side pool pairing is
-	// handled separately by the CCV token config pipeline.
-	// TODO(NONEVM-3946): populate real remote pool/token addresses once
-	// cross-chain pool pairing is implemented in PostConnect.
 	if c.tokenPoolClient != nil && c.testTokenContractID != "" {
-		var chainUpdates []tokenpoolbindings.ChainUpdate
-		for _, rs := range remoteSelectors {
-			remotePoolLen, addrErr := addressBytesLengthForSelector(rs)
-			if addrErr != nil {
-				return fmt.Errorf("address bytes length for %d: %w", rs, addrErr)
-			}
-			chainUpdates = append(chainUpdates, tokenpoolbindings.ChainUpdate{
-				RemoteChainSelector:       rs,
-				RemotePoolAddresses:       make([]byte, remotePoolLen),
-				RemoteTokenAddress:        make([]byte, remotePoolLen),
-				OutboundRateLimiterConfig: tokenpoolbindings.RateLimitConfig{},
-				InboundRateLimiterConfig:  tokenpoolbindings.RateLimitConfig{},
-			})
+		chainUpdates, err := c.buildPoolChainUpdates(env.DataStore, remoteSelectors)
+		if err != nil {
+			return fmt.Errorf("build pool chain updates: %w", err)
 		}
 		if err := c.tokenPoolClient.ApplyChainUpdates(context.Background(), chainUpdates, nil); err != nil {
 			return fmt.Errorf("apply pool chain updates in post-connect: %w", err)
@@ -463,11 +449,57 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	if c.tokenPoolContractID == "" {
 		return nil, nil
 	}
-	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID)
+	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
 	if err != nil {
 		return nil, err
 	}
 	return ds, nil
+}
+
+// ---------------------------------------------------------------------------
+// TokenConfigProvider implementation
+// ---------------------------------------------------------------------------
+
+// GetSupportedPools returns the pool types and versions the Stellar chain can
+// deploy. Returning nil keeps Stellar out of the ComputeTokenCombinations matrix
+// (Stellar pool pairing is handled in PostConnect, not via the shared
+// TokenExpansion / ConfigureTokensForTransfers pipeline).
+func (c *Chain) GetSupportedPools() []devenvcommon.PoolCapability {
+	return nil
+}
+
+// GetTokenExpansionConfigs returns nil because Stellar deploys its own test
+// token and lock-release pool in PostDeployContractsForSelector.
+func (c *Chain) GetTokenExpansionConfigs(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []devenvcommon.TokenCombination,
+) ([]tokenscore.TokenExpansionInputPerChain, error) {
+	return nil, nil
+}
+
+// PostTokenDeploy is a no-op; Stellar handles post-deploy work in
+// PostDeployContractsForSelector (FeeQuoter pricing, TAR registration).
+func (c *Chain) PostTokenDeploy(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []datastore.AddressRef,
+) error {
+	return nil
+}
+
+// GetTokenTransferConfigs returns nil because Stellar-EVM cross-chain pool
+// pairing is wired in PostConnect rather than through the shared
+// ConfigureAllTokenTransfers pipeline. The shared pipeline requires strict
+// symmetric grouping by pool identity, which does not align with the
+// asymmetric LockRelease (Stellar) <-> BurnMint (EVM) pairing model.
+func (c *Chain) GetTokenTransferConfigs(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []uint64,
+	_ *ccipOffchain.EnvironmentTopology,
+) ([]tokenscore.TokenTransferConfig, error) {
+	return nil, nil
 }
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
@@ -1359,6 +1391,106 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 	}
 
 	return nil
+}
+
+// remotePoolContractTypes lists pool contract types to probe when looking up
+// the counterpart pool on a remote chain. Ordered by preference (burn-mint is
+// the natural counterpart for a lock-release pool).
+var remotePoolContractTypes = []string{
+	"BurnMintTokenPool",
+	"LockReleaseTokenPool",
+}
+
+// remoteTokenContractTypes lists token contract types used by EVM devenv
+// deployments. Order mirrors deployment likelihood.
+var remoteTokenContractTypes = []string{
+	"BurnMintERC20WithDripToken",
+	"BurnMintERC20WithDrip",
+	"BurnMintERC20Token",
+}
+
+// resolveRemotePoolAndToken finds the first matching pool on the remote chain
+// and a token with the same qualifier. Falls back to zero bytes if nothing is
+// found (the remote chain may not have deployed a pool yet).
+func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (poolBytes, tokenBytes []byte, err error) {
+	addrLen, err := addressBytesLengthForSelector(remoteSelector)
+	if err != nil {
+		return nil, nil, err
+	}
+	zeroPad := func() []byte { return make([]byte, addrLen) }
+
+	allRefs, err := ds.Addresses().Fetch()
+	if err != nil {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	// Index refs by (type, qualifier) for the remote chain.
+	type refKey struct {
+		ct        string
+		qualifier string
+	}
+	byKey := make(map[refKey]datastore.AddressRef)
+	for _, ref := range allRefs {
+		if ref.ChainSelector != remoteSelector {
+			continue
+		}
+		byKey[refKey{string(ref.Type), ref.Qualifier}] = ref
+	}
+
+	// Find the first pool match.
+	var poolRef datastore.AddressRef
+	poolFound := false
+	for _, ct := range remotePoolContractTypes {
+		for key, ref := range byKey {
+			if key.ct == ct {
+				poolRef = ref
+				poolFound = true
+				break
+			}
+		}
+		if poolFound {
+			break
+		}
+	}
+	if !poolFound {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+	if err != nil {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	// Find a token with the same qualifier as the pool.
+	tokenBytes = zeroPad()
+	for _, ct := range remoteTokenContractTypes {
+		if ref, ok := byKey[refKey{ct, poolRef.Qualifier}]; ok {
+			if tb, err := addressBytesForSelector(ref, remoteSelector); err == nil {
+				tokenBytes = tb
+				break
+			}
+		}
+	}
+
+	return poolBytes, tokenBytes, nil
+}
+
+func (c *Chain) buildPoolChainUpdates(ds datastore.DataStore, remoteSelectors []uint64) ([]tokenpoolbindings.ChainUpdate, error) {
+	var updates []tokenpoolbindings.ChainUpdate
+	for _, rs := range remoteSelectors {
+		remotePoolBytes, remoteTokenBytes, err := resolveRemotePoolAndToken(ds, rs)
+		if err != nil {
+			return nil, fmt.Errorf("resolve remote pool/token for %d: %w", rs, err)
+		}
+		updates = append(updates, tokenpoolbindings.ChainUpdate{
+			RemoteChainSelector:       rs,
+			RemotePoolAddresses:       remotePoolBytes,
+			RemoteTokenAddress:        remoteTokenBytes,
+			OutboundRateLimiterConfig: tokenpoolbindings.RateLimitConfig{},
+			InboundRateLimiterConfig:  tokenpoolbindings.RateLimitConfig{},
+		})
+	}
+	return updates, nil
 }
 
 func (c *Chain) buildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error) {
