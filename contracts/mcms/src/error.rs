@@ -41,6 +41,7 @@ pub enum McmsError {
     InvalidUint40 = 49,
     InvalidInvokeData = 50,
     NonZeroValue = 51,
+    MissingRootMetadata = 52,
 }
 
 impl From<common_error::CCIPError> for McmsError {

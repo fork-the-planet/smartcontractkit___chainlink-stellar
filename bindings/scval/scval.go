@@ -287,6 +287,7 @@ func Uint64FromScVal(val xdr.ScVal) (uint64, error) {
 	return uint64(u64), nil
 }
 
+// Uint32FromScVal extracts a uint32 from an xdr.ScVal.
 func Uint32FromScVal(val xdr.ScVal) (uint32, error) {
 	u32, ok := val.GetU32()
 	if !ok {

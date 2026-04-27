@@ -24,7 +24,7 @@ use crypto::{cmp_bytes32, recover_eth_address_vrs, verify_merkle_proof};
 use events::{ConfigSetEvent, NewRootEvent, OpExecutedEvent};
 use soroban_sdk::{
     address_payload::AddressPayload, contract, contractimpl, symbol_short, xdr::FromXdr, Address,
-    Bytes, BytesN, Env, Map, Symbol, TryFromVal, Val, Vec,
+    Bytes, BytesN, Env, InvokeError, Map, Symbol, TryFromVal, Val, Vec,
 };
 use stellar_strkey::Contract as StrkeyContract;
 
@@ -288,7 +288,7 @@ impl McmsContract {
             .storage()
             .persistent()
             .get(&ROOT_META_STORE)
-            .ok_or(McmsError::MissingConfig)?;
+            .ok_or(McmsError::MissingRootMetadata)?;
         let mut exp: ExpiringRootAndOpCount = env
             .storage()
             .persistent()
@@ -337,13 +337,19 @@ impl McmsContract {
             .op_count
             .checked_add(1)
             .ok_or(McmsError::NonceOverflow)?;
-        env.storage().persistent().set(&EXPIRING_ROOT, &exp);
 
         let target = contract_address_from_contract_id(&env, &op.to);
         let (fn_sym, args) = decode_invoke(&env, &op.data)?;
 
-        // Return type is Val to accept any return value from the governed contract.
-        let _: Val = env.invoke_contract(&target, &fn_sym, args);
+        // try_invoke_contract lets us surface callee failures as CallReverted rather than trapping.
+        // Persist the incremented op_count only after a successful invoke so a failed call does
+        // not consume the nonce.
+        match env.try_invoke_contract::<Val, InvokeError>(&target, &fn_sym, args) {
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => return Err(McmsError::CallReverted),
+        }
+
+        env.storage().persistent().set(&EXPIRING_ROOT, &exp);
 
         OpExecutedEvent {
             nonce: op.nonce,
@@ -399,7 +405,7 @@ impl McmsContract {
         env.storage()
             .persistent()
             .get(&ROOT_META_STORE)
-            .ok_or(McmsError::MissingConfig)
+            .ok_or(McmsError::MissingRootMetadata)
     }
 
     pub fn chain_network_id(env: Env) -> Result<BytesN<32>, McmsError> {
