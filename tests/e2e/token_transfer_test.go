@@ -345,7 +345,12 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 			Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
 			Msg("Token transfer message sent from EVM")
 
-		sentEvent, err := evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
+		messageKey := cciptestinterfaces.MessageEventKey{
+			SeqNum:    uint64(sendResult.Message.SequenceNumber),
+			MessageID: sendResult.MessageID,
+		}
+
+		sentEvent, err := evmChain.ConfirmSendOnSource(ctx, stellarDetails.ChainSelector, messageKey, tokenTransferSentTimeout)
 		require.NoError(t, err)
 		messageID := sentEvent.MessageID
 		l.Info().
@@ -379,7 +384,7 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 			Str("messageID", hex.EncodeToString(messageID[:])).
 			Msg("Message verified and aggregated successfully")
 
-		execEvent, err := stellarChain.WaitOneExecEventBySeqNo(ctx, evmDetails.ChainSelector, seqNo, execTimeout)
+		execEvent, err := stellarChain.ConfirmExecOnDest(ctx, evmDetails.ChainSelector, messageKey, execTimeout)
 		require.NoError(t, err)
 		require.Equalf(t, cciptestinterfaces.ExecutionStateSuccess, execEvent.State,
 			"message should have been successfully executed, return data: %x", execEvent.ReturnData)
@@ -454,10 +459,10 @@ func TestEVMToStellarTokenTransferFees(t *testing.T) {
 			Str("sender_token", senderTokenBefore.String()).
 			Msg("EVM sender balance before transfer")
 
-		seqNo, err := evmChain.GetExpectedNextSequenceNumber(ctx, stellarDetails.ChainSelector)
-		require.NoError(t, err)
+		// seqNo, err := evmChain.GetExpectedNextSequenceNumber(ctx, stellarDetails.ChainSelector)
+		// require.NoError(t, err)
 
-		_, err = evmChain.SendMessage(ctx, stellarDetails.ChainSelector,
+		messageSentEvent, err := evmChain.SendMessage(ctx, stellarDetails.ChainSelector,
 			cciptestinterfaces.MessageFields{
 				Receiver: stellarReceiver,
 				Data:     []byte("fee-test-evm-to-stellar"),
@@ -473,7 +478,11 @@ func TestEVMToStellarTokenTransferFees(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		_, err = evmChain.WaitOneSentEventBySeqNo(ctx, stellarDetails.ChainSelector, seqNo, tokenTransferSentTimeout)
+		messageKey := cciptestinterfaces.MessageEventKey{
+			SeqNum:    uint64(messageSentEvent.Message.SequenceNumber),
+			MessageID: messageSentEvent.MessageID,
+		}
+		_, err = evmChain.ConfirmSendOnSource(ctx, stellarDetails.ChainSelector, messageKey, tokenTransferSentTimeout)
 		require.NoError(t, err)
 
 		senderTokenAfter, err := evmChain.GetTokenBalance(ctx, evmSender, evmToken)
