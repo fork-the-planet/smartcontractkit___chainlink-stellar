@@ -1871,6 +1871,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelock"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "common-guard",
+ "soroban-sdk",
+ "stellar-strkey 0.0.16",
+]
+
+[[package]]
 name = "token-admin-registry"
 version = "0.0.0"
 dependencies = [

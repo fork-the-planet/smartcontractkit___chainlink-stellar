@@ -144,6 +144,12 @@ func generateFromScValField(b *strings.Builder, f Field, target string) {
 		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
 		b.WriteString("\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t%s = v\n", target))
+	case f.Type == "soroban_sdk::Symbol":
+		b.WriteString("\t\t\tv, err := scval.SymbolFromScVal(entry.Val)\n")
+		b.WriteString("\t\t\tif err != nil {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"%s: %%w\", err)\n", f.Name))
+		b.WriteString("\t\t\t}\n")
+		b.WriteString(fmt.Sprintf("\t\t\t%s = v\n", target))
 	case f.Type == "u128":
 		b.WriteString("\t\t\tv, err := scval.U128FromScVal(entry.Val)\n")
 		b.WriteString("\t\t\tif err != nil {\n")
@@ -417,6 +423,8 @@ func getToScValConverter(rustType, expr string) string {
 		return fmt.Sprintf("scval.BytesToScVal(%s)", expr)
 	case "soroban_sdk::String":
 		return fmt.Sprintf("scval.StringToScVal(%s)", expr)
+	case "soroban_sdk::Symbol":
+		return fmt.Sprintf("scval.SymbolToScVal(%s)", expr)
 	}
 
 	if strings.HasPrefix(rustType, "Option<") && strings.Contains(rustType, "soroban_sdk::Address") {
