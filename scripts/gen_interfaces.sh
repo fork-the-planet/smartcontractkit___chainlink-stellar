@@ -50,6 +50,7 @@ CONTRACTS=(
   "pools_token_lock_box|token_lock_box|TokenLockBox|0"
   "pools_siloed_lock_release_pool|siloed_lock_release_pool|SiloedLockReleasePool|0"
   "mcms|mcms|Mcms|0"
+  "timelock|timelock|Timelock|0"
 )
 
 # Remove the WASM const block from generated output (interfaces don't need it)

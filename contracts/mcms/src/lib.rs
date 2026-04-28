@@ -19,12 +19,13 @@ use abi_encoding::{
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
+use common_helpers::soroban_invoke::decode_invoke_payload;
 use constants::{domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD};
 use crypto::{cmp_bytes32, recover_eth_address_vrs, verify_merkle_proof};
 use events::{ConfigSetEvent, NewRootEvent, OpExecutedEvent};
 use soroban_sdk::{
-    address_payload::AddressPayload, contract, contractimpl, symbol_short, xdr::FromXdr, Address,
-    Bytes, BytesN, Env, InvokeError, Map, Symbol, TryFromVal, Val, Vec,
+    address_payload::AddressPayload, contract, contractimpl, symbol_short, Address, BytesN, Env,
+    InvokeError, Map, Symbol, Val, Vec,
 };
 use stellar_strkey::Contract as StrkeyContract;
 
@@ -339,7 +340,8 @@ impl McmsContract {
             .ok_or(McmsError::NonceOverflow)?;
 
         let target = contract_address_from_contract_id(&env, &op.to);
-        let (fn_sym, args) = decode_invoke(&env, &op.data)?;
+        let (fn_sym, args) =
+            decode_invoke_payload(&env, &op.data).map_err(|_| McmsError::InvalidInvokeData)?;
 
         // try_invoke_contract lets us surface callee failures as CallReverted rather than trapping.
         // Persist the incremented op_count only after a successful invoke so a failed call does
@@ -549,43 +551,6 @@ fn verify_signatures(
     Ok(())
 }
 
-/// Decode `op.data` into `(function_symbol, args)` for `env.invoke_contract`.
-///
-/// `data` must be XDR-encoded as an `ScVal::Vec` whose first element is an `ScSymbol`
-/// (the function name) and whose remaining elements are the arguments passed verbatim
-/// to `invoke_contract`.  Off-chain producers construct:
-/// ```text
-/// ScVal.scvVec([ScVal.scvSymbol("fn_name"), arg0, arg1, ...]).toXDR()
-/// ```
-/// The on-chain decode calls `env.deserialize_from_bytes` (a host built-in),
-/// so there is no custom XDR parser inside the wasm.
-fn decode_invoke(env: &Env, data: &Bytes) -> Result<(Symbol, Vec<Val>), McmsError> {
-    if data.len() == 0 {
-        return Err(McmsError::InvalidInvokeData);
-    }
-
-    // Deserialise as Vec<Val>; the host decodes the XDR ScVec via deserialize_from_bytes.
-    let payload = Vec::<Val>::from_xdr(env, data).map_err(|_| McmsError::InvalidInvokeData)?;
-
-    if payload.len() == 0 {
-        return Err(McmsError::InvalidInvokeData);
-    }
-
-    // First element must be an ScSymbol.
-    let fn_sym = Symbol::try_from_val(env, &payload.get(0).unwrap())
-        .map_err(|_| McmsError::InvalidInvokeData)?;
-
-    // Remaining elements are the call arguments.
-    let mut args: Vec<Val> = Vec::new(env);
-    let mut i = 1u32;
-    while i < payload.len() {
-        args.push_back(payload.get(i).unwrap());
-        i += 1;
-    }
-
-    Ok((fn_sym, args))
-}
-
 /// Extend the TTL of every persistent storage key that currently exists, plus instance storage.
 ///
 /// Soroban persistent entries are archived if their TTL reaches zero.  For MCMS the most
@@ -635,103 +600,6 @@ fn contract_id_of_address(addr: &Address) -> BytesN<32> {
     match addr.to_payload() {
         Some(AddressPayload::ContractIdHash(id)) => id,
         _ => BytesN::from_array(addr.env(), &[0u8; 32]),
-    }
-}
-
-#[cfg(test)]
-mod decode_invoke_tests {
-    use soroban_sdk::xdr::ToXdr;
-    use soroban_sdk::{Bytes, Env, IntoVal, Symbol, TryFromVal, Val, Vec};
-
-    use super::{decode_invoke, McmsError};
-
-    #[test]
-    fn empty_data_is_invalid() {
-        let env = Env::default();
-        assert!(matches!(
-            decode_invoke(&env, &Bytes::new(&env)),
-            Err(McmsError::InvalidInvokeData)
-        ));
-    }
-
-    #[test]
-    fn symbol_only_payload_no_args() {
-        let env = Env::default();
-        let fn_sym = Symbol::new(&env, "transfer");
-        let mut v: Vec<Val> = Vec::new(&env);
-        v.push_back(fn_sym.clone().into_val(&env));
-        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
-        assert_eq!(sym, fn_sym);
-        assert_eq!(args.len(), 0);
-    }
-
-    #[test]
-    fn symbol_plus_args_roundtrips() {
-        let env = Env::default();
-        let fn_sym = Symbol::new(&env, "set_value");
-        let mut v: Vec<Val> = Vec::new(&env);
-        v.push_back(fn_sym.clone().into_val(&env));
-        v.push_back(42u32.into_val(&env));
-        v.push_back(true.into_val(&env));
-        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
-        assert_eq!(sym, fn_sym);
-        assert_eq!(args.len(), 2);
-        assert_eq!(
-            u32::try_from_val(&env, &args.get(0).unwrap()).unwrap(),
-            42u32
-        );
-        assert_eq!(
-            bool::try_from_val(&env, &args.get(1).unwrap()).unwrap(),
-            true
-        );
-    }
-
-    #[test]
-    fn empty_vec_payload_is_invalid() {
-        let env = Env::default();
-        let empty: Vec<Val> = Vec::new(&env);
-        assert!(matches!(
-            decode_invoke(&env, &empty.to_xdr(&env)),
-            Err(McmsError::InvalidInvokeData)
-        ));
-    }
-
-    #[test]
-    fn non_symbol_first_element_is_invalid() {
-        let env = Env::default();
-        let mut v: Vec<Val> = Vec::new(&env);
-        v.push_back(99u32.into_val(&env)); // integer, not a Symbol
-        assert!(matches!(
-            decode_invoke(&env, &v.to_xdr(&env)),
-            Err(McmsError::InvalidInvokeData)
-        ));
-    }
-
-    /// Invalid XDR bytes cause a host trap rather than a Rust `Err`. In production
-    /// this means the transaction fails; in tests it surfaces as a panic.
-    #[test]
-    #[should_panic]
-    fn garbage_bytes_cause_host_trap() {
-        let env = Env::default();
-        let garbage = Bytes::from_array(&env, &[0xff, 0xfe, 0x00, 0x01]);
-        let _ = decode_invoke(&env, &garbage);
-    }
-
-    /// Round-trip: to_xdr then from_xdr should be idempotent for the args.
-    #[test]
-    fn address_arg_roundtrips() {
-        let env = Env::default();
-        use soroban_sdk::testutils::Address as _;
-        use soroban_sdk::Address;
-        let addr = Address::generate(&env);
-        let fn_sym = Symbol::new(&env, "set_owner");
-        let mut v: Vec<Val> = Vec::new(&env);
-        v.push_back(fn_sym.clone().into_val(&env));
-        v.push_back(addr.clone().into_val(&env));
-        let (sym, args) = decode_invoke(&env, &v.to_xdr(&env)).unwrap();
-        assert_eq!(sym, fn_sym);
-        let decoded = Address::try_from_val(&env, &args.get(0).unwrap()).unwrap();
-        assert_eq!(decoded, addr);
     }
 }
 

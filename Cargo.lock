@@ -1001,6 +1001,7 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "common-helpers",
  "soroban-sdk",
  "stellar-strkey 0.0.16",
 ]
@@ -1868,6 +1869,17 @@ checksum = "71e552d1249bf61ac2a52db88179fd0673def1e1ad8243a00d9ec9ed71fee3dd"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "timelock"
+version = "0.0.0"
+dependencies = [
+ "common-error",
+ "common-guard",
+ "common-helpers",
+ "soroban-sdk",
+ "stellar-strkey 0.0.16",
 ]
 
 [[package]]
