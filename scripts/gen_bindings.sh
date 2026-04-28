@@ -41,6 +41,7 @@ CONTRACTS=(
   "token_pool|TokenPool|token_pool|0"
   "token_lock_box|TokenLockBox|token_lock_box|0"
   "siloed_lock_release_pool|SiloedLockReleasePool|siloed_lock_release_pool|0"
+  "mcms|Mcms|mcms|0"
 )
 
 # Extract TokenAmount and StellarToAnyMessage structs from committee_verifier for contracts that use common_message

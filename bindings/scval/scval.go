@@ -287,6 +287,15 @@ func Uint64FromScVal(val xdr.ScVal) (uint64, error) {
 	return uint64(u64), nil
 }
 
+// Uint32FromScVal extracts a uint32 from an xdr.ScVal.
+func Uint32FromScVal(val xdr.ScVal) (uint32, error) {
+	u32, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("not a u32 type: %v", val.Type)
+	}
+	return uint32(u32), nil
+}
+
 // BytesFromScVal extracts a byte slice from an xdr.ScVal containing Bytes.
 func BytesFromScVal(val xdr.ScVal) ([]byte, error) {
 	bytes, ok := val.GetBytes()

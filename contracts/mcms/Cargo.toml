@@ -1,0 +1,19 @@
+[package]
+name = "mcms"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["hazmat-address"] }
+stellar-strkey = { workspace = true }
+common-authorization = { workspace = true }
+common-error = { workspace = true }
+common-guard = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

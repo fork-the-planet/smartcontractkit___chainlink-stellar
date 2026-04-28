@@ -199,6 +199,12 @@ func generateVecItemParse(b *strings.Builder, innerType, target string) {
 		b.WriteString("\t\t\t\t\treturn nil, err\n")
 		b.WriteString("\t\t\t\t}\n")
 		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
+	case "u32":
+		b.WriteString("\t\t\t\tv, err := scval.Uint32FromScVal(item)\n")
+		b.WriteString("\t\t\t\tif err != nil {\n")
+		b.WriteString("\t\t\t\t\treturn nil, err\n")
+		b.WriteString("\t\t\t\t}\n")
+		b.WriteString(fmt.Sprintf("\t\t\t\t%s = v\n", target))
 	case "soroban_sdk::Address":
 		b.WriteString("\t\t\t\tv, err := scval.AddressFromScVal(item)\n")
 		b.WriteString("\t\t\t\tif err != nil {\n")

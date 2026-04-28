@@ -995,6 +995,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcms"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "soroban-sdk",
+ "stellar-strkey 0.0.16",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
