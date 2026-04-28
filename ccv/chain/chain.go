@@ -37,9 +37,9 @@ import (
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/changesets"
-	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
@@ -499,7 +499,7 @@ func (c *Chain) GetTokenTransferConfigs(
 	_ *deployment.Environment,
 	_ uint64,
 	_ []uint64,
-	_ *ccipOffchain.EnvironmentTopology,
+	_ *ccvdeployment.EnvironmentTopology,
 ) ([]tokenscore.TokenTransferConfig, error) {
 	return nil, nil
 }
