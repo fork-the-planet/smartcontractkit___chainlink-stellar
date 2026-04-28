@@ -24,11 +24,19 @@
 //! - Operations are marked DONE **before** executing calls to prevent re-entrancy
 //!   (stricter than Solidity which marks DONE after). On any `CallReverted` the
 //!   entire transaction reverts, rolling back the DONE mark.
+//! - If decoding invoke `data` or the target invocation **traps** (Soroban host fault),
+//!   the whole transaction reverts and no storage changes are committed — including
+//!   the DONE mark and any partial call side effects.
 //! - Blocked selectors are checked at schedule time only (not at execute time),
 //!   mirroring Solidity semantics. The bypasser ignores blocked selectors.
 //! - TTL expiry of a per-operation timestamp entry silently drops that operation’s state.
 //!   Each entry is refreshed when read/written; call `extend_all_ttls` for fixed keys,
 //!   `extend_op_time_ttl(id)` for rarely queried ids, or rely on normal activity.
+//!
+//! # Invoke payloads (`Call.data`)
+//! Decoding uses [`common_helpers::soroban_invoke`]; recoverable failures surface as
+//! [`TimelockError::InvalidInvokeData`]. Some malformed XDR may **trap** instead of
+//! returning `Err` (see that module).
 
 #![no_std]
 
@@ -45,6 +53,7 @@ pub use types::{
 };
 
 use common_guard::initializable::Initializable;
+use common_helpers::soroban_invoke::decode_invoke_payload;
 use events::{
     BypasserCallExecutedEvent, CallExecutedEvent, CallScheduledEvent, CancelledEvent,
     FunctionSelectorBlockedEvent, FunctionSelectorUnblockedEvent, MinDelayChangeEvent,
@@ -269,6 +278,10 @@ impl TimelockContract {
     /// Security: the operation is marked DONE **before** executing calls to
     /// prevent re-entrancy. A `CallReverted` return causes the full transaction
     /// to revert, rolling back the DONE mark.
+    ///
+    /// Host **traps** during XDR decode of `Call.data` or during target invocation
+    /// also abort the entire transaction with no durable state change (same net
+    /// effect as EVM revert).
     pub fn execute_batch(
         env: Env,
         caller: Address,
@@ -599,38 +612,21 @@ fn hash_single_call(env: &Env, call: &Call) -> BytesN<32> {
 /// Execute a single call by decoding its XDR data and invoking the target contract.
 fn execute_call(env: &Env, call: &Call) -> Result<(), TimelockError> {
     let target = contract_address_from_contract_id(env, &call.to);
-    let (fn_sym, args) = decode_invoke(env, &call.data)?;
+    let (fn_sym, args) =
+        decode_invoke_payload(env, &call.data).map_err(|_| TimelockError::InvalidInvokeData)?;
     match env.try_invoke_contract::<Val, InvokeError>(&target, &fn_sym, args) {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(_)) | Err(_) => Err(TimelockError::CallReverted),
     }
 }
 
-/// Decode `data` as XDR `ScVec([ScSymbol(fn_name), arg0, arg1, …])`.
+/// Extract the function name from XDR call data without building the full arg vec.
 ///
-/// Returns `InvalidInvokeData` if the data is empty, not XDR-decodable,
-/// or the first element is not a Symbol.
-fn decode_invoke(env: &Env, data: &Bytes) -> Result<(Symbol, Vec<Val>), TimelockError> {
-    if data.len() == 0 {
-        return Err(TimelockError::InvalidInvokeData);
-    }
-    let payload = Vec::<Val>::from_xdr(env, data).map_err(|_| TimelockError::InvalidInvokeData)?;
-    if payload.len() == 0 {
-        return Err(TimelockError::InvalidInvokeData);
-    }
-    let fn_sym = Symbol::try_from_val(env, &payload.get(0).unwrap())
-        .map_err(|_| TimelockError::InvalidInvokeData)?;
-    let mut args: Vec<Val> = Vec::new(env);
-    let mut i = 1u32;
-    while i < payload.len() {
-        args.push_back(payload.get(i).unwrap());
-        i += 1;
-    }
-    Ok((fn_sym, args))
-}
-
-/// Extract the function name from XDR call data without full decode.
-/// Returns `None` if data is empty or not decodable.
+/// Returns `None` if data is empty, [`Vec::from_xdr`] returns `Err`, the vec is empty,
+/// or the first element is not a [`Symbol`].
+///
+/// **Trap caveat:** like [`common_helpers::soroban_invoke::decode_invoke_payload`], some
+/// malformed XDR may cause a host trap instead of `None`.
 fn decode_function_name(env: &Env, data: &Bytes) -> Option<Symbol> {
     if data.len() == 0 {
         return None;

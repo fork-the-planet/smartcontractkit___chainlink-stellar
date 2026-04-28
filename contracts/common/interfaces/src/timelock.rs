@@ -103,6 +103,42 @@ pub trait TimelockInterface {
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TokenAmount {
+    pub amount: i128,
+    pub token: soroban_sdk::Address,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GenericExtraArgsV3 {
+    pub block_confirmations: u32,
+    pub ccv_args: soroban_sdk::Vec<soroban_sdk::Bytes>,
+    pub ccvs: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub executor: soroban_sdk::Address,
+    pub executor_args: soroban_sdk::Bytes,
+    pub gas_limit: u32,
+    pub token_args: soroban_sdk::Bytes,
+    pub token_receiver: soroban_sdk::Bytes,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AnyToStellarMessage {
+    pub data: soroban_sdk::Bytes,
+    pub dest_token_amounts: soroban_sdk::Vec<TokenAmount>,
+    pub message_id: soroban_sdk::BytesN<32>,
+    pub sender: soroban_sdk::Bytes,
+    pub source_chain_selector: u64,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct StellarToAnyMessage {
+    pub data: soroban_sdk::Bytes,
+    pub extra_args: soroban_sdk::Bytes,
+    pub fee_token: soroban_sdk::Address,
+    pub receiver: soroban_sdk::Bytes,
+    pub token_amounts: soroban_sdk::Vec<TokenAmount>,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Call {
     pub data: soroban_sdk::Bytes,
     pub to: soroban_sdk::BytesN<32>,
