@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 )
 
 // ResolveSignersFromTopology extracts signer addresses and threshold for a
@@ -15,7 +15,7 @@ import (
 // verifier DONs sign with ECDSA (secp256k1), so we always look up the EVM
 // family signer address (20-byte Ethereum address) and left-pad it to 32
 // bytes to match the on-chain Soroban storage format.
-func ResolveSignersFromTopology(topology *ccipOffchain.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
+func ResolveSignersFromTopology(topology *ccvdeployment.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}

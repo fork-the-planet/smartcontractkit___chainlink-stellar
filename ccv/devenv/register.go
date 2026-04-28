@@ -15,6 +15,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 
+	ccvdeploymentadapters "github.com/smartcontractkit/chainlink-ccv/deployment/adapters"
+
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/adapter"
 	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
@@ -61,6 +63,16 @@ func RegisterStellarComponents() {
 
 		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, devenvccipevm.SerializeEVMExtraArgs)
 
+		// Register Stellar with chainlink-ccv/deployment/adapters so devenv changesets
+		// (GenerateAggregatorConfig, ApplyExecutorConfig, etc.) can resolve Stellar chains.
+		ccvdeploymentadapters.GetRegistry().Register(chainsel.FamilyStellar, ccvdeploymentadapters.ChainAdapters{
+			Aggregator:    &adapter.StellarCCVDeploymentAggregatorConfigAdapter{},
+			Executor:      &adapter.StellarCCVDeploymentExecutorConfigAdapter{},
+			Verifier:      &adapter.StellarCCVDeploymentVerifierConfigAdapter{},
+			Indexer:       &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
+			TokenVerifier: &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
+		})
+    
 		tokenAdapterRegistry := tokenscore.GetTokenAdapterRegistry()
 		tokenAdapterRegistry.RegisterTokenAdapter(chainsel.FamilyStellar, semver.MustParse("1.0.0"), &adapter.StellarTokenAdapter{})
 	})

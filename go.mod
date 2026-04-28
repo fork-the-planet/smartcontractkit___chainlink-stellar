@@ -9,12 +9,13 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
 	github.com/smartcontractkit/chain-selectors v1.0.98
-	github.com/smartcontractkit/chainlink-ccip/chains/evm v0.0.0-20260416055149-75c017f534ca
-	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260416055149-75c017f534ca
-	github.com/smartcontractkit/chainlink-ccv v0.0.0-20260421161132-7e27596ff6a5
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.0-20260421161132-7e27596ff6a5
+	github.com/smartcontractkit/chainlink-ccip/chains/evm v0.0.0-20260424003531-60cdf88568fc
+	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260424003531-60cdf88568fc
+	github.com/smartcontractkit/chainlink-ccv v0.0.2-0.20260424085901-9a2c52d0c967
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.2-0.20260424085901-9a2c52d0c967
+	github.com/smartcontractkit/chainlink-ccv/deployment v0.0.2-0.20260424085901-9a2c52d0c967
 	github.com/smartcontractkit/chainlink-common v0.11.2-0.20260407150650-8115835abd6e
-	github.com/smartcontractkit/chainlink-deployments-framework v0.97.0
+	github.com/smartcontractkit/chainlink-deployments-framework v0.98.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.18
 	github.com/stellar/go-stellar-sdk v0.5.0
 	github.com/stretchr/testify v1.11.1
@@ -137,6 +138,7 @@ require (
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
 	github.com/smartcontractkit/ccip-contract-examples/chains/evm v0.0.0-20250826190403-aed7f5f33cde // indirect
 	github.com/smartcontractkit/ccip-owner-contracts v0.1.0 // indirect
+	github.com/smartcontractkit/chainlink-ccv/evm v0.0.2-0.20260424085901-9a2c52d0c967 // indirect
 	github.com/smartcontractkit/chainlink-common/keystore v1.0.2 // indirect
 	github.com/smartcontractkit/chainlink-evm v0.3.4-0.20260410162948-2dca02f24e98 // indirect
 	github.com/smartcontractkit/chainlink-framework/chains v0.0.0-20260326122810-b657beadfb57 // indirect
@@ -145,6 +147,7 @@ require (
 	github.com/smartcontractkit/chainlink-protos/node-platform v0.0.0-20260211172625-dff40e83b3c9 // indirect
 	github.com/smartcontractkit/chainlink-protos/op-catalog v0.0.4 // indirect
 	github.com/smartcontractkit/chainlink-protos/orchestrator v0.10.0 // indirect
+	github.com/smartcontractkit/chainlink-protos/svr v1.1.1-0.20260203131522-bb8bc5c423b3 // indirect
 	github.com/smartcontractkit/chainlink-testing-framework/lib/grafana v1.50.0 // indirect
 	github.com/smartcontractkit/chainlink-testing-framework/wasp v1.51.2 // indirect
 	github.com/smartcontractkit/wsrpc v0.8.5-0.20250502134807-c57d3d995945 // indirect
