@@ -67,6 +67,10 @@ pub trait TimelockInterface {
         index: u32,
     ) -> Result<soroban_sdk::Address, TimelockError>;
     fn is_operation_done(env: soroban_sdk::Env, id: soroban_sdk::BytesN<32>) -> bool;
+    fn extend_op_time_ttl(
+        env: soroban_sdk::Env,
+        id: soroban_sdk::BytesN<32>,
+    ) -> Result<(), TimelockError>;
     fn is_operation_ready(env: soroban_sdk::Env, id: soroban_sdk::BytesN<32>) -> bool;
     fn hash_operation_batch(
         env: soroban_sdk::Env,
@@ -107,6 +111,11 @@ pub struct Call {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Calls {
     pub inner: soroban_sdk::Vec<Call>,
+}
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum TimelockDataKey {
+    OpTime(soroban_sdk::BytesN<32>),
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]

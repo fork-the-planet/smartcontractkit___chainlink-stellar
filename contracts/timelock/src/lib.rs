@@ -17,8 +17,8 @@
 //! call_hash_i = keccak256(to_i || keccak256(data_i))
 //! id = keccak256(n_calls || call_hash_0 || … || call_hash_n || predecessor || salt)
 //! ```
-//! All values are big-endian 32-byte words. Document this in SPEC.md so the
-//! off-chain Go SDK can reproduce it.
+//! All values are encoded as big-endian 32-byte words so off-chain tooling,
+//! including the Go SDK, can reproduce the same operation id.
 //!
 //! # Security
 //! - Operations are marked DONE **before** executing calls to prevent re-entrancy
@@ -26,8 +26,9 @@
 //!   entire transaction reverts, rolling back the DONE mark.
 //! - Blocked selectors are checked at schedule time only (not at execute time),
 //!   mirroring Solidity semantics. The bypasser ignores blocked selectors.
-//! - TTL expiry of the `OPTIMES` map silently cancels unexecuted operations.
-//!   Run `extend_all_ttls` periodically (or rely on normal contract activity).
+//! - TTL expiry of a per-operation timestamp entry silently drops that operation’s state.
+//!   Each entry is refreshed when read/written; call `extend_all_ttls` for fixed keys,
+//!   `extend_op_time_ttl(id)` for rarely queried ids, or rely on normal activity.
 
 #![no_std]
 
@@ -58,8 +59,8 @@ use soroban_sdk::{
 };
 use stellar_strkey::Contract as StrkeyContract;
 use storage::{
-    bump_ttls, delete_op_timestamp, get_blocked_selectors, get_min_delay, get_op_timestamp,
-    set_blocked_selectors, set_min_delay, set_op_timestamp,
+    bump_ttls, delete_op_timestamp, extend_op_time_entry_ttl, get_blocked_selectors, get_min_delay,
+    get_op_timestamp, set_blocked_selectors, set_min_delay, set_op_timestamp,
 };
 
 const INITIALIZED_KEY: Symbol = symbol_short!("INIT");
@@ -523,12 +524,22 @@ impl TimelockContract {
             .ok_or(TimelockError::IndexOutOfBounds)
     }
 
-    /// Permissionless TTL extension. Call periodically to prevent persistent storage
-    /// entries (especially `OPTIMES`) from being archived. Archived entries would
-    /// silently treat operations as non-existent.
+    /// Permissionless TTL extension for instance storage and fixed persistent keys
+    /// (`ROLES`, blocked selectors). Per-operation timestamps use separate ledger entries;
+    /// those are extended whenever accessed, or via [`Self::extend_op_time_ttl`].
     pub fn extend_all_ttls(env: Env) -> Result<(), TimelockError> {
         <Self as Initializable>::require_initialized(&env).map_err(TimelockError::from)?;
         bump_ttls(&env);
+        Ok(())
+    }
+
+    /// Permissionless: extend archival TTL for one operation timestamp entry, if it exists.
+    ///
+    /// Prefer relying on normal reads/writes (which refresh TTL). Use this for ids that
+    /// might otherwise stay untouched until archival (e.g. long-lived DONE predecessors).
+    pub fn extend_op_time_ttl(env: Env, id: BytesN<32>) -> Result<(), TimelockError> {
+        <Self as Initializable>::require_initialized(&env).map_err(TimelockError::from)?;
+        extend_op_time_entry_ttl(&env, &id);
         Ok(())
     }
 }

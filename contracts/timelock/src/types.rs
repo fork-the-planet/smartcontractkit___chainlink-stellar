@@ -2,6 +2,14 @@
 
 use soroban_sdk::{contracttype, symbol_short, Bytes, BytesN, Symbol, Vec};
 
+/// Persistent storage keys (one ledger entry per variant payload).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TimelockDataKey {
+    /// Per-operation timestamp (`bytes32 id -> u64`), mirroring Solidity `_timestamps[id]`.
+    OpTime(BytesN<32>),
+}
+
 /// Sentinel timestamp stored when an operation has been executed.
 pub const DONE_TIMESTAMP: u64 = 1;
 

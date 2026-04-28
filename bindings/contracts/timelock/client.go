@@ -315,6 +315,21 @@ func (c *TimelockClient) IsOperationDone(ctx context.Context, id [32]byte) (bool
 	return v, nil
 }
 
+// ExtendOpTimeTtl calls the extend_op_time_ttl function on the contract.
+func (c *TimelockClient) ExtendOpTimeTtl(ctx context.Context, id [32]byte) error {
+	args := []xdr.ScVal{
+		scval.Bytes32ToScVal(id),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "extend_op_time_ttl", args)
+	if err != nil {
+		return fmt.Errorf("failed to call extend_op_time_ttl: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // IsOperationReady calls the is_operation_ready function on the contract.
 func (c *TimelockClient) IsOperationReady(ctx context.Context, id [32]byte) (bool, error) {
 	args := []xdr.ScVal{

@@ -494,3 +494,22 @@ type FunctionSelectorUnblockedEvent struct {
 
 // FunctionSelectorUnblockedEventTopic is the event topic identifier.
 const FunctionSelectorUnblockedEventTopic = "tl_SelUnblock"
+
+// TimelockDataKey represents the TimelockDataKey enum.
+type TimelockDataKey uint32
+
+const ()
+
+// ToScVal converts TimelockDataKey to an xdr.ScVal.
+func (e TimelockDataKey) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// TimelockDataKeyFromScVal parses an xdr.ScVal into TimelockDataKey.
+func TimelockDataKeyFromScVal(val xdr.ScVal) (TimelockDataKey, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for TimelockDataKey enum")
+	}
+	return TimelockDataKey(v), nil
+}
