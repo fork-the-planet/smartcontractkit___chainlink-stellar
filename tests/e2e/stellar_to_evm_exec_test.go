@@ -66,24 +66,24 @@ func TestStellarToEVMExecution(t *testing.T) {
 		require.NoError(t, err)
 		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
 
-		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
+		sendResult, seqNo, err := sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
 			"hello from stellar", "Message verified and aggregated successfully")
 
+		require.NoError(t, err)
+
 		// TODO: uncomment once EVM executor is wired up for Stellar-sourced messages.
-		// execEvent, err := evmChain.ConfirmExecOnDest(t.Context(), stellarDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, execTimeout)
-		// require.NoError(t, err)
-		// require.Equalf(
-		// 	t,
-		// 	cciptestinterfaces.ExecutionStateSuccess,
-		// 	execEvent.State,
-		// 	"message should have been successfully executed, return data: %x",
-		// 	execEvent.ReturnData,
-		// )
-		//
-		// l.Info().
-		// 	Str("messageID", hex.EncodeToString(messageID[:])).
-		// 	Uint64("seqNo", seqNo).
-		// 	Msg("Message executed successfully on EVM")
+		execEvent, err := evmChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{
+			SeqNum:    seqNo,
+			MessageID: sendResult.MessageID,
+		}, execTimeout)
+		require.NoError(t, err)
+		require.Equalf(
+			t,
+			cciptestinterfaces.ExecutionStateSuccess,
+			execEvent.State,
+			"message should have been successfully executed, return data: %x",
+			execEvent.ReturnData,
+		)
 	})
 
 	t.Run("stellar_to_evm_execution_cursed_destination", func(t *testing.T) {
@@ -133,63 +133,6 @@ func chainSelectorToSubject(chainSel uint64) [16]byte {
 	// Convert the uint64 to bytes and place it in the last 8 bytes of the array
 	binary.BigEndian.PutUint64(result[8:], chainSel)
 	return result
-}
-
-// sendAndVerifyMessage sends a CCIP message from Stellar to EVM and verifies it was processed.
-// It handles the complete flow: get sequence number, send message, wait for sent event,
-// and verify the message was verified and aggregated.
-func sendAndVerifyMessage(
-	t *testing.T,
-	ctx context.Context,
-	l *zerolog.Logger,
-	stellarChain cciptestinterfaces.CCIP17,
-	env *helpers.E2ETestEnv,
-	evmDetails *chainsel.ChainDetails,
-	receiver []byte,
-	messageData string,
-	successMsg string,
-) {
-	seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
-	require.NoError(t, err)
-	l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from Stellar OnRamp")
-
-	sendResult, err := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
-		cciptestinterfaces.MessageFields{
-			Receiver: receiver,
-			Data:     []byte(messageData),
-		},
-		cciptestinterfaces.MessageOptions{},
-	)
-	require.NoError(t, err)
-	l.Info().
-		Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
-		Msg("CCIP message sent from Stellar")
-
-	sentEvent, err := stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, stellarSentTimeout)
-	require.NoError(t, err)
-	messageID := sentEvent.MessageID
-	l.Info().
-		Str("messageID", hex.EncodeToString(messageID[:])).
-		Msg("Sent event confirmed on Stellar")
-
-	// Verify the message was processed
-	defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
-	require.NotNil(t, defaultAggregatorClient)
-
-	testCtx := e2e.NewTestingContext(t, ctx, env.Chains, defaultAggregatorClient, env.IndexerMonitor)
-	result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
-		TickInterval:            1 * time.Second,
-		ExpectedVerifierResults: 1,
-		Timeout:                 tests.WaitTimeout(t),
-		AssertVerifierLogs:      false,
-		AssertExecutorLogs:      false,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, result.AggregatedResult)
-	require.Len(t, result.IndexedVerifications.Results, 1)
-	l.Info().
-		Str("messageID", hex.EncodeToString(messageID[:])).
-		Msg(successMsg)
 }
 
 // TestStellarToEVMFeeQuoterDestChainDisabled validates that disabling a
@@ -297,4 +240,67 @@ func TestStellarToEVMFeeQuoterDestChainDisabled(t *testing.T) {
 		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
 			"hello from stellar after re-enable", "Message verified and aggregated successfully after re-enable")
 	})
+}
+
+// ---------------------------
+// Helper functions
+// ---------------------------
+
+// sendAndVerifyMessage sends a CCIP message from Stellar to EVM and verifies it was processed.
+// It handles the complete flow: get sequence number, send message, wait for sent event,
+// and verify the message was verified and aggregated.
+func sendAndVerifyMessage(
+	t *testing.T,
+	ctx context.Context,
+	l *zerolog.Logger,
+	stellarChain cciptestinterfaces.CCIP17,
+	env *helpers.E2ETestEnv,
+	evmDetails *chainsel.ChainDetails,
+	receiver []byte,
+	messageData string,
+	successMsg string,
+) (cciptestinterfaces.MessageSentEvent, uint64, error) {
+	seqNo, err := stellarChain.GetExpectedNextSequenceNumber(ctx, evmDetails.ChainSelector)
+	require.NoError(t, err)
+	l.Info().Uint64("seqNo", seqNo).Msg("Expected next sequence number from Stellar OnRamp")
+
+	sendResult, err := stellarChain.SendMessage(ctx, evmDetails.ChainSelector,
+		cciptestinterfaces.MessageFields{
+			Receiver: receiver,
+			Data:     []byte(messageData),
+		},
+		cciptestinterfaces.MessageOptions{},
+	)
+	require.NoError(t, err)
+	l.Info().
+		Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
+		Msg("CCIP message sent from Stellar")
+
+	sentEvent, err := stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, stellarSentTimeout)
+	require.NoError(t, err)
+	messageID := sentEvent.MessageID
+	l.Info().
+		Str("messageID", hex.EncodeToString(messageID[:])).
+		Msg("Sent event confirmed on Stellar")
+
+	// Verify the message was processed
+	defaultAggregatorClient := env.AggregatorClients[devenvcommon.DefaultCommitteeVerifierQualifier]
+	require.NotNil(t, defaultAggregatorClient)
+
+	testCtx := e2e.NewTestingContext(t, ctx, env.Chains, defaultAggregatorClient, env.IndexerMonitor)
+	result, err := testCtx.AssertMessage(protocol.Bytes32(messageID), e2e.AssertMessageOptions{
+		TickInterval:            1 * time.Second,
+		ExpectedVerifierResults: 1,
+		Timeout:                 tests.WaitTimeout(t),
+		AssertVerifierLogs:      false,
+		AssertExecutorLogs:      false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.AggregatedResult)
+	require.Len(t, result.IndexedVerifications.Results, 1)
+	l.Info().
+		Str("messageID", hex.EncodeToString(messageID[:])).
+		Msg(successMsg)
+
+	return sendResult, seqNo, nil
 }
