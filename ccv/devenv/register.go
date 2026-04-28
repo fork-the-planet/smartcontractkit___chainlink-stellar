@@ -3,7 +3,9 @@ package devenv
 import (
 	"sync"
 
+	"github.com/Masterminds/semver/v3"
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
@@ -47,8 +49,10 @@ func RegisterStellarComponents() {
 		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
 		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
 		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
+
 		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &adapter.StellarCommitteeVerifierContractAdapter{})
 		stellarChainFamily := &adapter.StellarChainFamilyAdapter{}
+
 		ccvadapters.GetChainFamilyRegistry().RegisterChainFamily(chainsel.FamilyStellar, stellarChainFamily)
 		ccvadapters.GetAggregatorConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarAggregatorConfigAdapter{})
 		ccvadapters.GetIndexerConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarIndexerConfigAdapter{})
@@ -56,6 +60,7 @@ func RegisterStellarComponents() {
 		ccvadapters.GetExecutorConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarExecutorConfigAdapter{})
 		ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarTokenVerifierConfigAdapter{})
 		ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &ccvchain.StellarDeployChainContractsAdapter{})
+
 		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, devenvccipevm.SerializeEVMExtraArgs)
 
 		// Register Stellar with chainlink-ccv/deployment/adapters so devenv changesets
@@ -67,5 +72,8 @@ func RegisterStellarComponents() {
 			Indexer:       &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
 			TokenVerifier: &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
 		})
+    
+		tokenAdapterRegistry := tokenscore.GetTokenAdapterRegistry()
+		tokenAdapterRegistry.RegisterTokenAdapter(chainsel.FamilyStellar, semver.MustParse("1.0.0"), &adapter.StellarTokenAdapter{})
 	})
 }

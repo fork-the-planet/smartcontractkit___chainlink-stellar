@@ -14,13 +14,13 @@ import (
 
 func TestLockReleasePoolAddressRefDataStore(t *testing.T) {
 	t.Run("invalid_pool_strkey", func(t *testing.T) {
-		_, err := LockReleasePoolAddressRefDataStore(42, "not-a-strkey")
+		_, err := LockReleasePoolAddressRefDataStore(42, "not-a-strkey", "")
 		require.Error(t, err)
 	})
 
-	t.Run("valid_pool", func(t *testing.T) {
+	t.Run("pool_only", func(t *testing.T) {
 		poolID := stellarutil.MustGenerateMockContractID("deployer", "pool-ref-test")
-		ds, err := LockReleasePoolAddressRefDataStore(4242, poolID)
+		ds, err := LockReleasePoolAddressRefDataStore(4242, poolID, "")
 		require.NoError(t, err)
 		addrs, err := ds.Addresses().Fetch()
 		require.NoError(t, err)
@@ -31,6 +31,31 @@ func TestLockReleasePoolAddressRefDataStore(t *testing.T) {
 		assert.Equal(t, semver.MustParse("1.0.0"), ref.Version)
 		assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
 		assert.NotEmpty(t, ref.Address)
+	})
+
+	t.Run("pool_and_token", func(t *testing.T) {
+		poolID := stellarutil.MustGenerateMockContractID("deployer", "pool-ref-test")
+		tokenID := stellarutil.MustGenerateMockContractID("deployer", "token-ref-test")
+		ds, err := LockReleasePoolAddressRefDataStore(4242, poolID, tokenID)
+		require.NoError(t, err)
+		addrs, err := ds.Addresses().Fetch()
+		require.NoError(t, err)
+		require.Len(t, addrs, 2)
+
+		poolFound, tokenFound := false, false
+		for _, ref := range addrs {
+			assert.Equal(t, uint64(4242), ref.ChainSelector)
+			assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
+			assert.NotEmpty(t, ref.Address)
+			switch ref.Type {
+			case datastore.ContractType(LockReleaseTokenPoolContractType):
+				poolFound = true
+			case datastore.ContractType(TestTokenContractType):
+				tokenFound = true
+			}
+		}
+		assert.True(t, poolFound, "pool address ref not found")
+		assert.True(t, tokenFound, "token address ref not found")
 	})
 }
 

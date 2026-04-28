@@ -131,7 +131,7 @@ type SharedTestEnv struct {
 	Deployer          *deployment.Deployer
 	RPCClient         *rpcclient.Client
 	NetworkPassphrase string
-	FriendbotURL      string // faucet base URL (no ?addr=), for funding issuers / SAC setup
+	FriendbotURL      string             // faucet base URL (no ?addr=), for funding issuers / SAC setup
 	Output            *blockchain.Output // for teardown
 }
 
