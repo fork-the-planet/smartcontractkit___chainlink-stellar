@@ -72,7 +72,7 @@ func RegisterStellarComponents() {
 			Indexer:       &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
 			TokenVerifier: &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
 		})
-    
+
 		tokenAdapterRegistry := tokenscore.GetTokenAdapterRegistry()
 		tokenAdapterRegistry.RegisterTokenAdapter(chainsel.FamilyStellar, semver.MustParse("1.0.0"), &adapter.StellarTokenAdapter{})
 	})

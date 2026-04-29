@@ -11,15 +11,15 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
-	ccipdevenvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	dsutils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
-	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	ccipdevenvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccvdeploymentadapters "github.com/smartcontractkit/chainlink-ccv/deployment/adapters"
 	"github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
 // StellarCCVDeploymentAggregatorConfigAdapter implements

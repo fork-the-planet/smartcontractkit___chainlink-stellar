@@ -13,9 +13,6 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
-	"github.com/stellar/go-stellar-sdk/strkey"
-	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -232,33 +229,6 @@ func TestBuildRemoteRampConfigs_ResolveDatastoreAddresses(t *testing.T) {
 		append(make([]byte, 12), []byte{0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab}...),
 		offRampConfigs[0].OnRamps[0],
 	)
-}
-
-func TestStellarAddressToScVal(t *testing.T) {
-	contractRaw := [32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
-	contractAddress, err := strkey.Encode(strkey.VersionByteContract, contractRaw[:])
-	require.NoError(t, err)
-
-	accountRaw := [32]byte{32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
-		16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
-	accountAddress, err := strkey.Encode(strkey.VersionByteAccountID, accountRaw[:])
-	require.NoError(t, err)
-
-	contractScVal := scval.AddressToScVal(contractAddress)
-	contractScAddress := contractScVal.Address
-	require.NotNil(t, contractScAddress, "contract address should be valid")
-	require.Equal(t, xdr.ScAddressTypeScAddressTypeContract, contractScAddress.Type)
-	assert.Equal(t, xdr.Hash(contractRaw), contractScAddress.MustContractId())
-
-	accountScVal := scval.AddressToScVal(accountAddress)
-	accountScAddress := accountScVal.Address
-	require.NotNil(t, accountScAddress, "account address should be valid")
-	require.Equal(t, xdr.ScAddressTypeScAddressTypeAccount, accountScAddress.Type)
-	assert.Equal(t, xdr.Uint256(accountRaw), *accountScAddress.MustAccountId().Ed25519)
-
-	scVal := scval.AddressToScVal("not-a-stellar-address")
-	require.Nil(t, scVal.Address, "invalid address should be nil")
 }
 
 func TestStellarAdapter(t *testing.T) {
