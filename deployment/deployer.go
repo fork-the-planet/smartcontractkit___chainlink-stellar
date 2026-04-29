@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"time"
@@ -20,6 +21,16 @@ import (
 
 // Compile-time check that Deployer satisfies the common bindings.Invoker interface.
 var _ bindings.Invoker = (*Deployer)(nil)
+
+const (
+	// defaultTxnTimeBound is the default validity window used when no
+	// WithTxnTimeBound option is provided.
+	defaultTxnTimeBound = 120 * time.Second
+
+	// minFeeBuffer is the minimum extra stroops added on top of MinResourceFee,
+	// used as a floor when the percentage bump (feeBumpFactor) would yield less.
+	minFeeBuffer = int64(10_000)
+)
 
 // stellarRPCClient abstracts the Soroban RPC methods used by Deployer,
 // allowing tests to inject a mock without hitting a real network.
@@ -41,16 +52,51 @@ func WithAutoRestore(enabled bool) DeployerOption {
 	return func(d *Deployer) { d.autoRestore = enabled }
 }
 
+// WithFeeBumpFactor sets the multiplier applied to the simulation's MinResourceFee
+// to derive the submitted transaction fee. For example, 1.25 submits at 25% above
+// the simulated minimum, providing headroom during network fee surges. A floor of
+// minFeeBuffer (10 000 stroops) is always applied on top of the simulation minimum.
+// Values below 1.0 are clamped to 1.0.
+func WithFeeBumpFactor(factor float64) DeployerOption {
+	return func(d *Deployer) {
+		if factor < 1.0 {
+			factor = 1.0
+		}
+		d.feeBumpFactor = factor
+	}
+}
+
+// WithTxnTimeBound sets the validity window for every transaction submitted by
+// the Deployer. The same duration is used as the transaction's MaxTime and as
+// the confirmation poll timeout, keeping them in sync. Durations of zero or
+// below are ignored and the default (120s) is kept.
+func WithTxnTimeBound(d time.Duration) DeployerOption {
+	return func(dep *Deployer) {
+		if d > 0 {
+			dep.txnTimeBound = d
+		}
+	}
+}
+
 // Deployer handles Soroban contract deployment and initialization.
 type Deployer struct {
 	rpcClient         stellarRPCClient
 	networkPassphrase string
 	signer            *keypair.Full
-	// Account sequence number tracking
+	// accountSequence tracks the current on-chain sequence number.
 	accountSequence int64
 	// autoRestore controls automatic RestoreFootprint handling for expired
 	// persistent ledger entries. True by default.
 	autoRestore bool
+	// feeBumpFactor is multiplied by the simulation's MinResourceFee to derive
+	// the submitted fee. A value of 1.25 means 25% above the simulation minimum.
+	// Defaults to 1.25; clamped to a minimum of 1.0.
+	feeBumpFactor float64
+	// txnTimeBound is the validity window for every Soroban/classic transaction
+	// submitted by the Deployer. waitForTransaction polls for this exact duration,
+	// so the poll deadline and the transaction's MaxTime are always in sync.
+	// Defaults to defaultTxnTimeBound (120s).
+	txnTimeBound time.Duration
 }
 
 // NewDeployer creates a new Deployer instance. Options can be passed to
@@ -63,6 +109,8 @@ func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *
 		signer:            signer,
 		accountSequence:   -1,
 		autoRestore:       true,
+		feeBumpFactor:     1.25,
+		txnTimeBound:      defaultTxnTimeBound,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -276,7 +324,7 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 				},
 			},
 			BaseFee:       txnbuild.MinBaseFee,
-			Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, time.Now().Add(d.txnTimeBound).Unix())},
 		},
 	)
 	if err != nil {
@@ -324,7 +372,7 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 					},
 				},
 				BaseFee:       txnbuild.MinBaseFee,
-				Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+				Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, time.Now().Add(d.txnTimeBound).Unix())},
 			},
 		)
 		if err != nil {
@@ -345,6 +393,9 @@ func (d *Deployer) SimulateContract(ctx context.Context, contractID string, func
 
 		if simResult.Error != "" {
 			return nil, fmt.Errorf("simulation error after restore: %s", simResult.Error)
+		}
+		if simResult.RestorePreamble != nil {
+			return nil, fmt.Errorf("simulation after restore still requires another restore: unexpected second RestorePreamble")
 		}
 	}
 
@@ -429,27 +480,28 @@ func (d *Deployer) getSourceAccount(ctx context.Context) (*txnbuild.SimpleAccoun
 
 // buildAndSubmitTransaction builds, signs, and submits a transaction.
 func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount *txnbuild.SimpleAccount, op txnbuild.Operation) (*xdr.TransactionMeta, error) {
-	// Build transaction
+	// Establish a single deadline shared by the transaction's time-bound and the
+	// confirmation poll, so they are always in sync.
+	txnDeadline := time.Now().Add(d.txnTimeBound)
+
 	tx, err := txnbuild.NewTransaction(
 		txnbuild.TransactionParams{
 			SourceAccount:        sourceAccount,
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{op},
 			BaseFee:              txnbuild.MinBaseFee,
-			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, txnDeadline.Unix())},
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build transaction: %w", err)
 	}
 
-	// Get transaction envelope XDR for simulation
 	txXDR, err := tx.Base64()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction XDR: %w", err)
 	}
 
-	// Simulate to get resource estimates
 	simResult, err := d.rpcClient.SimulateTransaction(ctx, protocolrpc.SimulateTransactionRequest{
 		Transaction: txXDR,
 	})
@@ -479,7 +531,7 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 				IncrementSequenceNum: true,
 				Operations:           []txnbuild.Operation{op},
 				BaseFee:              txnbuild.MinBaseFee,
-				Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+				Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, txnDeadline.Unix())},
 			},
 		)
 		if err != nil {
@@ -501,27 +553,30 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		if simResult.Error != "" {
 			return nil, fmt.Errorf("simulation error after restore: %s", simResult.Error)
 		}
+		if simResult.RestorePreamble != nil {
+			// The RPC should capture all archived entries in a single RestorePreamble.
+			// A second one after a successful restore indicates an RPC inconsistency or
+			// an entry that expired in the narrow window between restore confirmation and
+			// re-simulation. Return an error so the caller retries from a clean state.
+			return nil, fmt.Errorf("simulation after restore still requires another restore: unexpected second RestorePreamble")
+		}
 	}
 
-	// Assemble the transaction with simulation results
-	assembledTx, err := d.assembleTransaction(tx, simResult)
+	assembledTx, err := d.assembleTransaction(ctx, tx, simResult, txnDeadline)
 	if err != nil {
 		return nil, fmt.Errorf("failed to assemble transaction: %w", err)
 	}
 
-	// Sign the transaction
 	signedTx, err := assembledTx.Sign(d.networkPassphrase, d.signer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
 
-	// Get signed transaction XDR
 	signedXDR, err := signedTx.Base64()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get signed transaction XDR: %w", err)
 	}
 
-	// Submit transaction
 	submitResult, err := d.rpcClient.SendTransaction(ctx, protocolrpc.SendTransactionRequest{
 		Transaction: signedXDR,
 	})
@@ -529,14 +584,12 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		return nil, fmt.Errorf("failed to submit transaction: %w", err)
 	}
 
-	// Check submission status - the transaction may have been rejected
 	switch submitResult.Status {
 	case "PENDING", "DUPLICATE":
 		// Transaction was accepted, continue to wait for confirmation
 	case "TRY_AGAIN_LATER":
 		return nil, fmt.Errorf("transaction submission failed: server overloaded, try again later")
 	case "ERROR":
-		// Transaction was rejected - decode the error
 		if submitResult.ErrorResultXDR != "" {
 			return nil, fmt.Errorf("transaction rejected: %v (diagnostics: %v)", submitResult.ErrorResultXDR, submitResult.DiagnosticEventsXDR)
 		}
@@ -545,39 +598,38 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		return nil, fmt.Errorf("unexpected transaction status: %s", submitResult.Status)
 	}
 
-	// Wait for transaction confirmation
-	txResult, err := d.waitForTransaction(ctx, submitResult.Hash)
-	if err != nil {
-		return nil, err
-	}
-
-	return txResult, nil
+	return d.waitForTransaction(ctx, submitResult.Hash, txnDeadline)
 }
 
-// waitForTransaction polls for transaction completion.
-func (d *Deployer) waitForTransaction(ctx context.Context, hash string) (*xdr.TransactionMeta, error) {
+// waitForTransaction polls until the transaction is confirmed or the deadline expires.
+// The deadline must match the transaction's MaxTime so we stop polling exactly when
+// the network will no longer accept the transaction.
+func (d *Deployer) waitForTransaction(ctx context.Context, hash string, deadline time.Time) (*xdr.TransactionMeta, error) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	timeout := time.After(60 * time.Second)
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return nil, fmt.Errorf("transaction deadline already elapsed (hash: %s)", hash)
+	}
+	timeoutCh := time.After(remaining)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-timeout:
-			return nil, fmt.Errorf("transaction timed out")
+		case <-timeoutCh:
+			return nil, fmt.Errorf("transaction timed out (hash: %s)", hash)
 		case <-ticker.C:
 			result, err := d.rpcClient.GetTransaction(ctx, protocolrpc.GetTransactionRequest{
 				Hash: hash,
 			})
 			if err != nil {
-				continue // Retry on error
+				continue // transient RPC error, retry
 			}
 
 			switch result.Status {
 			case "SUCCESS":
-				// Parse the result meta XDR
 				if result.ResultMetaXDR == "" {
 					return nil, fmt.Errorf("no result meta XDR")
 				}
@@ -587,9 +639,10 @@ func (d *Deployer) waitForTransaction(ctx context.Context, hash string) (*xdr.Tr
 				}
 				return &meta, nil
 			case "FAILED":
-				return nil, fmt.Errorf("transaction failed")
+				return nil, fmt.Errorf("transaction failed (hash: %s, resultXDR: %q, diagnostics: %v)",
+					hash, result.ResultXDR, result.DiagnosticEventsXDR)
 			case "NOT_FOUND":
-				continue // Still pending
+				continue // still pending
 			}
 		}
 	}
@@ -601,6 +654,8 @@ func (d *Deployer) waitForTransaction(ctx context.Context, hash string) (*xdr.Tr
 // TTL has expired (archived). The restore must succeed before the original
 // transaction can be retried.
 func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.RestorePreamble) error {
+	restoreDeadline := time.Now().Add(d.txnTimeBound)
+
 	sourceAccount, err := d.getSourceAccount(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get source account for restore: %w", err)
@@ -619,7 +674,11 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 		},
 	}
 
-	baseFee := preamble.MinResourceFee + 10000
+	bump := int64(math.Ceil(float64(preamble.MinResourceFee) * (d.feeBumpFactor - 1.0)))
+	if bump < minFeeBuffer {
+		bump = minFeeBuffer
+	}
+	baseFee := preamble.MinResourceFee + bump
 
 	tx, err := txnbuild.NewTransaction(
 		txnbuild.TransactionParams{
@@ -627,7 +686,7 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{restoreOp},
 			BaseFee:              baseFee,
-			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, restoreDeadline.Unix())},
 		},
 	)
 	if err != nil {
@@ -665,7 +724,7 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 		return fmt.Errorf("unexpected restore transaction status: %s", submitResult.Status)
 	}
 
-	_, err = d.waitForTransaction(ctx, submitResult.Hash)
+	_, err = d.waitForTransaction(ctx, submitResult.Hash, restoreDeadline)
 	if err != nil {
 		return fmt.Errorf("restore transaction failed: %w", err)
 	}
@@ -673,29 +732,26 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 	return nil
 }
 
-// assembleTransaction adds simulation results to a transaction.
-func (d *Deployer) assembleTransaction(tx *txnbuild.Transaction, sim protocolrpc.SimulateTransactionResponse) (*txnbuild.Transaction, error) {
-	// Get the operations and modify with simulation data
+// assembleTransaction injects simulation results (Soroban data, auth, fee) into the
+// transaction and rebuilds it with the correct fee and the provided deadline as MaxTime.
+func (d *Deployer) assembleTransaction(ctx context.Context, tx *txnbuild.Transaction, sim protocolrpc.SimulateTransactionResponse, deadline time.Time) (*txnbuild.Transaction, error) {
 	ops := tx.Operations()
 	if len(ops) == 0 {
 		return tx, nil
 	}
 
-	// If there's soroban data, we need to rebuild the transaction
 	if sim.TransactionDataXDR != "" {
 		var sorobanData xdr.SorobanTransactionData
 		if err := xdr.SafeUnmarshalBase64(sim.TransactionDataXDR, &sorobanData); err != nil {
 			return nil, fmt.Errorf("failed to decode soroban data: %w", err)
 		}
 
-		// Check if the first op is an InvokeHostFunction and set the ext field
 		if ihf, ok := ops[0].(*txnbuild.InvokeHostFunction); ok {
 			ihf.Ext = xdr.TransactionExt{
 				V:           1,
 				SorobanData: &sorobanData,
 			}
 
-			// Set auth entries if provided
 			if len(sim.Results) > 0 && sim.Results[0].AuthXDR != nil && len(*sim.Results[0].AuthXDR) > 0 {
 				auth := make([]xdr.SorobanAuthorizationEntry, len(*sim.Results[0].AuthXDR))
 				for i, authXDR := range *sim.Results[0].AuthXDR {
@@ -708,14 +764,15 @@ func (d *Deployer) assembleTransaction(tx *txnbuild.Transaction, sim protocolrpc
 		}
 	}
 
-	// Calculate the fee
 	minFee := sim.MinResourceFee
 	if minFee > 0 {
-		// Add buffer to ensure transaction goes through
-		newFee := minFee + 10000
+		bump := int64(math.Ceil(float64(minFee) * (d.feeBumpFactor - 1.0)))
+		if bump < minFeeBuffer {
+			bump = minFeeBuffer
+		}
+		newFee := minFee + bump
 
-		// Rebuild transaction with new fee
-		sourceAccount, err := d.getSourceAccount(context.Background())
+		sourceAccount, err := d.getSourceAccount(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -726,7 +783,7 @@ func (d *Deployer) assembleTransaction(tx *txnbuild.Transaction, sim protocolrpc
 				IncrementSequenceNum: true,
 				Operations:           ops,
 				BaseFee:              newFee,
-				Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+				Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, deadline.Unix())},
 			},
 		)
 	}
@@ -953,13 +1010,15 @@ func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Opera
 		return fmt.Errorf("load source account: %w", err)
 	}
 
+	txnDeadline := time.Now().Add(d.txnTimeBound)
+
 	tx, err := txnbuild.NewTransaction(
 		txnbuild.TransactionParams{
 			SourceAccount:        src,
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{op},
 			BaseFee:              txnbuild.MinBaseFee,
-			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, txnDeadline.Unix())},
 		},
 	)
 	if err != nil {
@@ -996,7 +1055,7 @@ func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Opera
 		return fmt.Errorf("unexpected transaction status: %s", submitResult.Status)
 	}
 
-	_, err = d.waitForTransaction(ctx, submitResult.Hash)
+	_, err = d.waitForTransaction(ctx, submitResult.Hash, txnDeadline)
 	return err
 }
 
