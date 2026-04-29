@@ -7,27 +7,34 @@ import (
 
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 )
 
 // evmTokenContractTypes lists EVM BurnMint drip token types stored in the devenv
-// datastore. Order reflects deployment likelihood.
-//
-// The devenv deploys one BurnMint ERC-20 per token combination; in practice the
-// first match on a given chain is the correct test token for cross-family tests.
+// datastore. Order reflects deployment likelihood and is only used as a
+// fallback when the explicit EVM-to-Stellar token pair is not present.
 var evmTokenContractTypes = []string{
 	"BurnMintERC20WithDripToken",
 	"BurnMintERC20WithDrip",
 	"BurnMintERC20Token",
 }
 
-// ResolveEVMTestToken finds the first BurnMint test token deployed on the given
-// EVM chain from the merged datastore. It returns the raw token address as a
-// protocol.UnknownAddress suitable for SendMessage.TokenAmount.TokenAddress and
-// GetTokenBalance.
+// ResolveEVMTestToken finds the BurnMint test token configured for
+// EVM-to-Stellar transfers on the given EVM chain. It returns the raw token
+// address as a protocol.UnknownAddress suitable for
+// SendMessage.TokenAmount.TokenAddress and GetTokenBalance.
 func ResolveEVMTestToken(ds datastore.DataStore, evmChainSelector uint64) (protocol.UnknownAddress, error) {
 	allRefs, err := ds.Addresses().Fetch()
 	if err != nil {
 		return nil, fmt.Errorf("fetch datastore addresses: %w", err)
+	}
+	_, tokenRef, found := ccvchain.ResolveEVMTokenPoolForStellar(allRefs, evmChainSelector)
+	if found {
+		addr, decErr := hexToEVMAddress(tokenRef.Address)
+		if decErr != nil {
+			return nil, fmt.Errorf("decode EVM-to-Stellar token address on chain %d: %w", evmChainSelector, decErr)
+		}
+		return addr, nil
 	}
 	for _, ct := range evmTokenContractTypes {
 		for _, ref := range allRefs {

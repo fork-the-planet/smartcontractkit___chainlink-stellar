@@ -362,6 +362,10 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		if err := c.tokenPoolClient.ApplyChainUpdates(context.Background(), chainUpdates, nil); err != nil {
 			return fmt.Errorf("apply pool chain updates in post-connect: %w", err)
 		}
+
+		if err := c.configureEVMToStellarTokenTransfers(env, selector, remoteSelectors); err != nil {
+			return fmt.Errorf("configure EVM-to-Stellar token transfers: %w", err)
+		}
 	}
 
 	return nil
@@ -894,8 +898,20 @@ func (c *Chain) GetSenderAddress() (protocol.UnknownAddress, error) {
 }
 
 // GetTokenBalance implements cciptestinterfaces.CCIP17.
-// Gets the balance of a token for an address by calling the SAC balance function.
+// Gets the balance of a token for a raw Stellar account address by calling the
+// SAC balance function. Use GetTokenBalanceForAddress for contract holders.
 func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
+	addrStrkey, err := strkey.Encode(strkey.VersionByteAccountID, []byte(address))
+	if err != nil {
+		return nil, fmt.Errorf("encode account holder address: %w", err)
+	}
+	return c.GetTokenBalanceForAddress(ctx, addrStrkey, tokenAddress)
+}
+
+// GetTokenBalanceForAddress gets a token balance for a typed Stellar holder
+// address. Use this for contract holders, because raw 32-byte Stellar addresses
+// do not carry the Soroban account-vs-contract address tag.
+func (c *Chain) GetTokenBalanceForAddress(ctx context.Context, holderAddress string, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
 	if c.deployer == nil {
 		return nil, fmt.Errorf("deployer not initialized")
 	}
@@ -905,15 +921,12 @@ func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress proto
 		return nil, fmt.Errorf("encode token address: %w", err)
 	}
 
-	addrStrkey, err := strkey.Encode(strkey.VersionByteAccountID, []byte(address))
-	if err != nil {
-		addrStrkey, err = strkey.Encode(strkey.VersionByteContract, []byte(address))
-		if err != nil {
-			return nil, fmt.Errorf("encode holder address: %w", err)
-		}
+	holderAddressScVal := scval.AddressToScVal(holderAddress)
+	if holderAddressScVal.Address == nil {
+		return nil, fmt.Errorf("invalid holder address: %s", holderAddress)
 	}
 
-	balanceArgs := []xdr.ScVal{scval.AddressToScVal(addrStrkey)}
+	balanceArgs := []xdr.ScVal{holderAddressScVal}
 	result, err := c.deployer.SimulateContract(ctx, tokenStrkey, "balance", balanceArgs)
 	if err != nil {
 		return nil, fmt.Errorf("query token balance: %w", err)
@@ -1148,6 +1161,15 @@ func (c *Chain) GetTokenAddress() (string, error) {
 	return c.testTokenContractID, nil
 }
 
+// GetReceiverContractAddress returns the CCIP receiver contract ID deployed
+// during DeployContractsForSelector.
+func (c *Chain) GetReceiverContractAddress() (string, error) {
+	if c.receiverContractID == "" {
+		return "", fmt.Errorf("ccip_receiver contract not deployed; run DeployContractsForSelector first")
+	}
+	return c.receiverContractID, nil
+}
+
 // GetTokenPoolAddress returns the lock-release pool contract ID deployed during
 // DeployContractsForSelector.
 func (c *Chain) GetTokenPoolAddress() (string, error) {
@@ -1372,9 +1394,10 @@ var remoteTokenContractTypes = []string{
 	"BurnMintERC20Token",
 }
 
-// resolveRemotePoolAndToken finds the first matching pool on the remote chain
-// and a token with the same qualifier. Falls back to zero bytes if nothing is
-// found (the remote chain may not have deployed a pool yet).
+// resolveRemotePoolAndToken finds the counterpart pool and token on the remote
+// chain. EVM remotes use the deterministic EVM-to-Stellar token pair resolver;
+// other remotes fall back to the first matching pool and token with the same
+// qualifier. Falls back to zero bytes if nothing is found.
 func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (poolBytes, tokenBytes []byte, err error) {
 	addrLen, err := addressBytesLengthForSelector(remoteSelector)
 	if err != nil {
@@ -1385,6 +1408,21 @@ func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (p
 	allRefs, err := ds.Addresses().Fetch()
 	if err != nil {
 		return zeroPad(), zeroPad(), nil
+	}
+
+	family, err := chainsel.GetSelectorFamily(remoteSelector)
+	if err == nil && family == chainsel.FamilyEVM {
+		if poolRef, tokenRef, found := ResolveEVMTokenPoolForStellar(allRefs, remoteSelector); found {
+			poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+			if err != nil {
+				return zeroPad(), zeroPad(), nil
+			}
+			tokenBytes, err = addressBytesForSelector(tokenRef, remoteSelector)
+			if err != nil {
+				return zeroPad(), zeroPad(), nil
+			}
+			return poolBytes, tokenBytes, nil
+		}
 	}
 
 	// Index refs by (type, qualifier) for the remote chain.

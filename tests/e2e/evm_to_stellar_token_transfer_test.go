@@ -79,6 +79,8 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 		stellarReceiver, err := stellarChain.GetEOAReceiverAddress()
 		require.NoError(t, err)
 		l.Info().Str("stellarReceiver", hex.EncodeToString(stellarReceiver)).Msg("Using Stellar receiver")
+		stellarReceiverAddress, err := stellarCcvChain.GetReceiverContractAddress()
+		require.NoError(t, err)
 
 		evmSender, err := evmChain.GetSenderAddress()
 		require.NoError(t, err)
@@ -89,7 +91,7 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 		require.True(t, evmBalBefore.Cmp(evmAmount) >= 0,
 			"EVM sender must have enough tokens; balance=%s, need=%s", evmBalBefore, evmAmount)
 
-		stellarReceiverBalBefore, err := stellarChain.GetTokenBalance(ctx, stellarReceiver, protocol.UnknownAddress(stellarTokenRaw))
+		stellarReceiverBalBefore, err := stellarCcvChain.GetTokenBalanceForAddress(ctx, stellarReceiverAddress, protocol.UnknownAddress(stellarTokenRaw))
 		require.NoError(t, err)
 		l.Info().Str("stellarReceiverBalance", stellarReceiverBalBefore.String()).Msg("Stellar receiver balance before transfer")
 
@@ -165,7 +167,7 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 			Uint64("seqNo", seqNo).
 			Msg("Token transfer executed successfully on Stellar OffRamp")
 
-		stellarReceiverBalAfter, err := stellarChain.GetTokenBalance(ctx, stellarReceiver, protocol.UnknownAddress(stellarTokenRaw))
+		stellarReceiverBalAfter, err := stellarCcvChain.GetTokenBalanceForAddress(ctx, stellarReceiverAddress, protocol.UnknownAddress(stellarTokenRaw))
 		require.NoError(t, err)
 		stellarDelta := new(big.Int).Sub(stellarReceiverBalAfter, stellarReceiverBalBefore)
 		l.Info().

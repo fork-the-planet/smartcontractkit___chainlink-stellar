@@ -68,7 +68,6 @@ func TestStellarToEVMExecution(t *testing.T) {
 
 		sendResult, seqNo, err := sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
 			"hello from stellar", "Message verified and aggregated successfully")
-
 		require.NoError(t, err)
 
 		// TODO: uncomment once EVM executor is wired up for Stellar-sourced messages.
@@ -276,7 +275,10 @@ func sendAndVerifyMessage(
 		Str("messageID", hex.EncodeToString(sendResult.MessageID[:])).
 		Msg("CCIP message sent from Stellar")
 
-	sentEvent, err := stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{SeqNum: seqNo}, stellarSentTimeout)
+	sentEvent, err := stellarChain.ConfirmSendOnSource(ctx, evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{
+		SeqNum:    seqNo,
+		MessageID: sendResult.MessageID,
+	}, stellarSentTimeout)
 	require.NoError(t, err)
 	messageID := sentEvent.MessageID
 	l.Info().
