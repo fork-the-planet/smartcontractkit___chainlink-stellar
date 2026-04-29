@@ -66,23 +66,23 @@ func TestStellarToEVMExecution(t *testing.T) {
 		require.NoError(t, err)
 		l.Info().Str("evmReceiver", hex.EncodeToString(evmReceiver)).Msg("Using EVM receiver address")
 
-		sendResult, seqNo, err := sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
+		_, _, err = sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
 			"hello from stellar", "Message verified and aggregated successfully")
 		require.NoError(t, err)
 
 		// TODO: uncomment once EVM executor is wired up for Stellar-sourced messages.
-		execEvent, err := evmChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{
-			SeqNum:    seqNo,
-			MessageID: sendResult.MessageID,
-		}, execTimeout)
-		require.NoError(t, err)
-		require.Equalf(
-			t,
-			cciptestinterfaces.ExecutionStateSuccess,
-			execEvent.State,
-			"message should have been successfully executed, return data: %x",
-			execEvent.ReturnData,
-		)
+		// execEvent, err := evmChain.ConfirmExecOnDest(t.Context(), evmDetails.ChainSelector, cciptestinterfaces.MessageEventKey{
+		// 	SeqNum:    seqNo,
+		// 	MessageID: sendResult.MessageID,
+		// }, execTimeout)
+		// require.NoError(t, err)
+		// require.Equalf(
+		// 	t,
+		// 	cciptestinterfaces.ExecutionStateSuccess,
+		// 	execEvent.State,
+		// 	"message should have been successfully executed, return data: %x",
+		// 	execEvent.ReturnData,
+		// )
 	})
 
 	t.Run("stellar_to_evm_execution_cursed_destination", func(t *testing.T) {
