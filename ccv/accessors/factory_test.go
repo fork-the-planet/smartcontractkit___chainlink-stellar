@@ -48,23 +48,27 @@ func TestFactory_GetAccessor_validation(t *testing.T) {
 		assert.Contains(t, err.Error(), "stellar config not found")
 	})
 
-	t.Run("empty soroban rpc url", func(t *testing.T) {
+	t.Run("empty soroban rpc url deferred to SourceReader", func(t *testing.T) {
 		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{
 			stellarKey: {NetworkPassphrase: "pass", SorobanRPCURL: ""},
 		})
 		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
-		require.Error(t, err)
-		require.Nil(t, acc)
-		assert.Contains(t, err.Error(), "soroban rpc url is required")
+		require.NoError(t, err, "GetAccessor should succeed even when SourceReader cannot be built")
+		require.NotNil(t, acc)
+		_, srErr := acc.SourceReader()
+		require.Error(t, srErr)
+		assert.Contains(t, srErr.Error(), "soroban rpc url is required")
 	})
 
-	t.Run("empty network passphrase", func(t *testing.T) {
+	t.Run("empty network passphrase deferred to SourceReader", func(t *testing.T) {
 		f := NewFactory(lggr, map[string]sourcereader.ReaderConfig{
 			stellarKey: {SorobanRPCURL: "http://localhost:8000", NetworkPassphrase: ""},
 		})
 		acc, err := f.GetAccessor(ctx, protocol.ChainSelector(stellarSel))
-		require.Error(t, err)
-		require.Nil(t, acc)
-		assert.Contains(t, err.Error(), "network passphrase is required")
+		require.NoError(t, err, "GetAccessor should succeed even when SourceReader cannot be built")
+		require.NotNil(t, acc)
+		_, srErr := acc.SourceReader()
+		require.Error(t, srErr)
+		assert.Contains(t, srErr.Error(), "network passphrase is required")
 	})
 }

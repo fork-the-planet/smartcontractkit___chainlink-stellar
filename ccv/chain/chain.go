@@ -33,12 +33,13 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
+	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccipChangesets "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/changesets"
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
@@ -94,6 +95,7 @@ func generateAccountAddress(seed string) (string, error) {
 var (
 	_ cciptestinterfaces.CCIP17              = &Chain{}
 	_ cciptestinterfaces.CCIP17Configuration = &Chain{}
+	_ cciptestinterfaces.TokenConfigProvider = &Chain{}
 )
 
 // Chain implements the CCIP17 and CCIP17Configuration interfaces for Stellar/Soroban.
@@ -352,29 +354,17 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("apply router ramp updates in post-connect: %w", err)
 	}
 
-	// Configure pool chain updates so the pool accepts lock/burn and
-	// release/mint for each remote chain. The remote pool and token addresses
-	// are placeholders (zero bytes) because the EVM-side pool pairing is
-	// handled separately by the CCV token config pipeline.
-	// TODO(NONEVM-3946): populate real remote pool/token addresses once
-	// cross-chain pool pairing is implemented in PostConnect.
 	if c.tokenPoolClient != nil && c.testTokenContractID != "" {
-		var chainUpdates []tokenpoolbindings.ChainUpdate
-		for _, rs := range remoteSelectors {
-			remotePoolLen, addrErr := addressBytesLengthForSelector(rs)
-			if addrErr != nil {
-				return fmt.Errorf("address bytes length for %d: %w", rs, addrErr)
-			}
-			chainUpdates = append(chainUpdates, tokenpoolbindings.ChainUpdate{
-				RemoteChainSelector:       rs,
-				RemotePoolAddresses:       make([]byte, remotePoolLen),
-				RemoteTokenAddress:        make([]byte, remotePoolLen),
-				OutboundRateLimiterConfig: tokenpoolbindings.RateLimitConfig{},
-				InboundRateLimiterConfig:  tokenpoolbindings.RateLimitConfig{},
-			})
+		chainUpdates, err := c.buildPoolChainUpdates(env.DataStore, remoteSelectors)
+		if err != nil {
+			return fmt.Errorf("build pool chain updates: %w", err)
 		}
 		if err := c.tokenPoolClient.ApplyChainUpdates(context.Background(), chainUpdates, nil); err != nil {
 			return fmt.Errorf("apply pool chain updates in post-connect: %w", err)
+		}
+
+		if err := c.configureEVMToStellarTokenTransfers(env, selector, remoteSelectors); err != nil {
+			return fmt.Errorf("configure EVM-to-Stellar token transfers: %w", err)
 		}
 	}
 
@@ -412,7 +402,7 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 
 // PreDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
 // // Stellar has no CREATE2-style pre-bootstrap like EVM, so this stage only patches topology and registers deploy context for the adapter.
-func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
 	ensureStellarFeeAggregatorsInTopology(c, topology)
@@ -421,7 +411,7 @@ func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployme
 }
 
 // GetDeployChainContractsCfg implements cciptestinterfaces.OnChainConfigurable.
-func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (ccipChangesets.DeployChainContractsPerChainCfg, error) {
+func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (ccipChangesets.DeployChainContractsPerChainCfg, error) {
 	_ = env
 	_ = selector
 	_ = topology
@@ -441,7 +431,7 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
 // Deploys the lock-release test pool and SAC token (EVM post-deploy parity), applies FeeQuoter
 // pricing for the test token, and returns a datastore delta with the pool AddressRef.
-func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
 	defer clearStellarDeployChangesetCtx(selector)
 
@@ -465,16 +455,62 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	if c.tokenPoolContractID == "" {
 		return nil, nil
 	}
-	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID)
+	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
 	if err != nil {
 		return nil, err
 	}
 	return ds, nil
 }
 
+// ---------------------------------------------------------------------------
+// TokenConfigProvider implementation
+// ---------------------------------------------------------------------------
+
+// GetSupportedPools returns the pool types and versions the Stellar chain can
+// deploy. Returning nil keeps Stellar out of the ComputeTokenCombinations matrix
+// (Stellar pool pairing is handled in PostConnect, not via the shared
+// TokenExpansion / ConfigureTokensForTransfers pipeline).
+func (c *Chain) GetSupportedPools() []devenvcommon.PoolCapability {
+	return nil
+}
+
+// GetTokenExpansionConfigs returns nil because Stellar deploys its own test
+// token and lock-release pool in PostDeployContractsForSelector.
+func (c *Chain) GetTokenExpansionConfigs(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []devenvcommon.TokenCombination,
+) ([]tokenscore.TokenExpansionInputPerChain, error) {
+	return nil, nil
+}
+
+// PostTokenDeploy is a no-op; Stellar handles post-deploy work in
+// PostDeployContractsForSelector (FeeQuoter pricing, TAR registration).
+func (c *Chain) PostTokenDeploy(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []datastore.AddressRef,
+) error {
+	return nil
+}
+
+// GetTokenTransferConfigs returns nil because Stellar-EVM cross-chain pool
+// pairing is wired in PostConnect rather than through the shared
+// ConfigureAllTokenTransfers pipeline. The shared pipeline requires strict
+// symmetric grouping by pool identity, which does not align with the
+// asymmetric LockRelease (Stellar) <-> BurnMint (EVM) pairing model.
+func (c *Chain) GetTokenTransferConfigs(
+	_ *deployment.Environment,
+	_ uint64,
+	_ []uint64,
+	_ *ccvdeployment.EnvironmentTopology,
+) ([]tokenscore.TokenTransferConfig, error) {
+	return nil, nil
+}
+
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
 // shared DeployChainContracts changeset merge path.
-func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccipOffchain.EnvironmentTopology) (seq_core.OnChainOutput, error) {
+func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccvdeployment.EnvironmentTopology) (seq_core.OnChainOutput, error) {
 	allSelectors := selectorsFromBlockChains(chains)
 	ds, err := c.deployStellarCCIPContracts(ctx, allSelectors, selector, topology)
 	if err != nil {
@@ -862,8 +898,20 @@ func (c *Chain) GetSenderAddress() (protocol.UnknownAddress, error) {
 }
 
 // GetTokenBalance implements cciptestinterfaces.CCIP17.
-// Gets the balance of a token for an address by calling the SAC balance function.
+// Gets the balance of a token for a raw Stellar account address by calling the
+// SAC balance function. Use GetTokenBalanceForAddress for contract holders.
 func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
+	addrStrkey, err := strkey.Encode(strkey.VersionByteAccountID, []byte(address))
+	if err != nil {
+		return nil, fmt.Errorf("encode account holder address: %w", err)
+	}
+	return c.GetTokenBalanceForAddress(ctx, addrStrkey, tokenAddress)
+}
+
+// GetTokenBalanceForAddress gets a token balance for a typed Stellar holder
+// address. Use this for contract holders, because raw 32-byte Stellar addresses
+// do not carry the Soroban account-vs-contract address tag.
+func (c *Chain) GetTokenBalanceForAddress(ctx context.Context, holderAddress string, tokenAddress protocol.UnknownAddress) (*big.Int, error) {
 	if c.deployer == nil {
 		return nil, fmt.Errorf("deployer not initialized")
 	}
@@ -873,15 +921,12 @@ func (c *Chain) GetTokenBalance(ctx context.Context, address, tokenAddress proto
 		return nil, fmt.Errorf("encode token address: %w", err)
 	}
 
-	addrStrkey, err := strkey.Encode(strkey.VersionByteAccountID, []byte(address))
-	if err != nil {
-		addrStrkey, err = strkey.Encode(strkey.VersionByteContract, []byte(address))
-		if err != nil {
-			return nil, fmt.Errorf("encode holder address: %w", err)
-		}
+	holderAddressScVal := scval.AddressToScVal(holderAddress)
+	if holderAddressScVal.Address == nil {
+		return nil, fmt.Errorf("invalid holder address: %s", holderAddress)
 	}
 
-	balanceArgs := []xdr.ScVal{scval.AddressToScVal(addrStrkey)}
+	balanceArgs := []xdr.ScVal{holderAddressScVal}
 	result, err := c.deployer.SimulateContract(ctx, tokenStrkey, "balance", balanceArgs)
 	if err != nil {
 		return nil, fmt.Errorf("query token balance: %w", err)
@@ -959,75 +1004,21 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 	}, nil
 }
 
-// SendMessage implements cciptestinterfaces.CCIP17.
-// Sends a CCIP message to the specified destination chain via the Router's ccip_send.
+// SendMessage implements cciptestinterfaces.Chain.
+// It delegates to BuildChainMessage + SendChainMessage.
 func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
-	if c.routerClient == nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("Router client not initialized")
-	}
-
 	c.logger.Info().
 		Uint64("destChainSelector", dest).
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	encodedExtraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, opts)
+	msg, err := c.BuildChainMessage(ctx, dest, fields, opts)
 	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to encode extra args: %w", err)
+		return cciptestinterfaces.MessageSentEvent{}, err
 	}
 
-	if c.feeTokenContractID == "" {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
-	}
-	sender := c.deployerKeypair.Address()
-
-	var tokenAmounts []routerbindings.TokenAmount
-	if fields.TokenAmount.Amount != nil && fields.TokenAmount.Amount.Sign() > 0 && len(fields.TokenAmount.TokenAddress) > 0 {
-		if !fields.TokenAmount.Amount.IsInt64() {
-			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("token amount out of int64 range: %s", fields.TokenAmount.Amount.String())
-		}
-		tokenAddr, encErr := strkey.Encode(strkey.VersionByteContract, []byte(fields.TokenAmount.TokenAddress))
-		if encErr != nil {
-			return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("encode token address for send: %w", encErr)
-		}
-		tokenAmount := fields.TokenAmount.Amount.Int64()
-		tokenAmounts = []routerbindings.TokenAmount{{
-			Token:  tokenAddr,
-			Amount: tokenAmount,
-		}}
-		c.logger.Info().
-			Str("token", tokenAddr).
-			Int64("amount", tokenAmount).
-			Msg("Including token transfer in CCIP message")
-	}
-
-	routerMsg := routerbindings.StellarToAnyMessage{
-		Receiver:     fields.Receiver,
-		Data:         fields.Data,
-		TokenAmounts: tokenAmounts,
-		FeeToken:     c.feeTokenContractID,
-		ExtraArgs:    encodedExtraArgs,
-	}
-
-	requiredFee, err := c.routerClient.GetFee(ctx, dest, routerMsg)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to get fee from Router: %w", err)
-	}
-	c.logger.Info().Int64("requiredFee", requiredFee).Msg("Fee quote from Router")
-
-	messageID, err := c.routerClient.CcipSend(ctx, sender, dest, routerMsg, requiredFee)
-	if err != nil {
-		return cciptestinterfaces.MessageSentEvent{}, fmt.Errorf("failed to send message via Router: %w", err)
-	}
-
-	c.logger.Info().
-		Str("messageID", hexutil.Encode(messageID[:])).
-		Msg("CCIP message sent from Stellar via Router")
-
-	return cciptestinterfaces.MessageSentEvent{
-		MessageID: messageID,
-		Sender:    protocol.UnknownAddress([]byte(sender)),
-	}, nil
+	event, _, err := c.SendChainMessage(ctx, dest, msg, nil)
+	return event, err
 }
 
 // Uncurse implements cciptestinterfaces.CCIP17.
@@ -1170,6 +1161,15 @@ func (c *Chain) GetTokenAddress() (string, error) {
 	return c.testTokenContractID, nil
 }
 
+// GetReceiverContractAddress returns the CCIP receiver contract ID deployed
+// during DeployContractsForSelector.
+func (c *Chain) GetReceiverContractAddress() (string, error) {
+	if c.receiverContractID == "" {
+		return "", fmt.Errorf("ccip_receiver contract not deployed; run DeployContractsForSelector first")
+	}
+	return c.receiverContractID, nil
+}
+
 // GetTokenPoolAddress returns the lock-release pool contract ID deployed during
 // DeployContractsForSelector.
 func (c *Chain) GetTokenPoolAddress() (string, error) {
@@ -1214,7 +1214,7 @@ func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	return hexutil.Encode(raw), nil
 }
 
-func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccipOffchain.EnvironmentTopology) {
+func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccvdeployment.EnvironmentTopology) {
 	if topology == nil || topology.NOPTopology == nil {
 		return
 	}
@@ -1376,6 +1376,122 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 	}
 
 	return nil
+}
+
+// remotePoolContractTypes lists pool contract types to probe when looking up
+// the counterpart pool on a remote chain. Ordered by preference (burn-mint is
+// the natural counterpart for a lock-release pool).
+var remotePoolContractTypes = []string{
+	"BurnMintTokenPool",
+	"LockReleaseTokenPool",
+}
+
+// remoteTokenContractTypes lists token contract types used by EVM devenv
+// deployments. Order mirrors deployment likelihood.
+var remoteTokenContractTypes = []string{
+	"BurnMintERC20WithDripToken",
+	"BurnMintERC20WithDrip",
+	"BurnMintERC20Token",
+}
+
+// resolveRemotePoolAndToken finds the counterpart pool and token on the remote
+// chain. EVM remotes use the deterministic EVM-to-Stellar token pair resolver;
+// other remotes fall back to the first matching pool and token with the same
+// qualifier. Falls back to zero bytes if nothing is found.
+func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (poolBytes, tokenBytes []byte, err error) {
+	addrLen, err := addressBytesLengthForSelector(remoteSelector)
+	if err != nil {
+		return nil, nil, err
+	}
+	zeroPad := func() []byte { return make([]byte, addrLen) }
+
+	allRefs, err := ds.Addresses().Fetch()
+	if err != nil {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	family, err := chainsel.GetSelectorFamily(remoteSelector)
+	if err == nil && family == chainsel.FamilyEVM {
+		if poolRef, tokenRef, found := ResolveEVMTokenPoolForStellar(allRefs, remoteSelector); found {
+			poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+			if err != nil {
+				return zeroPad(), zeroPad(), nil
+			}
+			tokenBytes, err = addressBytesForSelector(tokenRef, remoteSelector)
+			if err != nil {
+				return zeroPad(), zeroPad(), nil
+			}
+			return poolBytes, tokenBytes, nil
+		}
+	}
+
+	// Index refs by (type, qualifier) for the remote chain.
+	type refKey struct {
+		ct        string
+		qualifier string
+	}
+	byKey := make(map[refKey]datastore.AddressRef)
+	for _, ref := range allRefs {
+		if ref.ChainSelector != remoteSelector {
+			continue
+		}
+		byKey[refKey{string(ref.Type), ref.Qualifier}] = ref
+	}
+
+	// Find the first pool match.
+	var poolRef datastore.AddressRef
+	poolFound := false
+	for _, ct := range remotePoolContractTypes {
+		for key, ref := range byKey {
+			if key.ct == ct {
+				poolRef = ref
+				poolFound = true
+				break
+			}
+		}
+		if poolFound {
+			break
+		}
+	}
+	if !poolFound {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+	if err != nil {
+		return zeroPad(), zeroPad(), nil
+	}
+
+	// Find a token with the same qualifier as the pool.
+	tokenBytes = zeroPad()
+	for _, ct := range remoteTokenContractTypes {
+		if ref, ok := byKey[refKey{ct, poolRef.Qualifier}]; ok {
+			if tb, err := addressBytesForSelector(ref, remoteSelector); err == nil {
+				tokenBytes = tb
+				break
+			}
+		}
+	}
+
+	return poolBytes, tokenBytes, nil
+}
+
+func (c *Chain) buildPoolChainUpdates(ds datastore.DataStore, remoteSelectors []uint64) ([]tokenpoolbindings.ChainUpdate, error) {
+	var updates []tokenpoolbindings.ChainUpdate
+	for _, rs := range remoteSelectors {
+		remotePoolBytes, remoteTokenBytes, err := resolveRemotePoolAndToken(ds, rs)
+		if err != nil {
+			return nil, fmt.Errorf("resolve remote pool/token for %d: %w", rs, err)
+		}
+		updates = append(updates, tokenpoolbindings.ChainUpdate{
+			RemoteChainSelector:       rs,
+			RemotePoolAddresses:       remotePoolBytes,
+			RemoteTokenAddress:        remoteTokenBytes,
+			OutboundRateLimiterConfig: tokenpoolbindings.RateLimitConfig{},
+			InboundRateLimiterConfig:  tokenpoolbindings.RateLimitConfig{},
+		})
+	}
+	return updates, nil
 }
 
 func (c *Chain) buildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error) {

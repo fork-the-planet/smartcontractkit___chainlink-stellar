@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	ccipOffchain "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 )
 
 // DeployStellarCCIPContracts deploys the full Stellar CCIP stack for devenv.
 // allSelectors must list every chain selector in the environment.
-func DeployStellarCCIPContracts(ctx context.Context, host Host, allSelectors []uint64, selector uint64, topology *ccipOffchain.EnvironmentTopology) (datastore.DataStore, error) {
+func DeployStellarCCIPContracts(ctx context.Context, host Host, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	if host == nil {
 		return nil, fmt.Errorf("stellar CCIP deploy host is nil")
 	}
