@@ -21,7 +21,7 @@ jobs:
       id-token: write
     runs-on: runs-on=${{ github.run_id }}/family=c6i/cpu=32+48/ram=64+96/spot=false/image=ubuntu24-full-x64/extras=s3-cache+tmpfs
     env:
-      CCV_COMMIT: 7e27596ff6a529298d4573f4810d82a13432dc01
+      CCV_TAG: v0.0.1
     steps:
       - name: Enable S3 Cache for Self-Hosted Runners
         uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
@@ -31,8 +31,8 @@ jobs:
 
       - name: Clone chainlink-ccv (for Docker image builds only)
         run: |
-          git clone --no-checkout https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
-          cd ../chainlink-ccv && git checkout ${{ env.CCV_COMMIT }}
+          git clone --depth 1 --branch ${{ env.CCV_TAG }} \
+            https://github.com/smartcontractkit/chainlink-ccv.git ../chainlink-ccv
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
