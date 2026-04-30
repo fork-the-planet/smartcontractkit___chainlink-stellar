@@ -1174,3 +1174,4 @@ func ParseAdministratorTransferredEvent(e protocolrpc.EventInfo) (*Administrator
 
 	return result, nil
 }
+

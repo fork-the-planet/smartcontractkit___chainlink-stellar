@@ -513,3 +513,4 @@ func (c *TokenPoolClient) GetRampRegistry(ctx context.Context) (*string, error) 
 	}
 	return v, nil
 }
+

@@ -2142,3 +2142,4 @@ func ParseLockBoxConfiguredEvent(e protocolrpc.EventInfo) (*LockBoxConfiguredEve
 
 	return result, nil
 }
+

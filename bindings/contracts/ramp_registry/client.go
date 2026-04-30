@@ -105,54 +105,6 @@ func (c *RampRegistryClient) IsOfframp(ctx context.Context, sourceChainSelector 
 	return v, nil
 }
 
-// SetOnramp calls the set_onramp function on the contract.
-func (c *RampRegistryClient) SetOnramp(ctx context.Context, destChainSelector uint64, onramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(destChainSelector),
-		scval.AddressToScVal(onramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_onramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call set_onramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// AddOfframp calls the add_offramp function on the contract.
-func (c *RampRegistryClient) AddOfframp(ctx context.Context, sourceChainSelector uint64, offramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(sourceChainSelector),
-		scval.AddressToScVal(offramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "add_offramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call add_offramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// RemoveOfframp calls the remove_offramp function on the contract.
-func (c *RampRegistryClient) RemoveOfframp(ctx context.Context, sourceChainSelector uint64, offramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(sourceChainSelector),
-		scval.AddressToScVal(offramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "remove_offramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call remove_offramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
 // GetOnramps calls the get_onramps function on the contract.
 func (c *RampRegistryClient) GetOnramps(ctx context.Context) ([]OnRampEntry, error) {
 	args := []xdr.ScVal{}
@@ -209,19 +161,33 @@ func (c *RampRegistryClient) GetOfframps(ctx context.Context) ([]OffRampEntry, e
 	return out, nil
 }
 
-// ApplyRampUpdates calls the apply_ramp_updates function on the contract.
-func (c *RampRegistryClient) ApplyRampUpdates(ctx context.Context, onrampUpdates []OnRampEntry, offrampRemoves []OffRampEntry, offrampAdds []OffRampEntry) error {
+// ApplyOnrampUpdates calls the apply_onramp_updates function on the contract.
+func (c *RampRegistryClient) ApplyOnrampUpdates(ctx context.Context, updates []OnRampUpdate) error {
 	args := []xdr.ScVal{
-		scval.StructSliceToScVal(onrampUpdates),
-		scval.StructSliceToScVal(offrampRemoves),
-		scval.StructSliceToScVal(offrampAdds),
+		scval.StructSliceToScVal(updates),
 	}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_ramp_updates", args)
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_onramp_updates", args)
 	if err != nil {
-		return fmt.Errorf("failed to call apply_ramp_updates: %w", err)
+		return fmt.Errorf("failed to call apply_onramp_updates: %w", err)
 	}
 
 	_ = result // void return
 	return nil
 }
+
+// ApplyOfframpUpdates calls the apply_offramp_updates function on the contract.
+func (c *RampRegistryClient) ApplyOfframpUpdates(ctx context.Context, updates []OffRampUpdate) error {
+	args := []xdr.ScVal{
+		scval.StructSliceToScVal(updates),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_offramp_updates", args)
+	if err != nil {
+		return fmt.Errorf("failed to call apply_offramp_updates: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+

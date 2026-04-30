@@ -11,14 +11,14 @@ import (
 // OnRampEntry represents the OnRampEntry struct from the contract.
 type OnRampEntry struct {
 	DestChainSelector uint64
-	Onramp            string
+	Onramp string
 }
 
 // ToScVal converts OnRampEntry to an xdr.ScVal for contract calls.
 func (s OnRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"onramp":              scval.AddressToScVal(s.Onramp),
+		"onramp": scval.AddressToScVal(s.Onramp),
 	})
 }
 
@@ -58,14 +58,14 @@ func OnRampEntryFromScVal(val xdr.ScVal) (*OnRampEntry, error) {
 // OffRampEntry represents the OffRampEntry struct from the contract.
 type OffRampEntry struct {
 	SourceChainSelector uint64
-	Offramp             string
+	Offramp string
 }
 
 // ToScVal converts OffRampEntry to an xdr.ScVal for contract calls.
 func (s OffRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
-		"offramp":               scval.AddressToScVal(s.Offramp),
+		"offramp": scval.AddressToScVal(s.Offramp),
 	})
 }
 
@@ -101,3 +101,106 @@ func OffRampEntryFromScVal(val xdr.ScVal) (*OffRampEntry, error) {
 
 	return result, nil
 }
+
+// OnRampUpdate represents the OnRampUpdate struct from the contract.
+type OnRampUpdate struct {
+	DestChainSelector uint64
+	Onramp *string
+}
+
+// ToScVal converts OnRampUpdate to an xdr.ScVal for contract calls.
+func (s OnRampUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
+		"onramp": scval.OptionalAddressToScVal(s.Onramp),
+	})
+}
+
+// OnRampUpdateFromScVal parses an xdr.ScVal into OnRampUpdate.
+func OnRampUpdateFromScVal(val xdr.ScVal) (*OnRampUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &OnRampUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("dest_chain_selector: %w", err)
+			}
+			result.DestChainSelector = v
+		case "onramp":
+			v, err := scval.OptionalAddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("onramp: %w", err)
+			}
+			result.Onramp = v
+		}
+	}
+
+	return result, nil
+}
+
+// OffRampUpdate represents the OffRampUpdate struct from the contract.
+type OffRampUpdate struct {
+	SourceChainSelector uint64
+	Offramp string
+	Enabled bool
+}
+
+// ToScVal converts OffRampUpdate to an xdr.ScVal for contract calls.
+func (s OffRampUpdate) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
+		"offramp": scval.AddressToScVal(s.Offramp),
+		"enabled": scval.BoolToScVal(s.Enabled),
+	})
+}
+
+// OffRampUpdateFromScVal parses an xdr.ScVal into OffRampUpdate.
+func OffRampUpdateFromScVal(val xdr.ScVal) (*OffRampUpdate, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &OffRampUpdate{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "source_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("source_chain_selector: %w", err)
+			}
+			result.SourceChainSelector = v
+		case "offramp":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("offramp: %w", err)
+			}
+			result.Offramp = v
+		case "enabled":
+			v, ok := entry.Val.GetB()
+			if !ok {
+				return nil, fmt.Errorf("enabled is not bool")
+			}
+			result.Enabled = v
+		}
+	}
+
+	return result, nil
+}
+
