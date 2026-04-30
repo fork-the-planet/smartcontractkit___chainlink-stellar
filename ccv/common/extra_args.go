@@ -1,4 +1,4 @@
-package ccvchain
+package common
 
 import (
 	"fmt"
@@ -9,6 +9,16 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 )
+
+// EncodeExtraArgsV3 converts a GenericExtraArgsV3 to XDR bytes suitable for
+// the OnRamp contract's ExtraArgs field (parsed via GenericExtraArgsV3::from_xdr).
+func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
+	scVal, err := args.ToScVal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extra args to ScVal: %w", err)
+	}
+	return scVal.MarshalBinary()
+}
 
 // EncodeStellarSourceExtraArgsForOnRamp maps cciptest MessageOptions into the Soroban
 // GenericExtraArgsV3 XDR blob expected by the Stellar OnRamp extra_args field
