@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -618,7 +619,7 @@ func TestSimulateContract_SecondRestorePreambleErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// WithFeeBumpFactor option
+// WithTxnTimeBound and WithFeeBumpFactor options
 // ---------------------------------------------------------------------------
 
 func TestWithTxnTimeBound_Default(t *testing.T) {
@@ -655,6 +656,14 @@ func TestWithFeeBumpFactor_BelowOneIsClamped(t *testing.T) {
 	kp := keypair.MustRandom()
 	d := NewDeployer(nil, "Test", kp, WithFeeBumpFactor(0.5))
 	assert.InDelta(t, 1.0, d.feeBumpFactor, 0.0001, "factor below 1.0 should be clamped to 1.0")
+}
+
+func TestWithFeeBumpFactor_NonFiniteClampedToOne(t *testing.T) {
+	kp := keypair.MustRandom()
+	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		d := NewDeployer(nil, "Test", kp, WithFeeBumpFactor(f))
+		assert.InDelta(t, 1.0, d.feeBumpFactor, 0.0001, "non-finite factor should clamp to 1.0")
+	}
 }
 
 func TestBuildAndSubmitTransaction_FeeBumpApplied(t *testing.T) {

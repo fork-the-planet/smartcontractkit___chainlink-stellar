@@ -56,10 +56,10 @@ func WithAutoRestore(enabled bool) DeployerOption {
 // to derive the submitted transaction fee. For example, 1.25 submits at 25% above
 // the simulated minimum, providing headroom during network fee surges. A floor of
 // minFeeBuffer (10 000 stroops) is always applied on top of the simulation minimum.
-// Values below 1.0 are clamped to 1.0.
+// Non-finite values and values below 1.0 are clamped to 1.0 (no bump).
 func WithFeeBumpFactor(factor float64) DeployerOption {
 	return func(d *Deployer) {
-		if factor < 1.0 {
+		if math.IsNaN(factor) || math.IsInf(factor, 0) || factor < 1.0 {
 			factor = 1.0
 		}
 		d.feeBumpFactor = factor
@@ -90,7 +90,7 @@ type Deployer struct {
 	autoRestore bool
 	// feeBumpFactor is multiplied by the simulation's MinResourceFee to derive
 	// the submitted fee. A value of 1.25 means 25% above the simulation minimum.
-	// Defaults to 1.25; clamped to a minimum of 1.0.
+	// Defaults to 1.25; WithFeeBumpFactor clamps non-finite values and values below 1.0.
 	feeBumpFactor float64
 	// txnTimeBound is the validity window for every Soroban/classic transaction
 	// submitted by the Deployer. waitForTransaction polls for this exact duration,
@@ -648,6 +648,18 @@ func (d *Deployer) waitForTransaction(ctx context.Context, hash string, deadline
 	}
 }
 
+// feeBumpExtra returns stroops to add on top of minFee for a fee bump factor (>= 1).
+func feeBumpExtra(minFee int64, factor float64) int64 {
+	if minFee <= 0 {
+		return 0
+	}
+	x := float64(minFee) * (factor - 1.0)
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		return 0
+	}
+	return int64(math.Ceil(x))
+}
+
 // restoreFootprint submits a RestoreFootprint transaction using the data provided
 // by a simulation's RestorePreamble. Soroban returns this preamble when the
 // transaction's read/write footprint references persistent ledger entries whose
@@ -674,7 +686,7 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 		},
 	}
 
-	bump := int64(math.Ceil(float64(preamble.MinResourceFee) * (d.feeBumpFactor - 1.0)))
+	bump := feeBumpExtra(preamble.MinResourceFee, d.feeBumpFactor)
 	if bump < minFeeBuffer {
 		bump = minFeeBuffer
 	}
@@ -766,7 +778,7 @@ func (d *Deployer) assembleTransaction(ctx context.Context, tx *txnbuild.Transac
 
 	minFee := sim.MinResourceFee
 	if minFee > 0 {
-		bump := int64(math.Ceil(float64(minFee) * (d.feeBumpFactor - 1.0)))
+		bump := feeBumpExtra(minFee, d.feeBumpFactor)
 		if bump < minFeeBuffer {
 			bump = minFeeBuffer
 		}
