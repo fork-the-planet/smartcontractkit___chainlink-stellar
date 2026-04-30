@@ -157,10 +157,7 @@ impl RampRegistryContract {
     /// Apply a batch of onramp updates atomically.
     ///
     /// For each entry: `onramp = Some(addr)` sets the entry, `onramp = None` removes it.
-    pub fn apply_onramp_updates(
-        env: Env,
-        updates: Vec<OnRampUpdate>,
-    ) -> Result<(), CCIPError> {
+    pub fn apply_onramp_updates(env: Env, updates: Vec<OnRampUpdate>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
@@ -179,10 +176,7 @@ impl RampRegistryContract {
     ///
     /// Each update targets a single (source_chain, offramp) pair:
     /// `enabled = Some(())` registers the offramp, `enabled = None` removes it.
-    pub fn apply_offramp_updates(
-        env: Env,
-        updates: Vec<OffRampUpdate>,
-    ) -> Result<(), CCIPError> {
+    pub fn apply_offramp_updates(env: Env, updates: Vec<OffRampUpdate>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
         <Self as Ownable>::require_owner(&env)?;
 
