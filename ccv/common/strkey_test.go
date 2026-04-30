@@ -1,4 +1,4 @@
-package strkeyutil
+package common
 
 import (
 	"testing"
