@@ -1,6 +1,14 @@
 use common_error::CCIPError;
 use soroban_sdk::{Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec};
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum StorageKind {
+    /// Uses instance storage (default, lives with contract lifetime).
+    Instance,
+    /// Uses persistent storage (survives contract upgrades, matches some other registries like ramp).
+    Persistent,
+}
+
 pub trait MapUpdate {
     type Key: TryFromVal<Env, Val> + IntoVal<Env, Val>;
     type Value: TryFromVal<Env, Val> + IntoVal<Env, Val>;
@@ -31,14 +39,22 @@ where
 {
     const MAP_NAME: Symbol;
     const KEY_SET_NAME: Symbol;
+    /// Storage kind for this lookup table (default Instance to preserve existing behavior).
+    const STORAGE_KIND: StorageKind = StorageKind::Instance;
     type Error: From<CCIPError> + From<Self::Error>;
 
     fn get_map(&self, env: &Env) -> Option<Map<K, V>> {
-        env.storage().instance().get(&Self::MAP_NAME)
+        match Self::STORAGE_KIND {
+            StorageKind::Instance => env.storage().instance().get(&Self::MAP_NAME),
+            StorageKind::Persistent => env.storage().persistent().get(&Self::MAP_NAME),
+        }
     }
 
     fn get_key_set(&self, env: &Env) -> Option<Vec<K>> {
-        env.storage().instance().get(&Self::KEY_SET_NAME)
+        match Self::STORAGE_KIND {
+            StorageKind::Instance => env.storage().instance().get(&Self::KEY_SET_NAME),
+            StorageKind::Persistent => env.storage().persistent().get(&Self::KEY_SET_NAME),
+        }
     }
 
     fn validate_update(&self, _update: &T) -> Result<(), Self::Error> {
