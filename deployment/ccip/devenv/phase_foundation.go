@@ -7,11 +7,15 @@ import (
 
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
-	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
-	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	fqops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/fee_quoter"
+	onrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/onramp"
+	rmnproxyops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/rmn_proxy"
+	rmnremoteops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/rmn_remote"
+	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 )
 
 func (w *work) deployFoundationContracts() error {
@@ -27,10 +31,11 @@ func (w *work) deployFoundationContracts() error {
 	h.Logger().Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
 
 	onrampSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "onramp")
-	onrampContractID, err := h.Deployer().DeployContract(ctx, onrampWasmPath, onrampSalt)
+	onrampOut, err := execStellarOp(w, onrampops.Deploy, stellarops.DeployInput{WasmPath: onrampWasmPath, Salt: onrampSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy OnRamp contract: %w", err)
 	}
+	onrampContractID := onrampOut.ContractID
 	w.onrampContractID = onrampContractID
 	h.Logger().Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
@@ -44,16 +49,19 @@ func (w *work) deployFoundationContracts() error {
 
 	h.Logger().Info().Str("wasmPath", rmnRemoteWasmPath).Msg("Deploying RMN Remote contract...")
 	rmnRemoteSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "rmn-remote")
-	rmnRemoteContractID, err := h.Deployer().DeployContract(ctx, rmnRemoteWasmPath, rmnRemoteSalt)
+	rmnRemoteOut, err := execStellarOp(w, rmnremoteops.Deploy, stellarops.DeployInput{WasmPath: rmnRemoteWasmPath, Salt: rmnRemoteSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy RMN Remote contract: %w", err)
 	}
+	rmnRemoteContractID := rmnRemoteOut.ContractID
 	w.rmnRemoteContractID = rmnRemoteContractID
 	h.Logger().Info().Str("contractID", rmnRemoteContractID).Msg("RMN Remote contract deployed")
 
-	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(h.Deployer(), rmnRemoteContractID)
-	err = rmnRemoteClient.Initialize(ctx, h.DeployerKeypair().Address(), w.selector)
-	if err != nil {
+	if _, err := execStellarOp(w, rmnremoteops.Initialize, rmnremoteops.InitializeInput{
+		ContractID:    rmnRemoteContractID,
+		Owner:         h.DeployerKeypair().Address(),
+		ChainSelector: w.selector,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize RMN Remote: %w", err)
 	}
 	h.Logger().Info().Str("rmnRemoteContractID", rmnRemoteContractID).Msg("RMN Remote initialized")
@@ -65,16 +73,19 @@ func (w *work) deployFoundationContracts() error {
 
 	h.Logger().Info().Str("wasmPath", rmnProxyWasmPath).Msg("Deploying RMN Proxy contract...")
 	rmnProxySalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "rmn-proxy")
-	rmnProxyContractID, err := h.Deployer().DeployContract(ctx, rmnProxyWasmPath, rmnProxySalt)
+	rmnProxyOut, err := execStellarOp(w, rmnproxyops.Deploy, stellarops.DeployInput{WasmPath: rmnProxyWasmPath, Salt: rmnProxySalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy RMN Proxy contract: %w", err)
 	}
+	rmnProxyContractID := rmnProxyOut.ContractID
 	w.rmnProxyContractID = rmnProxyContractID
 	h.Logger().Info().Str("contractID", rmnProxyContractID).Msg("RMN Proxy contract deployed")
 
-	rmnProxyClient := rmnproxybindings.NewRmnProxyClient(h.Deployer(), rmnProxyContractID)
-	err = rmnProxyClient.Initialize(ctx, h.DeployerKeypair().Address(), rmnRemoteContractID)
-	if err != nil {
+	if _, err := execStellarOp(w, rmnproxyops.Initialize, rmnproxyops.InitializeInput{
+		ContractID: rmnProxyContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		RmnRemote:  rmnRemoteContractID,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize RMN Proxy: %w", err)
 	}
 	h.Logger().Info().Str("rmnProxyContractID", rmnProxyContractID).Msg("RMN Proxy initialized")
@@ -86,10 +97,11 @@ func (w *work) deployFoundationContracts() error {
 
 	h.Logger().Info().Str("wasmPath", feeQuoterWasmPath).Msg("Deploying FeeQuoter contract...")
 	feeQuoterSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "fee-quoter")
-	feeQuoterContractID, err := h.Deployer().DeployContract(ctx, feeQuoterWasmPath, feeQuoterSalt)
+	feeQuoterOut, err := execStellarOp(w, fqops.Deploy, stellarops.DeployInput{WasmPath: feeQuoterWasmPath, Salt: feeQuoterSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy FeeQuoter contract: %w", err)
 	}
+	feeQuoterContractID := feeQuoterOut.ContractID
 	w.feeQuoterContractID = feeQuoterContractID
 	h.Logger().Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
 
@@ -108,11 +120,15 @@ func (w *work) deployFoundationContracts() error {
 
 	feeQuoterClient := fqbindings.NewFeeQuoterClient(h.Deployer(), feeQuoterContractID)
 	h.SetFeeQuoter(feeQuoterClient)
-	err = feeQuoterClient.Initialize(ctx, h.DeployerKeypair().Address(), fqbindings.StaticConfig{
-		LinkToken:         w.feeTokenContractID,
-		MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
-	}, []string{h.DeployerKeypair().Address()})
-	if err != nil {
+	if _, err := execStellarOp(w, fqops.Initialize, fqops.InitializeInput{
+		ContractID: feeQuoterContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		StaticConfig: fqbindings.StaticConfig{
+			LinkToken:         w.feeTokenContractID,
+			MaxFeeJuelsPerMsg: 1_000_000_000_000_000_000, // 1e18
+		},
+		AuthorizedCallers: []string{h.DeployerKeypair().Address()},
+	}); err != nil {
 		return fmt.Errorf("failed to initialize FeeQuoter: %w", err)
 	}
 	h.Logger().Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
@@ -123,30 +139,38 @@ func (w *work) deployFoundationContracts() error {
 	}
 	h.Logger().Info().Str("wasmPath", tarWasmPath).Msg("Deploying TokenAdminRegistry contract...")
 	tarSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "token-admin-registry")
-	tarContractID, err := h.Deployer().DeployContract(ctx, tarWasmPath, tarSalt)
+	tarOut, err := execStellarOp(w, tarops.Deploy, stellarops.DeployInput{WasmPath: tarWasmPath, Salt: tarSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy TokenAdminRegistry: %w", err)
 	}
+	tarContractID := tarOut.ContractID
 	w.tarContractID = tarContractID
 	tarClient := tarbindings.NewTokenAdminRegistryClient(h.Deployer(), tarContractID)
 	h.SetTokenAdminRegistry(tarContractID, tarClient)
-	if err := tarClient.Initialize(ctx, h.DeployerKeypair().Address()); err != nil {
+	if _, err := execStellarOp(w, tarops.Initialize, tarops.InitializeInput{
+		ContractID: tarContractID,
+		Owner:      h.DeployerKeypair().Address(),
+	}); err != nil {
 		return fmt.Errorf("failed to initialize TokenAdminRegistry: %w", err)
 	}
 	h.Logger().Info().Str("contractID", tarContractID).Msg("TokenAdminRegistry deployed and initialized")
 
 	mockFeeAggregator := stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "fee-aggregator")
 
-	err = onRampClient.Initialize(ctx, h.DeployerKeypair().Address(), onrampbindings.StaticConfig{
-		ChainSelector:         w.selector,
-		TokenAdminRegistry:    tarContractID,
-		RmnProxy:              rmnProxyContractID,
-		MaxUsdCentsPerMessage: 10000, // $100
-	}, onrampbindings.DynamicConfig{
-		FeeQuoter:     feeQuoterContractID,
-		FeeAggregator: mockFeeAggregator,
-	})
-	if err != nil {
+	if _, err := execStellarOp(w, onrampops.Initialize, onrampops.InitializeInput{
+		ContractID: onrampContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		StaticConfig: onrampbindings.StaticConfig{
+			ChainSelector:         w.selector,
+			TokenAdminRegistry:    tarContractID,
+			RmnProxy:              rmnProxyContractID,
+			MaxUsdCentsPerMessage: 10000, // $100
+		},
+		DynamicConfig: onrampbindings.DynamicConfig{
+			FeeQuoter:     feeQuoterContractID,
+			FeeAggregator: mockFeeAggregator,
+		},
+	}); err != nil {
 		return fmt.Errorf("failed to initialize OnRamp: %w", err)
 	}
 

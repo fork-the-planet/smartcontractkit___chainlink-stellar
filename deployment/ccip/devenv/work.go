@@ -8,6 +8,7 @@ import (
 
 	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
@@ -45,6 +46,8 @@ type work struct {
 	vvrClient    *vvrbindings.VersionedVerifierResolverClient
 	cvClient     *cvbindings.CommitteeVerifierClient
 	routerClient *routerbindings.RouterClient
+
+	opBundle cldfops.Bundle
 }
 
 func (w *work) contractHexAddr(name string) string {
@@ -65,5 +68,6 @@ func (w *work) setup() error {
 	host.Logger().Info().Str("stellarRoot", root).Msg("Stellar root")
 
 	w.remoteSelectors = stellarutil.FilterRemoteSelectors(w.allSelectors, w.selector)
+	w.initOperationsBundle()
 	return nil
 }

@@ -12,6 +12,10 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	cvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/committee_verifier"
+	fqops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/fee_quoter"
+	vvrops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/versioned_verifier_resolver"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -33,10 +37,11 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	h.Logger().Info().Str("wasmPath", vvrWasmPath).Msg("Deploying Versioned Verifier Resolver contract...")
 
 	vvrSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "versioned-verifier-resolver")
-	vvrContractID, err := h.Deployer().DeployContract(ctx, vvrWasmPath, vvrSalt)
+	vvrOut, err := execStellarOp(w, vvrops.Deploy, stellarops.DeployInput{WasmPath: vvrWasmPath, Salt: vvrSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy VVR contract: %w", err)
 	}
+	vvrContractID := vvrOut.ContractID
 	w.vvrContractID = vvrContractID
 	h.Logger().Info().Str("contractID", vvrContractID).Msg("VVR contract deployed")
 	h.SetVVR(vvrContractID)
@@ -44,8 +49,11 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	vvrClient := vvrbindings.NewVersionedVerifierResolverClient(h.Deployer(), vvrContractID)
 	w.vvrClient = vvrClient
 
-	err = vvrClient.Initialize(ctx, h.DeployerKeypair().Address(), mockFeeAggregator)
-	if err != nil {
+	if _, err := execStellarOp(w, vvrops.Initialize, vvrops.InitializeInput{
+		ContractID:    vvrContractID,
+		Owner:         h.DeployerKeypair().Address(),
+		FeeAggregator: mockFeeAggregator,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize VVR: %w", err)
 	}
 
@@ -61,10 +69,11 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	h.Logger().Info().Str("wasmPath", cvWasmPath).Msg("Deploying Committee Verifier contract...")
 
 	cvSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "committee-verifier")
-	cvContractID, err := h.Deployer().DeployContract(ctx, cvWasmPath, cvSalt)
+	cvOut, err := execStellarOp(w, cvops.Deploy, stellarops.DeployInput{WasmPath: cvWasmPath, Salt: cvSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy Committee Verifier contract: %w", err)
 	}
+	cvContractID := cvOut.ContractID
 	w.cvContractID = cvContractID
 	h.Logger().Info().Str("contractID", cvContractID).Msg("Committee Verifier contract deployed")
 
@@ -73,11 +82,17 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 
 	allowlistAdmin := h.DeployerKeypair().Address()
 	mockStorageLocation := stellarutil.GenerateContractAddress("storage-location", h.NetworkPassphrase())
-	err = cvClient.Initialize(ctx, h.DeployerKeypair().Address(), cvbindings.DynamicConfig{
-		AllowlistAdmin: &allowlistAdmin,
-		FeeAggregator:  &mockFeeAggregator,
-	}, [][]byte{mockStorageLocation}, w.rmnProxyContractID, stellarutil.DefaultCommitteeVerifierVersionTag())
-	if err != nil {
+	if _, err := execStellarOp(w, cvops.Initialize, cvops.InitializeInput{
+		ContractID: cvContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		DynamicConfig: cvbindings.DynamicConfig{
+			AllowlistAdmin: &allowlistAdmin,
+			FeeAggregator:  &mockFeeAggregator,
+		},
+		StorageLocations: [][]byte{mockStorageLocation},
+		RmnProxy:         w.rmnProxyContractID,
+		VersionTag:       stellarutil.DefaultCommitteeVerifierVersionTag(),
+	}); err != nil {
 		return fmt.Errorf("failed to initialize Committee Verifier: %w", err)
 	}
 
@@ -94,8 +109,10 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 		})
 	}
 
-	err = vvrClient.ApplyOutboundImplUpdates(ctx, outboundImplUpdates)
-	if err != nil {
+	if _, err := execStellarOp(w, vvrops.ApplyOutboundImplUpdates, vvrops.ApplyOutboundImplUpdatesInput{
+		ContractID:      vvrContractID,
+		Implementations: outboundImplUpdates,
+	}); err != nil {
 		return fmt.Errorf("failed to apply outbound implementation updates: %w", err)
 	}
 
@@ -105,8 +122,10 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			Verifier: &cvContractID,
 		},
 	}
-	err = vvrClient.ApplyInboundImplUpdates(ctx, inboundImplUpdates)
-	if err != nil {
+	if _, err := execStellarOp(w, vvrops.ApplyInboundImplUpdates, vvrops.ApplyInboundImplUpdatesInput{
+		ContractID:      vvrContractID,
+		Implementations: inboundImplUpdates,
+	}); err != nil {
 		return fmt.Errorf("failed to apply inbound implementation updates: %w", err)
 	}
 
@@ -124,8 +143,10 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			Router:              &router,
 		})
 	}
-	err = cvClient.ApplyRemoteChainCfgUpdates(ctx, remoteChainConfigs)
-	if err != nil {
+	if _, err := execStellarOp(w, cvops.ApplyRemoteChainCfgUpdates, cvops.ApplyRemoteChainCfgUpdatesInput{
+		ContractID: cvContractID,
+		Configs:    remoteChainConfigs,
+	}); err != nil {
 		return fmt.Errorf("failed to apply remote chain config updates on committee verifier: %w", err)
 	}
 	h.Logger().Info().Int("count", len(remoteChainConfigs)).Msg("Committee Verifier remote chain configs applied")
@@ -144,8 +165,11 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			Signers:             signers,
 		})
 	}
-	err = cvClient.ApplySignatureConfigs(ctx, []uint64{}, signatureQuorumConfigs)
-	if err != nil {
+	if _, err := execStellarOp(w, cvops.ApplySignatureConfigs, cvops.ApplySignatureConfigsInput{
+		ContractID:             cvContractID,
+		RemoveSelectors:        []uint64{},
+		SignatureQuorumConfigs: signatureQuorumConfigs,
+	}); err != nil {
 		return fmt.Errorf("failed to apply signature quorum configs: %w", err)
 	}
 	h.Logger().Info().Int("count", len(signatureQuorumConfigs)).Msg("Signature quorum configs applied")
@@ -168,8 +192,10 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			},
 		})
 	}
-	err = feeQuoterClient.ApplyDestChainConfigs(ctx, fqDestChainConfigs)
-	if err != nil {
+	if _, err := execStellarOp(w, fqops.ApplyDestChainConfigs, fqops.ApplyDestChainConfigsInput{
+		ContractID: w.feeQuoterContractID,
+		Configs:    fqDestChainConfigs,
+	}); err != nil {
 		return fmt.Errorf("failed to apply dest chain configs on FeeQuoter: %w", err)
 	}
 	h.Logger().Info().Int("count", len(fqDestChainConfigs)).Msg("FeeQuoter dest chain configs applied")
@@ -181,7 +207,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			UsdPerUnitGas:     scval.U128(xdr.UInt128Parts{Hi: 0, Lo: 100_000_000_000_000}), // 1e14
 		})
 	}
-	err = feeQuoterClient.UpdatePrices(ctx, h.DeployerKeypair().Address(), fqbindings.PriceUpdates{
+	if err := feeQuoterClient.UpdatePrices(ctx, h.DeployerKeypair().Address(), fqbindings.PriceUpdates{
 		TokenPriceUpdates: []fqbindings.TokenPriceUpdate{
 			{
 				Token:       w.feeTokenContractID,
@@ -189,8 +215,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 			},
 		},
 		GasPriceUpdates: gasPriceUpdates,
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to update prices on FeeQuoter: %w", err)
 	}
 	h.Logger().Info().Msg("FeeQuoter prices updated")
