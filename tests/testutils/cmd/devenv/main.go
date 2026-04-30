@@ -3,11 +3,11 @@ package main
 import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cli"
 
-	stellardevenv "github.com/smartcontractkit/chainlink-stellar/ccv/devenv"
+	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 )
 
 func init() {
-	stellardevenv.RegisterStellarComponents()
+	ccvchain.RegisterStellarComponents()
 }
 
 // main is the entry point for the Stellar devenv CLI.
