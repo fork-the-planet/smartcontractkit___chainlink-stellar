@@ -1,0 +1,16 @@
+# Shallow clone chainlink-ccv next to this repo (../chainlink-ccv).
+# Bump REF below when upgrading the CCV pin used in Docker builds and Go tests.
+name: Setup chainlink-ccv
+description: Clone smartcontractkit/chainlink-ccv at the CI pin.
+
+runs:
+  using: composite
+  steps:
+    - name: Clone chainlink-ccv
+      shell: bash
+      run: |
+        set -euo pipefail
+        REF="v0.0.1"
+        DEST="${GITHUB_WORKSPACE}/../chainlink-ccv"
+        git clone --depth 1 --branch "${REF}" \
+          https://github.com/smartcontractkit/chainlink-ccv.git "${DEST}"
