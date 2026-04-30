@@ -1,6 +1,6 @@
 // Package executorbootstrap wires Stellar-specific executor dependencies for the
 // chainlink-ccv executor bootstrap (ContractTransmitter, DestinationReader, RMNCurseReader).
-package executorbootstrap
+package main
 
 import (
 	"context"

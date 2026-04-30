@@ -9,7 +9,6 @@ import (
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	executorcmd "github.com/smartcontractkit/chainlink-ccv/cmd/executor"
-	"github.com/smartcontractkit/chainlink-stellar/ccv/executorbootstrap"
 	sourcereader "github.com/smartcontractkit/chainlink-stellar/ccv/source_reader"
 )
 
@@ -18,7 +17,7 @@ func main() {
 		"StellarExecutor",
 		executorcmd.NewServiceFactory[sourcereader.ReaderConfig](
 			chainsel.FamilyStellar,
-			executorbootstrap.CreateStellarExecutorComponents,
+			CreateStellarExecutorComponents,
 		),
 		bootstrap.WithLogLevel(zapcore.InfoLevel),
 	); err != nil {
