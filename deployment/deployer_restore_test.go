@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/keypair"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -115,6 +117,8 @@ func newTestDeployer(t *testing.T, mock *mockRPC) *Deployer {
 		signer:            kp,
 		accountSequence:   -1,
 		autoRestore:       true,
+		feeBumpFactor:     1.25,
+		txnTimeBound:      defaultTxnTimeBound,
 	}
 }
 
@@ -241,7 +245,10 @@ func TestRestoreFootprint_TransactionFailed(t *testing.T) {
 		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
 			return protocolrpc.GetTransactionResponse{
 				TransactionDetails: protocolrpc.TransactionDetails{
-					Status: "FAILED",
+					Status:              "FAILED",
+					TransactionHash:     "abc123",
+					ResultXDR:           "AAAAAAAAAAD////7AAAAAA==",
+					DiagnosticEventsXDR: []string{"event1xdr", "event2xdr"},
 				},
 			}, nil
 		},
@@ -254,6 +261,10 @@ func TestRestoreFootprint_TransactionFailed(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "restore transaction failed")
+	// Diagnostic fields must be surfaced in the wrapped error.
+	assert.Contains(t, err.Error(), "abc123")
+	assert.Contains(t, err.Error(), "AAAAAAAAAAD////7AAAAAA==")
+	assert.Contains(t, err.Error(), "event1xdr")
 }
 
 func TestRestoreFootprint_InvalidPreambleXDR(t *testing.T) {
@@ -322,6 +333,8 @@ func TestBuildAndSubmitTransaction_WithRestore(t *testing.T) {
 		signer:            kp,
 		accountSequence:   -1,
 		autoRestore:       true,
+		feeBumpFactor:     1.25,
+		txnTimeBound:      defaultTxnTimeBound,
 	}
 
 	src, err := d.getSourceAccount(context.Background())
@@ -535,6 +548,185 @@ func TestBuildAndSubmitTransaction_AutoRestoreDisabled(t *testing.T) {
 	require.NotNil(t, meta)
 
 	assert.EqualValues(t, 1, simCount.Load(), "should simulate only once — restore path must be skipped")
+}
+
+// ---------------------------------------------------------------------------
+// Second RestorePreamble after re-simulation must return an error
+// ---------------------------------------------------------------------------
+
+func TestBuildAndSubmitTransaction_SecondRestorePreambleErrors(t *testing.T) {
+	sorobanB64 := testSorobanDataB64(t)
+
+	var simCount atomic.Int32
+	mock := &mockRPC{
+		SimulateTransactionFn: func(_ context.Context, _ protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error) {
+			simCount.Add(1)
+			// Both the initial simulation and the re-simulation return a RestorePreamble.
+			return protocolrpc.SimulateTransactionResponse{
+				RestorePreamble: &protocolrpc.RestorePreamble{
+					TransactionDataXDR: sorobanB64,
+					MinResourceFee:     50000,
+				},
+				TransactionDataXDR: sorobanB64,
+				MinResourceFee:     100000,
+			}, nil
+		},
+		SendTransactionFn: func(_ context.Context, _ protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error) {
+			return protocolrpc.SendTransactionResponse{Status: "PENDING", Hash: "restore-hash"}, nil
+		},
+		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
+			return successGetTxResponse(t), nil
+		},
+	}
+
+	d := newTestDeployer(t, mock)
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
+
+	_, err = d.buildAndSubmitTransaction(context.Background(), src, testInvokeOp(d.signer.Address()))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected second RestorePreamble")
+	assert.EqualValues(t, 2, simCount.Load(), "should simulate twice before erroring")
+}
+
+func TestSimulateContract_SecondRestorePreambleErrors(t *testing.T) {
+	sorobanB64 := testSorobanDataB64(t)
+
+	var simCount atomic.Int32
+	mock := &mockRPC{
+		SimulateTransactionFn: func(_ context.Context, _ protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error) {
+			simCount.Add(1)
+			return protocolrpc.SimulateTransactionResponse{
+				RestorePreamble: &protocolrpc.RestorePreamble{
+					TransactionDataXDR: sorobanB64,
+					MinResourceFee:     50000,
+				},
+			}, nil
+		},
+		SendTransactionFn: func(_ context.Context, _ protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error) {
+			return protocolrpc.SendTransactionResponse{Status: "PENDING", Hash: "restore-hash"}, nil
+		},
+		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
+			return successGetTxResponse(t), nil
+		},
+	}
+
+	d := newTestDeployer(t, mock)
+	_, err := d.SimulateContract(context.Background(), randomContractID(t), "get_value", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected second RestorePreamble")
+	assert.EqualValues(t, 2, simCount.Load(), "should simulate twice before erroring")
+}
+
+// ---------------------------------------------------------------------------
+// WithTxnTimeBound and WithFeeBumpFactor options
+// ---------------------------------------------------------------------------
+
+func TestWithTxnTimeBound_Default(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp)
+	assert.Equal(t, defaultTxnTimeBound, d.txnTimeBound)
+}
+
+func TestWithTxnTimeBound_Custom(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp, WithTxnTimeBound(60*time.Second))
+	assert.Equal(t, 60*time.Second, d.txnTimeBound)
+}
+
+func TestWithTxnTimeBound_ZeroIsIgnored(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp, WithTxnTimeBound(0))
+	assert.Equal(t, defaultTxnTimeBound, d.txnTimeBound, "zero duration should leave default unchanged")
+}
+
+func TestWithFeeBumpFactor_Default(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp)
+	assert.InDelta(t, 1.25, d.feeBumpFactor, 0.0001, "default feeBumpFactor should be 1.25")
+}
+
+func TestWithFeeBumpFactor_Custom(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp, WithFeeBumpFactor(1.5))
+	assert.InDelta(t, 1.5, d.feeBumpFactor, 0.0001)
+}
+
+func TestWithFeeBumpFactor_BelowOneIsClamped(t *testing.T) {
+	kp := keypair.MustRandom()
+	d := NewDeployer(nil, "Test", kp, WithFeeBumpFactor(0.5))
+	assert.InDelta(t, 1.0, d.feeBumpFactor, 0.0001, "factor below 1.0 should be clamped to 1.0")
+}
+
+func TestWithFeeBumpFactor_NonFiniteClampedToOne(t *testing.T) {
+	kp := keypair.MustRandom()
+	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		d := NewDeployer(nil, "Test", kp, WithFeeBumpFactor(f))
+		assert.InDelta(t, 1.0, d.feeBumpFactor, 0.0001, "non-finite factor should clamp to 1.0")
+	}
+}
+
+func TestBuildAndSubmitTransaction_FeeBumpApplied(t *testing.T) {
+	sorobanB64 := testSorobanDataB64(t)
+	const minResourceFee = int64(100_000)
+
+	var capturedFee int64
+	mock := &mockRPC{
+		SimulateTransactionFn: func(_ context.Context, _ protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error) {
+			return protocolrpc.SimulateTransactionResponse{
+				TransactionDataXDR: sorobanB64,
+				MinResourceFee:     minResourceFee,
+			}, nil
+		},
+		SendTransactionFn: func(_ context.Context, req protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error) {
+			// Decode the submitted transaction to inspect its fee.
+			var env xdr.TransactionEnvelope
+			require.NoError(t, xdr.SafeUnmarshalBase64(req.Transaction, &env))
+			capturedFee = int64(env.V1.Tx.Fee)
+			return protocolrpc.SendTransactionResponse{Status: "PENDING", Hash: "h1"}, nil
+		},
+		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
+			return successGetTxResponse(t), nil
+		},
+	}
+
+	d := newTestDeployer(t, mock)
+
+	src, err := d.getSourceAccount(context.Background())
+	require.NoError(t, err)
+	_, err = d.buildAndSubmitTransaction(context.Background(), src, testInvokeOp(d.signer.Address()))
+	require.NoError(t, err)
+
+	// Default factor 1.25: bump = ceil(100000 * 0.25) = 25000 > minFeeBuffer(10000).
+	expectedFee := minResourceFee + 25_000
+	assert.Equal(t, expectedFee, capturedFee)
+}
+
+// ---------------------------------------------------------------------------
+// waitForTransaction — FAILED diagnostic surfacing
+// ---------------------------------------------------------------------------
+
+func TestWaitForTransaction_Failed_IncludesDiagnostics(t *testing.T) {
+	mock := &mockRPC{
+		GetTransactionFn: func(_ context.Context, _ protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error) {
+			return protocolrpc.GetTransactionResponse{
+				TransactionDetails: protocolrpc.TransactionDetails{
+					Status:              "FAILED",
+					TransactionHash:     "deadbeef",
+					ResultXDR:           "resultXDRvalue",
+					DiagnosticEventsXDR: []string{"diag1", "diag2"},
+				},
+			}, nil
+		},
+	}
+	d := newTestDeployer(t, mock)
+
+	deadline := time.Now().Add(10 * time.Second)
+	_, err := d.waitForTransaction(context.Background(), "deadbeef", deadline)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deadbeef")
+	assert.Contains(t, err.Error(), "resultXDRvalue")
+	assert.Contains(t, err.Error(), "diag1")
 }
 
 func TestSimulateContract_AutoRestoreDisabled(t *testing.T) {
