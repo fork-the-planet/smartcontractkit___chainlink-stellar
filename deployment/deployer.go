@@ -481,7 +481,8 @@ func (d *Deployer) getSourceAccount(ctx context.Context) (*txnbuild.SimpleAccoun
 // buildAndSubmitTransaction builds, signs, and submits a transaction.
 func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount *txnbuild.SimpleAccount, op txnbuild.Operation) (*xdr.TransactionMeta, error) {
 	// Establish a single deadline shared by the transaction's time-bound and the
-	// confirmation poll, so they are always in sync.
+	// confirmation poll, so they are always in sync. After a successful auto-restore
+	// path, the deadline is refreshed (restore can consume most of the initial window).
 	txnDeadline := time.Now().Add(d.txnTimeBound)
 
 	tx, err := txnbuild.NewTransaction(
@@ -524,6 +525,10 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get source account after restore: %w", err)
 		}
+
+		// Restore + re-fetch can use most of the window started at function entry. Refresh so
+		// invoke timebounds, assembleTransaction, and waitForTransaction stay aligned and valid.
+		txnDeadline = time.Now().Add(d.txnTimeBound)
 
 		tx, err = txnbuild.NewTransaction(
 			txnbuild.TransactionParams{
