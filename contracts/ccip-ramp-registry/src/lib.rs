@@ -1,24 +1,37 @@
 #![no_std]
 
+//! # CCIP Ramp Registry
+//!
+//! Stores CCIP OnRamp / OffRamp configuration separately from the Router so token pools
+//! can authorize ramp callers without re-entering the Router during outbound sends.
+//!
+//! ## Storage Layout
+//!
+//! - `ONRAMPS` (`Map<u64, Address>`, persistent): destination chain selector → onramp address.
+//! - `ONRAMP_KEYS` (`Vec<u64>`, persistent): ordered set of registered destination selectors.
+//! - `OFFRAMPS` (`Map<OffRampKey, ()>`, persistent): registered (source_chain, offramp) pairs.
+//! - `OFFRAMP_KEYS` (`Vec<OffRampKey>`, persistent): ordered set of all registrations.
+
 mod events;
 mod types;
 
+use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbol, Vec};
 
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
-use events::{OffRampAddedEvent, OffRampRemovedEvent, OnRampSetEvent};
-use types::{OffRampEntry, OnRampEntry};
+use types::OffRampKey;
+pub use types::{OffRampEntry, OffRampUpdate, OnRampEntry, OnRampUpdate};
 
-const INITIALIZED: Symbol = symbol_short!("INIT");
-const OWNER: Symbol = symbol_short!("OWNER");
-const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
-const ONRAMPS: Symbol = symbol_short!("ONRAMPS");
-const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
+pub(crate) const INITIALIZED: Symbol = symbol_short!("INIT");
+pub(crate) const OWNER: Symbol = symbol_short!("OWNER");
+pub(crate) const PENDING_OWNER: Symbol = symbol_short!("PNDGOWNR");
+pub(crate) const ONRAMPS: Symbol = symbol_short!("ONRAMPS");
+pub(crate) const ONRAMP_KEYS: Symbol = symbol_short!("ONRAMPKS");
+pub(crate) const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
+pub(crate) const OFFRAMP_KEYS: Symbol = symbol_short!("OFFRMPKS");
 
-/// Stores CCIP OnRamp / OffRamp configuration separately from the Router so token pools
-/// can authorize ramp callers without re-entering the Router during outbound sends.
 #[contract]
 pub struct RampRegistryContract;
 
@@ -43,9 +56,13 @@ impl RampRegistryContract {
 
         let onramps: Map<u64, Address> = Map::new(&env);
         env.storage().persistent().set(&ONRAMPS, &onramps);
+        let onramp_keys: Vec<u64> = Vec::new(&env);
+        env.storage().persistent().set(&ONRAMP_KEYS, &onramp_keys);
 
-        let offramps: Map<u64, Vec<Address>> = Map::new(&env);
+        let offramps: Map<OffRampKey, ()> = Map::new(&env);
         env.storage().persistent().set(&OFFRAMPS, &offramps);
+        let offramp_keys: Vec<OffRampKey> = Vec::new(&env);
+        env.storage().persistent().set(&OFFRAMP_KEYS, &offramp_keys);
 
         Ok(())
     }
@@ -54,284 +71,10 @@ impl RampRegistryContract {
         soroban_sdk::String::from_str(&_env, "RampRegistry 1.0.0")
     }
 
-    /// Same semantics as the Router `get_onramp` entrypoint.
+    /// Returns the onramp registered for the given destination chain.
     pub fn get_onramp(env: Env, dest_chain_selector: u64) -> Result<Address, CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        Self::get_onramp_internal(&env, dest_chain_selector)
-    }
 
-    /// Same semantics as the Router `is_offramp` entrypoint.
-    pub fn is_offramp(
-        env: Env,
-        source_chain_selector: u64,
-        offramp: Address,
-    ) -> Result<bool, CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        Ok(Self::is_offramp_internal(
-            &env,
-            source_chain_selector,
-            offramp,
-        ))
-    }
-
-    pub fn get_offramps(env: Env) -> Result<Vec<OffRampEntry>, CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-
-        let offramps: Map<u64, Vec<Address>> = env
-            .storage()
-            .persistent()
-            .get(&OFFRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        let mut result: Vec<OffRampEntry> = Vec::new(&env);
-
-        for (source_chain_selector, chain_offramps) in offramps.iter() {
-            for i in 0..chain_offramps.len() {
-                if let Some(offramp) = chain_offramps.get(i) {
-                    result.push_back(OffRampEntry {
-                        source_chain_selector,
-                        offramp,
-                    });
-                }
-            }
-        }
-
-        Ok(result)
-    }
-
-    pub fn get_onramps(env: Env) -> Result<Vec<OnRampEntry>, CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-
-        let onramps: Map<u64, Address> = env
-            .storage()
-            .persistent()
-            .get(&ONRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        let mut result: Vec<OnRampEntry> = Vec::new(&env);
-
-        for (dest_chain_selector, onramp) in onramps.iter() {
-            result.push_back(OnRampEntry {
-                dest_chain_selector,
-                onramp,
-            });
-        }
-
-        Ok(result)
-    }
-
-    pub fn set_onramp(
-        env: Env,
-        dest_chain_selector: u64,
-        onramp: Address,
-    ) -> Result<(), CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env)?;
-
-        let mut onramps: Map<u64, Address> = env
-            .storage()
-            .persistent()
-            .get(&ONRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        onramps.set(dest_chain_selector, onramp.clone());
-        env.storage().persistent().set(&ONRAMPS, &onramps);
-
-        OnRampSetEvent {
-            dest_chain_selector,
-            onramp,
-        }
-        .publish(&env);
-
-        Ok(())
-    }
-
-    pub fn add_offramp(
-        env: Env,
-        source_chain_selector: u64,
-        offramp: Address,
-    ) -> Result<(), CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env)?;
-
-        let mut offramps: Map<u64, Vec<Address>> = env
-            .storage()
-            .persistent()
-            .get(&OFFRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        let mut chain_offramps = offramps
-            .get(source_chain_selector)
-            .unwrap_or(Vec::new(&env));
-
-        for i in 0..chain_offramps.len() {
-            if chain_offramps.get(i) == Some(offramp.clone()) {
-                return Err(CCIPError::OffRampAlreadyExists);
-            }
-        }
-
-        chain_offramps.push_back(offramp.clone());
-        offramps.set(source_chain_selector, chain_offramps);
-        env.storage().persistent().set(&OFFRAMPS, &offramps);
-
-        OffRampAddedEvent {
-            source_chain_selector,
-            offramp,
-        }
-        .publish(&env);
-
-        Ok(())
-    }
-
-    pub fn remove_offramp(
-        env: Env,
-        source_chain_selector: u64,
-        offramp: Address,
-    ) -> Result<(), CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env)?;
-
-        let mut offramps: Map<u64, Vec<Address>> = env
-            .storage()
-            .persistent()
-            .get(&OFFRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        let chain_offramps = offramps
-            .get(source_chain_selector)
-            .ok_or(CCIPError::OffRampMismatch)?;
-
-        let mut found = false;
-        let mut new_chain_offramps: Vec<Address> = Vec::new(&env);
-
-        for i in 0..chain_offramps.len() {
-            if let Some(addr) = chain_offramps.get(i) {
-                if addr == offramp {
-                    found = true;
-                } else {
-                    new_chain_offramps.push_back(addr);
-                }
-            }
-        }
-
-        if !found {
-            return Err(CCIPError::OffRampMismatch);
-        }
-
-        if new_chain_offramps.is_empty() {
-            offramps.remove(source_chain_selector);
-        } else {
-            offramps.set(source_chain_selector, new_chain_offramps);
-        }
-        env.storage().persistent().set(&OFFRAMPS, &offramps);
-
-        OffRampRemovedEvent {
-            source_chain_selector,
-            offramp,
-        }
-        .publish(&env);
-
-        Ok(())
-    }
-
-    pub fn apply_ramp_updates(
-        env: Env,
-        onramp_updates: Vec<OnRampEntry>,
-        offramp_removes: Vec<OffRampEntry>,
-        offramp_adds: Vec<OffRampEntry>,
-    ) -> Result<(), CCIPError> {
-        <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env)?;
-
-        let mut onramps: Map<u64, Address> = env
-            .storage()
-            .persistent()
-            .get(&ONRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        for entry in onramp_updates.iter() {
-            onramps.set(entry.dest_chain_selector, entry.onramp.clone());
-            OnRampSetEvent {
-                dest_chain_selector: entry.dest_chain_selector,
-                onramp: entry.onramp.clone(),
-            }
-            .publish(&env);
-        }
-
-        env.storage().persistent().set(&ONRAMPS, &onramps);
-
-        let mut offramps: Map<u64, Vec<Address>> = env
-            .storage()
-            .persistent()
-            .get(&OFFRAMPS)
-            .unwrap_or(Map::new(&env));
-
-        for entry in offramp_removes.iter() {
-            let chain_offramps = offramps
-                .get(entry.source_chain_selector)
-                .ok_or(CCIPError::OffRampMismatch)?;
-
-            let mut found = false;
-            let mut new_chain_offramps: Vec<Address> = Vec::new(&env);
-
-            for i in 0..chain_offramps.len() {
-                if let Some(addr) = chain_offramps.get(i) {
-                    if addr == entry.offramp {
-                        found = true;
-                    } else {
-                        new_chain_offramps.push_back(addr);
-                    }
-                }
-            }
-
-            if !found {
-                return Err(CCIPError::OffRampMismatch);
-            }
-
-            if new_chain_offramps.is_empty() {
-                offramps.remove(entry.source_chain_selector);
-            } else {
-                offramps.set(entry.source_chain_selector, new_chain_offramps);
-            }
-
-            OffRampRemovedEvent {
-                source_chain_selector: entry.source_chain_selector,
-                offramp: entry.offramp.clone(),
-            }
-            .publish(&env);
-        }
-
-        for entry in offramp_adds.iter() {
-            let mut chain_offramps = offramps
-                .get(entry.source_chain_selector)
-                .unwrap_or(Vec::new(&env));
-
-            let mut exists = false;
-            for i in 0..chain_offramps.len() {
-                if chain_offramps.get(i) == Some(entry.offramp.clone()) {
-                    exists = true;
-                    break;
-                }
-            }
-
-            if !exists {
-                chain_offramps.push_back(entry.offramp.clone());
-                offramps.set(entry.source_chain_selector, chain_offramps);
-
-                OffRampAddedEvent {
-                    source_chain_selector: entry.source_chain_selector,
-                    offramp: entry.offramp.clone(),
-                }
-                .publish(&env);
-            }
-        }
-
-        env.storage().persistent().set(&OFFRAMPS, &offramps);
-
-        Ok(())
-    }
-
-    fn get_onramp_internal(env: &Env, dest_chain_selector: u64) -> Result<Address, CCIPError> {
         let onramps: Map<u64, Address> = env
             .storage()
             .persistent()
@@ -343,22 +86,115 @@ impl RampRegistryContract {
             .ok_or(CCIPError::UnsupportedDestinationChain)
     }
 
-    fn is_offramp_internal(env: &Env, source_chain_selector: u64, offramp: Address) -> bool {
-        let offramps: Map<u64, Vec<Address>> = env
+    /// Returns whether `offramp` is registered for the given source chain.
+    pub fn is_offramp(
+        env: Env,
+        source_chain_selector: u64,
+        offramp: Address,
+    ) -> Result<bool, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let offramps: Map<OffRampKey, ()> = env
             .storage()
             .persistent()
             .get(&OFFRAMPS)
-            .unwrap_or(Map::new(env));
+            .unwrap_or(Map::new(&env));
 
-        if let Some(chain_offramps) = offramps.get(source_chain_selector) {
-            for i in 0..chain_offramps.len() {
-                if chain_offramps.get(i) == Some(offramp.clone()) {
-                    return true;
-                }
+        Ok(offramps.contains_key(OffRampKey {
+            source_chain_selector,
+            offramp,
+        }))
+    }
+
+    pub fn get_onramps(env: Env) -> Result<Vec<OnRampEntry>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let onramp_keys: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&ONRAMP_KEYS)
+            .unwrap_or(Vec::new(&env));
+
+        let onramps: Map<u64, Address> = env
+            .storage()
+            .persistent()
+            .get(&ONRAMPS)
+            .unwrap_or(Map::new(&env));
+
+        let mut result: Vec<OnRampEntry> = Vec::new(&env);
+        for dest_chain_selector in onramp_keys.iter() {
+            if let Some(onramp) = onramps.get(dest_chain_selector) {
+                result.push_back(OnRampEntry {
+                    dest_chain_selector,
+                    onramp,
+                });
             }
         }
 
-        false
+        Ok(result)
+    }
+
+    pub fn get_offramps(env: Env) -> Result<Vec<OffRampEntry>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let offramp_keys: Vec<OffRampKey> = env
+            .storage()
+            .persistent()
+            .get(&OFFRAMP_KEYS)
+            .unwrap_or(Vec::new(&env));
+
+        let mut result: Vec<OffRampEntry> = Vec::new(&env);
+        for key in offramp_keys.iter() {
+            result.push_back(OffRampEntry {
+                source_chain_selector: key.source_chain_selector,
+                offramp: key.offramp,
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// Apply a batch of onramp updates atomically.
+    ///
+    /// For each entry: `onramp = Some(addr)` sets the entry, `onramp = None` removes it.
+    pub fn apply_onramp_updates(
+        env: Env,
+        updates: Vec<OnRampUpdate>,
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+
+        let onramps: Map<u64, Address> = env
+            .storage()
+            .persistent()
+            .get(&ONRAMPS)
+            .unwrap_or(Map::new(&env));
+
+        onramps.apply_updates(&env, &updates)?;
+
+        Ok(())
+    }
+
+    /// Apply a batch of offramp updates atomically.
+    ///
+    /// Each update targets a single (source_chain, offramp) pair:
+    /// `enabled = Some(())` registers the offramp, `enabled = None` removes it.
+    pub fn apply_offramp_updates(
+        env: Env,
+        updates: Vec<OffRampUpdate>,
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+
+        let offramps: Map<OffRampKey, ()> = env
+            .storage()
+            .persistent()
+            .get(&OFFRAMPS)
+            .unwrap_or(Map::new(&env));
+
+        offramps.apply_updates(&env, &updates)?;
+
+        Ok(())
     }
 }
 
