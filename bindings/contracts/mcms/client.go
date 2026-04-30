@@ -964,4 +964,3 @@ func ParseOpExecutedEvent(e protocolrpc.EventInfo) (*OpExecutedEvent, error) {
 
 	return result, nil
 }
-

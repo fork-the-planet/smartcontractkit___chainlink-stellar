@@ -10,14 +10,14 @@ import (
 
 // AllowListEntry represents the AllowListEntry struct from the contract.
 type AllowListEntry struct {
-	Allowlist []string
+	Allowlist        []string
 	AllowlistEnabled bool
 }
 
 // ToScVal converts AllowListEntry to an xdr.ScVal for contract calls.
 func (s AllowListEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"allowlist": scval.AddressSliceToScVal(s.Allowlist),
+		"allowlist":         scval.AddressSliceToScVal(s.Allowlist),
 		"allowlist_enabled": scval.BoolToScVal(s.AllowlistEnabled),
 	})
 }
@@ -64,18 +64,18 @@ func AllowListEntryFromScVal(val xdr.ScVal) (*AllowListEntry, error) {
 
 // AllowListUpdate represents the AllowListUpdate struct from the contract.
 type AllowListUpdate struct {
-	AddedAllowlistedSenders []string
-	AllowlistEnabled bool
-	DestChainSelector uint64
+	AddedAllowlistedSenders   []string
+	AllowlistEnabled          bool
+	DestChainSelector         uint64
 	RemovedAllowlistedSenders []string
 }
 
 // ToScVal converts AllowListUpdate to an xdr.ScVal for contract calls.
 func (s AllowListUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"added_allowlisted_senders": scval.AddressSliceToScVal(s.AddedAllowlistedSenders),
-		"allowlist_enabled": scval.BoolToScVal(s.AllowlistEnabled),
-		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
+		"added_allowlisted_senders":   scval.AddressSliceToScVal(s.AddedAllowlistedSenders),
+		"allowlist_enabled":           scval.BoolToScVal(s.AllowlistEnabled),
+		"dest_chain_selector":         scval.Uint64ToScVal(s.DestChainSelector),
 		"removed_allowlisted_senders": scval.AddressSliceToScVal(s.RemovedAllowlistedSenders),
 	})
 }
@@ -142,14 +142,14 @@ func AllowListUpdateFromScVal(val xdr.ScVal) (*AllowListUpdate, error) {
 // TokenAmount represents the TokenAmount struct from the contract.
 type TokenAmount struct {
 	Amount int64
-	Token string
+	Token  string
 }
 
 // ToScVal converts TokenAmount to an xdr.ScVal for contract calls.
 func (s TokenAmount) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"amount": scval.I128ToScVal(s.Amount),
-		"token": scval.AddressToScVal(s.Token),
+		"token":  scval.AddressToScVal(s.Token),
 	})
 }
 
@@ -189,26 +189,26 @@ func TokenAmountFromScVal(val xdr.ScVal) (*TokenAmount, error) {
 // GenericExtraArgsV3 represents the GenericExtraArgsV3 struct from the contract.
 type GenericExtraArgsV3 struct {
 	BlockConfirmations uint32
-	CcvArgs [][]byte
-	Ccvs []string
-	Executor string
-	ExecutorArgs []byte
-	GasLimit uint32
-	TokenArgs []byte
-	TokenReceiver []byte
+	CcvArgs            [][]byte
+	Ccvs               []string
+	Executor           string
+	ExecutorArgs       []byte
+	GasLimit           uint32
+	TokenArgs          []byte
+	TokenReceiver      []byte
 }
 
 // ToScVal converts GenericExtraArgsV3 to an xdr.ScVal for contract calls.
 func (s GenericExtraArgsV3) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"block_confirmations": scval.Uint32ToScVal(s.BlockConfirmations),
-		"ccv_args": scval.BytesSliceToScVal(s.CcvArgs),
-		"ccvs": scval.AddressSliceToScVal(s.Ccvs),
-		"executor": scval.AddressToScVal(s.Executor),
-		"executor_args": scval.BytesToScVal(s.ExecutorArgs),
-		"gas_limit": scval.Uint32ToScVal(s.GasLimit),
-		"token_args": scval.BytesToScVal(s.TokenArgs),
-		"token_receiver": scval.BytesToScVal(s.TokenReceiver),
+		"ccv_args":            scval.BytesSliceToScVal(s.CcvArgs),
+		"ccvs":                scval.AddressSliceToScVal(s.Ccvs),
+		"executor":            scval.AddressToScVal(s.Executor),
+		"executor_args":       scval.BytesToScVal(s.ExecutorArgs),
+		"gas_limit":           scval.Uint32ToScVal(s.GasLimit),
+		"token_args":          scval.BytesToScVal(s.TokenArgs),
+		"token_receiver":      scval.BytesToScVal(s.TokenReceiver),
 	})
 }
 
@@ -297,20 +297,20 @@ func GenericExtraArgsV3FromScVal(val xdr.ScVal) (*GenericExtraArgsV3, error) {
 
 // AnyToStellarMessage represents the AnyToStellarMessage struct from the contract.
 type AnyToStellarMessage struct {
-	Data []byte
-	DestTokenAmounts []TokenAmount
-	MessageId [32]byte
-	Sender []byte
+	Data                []byte
+	DestTokenAmounts    []TokenAmount
+	MessageId           [32]byte
+	Sender              []byte
 	SourceChainSelector uint64
 }
 
 // ToScVal converts AnyToStellarMessage to an xdr.ScVal for contract calls.
 func (s AnyToStellarMessage) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"data": scval.BytesToScVal(s.Data),
-		"dest_token_amounts": scval.StructSliceToScVal(s.DestTokenAmounts),
-		"message_id": scval.Bytes32ToScVal(s.MessageId),
-		"sender": scval.BytesToScVal(s.Sender),
+		"data":                  scval.BytesToScVal(s.Data),
+		"dest_token_amounts":    scval.StructSliceToScVal(s.DestTokenAmounts),
+		"message_id":            scval.Bytes32ToScVal(s.MessageId),
+		"sender":                scval.BytesToScVal(s.Sender),
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 	})
 }
@@ -375,20 +375,20 @@ func AnyToStellarMessageFromScVal(val xdr.ScVal) (*AnyToStellarMessage, error) {
 
 // StellarToAnyMessage represents the StellarToAnyMessage struct from the contract.
 type StellarToAnyMessage struct {
-	Data []byte
-	ExtraArgs []byte
-	FeeToken string
-	Receiver []byte
+	Data         []byte
+	ExtraArgs    []byte
+	FeeToken     string
+	Receiver     []byte
 	TokenAmounts []TokenAmount
 }
 
 // ToScVal converts StellarToAnyMessage to an xdr.ScVal for contract calls.
 func (s StellarToAnyMessage) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"data": scval.BytesToScVal(s.Data),
-		"extra_args": scval.BytesToScVal(s.ExtraArgs),
-		"fee_token": scval.AddressToScVal(s.FeeToken),
-		"receiver": scval.BytesToScVal(s.Receiver),
+		"data":          scval.BytesToScVal(s.Data),
+		"extra_args":    scval.BytesToScVal(s.ExtraArgs),
+		"fee_token":     scval.AddressToScVal(s.FeeToken),
+		"receiver":      scval.BytesToScVal(s.Receiver),
 		"token_amounts": scval.StructSliceToScVal(s.TokenAmounts),
 	})
 }
@@ -454,14 +454,14 @@ func StellarToAnyMessageFromScVal(val xdr.ScVal) (*StellarToAnyMessage, error) {
 // OnRampEntry represents the OnRampEntry struct from the contract.
 type OnRampEntry struct {
 	DestChainSelector uint64
-	Onramp string
+	Onramp            string
 }
 
 // ToScVal converts OnRampEntry to an xdr.ScVal for contract calls.
 func (s OnRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"onramp": scval.AddressToScVal(s.Onramp),
+		"onramp":              scval.AddressToScVal(s.Onramp),
 	})
 }
 
@@ -500,14 +500,14 @@ func OnRampEntryFromScVal(val xdr.ScVal) (*OnRampEntry, error) {
 
 // OffRampEntry represents the OffRampEntry struct from the contract.
 type OffRampEntry struct {
-	Offramp string
+	Offramp             string
 	SourceChainSelector uint64
 }
 
 // ToScVal converts OffRampEntry to an xdr.ScVal for contract calls.
 func (s OffRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"offramp": scval.AddressToScVal(s.Offramp),
+		"offramp":               scval.AddressToScVal(s.Offramp),
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 	})
 }
@@ -586,198 +586,198 @@ func RouterConfigFromScVal(val xdr.ScVal) (*RouterConfig, error) {
 
 // CCIPError represents the contract error codes.
 const (
-	CCIPErrorNotInitialized = 1
-	CCIPErrorAlreadyInitialized = 2
-	CCIPErrorUnauthorized = 3
-	CCIPErrorNotOwner = 4
-	CCIPErrorNoPendingOwner = 5
-	CCIPErrorCallerNotAuthorized = 6
-	CCIPErrorCallerAlreadyAuthorized = 7
-	CCIPErrorCallerNotFound = 8
-	CCIPErrorRoleNotGranted = 9
-	CCIPErrorFeatureNotEnabled = 10
-	CCIPErrorRoleAlreadyGranted = 11
-	CCIPErrorCannotRenounceRole = 12
-	CCIPErrorInvalidVersionTag = 13
-	CCIPErrorInvalidSignatureLength = 14
-	CCIPErrorInvalidSignature = 15
-	CCIPErrorInvalidSignatureCount = 16
-	CCIPErrorInvalidSignatureThreshold = 17
-	CCIPErrorInvalidSignaturePubkey = 18
-	CCIPErrorSourceSignersNotConfigured = 19
-	CCIPErrorInvalidVerifierResults = 20
-	CCIPErrorReentrantCall = 21
-	CCIPErrorTokenNotSupported = 22
-	CCIPErrorFeeTokenNotSupported = 23
-	CCIPErrorNoGasPriceAvailable = 24
-	CCIPErrorDestinationChainNotEnabled = 25
-	CCIPErrorInvalidExtraArgsTag = 26
-	CCIPErrorInvalidExtraArgsData = 27
-	CCIPErrorMessageGasLimitTooHigh = 28
-	CCIPErrorMessageTooLarge = 29
-	CCIPErrorUnsupportedNumberOfTokens = 30
-	CCIPErrorInvalidDestChainConfig = 31
-	CCIPErrorMessageFeeTooHigh = 32
-	CCIPErrorInvalidStaticConfig = 33
-	CCIPErrorInvalidTokenReceiver = 34
-	CCIPErrorSourceTokenDataTooLarge = 35
-	CCIPErrorInvalidDestBytesOverhead = 36
-	CCIPErrorDestinationChainNotSupported = 37
-	CCIPErrorMustBeCalledByRouter = 38
-	CCIPErrorRouterMustSetOriginalSender = 39
-	CCIPErrorCannotSendZeroTokens = 40
-	CCIPErrorCanOnlySendOneTokenPerMessage = 41
-	CCIPErrorUnsupportedToken = 42
-	CCIPErrorInvalidDestChainAddress = 43
-	CCIPErrorFeeExceedsMaxAllowed = 44
-	CCIPErrorInsufficientFeeTokenAmount = 45
-	CCIPErrorTokenReceiverNotAllowed = 46
-	CCIPErrorCursedByRMN = 47
-	CCIPErrorRemoteChainNotSupported = 48
-	CCIPErrorSenderNotAllowed = 49
-	CCIPErrorInvalidTokenAmount = 50
-	CCIPErrorInvalidReceiverAddress = 51
-	CCIPErrorInvalidConfig = 52
-	CCIPErrorInvalidVerifierResultsLength = 53
-	CCIPErrorInboundImplementationNotFound = 54
-	CCIPErrorOutboundImplementationNotFound = 55
-	CCIPErrorInvalidAddress = 56
-	CCIPErrorInvalidChainSelector = 57
-	CCIPErrorInvalidVersion = 58
-	CCIPErrorInvalidCCVVersion = 59
-	CCIPErrorOffRampAlreadyExists = 60
-	CCIPErrorOffRampMismatch = 61
-	CCIPErrorBadRMNSignal = 62
-	CCIPErrorUnsupportedDestinationChain = 63
-	CCIPErrorAlreadyCursed = 64
-	CCIPErrorConfigNotSet = 65
-	CCIPErrorDuplicateOnchainPublicKey = 66
-	CCIPErrorInvalidSignerOrder = 67
-	CCIPErrorNotEnoughSigners = 68
-	CCIPErrorNotCursed = 69
-	CCIPErrorOutOfOrderSignatures = 70
-	CCIPErrorThresholdNotMet = 71
-	CCIPErrorUnexpectedSigner = 72
-	CCIPErrorZeroValueNotAllowed = 73
-	CCIPErrorSourceChainNotEnabled = 100
-	CCIPErrorInvalidSourceChainConfig = 101
-	CCIPErrorInvalidOnRampAddress = 102
-	CCIPErrorInvalidOffRampAddress = 103
-	CCIPErrorInvalidMessageDestination = 104
-	CCIPErrorMessageAlreadyExecuted = 105
-	CCIPErrorInvalidExecutionState = 106
-	CCIPErrorCCVLengthMismatch = 107
-	CCIPErrorCCVQuorumNotMet = 108
-	CCIPErrorReceiverError = 109
-	CCIPErrorGasLimitOverrideTooLow = 110
-	CCIPErrorInvalidReceiverLength = 111
-	CCIPErrorTokenHandlingError = 112
-	CCIPErrorMessageDecodingError = 113
-	CCIPErrorReceiverDoesNotExist = 114
-	CCIPErrorReceiverNotWasmContract = 115
-	CCIPErrorRequiredCCVMissing = 116
-	CCIPErrorOnlyRegistryModuleOrOwner = 201
-	CCIPErrorOnlyAdministrator = 202
-	CCIPErrorOnlyPendingAdministrator = 203
-	CCIPErrorTokenAlreadyRegistered = 204
-	CCIPErrorInvalidTokenPoolToken = 205
-	CCIPErrorPoolTokenMismatch = 301
-	CCIPErrorChainNotSupported = 302
-	CCIPErrorCallerIsNotRamp = 303
-	CCIPErrorInsufficientPoolLiquidity = 304
-	CCIPErrorInvalidRemotePoolAddress = 305
-	CCIPErrorInvalidRemoteChainConfig = 306
-	CCIPErrorInvalidRemoteChainDecimals = 307
-	CCIPErrorDecimalAmountOverflow = 308
-	CCIPErrorInvalidPoolTokenDecimals = 309
-	CCIPErrorBucketOverfilled = 310
-	CCIPErrorTokenMaxCapacityExceeded = 311
-	CCIPErrorTokenRateLimitReached = 312
-	CCIPErrorInvalidRateLimitRate = 313
-	CCIPErrorDisabledNonZeroRateLimit = 314
-	CCIPErrorInvalidRequestedFinality = 315
+	CCIPErrorNotInitialized                      = 1
+	CCIPErrorAlreadyInitialized                  = 2
+	CCIPErrorUnauthorized                        = 3
+	CCIPErrorNotOwner                            = 4
+	CCIPErrorNoPendingOwner                      = 5
+	CCIPErrorCallerNotAuthorized                 = 6
+	CCIPErrorCallerAlreadyAuthorized             = 7
+	CCIPErrorCallerNotFound                      = 8
+	CCIPErrorRoleNotGranted                      = 9
+	CCIPErrorFeatureNotEnabled                   = 10
+	CCIPErrorRoleAlreadyGranted                  = 11
+	CCIPErrorCannotRenounceRole                  = 12
+	CCIPErrorInvalidVersionTag                   = 13
+	CCIPErrorInvalidSignatureLength              = 14
+	CCIPErrorInvalidSignature                    = 15
+	CCIPErrorInvalidSignatureCount               = 16
+	CCIPErrorInvalidSignatureThreshold           = 17
+	CCIPErrorInvalidSignaturePubkey              = 18
+	CCIPErrorSourceSignersNotConfigured          = 19
+	CCIPErrorInvalidVerifierResults              = 20
+	CCIPErrorReentrantCall                       = 21
+	CCIPErrorTokenNotSupported                   = 22
+	CCIPErrorFeeTokenNotSupported                = 23
+	CCIPErrorNoGasPriceAvailable                 = 24
+	CCIPErrorDestinationChainNotEnabled          = 25
+	CCIPErrorInvalidExtraArgsTag                 = 26
+	CCIPErrorInvalidExtraArgsData                = 27
+	CCIPErrorMessageGasLimitTooHigh              = 28
+	CCIPErrorMessageTooLarge                     = 29
+	CCIPErrorUnsupportedNumberOfTokens           = 30
+	CCIPErrorInvalidDestChainConfig              = 31
+	CCIPErrorMessageFeeTooHigh                   = 32
+	CCIPErrorInvalidStaticConfig                 = 33
+	CCIPErrorInvalidTokenReceiver                = 34
+	CCIPErrorSourceTokenDataTooLarge             = 35
+	CCIPErrorInvalidDestBytesOverhead            = 36
+	CCIPErrorDestinationChainNotSupported        = 37
+	CCIPErrorMustBeCalledByRouter                = 38
+	CCIPErrorRouterMustSetOriginalSender         = 39
+	CCIPErrorCannotSendZeroTokens                = 40
+	CCIPErrorCanOnlySendOneTokenPerMessage       = 41
+	CCIPErrorUnsupportedToken                    = 42
+	CCIPErrorInvalidDestChainAddress             = 43
+	CCIPErrorFeeExceedsMaxAllowed                = 44
+	CCIPErrorInsufficientFeeTokenAmount          = 45
+	CCIPErrorTokenReceiverNotAllowed             = 46
+	CCIPErrorCursedByRMN                         = 47
+	CCIPErrorRemoteChainNotSupported             = 48
+	CCIPErrorSenderNotAllowed                    = 49
+	CCIPErrorInvalidTokenAmount                  = 50
+	CCIPErrorInvalidReceiverAddress              = 51
+	CCIPErrorInvalidConfig                       = 52
+	CCIPErrorInvalidVerifierResultsLength        = 53
+	CCIPErrorInboundImplementationNotFound       = 54
+	CCIPErrorOutboundImplementationNotFound      = 55
+	CCIPErrorInvalidAddress                      = 56
+	CCIPErrorInvalidChainSelector                = 57
+	CCIPErrorInvalidVersion                      = 58
+	CCIPErrorInvalidCCVVersion                   = 59
+	CCIPErrorOffRampAlreadyExists                = 60
+	CCIPErrorOffRampMismatch                     = 61
+	CCIPErrorBadRMNSignal                        = 62
+	CCIPErrorUnsupportedDestinationChain         = 63
+	CCIPErrorAlreadyCursed                       = 64
+	CCIPErrorConfigNotSet                        = 65
+	CCIPErrorDuplicateOnchainPublicKey           = 66
+	CCIPErrorInvalidSignerOrder                  = 67
+	CCIPErrorNotEnoughSigners                    = 68
+	CCIPErrorNotCursed                           = 69
+	CCIPErrorOutOfOrderSignatures                = 70
+	CCIPErrorThresholdNotMet                     = 71
+	CCIPErrorUnexpectedSigner                    = 72
+	CCIPErrorZeroValueNotAllowed                 = 73
+	CCIPErrorSourceChainNotEnabled               = 100
+	CCIPErrorInvalidSourceChainConfig            = 101
+	CCIPErrorInvalidOnRampAddress                = 102
+	CCIPErrorInvalidOffRampAddress               = 103
+	CCIPErrorInvalidMessageDestination           = 104
+	CCIPErrorMessageAlreadyExecuted              = 105
+	CCIPErrorInvalidExecutionState               = 106
+	CCIPErrorCCVLengthMismatch                   = 107
+	CCIPErrorCCVQuorumNotMet                     = 108
+	CCIPErrorReceiverError                       = 109
+	CCIPErrorGasLimitOverrideTooLow              = 110
+	CCIPErrorInvalidReceiverLength               = 111
+	CCIPErrorTokenHandlingError                  = 112
+	CCIPErrorMessageDecodingError                = 113
+	CCIPErrorReceiverDoesNotExist                = 114
+	CCIPErrorReceiverNotWasmContract             = 115
+	CCIPErrorRequiredCCVMissing                  = 116
+	CCIPErrorOnlyRegistryModuleOrOwner           = 201
+	CCIPErrorOnlyAdministrator                   = 202
+	CCIPErrorOnlyPendingAdministrator            = 203
+	CCIPErrorTokenAlreadyRegistered              = 204
+	CCIPErrorInvalidTokenPoolToken               = 205
+	CCIPErrorPoolTokenMismatch                   = 301
+	CCIPErrorChainNotSupported                   = 302
+	CCIPErrorCallerIsNotRamp                     = 303
+	CCIPErrorInsufficientPoolLiquidity           = 304
+	CCIPErrorInvalidRemotePoolAddress            = 305
+	CCIPErrorInvalidRemoteChainConfig            = 306
+	CCIPErrorInvalidRemoteChainDecimals          = 307
+	CCIPErrorDecimalAmountOverflow               = 308
+	CCIPErrorInvalidPoolTokenDecimals            = 309
+	CCIPErrorBucketOverfilled                    = 310
+	CCIPErrorTokenMaxCapacityExceeded            = 311
+	CCIPErrorTokenRateLimitReached               = 312
+	CCIPErrorInvalidRateLimitRate                = 313
+	CCIPErrorDisabledNonZeroRateLimit            = 314
+	CCIPErrorInvalidRequestedFinality            = 315
 	CCIPErrorRequestedFinalityCanOnlyHaveOneMode = 316
-	CCIPErrorInvalidChainForClient = 317
-	CCIPErrorRouterNotConfigured = 318
-	CCIPErrorInvalidFeeCalculation = 801
-	CCIPErrorInvalidFeeTokenConversion = 802
+	CCIPErrorInvalidChainForClient               = 317
+	CCIPErrorRouterNotConfigured                 = 318
+	CCIPErrorInvalidFeeCalculation               = 801
+	CCIPErrorInvalidFeeTokenConversion           = 802
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
 var CCIPErrorMessage = map[int]string{
-	1: "not initialized",
-	2: "already initialized",
-	3: "unauthorized",
-	4: "not owner",
-	5: "no pending owner",
-	6: "caller not authorized",
-	7: "caller already authorized",
-	8: "caller not found",
-	9: "role not granted",
-	10: "feature not enabled",
-	11: "role already granted",
-	12: "cannot renounce role",
-	13: "invalid version tag",
-	14: "invalid signature length",
-	15: "invalid signature",
-	16: "invalid signature count",
-	17: "invalid signature threshold",
-	18: "invalid signature pubkey",
-	19: "source signers not configured",
-	20: "invalid verifier results",
-	21: "reentrant call",
-	22: "token not supported",
-	23: "fee token not supported",
-	24: "no gas price available",
-	25: "destination chain not enabled",
-	26: "invalid extra args tag",
-	27: "invalid extra args data",
-	28: "message gas limit too high",
-	29: "message too large",
-	30: "unsupported number of tokens",
-	31: "invalid dest chain config",
-	32: "message fee too high",
-	33: "invalid static config",
-	34: "invalid token receiver",
-	35: "source token data too large",
-	36: "invalid dest bytes overhead",
-	37: "destination chain not supported",
-	38: "must be called by router",
-	39: "router must set original sender",
-	40: "cannot send zero tokens",
-	41: "can only send one token per message",
-	42: "unsupported token",
-	43: "invalid dest chain address",
-	44: "fee exceeds max allowed",
-	45: "insufficient fee token amount",
-	46: "token receiver not allowed",
-	47: "cursed by r m n",
-	48: "remote chain not supported",
-	49: "sender not allowed",
-	50: "invalid token amount",
-	51: "invalid receiver address",
-	52: "invalid config",
-	53: "invalid verifier results length",
-	54: "inbound implementation not found",
-	55: "outbound implementation not found",
-	56: "invalid address",
-	57: "invalid chain selector",
-	58: "invalid version",
-	59: "invalid c c v version",
-	60: "off ramp already exists",
-	61: "off ramp mismatch",
-	62: "bad r m n signal",
-	63: "unsupported destination chain",
-	64: "already cursed",
-	65: "config not set",
-	66: "duplicate onchain public key",
-	67: "invalid signer order",
-	68: "not enough signers",
-	69: "not cursed",
-	70: "out of order signatures",
-	71: "threshold not met",
-	72: "unexpected signer",
-	73: "zero value not allowed",
+	1:   "not initialized",
+	2:   "already initialized",
+	3:   "unauthorized",
+	4:   "not owner",
+	5:   "no pending owner",
+	6:   "caller not authorized",
+	7:   "caller already authorized",
+	8:   "caller not found",
+	9:   "role not granted",
+	10:  "feature not enabled",
+	11:  "role already granted",
+	12:  "cannot renounce role",
+	13:  "invalid version tag",
+	14:  "invalid signature length",
+	15:  "invalid signature",
+	16:  "invalid signature count",
+	17:  "invalid signature threshold",
+	18:  "invalid signature pubkey",
+	19:  "source signers not configured",
+	20:  "invalid verifier results",
+	21:  "reentrant call",
+	22:  "token not supported",
+	23:  "fee token not supported",
+	24:  "no gas price available",
+	25:  "destination chain not enabled",
+	26:  "invalid extra args tag",
+	27:  "invalid extra args data",
+	28:  "message gas limit too high",
+	29:  "message too large",
+	30:  "unsupported number of tokens",
+	31:  "invalid dest chain config",
+	32:  "message fee too high",
+	33:  "invalid static config",
+	34:  "invalid token receiver",
+	35:  "source token data too large",
+	36:  "invalid dest bytes overhead",
+	37:  "destination chain not supported",
+	38:  "must be called by router",
+	39:  "router must set original sender",
+	40:  "cannot send zero tokens",
+	41:  "can only send one token per message",
+	42:  "unsupported token",
+	43:  "invalid dest chain address",
+	44:  "fee exceeds max allowed",
+	45:  "insufficient fee token amount",
+	46:  "token receiver not allowed",
+	47:  "cursed by r m n",
+	48:  "remote chain not supported",
+	49:  "sender not allowed",
+	50:  "invalid token amount",
+	51:  "invalid receiver address",
+	52:  "invalid config",
+	53:  "invalid verifier results length",
+	54:  "inbound implementation not found",
+	55:  "outbound implementation not found",
+	56:  "invalid address",
+	57:  "invalid chain selector",
+	58:  "invalid version",
+	59:  "invalid c c v version",
+	60:  "off ramp already exists",
+	61:  "off ramp mismatch",
+	62:  "bad r m n signal",
+	63:  "unsupported destination chain",
+	64:  "already cursed",
+	65:  "config not set",
+	66:  "duplicate onchain public key",
+	67:  "invalid signer order",
+	68:  "not enough signers",
+	69:  "not cursed",
+	70:  "out of order signatures",
+	71:  "threshold not met",
+	72:  "unexpected signer",
+	73:  "zero value not allowed",
 	100: "source chain not enabled",
 	101: "invalid source chain config",
 	102: "invalid on ramp address",
@@ -825,9 +825,9 @@ var CCIPErrorMessage = map[int]string{
 // RoleGrantedEvent represents the RoleGrantedEvent event.
 // Topics: [auth_RoleGranted]
 type RoleGrantedEvent struct {
-	Role string
+	Role    string
 	Account string
-	Sender string
+	Sender  string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -839,9 +839,9 @@ const RoleGrantedEventTopic = "auth_RoleGranted"
 // RoleRevokedEvent represents the RoleRevokedEvent event.
 // Topics: [auth_RoleRevoked]
 type RoleRevokedEvent struct {
-	Role string
+	Role    string
 	Account string
-	Sender string
+	Sender  string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -878,7 +878,7 @@ const AuthorizedCallerRemovedEventTopic = "auth_CallerRemoved"
 // Topics: [auth_OwnerTransferStart]
 type OwnershipTransferStartedEvent struct {
 	PreviousOwner string
-	NewOwner string
+	NewOwner      string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -891,7 +891,7 @@ const OwnershipTransferStartedEventTopic = "auth_OwnerTransferStart"
 // Topics: [router_OnRampSet]
 type OnRampSetEvent struct {
 	DestChainSelector uint64
-	Onramp string
+	Onramp            string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -904,7 +904,7 @@ const OnRampSetEventTopic = "router_OnRampSet"
 // Topics: [router_OffRampAdded]
 type OffRampAddedEvent struct {
 	SourceChainSelector uint64
-	Offramp string
+	Offramp             string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -917,7 +917,7 @@ const OffRampAddedEventTopic = "router_OffRampAdded"
 // Topics: [router_OffRampRemoved]
 type OffRampRemovedEvent struct {
 	SourceChainSelector uint64
-	Offramp string
+	Offramp             string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -929,9 +929,9 @@ const OffRampRemovedEventTopic = "router_OffRampRemoved"
 // MessageExecutedEvent represents the MessageExecutedEvent event.
 // Topics: [router_MessageExecuted]
 type MessageExecutedEvent struct {
-	MessageId [32]byte
+	MessageId           [32]byte
 	SourceChainSelector uint64
-	Offramp string
+	Offramp             string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -943,9 +943,9 @@ const MessageExecutedEventTopic = "router_MessageExecuted"
 // CCIPSendRequestedEvent represents the CCIPSendRequestedEvent event.
 // Topics: [router_CCIPSendRequested]
 type CCIPSendRequestedEvent struct {
-	MessageId [32]byte
+	MessageId         [32]byte
 	DestChainSelector uint64
-	Sender string
+	Sender            string
 	// Event metadata
 	Ledger uint32
 	TxHash string
@@ -953,4 +953,3 @@ type CCIPSendRequestedEvent struct {
 
 // CCIPSendRequestedEventTopic is the event topic identifier.
 const CCIPSendRequestedEventTopic = "router_CCIPSendRequested"
-

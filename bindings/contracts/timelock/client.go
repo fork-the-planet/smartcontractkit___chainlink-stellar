@@ -1188,4 +1188,3 @@ func ParseFunctionSelectorUnblockedEvent(e protocolrpc.EventInfo) (*FunctionSele
 
 	return result, nil
 }
-

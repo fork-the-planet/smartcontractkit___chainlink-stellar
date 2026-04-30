@@ -190,4 +190,3 @@ func (c *RampRegistryClient) ApplyOfframpUpdates(ctx context.Context, updates []
 	_ = result // void return
 	return nil
 }
-

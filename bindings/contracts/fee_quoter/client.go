@@ -1541,4 +1541,3 @@ func ParseDestChainConfigUpdatedEvent(e protocolrpc.EventInfo) (*DestChainConfig
 
 	return result, nil
 }
-

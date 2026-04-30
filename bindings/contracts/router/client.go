@@ -1062,4 +1062,3 @@ func ParseCCIPSendRequestedEvent(e protocolrpc.EventInfo) (*CCIPSendRequestedEve
 
 	return result, nil
 }
-

@@ -545,4 +545,3 @@ func ParseCcipRemoteChainConfiguredEvent(e protocolrpc.EventInfo) (*CcipRemoteCh
 
 	return result, nil
 }
-

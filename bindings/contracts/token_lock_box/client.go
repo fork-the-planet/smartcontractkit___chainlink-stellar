@@ -846,4 +846,3 @@ func ParseWithdrawalEvent(e protocolrpc.EventInfo) (*WithdrawalEvent, error) {
 
 	return result, nil
 }
-

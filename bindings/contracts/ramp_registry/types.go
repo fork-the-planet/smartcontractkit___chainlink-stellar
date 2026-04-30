@@ -11,14 +11,14 @@ import (
 // OnRampEntry represents the OnRampEntry struct from the contract.
 type OnRampEntry struct {
 	DestChainSelector uint64
-	Onramp string
+	Onramp            string
 }
 
 // ToScVal converts OnRampEntry to an xdr.ScVal for contract calls.
 func (s OnRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"onramp": scval.AddressToScVal(s.Onramp),
+		"onramp":              scval.AddressToScVal(s.Onramp),
 	})
 }
 
@@ -58,14 +58,14 @@ func OnRampEntryFromScVal(val xdr.ScVal) (*OnRampEntry, error) {
 // OffRampEntry represents the OffRampEntry struct from the contract.
 type OffRampEntry struct {
 	SourceChainSelector uint64
-	Offramp string
+	Offramp             string
 }
 
 // ToScVal converts OffRampEntry to an xdr.ScVal for contract calls.
 func (s OffRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
-		"offramp": scval.AddressToScVal(s.Offramp),
+		"offramp":               scval.AddressToScVal(s.Offramp),
 	})
 }
 
@@ -105,14 +105,14 @@ func OffRampEntryFromScVal(val xdr.ScVal) (*OffRampEntry, error) {
 // OnRampUpdate represents the OnRampUpdate struct from the contract.
 type OnRampUpdate struct {
 	DestChainSelector uint64
-	Onramp *string
+	Onramp            *string
 }
 
 // ToScVal converts OnRampUpdate to an xdr.ScVal for contract calls.
 func (s OnRampUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"dest_chain_selector": scval.Uint64ToScVal(s.DestChainSelector),
-		"onramp": scval.OptionalAddressToScVal(s.Onramp),
+		"onramp":              scval.OptionalAddressToScVal(s.Onramp),
 	})
 }
 
@@ -152,16 +152,16 @@ func OnRampUpdateFromScVal(val xdr.ScVal) (*OnRampUpdate, error) {
 // OffRampUpdate represents the OffRampUpdate struct from the contract.
 type OffRampUpdate struct {
 	SourceChainSelector uint64
-	Offramp string
-	Enabled bool
+	Offramp             string
+	Enabled             bool
 }
 
 // ToScVal converts OffRampUpdate to an xdr.ScVal for contract calls.
 func (s OffRampUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
 		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
-		"offramp": scval.AddressToScVal(s.Offramp),
-		"enabled": scval.BoolToScVal(s.Enabled),
+		"offramp":               scval.AddressToScVal(s.Offramp),
+		"enabled":               scval.BoolToScVal(s.Enabled),
 	})
 }
 
@@ -203,4 +203,3 @@ func OffRampUpdateFromScVal(val xdr.ScVal) (*OffRampUpdate, error) {
 
 	return result, nil
 }
-

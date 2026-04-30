@@ -2005,4 +2005,3 @@ func ParseOutboundRateLimitConsumedEvent(e protocolrpc.EventInfo) (*OutboundRate
 
 	return result, nil
 }
-
