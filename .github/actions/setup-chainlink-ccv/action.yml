@@ -1,0 +1,25 @@
+# Shallow clone chainlink-ccv next to this repo (../chainlink-ccv).
+# Bump REF and EXPECTED_SHA together when upgrading the CCV pin used in Docker builds and Go tests.
+# Resolve EXPECTED_SHA after changing REF, e.g.:
+#   git ls-remote https://github.com/smartcontractkit/chainlink-ccv.git "refs/tags/${REF}^{}"
+# (Use peeled ^{...} for annotated tags; lightweight tags only show refs/tags/$REF.)
+name: Setup chainlink-ccv
+description: Clone smartcontractkit/chainlink-ccv at the CI pin.
+
+runs:
+  using: composite
+  steps:
+    - name: Clone chainlink-ccv
+      shell: bash
+      run: |
+        set -euo pipefail
+        REF="v0.0.1"
+        EXPECTED_SHA="8d6a915c04b3417e95521b295ffb880f9d63ea45"
+        DEST="${GITHUB_WORKSPACE}/../chainlink-ccv"
+        git clone --depth 1 --branch "${REF}" \
+          https://github.com/smartcontractkit/chainlink-ccv.git "${DEST}"
+        actual="$(git -C "${DEST}" rev-parse HEAD)"
+        if [[ "${actual}" != "${EXPECTED_SHA}" ]]; then
+          echo "::error::chainlink-ccv HEAD ${actual} does not match expected ${EXPECTED_SHA} for tag ${REF}"
+          exit 1
+        fi
