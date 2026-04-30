@@ -16,9 +16,6 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
 # Copy the rest of the source; build layer invalidated when source changes.
 COPY . .
 
-RUN --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
-    go mod download
-
 RUN --mount=type=cache,target=/root/.cache/go-build,id=stellar-go-build \
     --mount=type=cache,target=/go/pkg/mod,id=stellar-go-mod \
     CGO_ENABLED=0 go build -ldflags='-s -w' -o /bin/verifier ./cmd/committee-verifier
