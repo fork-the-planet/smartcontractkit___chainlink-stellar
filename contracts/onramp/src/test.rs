@@ -2,10 +2,10 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _, token, vec, Address, Bytes, Env, Vec,
     contract, contractimpl, symbol_short,
+    testutils::Address as _,
     testutils::{Address as _, Events as _, Ledger},
-    BytesN, Map, Symbol, TryFromVal, TryIntoVal, Val,
+    token, vec, Address, Bytes, BytesN, Env, Map, Symbol, TryFromVal, TryIntoVal, Val, Vec,
 };
 
 use crate::types::Receipt;
@@ -930,10 +930,13 @@ fn test_ccip_send_emits_token_pool_receipt_before_executor_and_network_fee() {
         &Vec::new(&env),
     );
 
-    ramp_registry_client.apply_onramp_updates(&vec![&env, OnRampUpdate {
-        dest_chain_selector: evm_chain_selector,
-        onramp: Some(onramp_id.clone()),
-    }]);
+    ramp_registry_client.apply_onramp_updates(&vec![
+        &env,
+        OnRampUpdate {
+            dest_chain_selector: evm_chain_selector,
+            onramp: Some(onramp_id.clone()),
+        },
+    ]);
 
     let tar_id = env.register(TokenAdminRegistryContract, ());
     let tar_client = TokenAdminRegistryContractClient::new(&env, &tar_id);
