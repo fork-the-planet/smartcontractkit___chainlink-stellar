@@ -111,10 +111,10 @@ func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
-	sel := chainsel.STELLAR_LOCALNET.Selector
+	// Unique selector so parallel tests that register STELLAR_LOCALNET deploy context do not mask this case.
+	sel := uint64(424242420001)
 	st := cldf_stellar.Chain{ChainMetadata: cldf_stellar.ChainMetadata{Selector: sel}}
 	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: st})
-	t.Cleanup(func() { ClearStellarDeployChainContext(sel) })
 
 	_, err := cldf_ops.ExecuteSequence(b, StellarDeployChainContracts, chains, ccvadapters.DeployChainContractsInput{
 		ChainSelector: sel,

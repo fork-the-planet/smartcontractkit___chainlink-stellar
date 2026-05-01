@@ -96,7 +96,7 @@ func (w *deployRun) deployRampsAndProvisionalLanes() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert executor proxy placeholder address: %w", err)
 	}
-	onRampDestConfigs, err := h.BuildOnRampDestConfigs(nil, remoteSelectors, executorContractID, false)
+	onRampDestConfigs, err := stellarccip.BuildOnRampDestConfigs(w.ds.Seal(), remoteSelectors, executorContractID, false, w.vvrContractID, w.routerContractID)
 	if err != nil {
 		return fmt.Errorf("build provisional onramp dest configs: %w", err)
 	}
@@ -108,7 +108,7 @@ func (w *deployRun) deployRampsAndProvisionalLanes() error {
 	}
 	h.Logger().Info().Int("count", len(onRampDestConfigs)).Msg("OnRamp dest chain configs applied")
 
-	offRampSourceConfigs, err := h.BuildOffRampSourceConfigs(nil, remoteSelectors, false)
+	offRampSourceConfigs, err := stellarccip.BuildOffRampSourceConfigs(w.ds.Seal(), remoteSelectors, false, w.vvrContractID, w.routerContractID)
 	if err != nil {
 		return fmt.Errorf("build provisional offramp source configs: %w", err)
 	}

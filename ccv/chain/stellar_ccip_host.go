@@ -95,14 +95,6 @@ func (h *stellarCCIPDeployHost) SetCV(contractID string)  { h.c.cvContractID = c
 
 func (h *stellarCCIPDeployHost) SetReceiver(contractID string) { h.c.receiverContractID = contractID }
 
-func (h *stellarCCIPDeployHost) BuildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error) {
-	return h.c.buildOnRampDestConfigs(ds, remoteSelectors, defaultExecutor, useRemoteOffRamp)
-}
-
-func (h *stellarCCIPDeployHost) BuildOffRampSourceConfigs(ds datastore.DataStore, remoteSelectors []uint64, useRemoteOnRamp bool) ([]offrampbindings.SourceChainConfigArgs, error) {
-	return h.c.buildOffRampSourceConfigs(ds, remoteSelectors, useRemoteOnRamp)
-}
-
 func (h *stellarCCIPDeployHost) CreateTestToken(ctx context.Context, friendbotURL string) (string, error) {
 	return h.c.createTestToken(ctx, friendbotURL)
 }

@@ -111,7 +111,7 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 		return fmt.Errorf("fetch datastore addresses: %w", err)
 	}
 
-	stellarPool, err := lookupAddressRef(
+	stellarPool, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
 		datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
@@ -121,7 +121,7 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 	if err != nil {
 		return fmt.Errorf("lookup Stellar lock-release pool: %w", err)
 	}
-	stellarToken, err := lookupAddressRef(
+	stellarToken, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
 		datastore.ContractType(stellarccip.TestTokenContractType),
@@ -174,7 +174,7 @@ func (c *Chain) registerEVMTokenPool(env *deployment.Environment, evmSelector ui
 		return fmt.Errorf("EVM chain %d not found in environment", evmSelector)
 	}
 
-	tokenAdminRegistry, err := lookupAddressRef(
+	tokenAdminRegistry, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		evmSelector,
 		datastore.ContractType(evmtar.ContractType),

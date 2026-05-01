@@ -1,4 +1,4 @@
-package ccvchain
+package adapters
 
 import (
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
@@ -6,7 +6,7 @@ import (
 
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
-	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
 // StellarDeployChainContractsAdapter connects Stellar to the shared
@@ -17,10 +17,10 @@ var _ ccvadapters.DeployChainContractsAdapter = (*StellarDeployChainContractsAda
 
 // SetContractParamsFromImportedConfig implements ccvadapters.DeployChainContractsAdapter.
 func (a *StellarDeployChainContractsAdapter) SetContractParamsFromImportedConfig() *cldf_ops.Sequence[ccvadapters.DeployChainConfigCreatorInput, ccvadapters.DeployContractParams, cldf_chain.BlockChains] {
-	return stellarsequences.StellarImportConfigForDeployContracts
+	return sequences.StellarImportConfigForDeployContracts
 }
 
 // DeployChainContracts implements ccvadapters.DeployChainContractsAdapter.
 func (a *StellarDeployChainContractsAdapter) DeployChainContracts() *cldf_ops.Sequence[ccvadapters.DeployChainContractsInput, seq_core.OnChainOutput, cldf_chain.BlockChains] {
-	return stellarsequences.StellarDeployChainContracts
+	return sequences.StellarDeployChainContracts
 }
