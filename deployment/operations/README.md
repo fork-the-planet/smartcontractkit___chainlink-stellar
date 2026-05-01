@@ -43,8 +43,8 @@ Handlers use the signature `func(b operations.Bundle, deps DEP, input IN) (OUT, 
 | `rmn_proxy` | `RmnProxy` | `rmn_proxy.wasm` | Proxy admin / routing to remote |
 | `ramp_registry` | `RampRegistry` | `ccip_ramp_registry.wasm` | Ramp registration and lookups |
 | `token_admin_registry` | `TokenAdminRegistry` | `token_admin_registry.wasm` | Token admin / pool registry updates |
-| `committee_verifier` | `CommitteeVerifier` | `ccvs_committee_verifier.wasm` | Verifier set / digest config |
-| `versioned_verifier_resolver` | `VersionedVerifierResolver` | `ccvs_versioned_verifier_resolver.wasm` | Resolver binding updates |
+| `committee_verifier` | `CommitteeVerifier` | `ccvs_committee_verifier.wasm` | Verifier set / digest config; CLDF `committee-verifier:withdraw-fee-tokens` (`WithdrawFeeTokensInput`: `contract_id`, `fee_tokens`) sends fee token balances to the configured fee aggregator |
+| `versioned_verifier_resolver` | `VersionedVerifierResolver` | `ccvs_versioned_verifier_resolver.wasm` | Resolver binding updates; CLDF `versioned-verifier-resolver:withdraw-fee-tokens` (same input shape) for VVR fee aggregator withdrawals |
 | `lock_release_pool` | `LockReleasePool` | `pools_lock_release_pool.wasm` | Pool-specific init and lock/release I/O |
 | `burn_mint_pool` | `BurnMintPool` | `pools_burn_mint_pool.wasm` | Burn/mint style pool |
 | `siloed_lock_release_pool` | `SiloedLockReleasePool` | `pools_siloed_lock_release_pool.wasm` | Siloed L/R pool |
