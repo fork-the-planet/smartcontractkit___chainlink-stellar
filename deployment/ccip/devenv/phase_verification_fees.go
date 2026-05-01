@@ -50,8 +50,9 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	w.vvrClient = vvrClient
 
 	if _, err := execStellarOp(w, vvrops.Initialize, vvrops.InitializeInput{
-		ContractID:    vvrContractID,
-		Owner:         h.DeployerKeypair().Address(),
+		ContractID: vvrContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		// TODO: replace with real fee aggregator value
 		FeeAggregator: mockFeeAggregator,
 	}); err != nil {
 		return fmt.Errorf("failed to initialize VVR: %w", err)
