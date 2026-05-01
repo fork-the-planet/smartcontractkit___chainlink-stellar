@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	timelockbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/timelock"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -58,6 +60,27 @@ func sorobanExecuteBatch(
 	return val.MarshalBinary()
 }
 
+// mcmsValidUntilSeconds returns a deadline for MCMS set_root: must be >= host ledger timestamp
+// (contracts/mcms rejects ValidUntilHasAlreadyPassed otherwise). Soroban unit tests use small mock
+// timestamps; real networks use ~unix seconds, so a fixed small uint32 (e.g. 3e6) is in the past.
+func mcmsValidUntilSeconds(ctx context.Context, rpc *rpcclient.Client) (uint32, error) {
+	latest, err := rpc.GetLatestLedger(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("GetLatestLedger: %w", err)
+	}
+	now := latest.LedgerCloseTime
+	if now < 0 {
+		return 0, fmt.Errorf("unexpected negative ledger close time: %d", now)
+	}
+	const marginSec int64 = 365 * 24 * 3600
+	sum := now + marginSec
+	maxU32 := int64(^uint32(0))
+	if sum > maxU32 {
+		return ^uint32(0), nil
+	}
+	return uint32(sum), nil
+}
+
 // TestMcmsMerkleTimelockScheduleAndExecute wires MCMS SetRoot + Execute into timelock schedule_batch
 // (caller = MCMS contract, MCMS is PROPOSER) and execute_batch after min delay, using Go-side Merkle +
 // EIP-191 helpers aligned with contracts/mcms.
@@ -65,7 +88,7 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 
-	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
+	projectRoot, deployerKP, deployer, rpcClient, _, _ := GetSharedTestEnv(ctx, t)
 
 	pk, err := crypto.HexToECDSA(anvil0SKHex)
 	if err != nil {
@@ -142,7 +165,10 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("encode schedule_batch: %v", err)
 	}
 
-	const validUntil uint32 = 3_000_000
+	validUntil, err := mcmsValidUntilSeconds(ctx, rpcClient)
+	if err != nil {
+		t.Fatalf("mcms valid_until: %v", err)
+	}
 
 	opSchedule := mcmsbindings.StellarOp{
 		ChainId:  chainNetID,

@@ -2,6 +2,16 @@
 
 use soroban_sdk::{contracttype, Bytes, BytesN};
 
+/// Persistent storage keys for entries with variable-length payload (one ledger entry per variant).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum McmsDataKey {
+    /// Replay-protection entry for a signed hash. Stored as one entry per hash so the
+    /// cost to read/restore any single hash is O(1) regardless of how many roots have
+    /// been set over the contract's lifetime.
+    SeenHash(BytesN<32>),
+}
+
 pub const NUM_GROUPS: u32 = 32;
 pub const MAX_NUM_SIGNERS: u32 = 200;
 

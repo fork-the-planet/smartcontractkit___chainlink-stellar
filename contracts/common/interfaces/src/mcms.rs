@@ -175,6 +175,11 @@ pub struct ExpiringRootAndOpCount {
     pub root: soroban_sdk::BytesN<32>,
     pub valid_until: u32,
 }
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum McmsDataKey {
+    SeenHash(soroban_sdk::BytesN<32>),
+}
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CCIPError {

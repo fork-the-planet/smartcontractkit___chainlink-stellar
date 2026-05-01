@@ -1434,3 +1434,22 @@ type OpExecutedEvent struct {
 
 // OpExecutedEventTopic is the event topic identifier.
 const OpExecutedEventTopic = "mcms_OpExecuted"
+
+// McmsDataKey represents the McmsDataKey enum.
+type McmsDataKey uint32
+
+const ()
+
+// ToScVal converts McmsDataKey to an xdr.ScVal.
+func (e McmsDataKey) ToScVal() (xdr.ScVal, error) {
+	return scval.Uint32ToScVal(uint32(e)), nil
+}
+
+// McmsDataKeyFromScVal parses an xdr.ScVal into McmsDataKey.
+func McmsDataKeyFromScVal(val xdr.ScVal) (McmsDataKey, error) {
+	v, ok := val.GetU32()
+	if !ok {
+		return 0, fmt.Errorf("expected u32 for McmsDataKey enum")
+	}
+	return McmsDataKey(v), nil
+}

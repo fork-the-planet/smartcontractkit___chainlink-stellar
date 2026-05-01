@@ -9,8 +9,8 @@ mod types;
 
 pub use error::McmsError;
 pub use types::{
-    Config, ExpiringRootAndOpCount, MerkleProof, Signature, SignatureVec, Signer, SignerAddresses,
-    SignerGroups, StellarOp, StellarRootMetadata, MAX_NUM_SIGNERS, NUM_GROUPS,
+    Config, ExpiringRootAndOpCount, McmsDataKey, MerkleProof, Signature, SignatureVec, Signer,
+    SignerAddresses, SignerGroups, StellarOp, StellarRootMetadata, MAX_NUM_SIGNERS, NUM_GROUPS,
 };
 
 use abi_encoding::{
@@ -39,8 +39,6 @@ const CHAIN_NETWORK_ID: Symbol = symbol_short!("CHNET");
 const CONFIG: Symbol = symbol_short!("MCSCFG");
 /// Map padded signer addr -> Signer
 const SIGNER_MAP: Symbol = symbol_short!("SIGMAP");
-/// replay protection for set_root
-const SEEN_HASHES: Symbol = symbol_short!("SEEN");
 const EXPIRING_ROOT: Symbol = symbol_short!("EXPROOT");
 const ROOT_META_STORE: Symbol = symbol_short!("RTMETA");
 
@@ -186,13 +184,8 @@ impl McmsContract {
         let inner = hash_set_root_inner(&env, &root, valid_until);
         let signed_hash = eth_signed_message_hash_32(&env, &inner);
 
-        if !env.storage().persistent().has(&SEEN_HASHES) {
-            let empty: Map<BytesN<32>, bool> = Map::new(&env);
-            env.storage().persistent().set(&SEEN_HASHES, &empty);
-        }
-
-        let mut seen: Map<BytesN<32>, bool> = env.storage().persistent().get(&SEEN_HASHES).unwrap();
-        if seen.get(signed_hash.clone()).unwrap_or(false) {
+        let seen_key = McmsDataKey::SeenHash(signed_hash.clone());
+        if env.storage().persistent().has(&seen_key) {
             return Err(McmsError::SignedHashAlreadySeen);
         }
 
@@ -259,8 +252,10 @@ impl McmsContract {
             return Err(McmsError::WrongPostOpCount);
         }
 
-        seen.set(signed_hash.clone(), true);
-        env.storage().persistent().set(&SEEN_HASHES, &seen);
+        env.storage().persistent().set(&seen_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&seen_key, LEDGER_THRESHOLD, LEDGER_BUMP);
 
         env.storage().persistent().set(
             &EXPIRING_ROOT,
@@ -418,9 +413,9 @@ impl McmsContract {
             .ok_or(McmsError::NotInitialized)
     }
 
-    /// Permissionless TTL extension. Call periodically (or via a keeper bot) to prevent
-    /// persistent storage entries — especially `SEEN_HASHES` — from being archived.
-    /// Anyone may call this; it changes no logical state.
+    /// Permissionless TTL extension for fixed persistent keys and instance storage.
+    /// Per-hash seen entries are extended at creation; restore individual archived hashes
+    /// via a `RestoreFootprint` transaction if needed. Anyone may call this.
     pub fn extend_all_ttls(env: Env) -> Result<(), McmsError> {
         <Self as Initializable>::require_initialized(&env)?;
         bump_ttls(&env);
@@ -551,14 +546,13 @@ fn verify_signatures(
     Ok(())
 }
 
-/// Extend the TTL of every persistent storage key that currently exists, plus instance storage.
+/// Extend the TTL of fixed persistent storage keys and instance storage.
 ///
-/// Soroban persistent entries are archived if their TTL reaches zero.  For MCMS the most
-/// dangerous consequence is the loss of `SEEN_HASHES`, which would make all previously-used
-/// `(root, validUntil)` tuples replayable.  This helper is called at the end of every
-/// successful public function so that normal contract activity is sufficient to keep all
-/// entries alive.  A dedicated `extend_all_ttls` entry-point lets operators (or a bot) do the
-/// same without triggering a governance action.
+/// Per-hash seen entries (`McmsDataKey::SeenHash`) are NOT enumerable here; each entry
+/// receives its TTL at creation time in `set_root` and can be individually restored if
+/// archived.  This helper covers the fixed keys (CONFIG, SIGNER_MAP, EXPIRING_ROOT,
+/// ROOT_META_STORE) and is called at the end of every successful public function so that
+/// normal contract activity is sufficient to keep them alive.
 fn bump_ttls(env: &Env) {
     env.storage()
         .instance()
@@ -572,11 +566,6 @@ fn bump_ttls(env: &Env) {
         env.storage()
             .persistent()
             .extend_ttl(&SIGNER_MAP, LEDGER_THRESHOLD, LEDGER_BUMP);
-    }
-    if env.storage().persistent().has(&SEEN_HASHES) {
-        env.storage()
-            .persistent()
-            .extend_ttl(&SEEN_HASHES, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
     if env.storage().persistent().has(&EXPIRING_ROOT) {
         env.storage()
