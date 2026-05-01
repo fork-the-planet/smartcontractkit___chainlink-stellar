@@ -82,8 +82,12 @@ func mcmsValidUntilSeconds(ctx context.Context, rpc *rpcclient.Client) (uint32, 
 }
 
 // TestMcmsMerkleTimelockScheduleAndExecute wires MCMS SetRoot + Execute into timelock schedule_batch
-// (caller = MCMS contract, MCMS is PROPOSER) and execute_batch after min delay, using Go-side Merkle +
-// EIP-191 helpers aligned with contracts/mcms.
+// and execute_batch after min delay (Go Merkle + EIP-191).
+//
+// Caller identity matches EVM-style wiring: the ManyChainMultiSig contract invokes the timelock, so
+// msg.sender-style authority is the multisig contract. On Soroban, schedule_batch and execute_batch
+// pass caller = MCMS contract address; MCMS holds PROPOSER and EXECUTOR on the timelock so nested
+// require_auth() succeeds when MCMS.execute invokes the timelock (see contracts/timelock roles.rs).
 func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
@@ -136,9 +140,11 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 	}
 
 	const minDelaySec uint64 = 3
+	// Admin is deployer; MCMS is both proposer and executor so MCMS-mediated ops authenticate (same
+	// logical caller as ManyChainMultiSig calling RBACTimelock on EVM).
 	if err := tlClient.Initialize(ctx, minDelaySec, deployerKP.Address(),
 		[]string{mcmsID},
-		[]string{deployerKP.Address()},
+		[]string{mcmsID},
 		[]string{},
 		[]string{},
 	); err != nil {
@@ -236,7 +242,7 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("scheduled op never became ready: ready=%v err=%v", okReady, err)
 	}
 
-	execData, err := sorobanExecuteBatch(deployerKP.Address(), emptyCalls, predecessor, saltSched)
+	execData, err := sorobanExecuteBatch(mcmsID, emptyCalls, predecessor, saltSched)
 	if err != nil {
 		t.Fatalf("encode execute_batch: %v", err)
 	}
@@ -280,10 +286,6 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 	proofOp2 := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves2, 1)}
 	if err := mcmsClient.Execute(ctx, opExec, proofOp2); err != nil {
 		t.Fatalf("Execute execute_batch: %v", err)
-	}
-
-	if err := tlClient.ExecuteBatch(ctx, deployerKP.Address(), emptyCalls, predecessor, saltSched); err != nil {
-		t.Fatalf("timelock ExecuteBatch: %v", err)
 	}
 
 	done, err := tlClient.IsOperationDone(ctx, opID)
