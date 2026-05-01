@@ -1287,6 +1287,7 @@ const (
 	McmsErrorInvalidInvokeData                            = 50
 	McmsErrorNonZeroValue                                 = 51
 	McmsErrorMissingRootMetadata                          = 52
+	McmsErrorValidUntilExceedsMaximum                     = 53
 )
 
 // McmsErrorMessage returns a human-readable message for error codes.
@@ -1326,6 +1327,7 @@ var McmsErrorMessage = map[int]string{
 	50: "invalid invoke data",
 	51: "non zero value",
 	52: "missing root metadata",
+	53: "valid until exceeds maximum",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.

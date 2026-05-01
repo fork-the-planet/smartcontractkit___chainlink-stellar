@@ -20,7 +20,7 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_helpers::soroban_invoke::decode_invoke_payload;
-use constants::{domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD};
+use constants::{domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD, MAX_ROOT_VALIDITY_SECS};
 use crypto::{cmp_bytes32, recover_eth_address_vrs, verify_merkle_proof};
 use events::{ConfigSetEvent, NewRootEvent, OpExecutedEvent};
 use soroban_sdk::{
@@ -201,6 +201,10 @@ impl McmsContract {
         let now = env.ledger().timestamp();
         if u64::from(valid_until) < now {
             return Err(McmsError::ValidUntilHasAlreadyPassed);
+        }
+        let max_valid = now.saturating_add(MAX_ROOT_VALIDITY_SECS);
+        if u64::from(valid_until) > max_valid {
+            return Err(McmsError::ValidUntilExceedsMaximum);
         }
 
         let dm = domain_meta(&env);

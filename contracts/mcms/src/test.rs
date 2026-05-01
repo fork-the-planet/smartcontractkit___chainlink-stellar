@@ -781,6 +781,69 @@ fn test_set_root_reverts_valid_until_expired() {
     ));
 }
 
+#[test]
+fn test_set_root_reverts_valid_until_exceeds_90_day_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    const NOW: u64 = 1_000_000;
+    env.ledger().with_mut(|li| {
+        li.timestamp = NOW;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    let max_valid = NOW.saturating_add(crate::constants::MAX_ROOT_VALIDITY_SECS);
+    let valid_until: u32 = (max_valid + 1) as u32;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: self_cid.clone(),
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_extend_all_ttls(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+
+    assert!(matches!(
+        client.try_set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs),
+        Err(Ok(McmsError::ValidUntilExceedsMaximum))
+    ));
+}
+
 /// Group 0 quorum is **2** with **two** registered signers, but only **one** signature is submitted
 /// for the `set_root` digest → [`McmsError::InsufficientSigners`]. Without a successful `set_root`,
 /// no Merkle root is stored and [`McmsContractClient::execute`] cannot run batched ops (quorum gates the root update, not `execute` itself).

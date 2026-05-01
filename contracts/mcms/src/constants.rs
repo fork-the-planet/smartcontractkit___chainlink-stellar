@@ -30,3 +30,9 @@ pub const LEDGER_THRESHOLD: u32 = 120_960;
 
 /// Target TTL (in ledgers) after a proactive extension (~1 year at 5 s/ledger).
 pub const LEDGER_BUMP: u32 = 6_307_200;
+
+/// Maximum horizon for `set_root(..., valid_until, ...)`: `valid_until` must be ≤ ledger timestamp + this value.
+///
+/// Limits how long a signed root remains acceptable relative to `SeenHash` replay protection and
+/// Stellar persistent entry TTL. **90 days** in seconds.
+pub const MAX_ROOT_VALIDITY_SECS: u64 = 90 * 24 * 60 * 60;

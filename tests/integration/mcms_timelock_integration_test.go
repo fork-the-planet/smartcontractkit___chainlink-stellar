@@ -61,8 +61,7 @@ func sorobanExecuteBatch(
 }
 
 // mcmsValidUntilSeconds returns a deadline for MCMS set_root: must be >= host ledger timestamp
-// (contracts/mcms rejects ValidUntilHasAlreadyPassed otherwise). Soroban unit tests use small mock
-// timestamps; real networks use ~unix seconds, so a fixed small uint32 (e.g. 3e6) is in the past.
+// and ≤ now + 90d (contracts/mcms MAX_ROOT_VALIDITY_SECS).
 func mcmsValidUntilSeconds(ctx context.Context, rpc *rpcclient.Client) (uint32, error) {
 	latest, err := rpc.GetLatestLedger(ctx)
 	if err != nil {
@@ -72,7 +71,7 @@ func mcmsValidUntilSeconds(ctx context.Context, rpc *rpcclient.Client) (uint32, 
 	if now < 0 {
 		return 0, fmt.Errorf("unexpected negative ledger close time: %d", now)
 	}
-	const marginSec int64 = 365 * 24 * 3600
+	const marginSec int64 = 90 * 24 * 3600 // must stay ≤ MCMS MAX_ROOT_VALIDITY_SECS (contracts/mcms)
 	sum := now + marginSec
 	maxU32 := int64(^uint32(0))
 	if sum > maxU32 {

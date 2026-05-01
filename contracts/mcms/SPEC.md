@@ -135,6 +135,7 @@ On `set_root`, the contract records replay protection on **`signedHash`** (same 
 
 - Type **`uint32`** everywhere: proposal JSON, MCMS storage, and ABI for `inner` hash.
 - Semantics: **Unix timestamp (seconds)** after which the root **must not** be used — aligned with EVM `ManyChainMultiSig` (`block.timestamp` comparison). **Not** Soroban ledger sequence.
+- **Maximum horizon:** on `set_root`, `validUntil` must be ≤ **current ledger timestamp + 90 days** (`MAX_ROOT_VALIDITY_SECS` in `contracts/mcms/src/constants.rs`). This bounds root lifetime relative to Stellar `SeenHash` replay TTL.
 
 ---
 
