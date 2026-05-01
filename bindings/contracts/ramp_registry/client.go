@@ -29,6 +29,159 @@ func (c *RampRegistryClient) ContractID() string {
 	return c.contractID
 }
 
+// Owner calls the owner function on the contract.
+func (c *RampRegistryClient) Owner(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "owner", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call owner: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from owner")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// IsOwner calls the is_owner function on the contract.
+func (c *RampRegistryClient) IsOwner(ctx context.Context, addr string) (bool, error) {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(addr),
+	}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "is_owner", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call is_owner: %w", err)
+	}
+
+	if result == nil {
+		return false, fmt.Errorf("no return value from is_owner")
+	}
+
+	v, ok := result.GetB()
+	if !ok {
+		return false, fmt.Errorf("expected bool return type")
+	}
+	return v, nil
+}
+
+// InitOwner calls the init_owner function on the contract.
+func (c *RampRegistryClient) InitOwner(ctx context.Context, owner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(owner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "init_owner", args)
+	if err != nil {
+		return fmt.Errorf("failed to call init_owner: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// RequireOwner calls the require_owner function on the contract.
+func (c *RampRegistryClient) RequireOwner(ctx context.Context) (string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "require_owner", args)
+	if err != nil {
+		return "", fmt.Errorf("failed to call require_owner: %w", err)
+	}
+
+	if result == nil {
+		return "", fmt.Errorf("no return value from require_owner")
+	}
+
+	v, err := scval.AddressFromScVal(*result)
+	if err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
+// TransferOwnership calls the transfer_ownership function on the contract.
+func (c *RampRegistryClient) TransferOwnership(ctx context.Context, newOwner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(newOwner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
+	if err != nil {
+		return fmt.Errorf("failed to call transfer_ownership: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// AcceptOwnership calls the accept_ownership function on the contract.
+func (c *RampRegistryClient) AcceptOwnership(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "accept_ownership", args)
+	if err != nil {
+		return fmt.Errorf("failed to call accept_ownership: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// GetPendingOwner calls the get_pending_owner function on the contract.
+func (c *RampRegistryClient) GetPendingOwner(ctx context.Context) (*string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_pending_owner", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_pending_owner: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_pending_owner")
+	}
+
+	v, err := scval.OptionalAddressFromScVal(*result)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
+func (c *RampRegistryClient) CancelOwnershipTransfer(ctx context.Context) error {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "cancel_ownership_transfer", args)
+	if err != nil {
+		return fmt.Errorf("failed to call cancel_ownership_transfer: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// SetNewOwner calls the set_new_owner function on the contract.
+func (c *RampRegistryClient) SetNewOwner(ctx context.Context, newOwner string) error {
+	args := []xdr.ScVal{
+		scval.AddressToScVal(newOwner),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_new_owner", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_new_owner: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // Initialize calls the initialize function on the contract.
 func (c *RampRegistryClient) Initialize(ctx context.Context, owner string) error {
 	args := []xdr.ScVal{

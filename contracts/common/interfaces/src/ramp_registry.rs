@@ -25,6 +25,22 @@ pub struct OffRampEntry {
 #[soroban_sdk::contractargs(name = "RampRegistryArgs")]
 #[soroban_sdk::contractclient(name = "RampRegistryClient")]
 pub trait RampRegistryInterface {
+    fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
+    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn transfer_ownership(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn set_new_owner(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+
     fn initialize(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_onramp(
