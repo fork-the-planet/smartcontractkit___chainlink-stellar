@@ -17,6 +17,7 @@ common-guard = { workspace = true }
 common-helpers = { workspace = true }
 
 [dev-dependencies]
+ccip-ramp-registry = { path = "../ccip-ramp-registry" }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 sha3 = "0.10"
 soroban-sdk = { workspace = true, features = ["testutils"] }

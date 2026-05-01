@@ -998,6 +998,7 @@ dependencies = [
 name = "mcms"
 version = "0.0.0"
 dependencies = [
+ "ccip-ramp-registry",
  "common-authorization",
  "common-error",
  "common-guard",
