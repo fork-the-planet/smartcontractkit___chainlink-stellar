@@ -1002,6 +1002,8 @@ dependencies = [
  "common-error",
  "common-guard",
  "common-helpers",
+ "k256",
+ "sha3",
  "soroban-sdk",
  "stellar-strkey 0.0.16",
 ]

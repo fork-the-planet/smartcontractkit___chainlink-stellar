@@ -2,12 +2,28 @@
 
 #![cfg(test)]
 
-use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Bytes, BytesN, Env, Vec as SorobanVec};
+extern crate alloc;
 
+use alloc::vec::Vec;
+
+use k256::ecdsa::SigningKey;
+use sha3::{Digest, Keccak256};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::Ledger;
+use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{
+    contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, Symbol, Val, Vec as SorobanVec,
+};
+
+use crate::abi_encoding::{
+    eth_signed_message_hash_32, hash_root_metadata, hash_set_root_inner, hash_stellar_op,
+};
+use crate::constants::domain_meta;
+use crate::crypto::efficient_hash_pair;
 use crate::error::McmsError;
 use crate::types::{
-    MerkleProof, SignatureVec, SignerAddresses, SignerGroups, StellarOp, StellarRootMetadata,
+    MerkleProof, Signature, SignatureVec, SignerAddresses, SignerGroups, StellarOp,
+    StellarRootMetadata,
 };
 use crate::{McmsContract, McmsContractClient};
 
@@ -37,6 +53,15 @@ fn all_zero_parents(env: &Env) -> BytesN<32> {
 fn register_client(env: &Env) -> McmsContractClient<'_> {
     let id = env.register(McmsContract, ());
     McmsContractClient::new(env, &id)
+}
+
+/// Minimal callee for successful MCMS `execute` tests (no self re-entry).
+#[contract]
+pub struct ExecPingMock;
+
+#[contractimpl]
+impl ExecPingMock {
+    pub fn ping(_env: Env) {}
 }
 
 mod test_support {
@@ -257,5 +282,441 @@ fn test_set_config_mismatched_vec_lengths() {
             &false,
         ),
         Err(Ok(McmsError::SignerGroupsLengthMismatch))
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// Merkle + signing helpers (align with ccip-owner MerkleHelper + Anvil key)
+// ---------------------------------------------------------------------------
+
+/// Anvil / Foundry default account #0 secret (public; test-only).
+const ANVIL_SK_0: [u8; 32] = [
+    0xac, 0x09, 0x74, 0xbe, 0xc3, 0x9a, 0x17, 0xe3, 0x6b, 0xa4, 0xa6, 0xb4, 0xd2, 0x38, 0xff, 0x94,
+    0x4b, 0xac, 0xb4, 0x78, 0xcb, 0xed, 0x5e, 0xfc, 0xae, 0x78, 0x4d, 0x7b, 0xf4, 0xf2, 0xff, 0x80,
+];
+
+fn padded_eth_address(env: &Env, sk: &SigningKey) -> BytesN<32> {
+    let vk = sk.verifying_key();
+    let encoded = vk.to_encoded_point(false);
+    let mut hasher = Keccak256::new();
+    hasher.update(&encoded.as_bytes()[1..]);
+    let out = hasher.finalize();
+    let mut padded = [0u8; 32];
+    padded[12..32].copy_from_slice(&out[12..]);
+    BytesN::from_array(env, &padded)
+}
+
+fn proof_len_ceiling(leaf_count: usize) -> usize {
+    let mut power = 1usize;
+    let mut exp = 0usize;
+    while power < leaf_count {
+        power *= 2;
+        exp += 1;
+    }
+    exp
+}
+
+fn hash_level_native(env: &Env, data: &[BytesN<32>]) -> Vec<BytesN<32>> {
+    assert_eq!(data.len() % 2, 0);
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < data.len() {
+        out.push(efficient_hash_pair(env, &data[i], &data[i + 1]));
+        i += 2;
+    }
+    out
+}
+
+fn merkle_root_native(env: &Env, leaves: &[BytesN<32>]) -> BytesN<32> {
+    assert_eq!(leaves.len() % 2, 0);
+    let mut data: Vec<BytesN<32>> = leaves.to_vec();
+    while data.len() > 1 {
+        data = hash_level_native(env, &data);
+    }
+    data[0].clone()
+}
+
+/// Proof for leaf at `index` (same sibling walk as `MerkleHelper.computeProofForLeaf`).
+fn compute_proof_for_leaf(
+    env: &Env,
+    mut leaves: Vec<BytesN<32>>,
+    mut index: usize,
+) -> SorobanVec<BytesN<32>> {
+    assert_eq!(leaves.len() % 2, 0);
+    let plen = proof_len_ceiling(leaves.len());
+    let mut proof = SorobanVec::new(env);
+    while leaves.len() > 1 {
+        let sibling_idx = if index & 1 == 1 { index - 1 } else { index + 1 };
+        proof.push_back(leaves[sibling_idx].clone());
+        index /= 2;
+        leaves = hash_level_native(env, &leaves);
+    }
+    assert_eq!(proof.len() as usize, plen);
+    proof
+}
+
+fn encode_ping(env: &Env) -> Bytes {
+    let mut v: SorobanVec<Val> = SorobanVec::new(env);
+    v.push_back(Symbol::new(env, "ping").into_val(env));
+    v.to_xdr(env)
+}
+
+fn encode_extend_all_ttls(env: &Env) -> Bytes {
+    let mut v: SorobanVec<Val> = SorobanVec::new(env);
+    v.push_back(Symbol::new(env, "extend_all_ttls").into_val(env));
+    v.to_xdr(env)
+}
+
+fn signature_vec_single(env: &Env, sk: &SigningKey, signed_digest: &BytesN<32>) -> SignatureVec {
+    let (sig64, recid) = sk
+        .sign_prehash_recoverable(signed_digest.to_array().as_slice())
+        .expect("secp256k1 sign");
+    let b = sig64.to_bytes();
+    let r = BytesN::from_array(env, b[..32].try_into().unwrap());
+    let s = BytesN::from_array(env, b[32..].try_into().unwrap());
+    let v = 27u32 + recid.to_byte() as u32;
+    let sig = Signature { v, r, s };
+    SignatureVec {
+        inner: SorobanVec::from_array(env, [sig]),
+    }
+}
+
+// --- additional coverage (EVM-aligned negative paths + happy execution) ---
+
+#[test]
+fn test_set_config_rejects_without_owner_auth() {
+    let env = Env::default();
+    env.mock_auths(&[]);
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let addr = padded_eth_address(&env, &sk);
+    let addrs = SignerAddresses {
+        inner: SorobanVec::from_array(&env, [addr]),
+    };
+    let groups = SignerGroups {
+        inner: SorobanVec::from_array(&env, [0u32]),
+    };
+
+    assert!(client
+        .try_set_config(
+            &addrs,
+            &groups,
+            &one_of_one_quorum(&env),
+            &all_zero_parents(&env),
+            &false,
+        )
+        .is_err());
+}
+
+#[test]
+fn test_extend_all_ttls_without_auth_succeeds() {
+    let env = Env::default();
+    env.mock_auths(&[]);
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let r = client.try_extend_all_ttls();
+    assert!(r.is_ok());
+}
+
+#[test]
+fn test_set_config_rejects_zero_signers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let addrs = SignerAddresses {
+        inner: SorobanVec::new(&env),
+    };
+    let groups = SignerGroups {
+        inner: SorobanVec::new(&env),
+    };
+
+    assert!(matches!(
+        client.try_set_config(
+            &addrs,
+            &groups,
+            &one_of_one_quorum(&env),
+            &all_zero_parents(&env),
+            &false,
+        ),
+        Err(Ok(McmsError::OutOfBoundsNumOfSigners))
+    ));
+}
+
+/// `set_root` → `execute(ping)` on an external mock (single op, 1-of-1), then second `execute` hits post-op count.
+#[test]
+fn test_set_root_execute_and_post_op_count_reached() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    let addrs = SignerAddresses {
+        inner: SorobanVec::from_array(&env, [signer_addr.clone()]),
+    };
+    let groups = SignerGroups {
+        inner: SorobanVec::from_array(&env, [0u32]),
+    };
+    client.set_config(
+        &addrs,
+        &groups,
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    let ping_addr = env.register(ExecPingMock, ());
+    let ping_cid = test_support::addr_to_contract_id(&ping_addr, &env);
+    let valid_until: u32 = 2_000_000;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: ping_cid,
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_ping(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf.clone(), op_leaf.clone()]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves.clone(), 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+
+    client.set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs);
+
+    let op_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 1),
+    };
+    assert_eq!(client.get_op_count(), 0);
+    client.execute(&op, &op_proof);
+    assert_eq!(client.get_op_count(), 1);
+
+    assert!(matches!(
+        client.try_execute(&op, &op_proof),
+        Err(Ok(McmsError::PostOpCountReached))
+    ));
+}
+
+#[test]
+fn test_execute_reverts_bad_proof() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    let valid_until: u32 = 2_000_000;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: self_cid.clone(),
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_extend_all_ttls(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves.clone(), 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+    client.set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs);
+
+    let empty_proof = MerkleProof {
+        inner: SorobanVec::new(&env),
+    };
+    assert!(matches!(
+        client.try_execute(&op, &empty_proof),
+        Err(Ok(McmsError::ProofCannotBeVerified))
+    ));
+}
+
+#[test]
+fn test_execute_reverts_wrong_chain_id_op() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    let valid_until: u32 = 2_000_000;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: self_cid.clone(),
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_extend_all_ttls(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves.clone(), 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+    client.set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs);
+
+    let mut bad_op = op.clone();
+    bad_op.chain_id = BytesN::from_array(&env, &[0x01; 32]);
+    let op_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 1),
+    };
+    assert!(matches!(
+        client.try_execute(&bad_op, &op_proof),
+        Err(Ok(McmsError::WrongChainIdOp))
+    ));
+}
+
+#[test]
+fn test_set_root_reverts_valid_until_expired() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 10_000;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    let valid_until: u32 = 100;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: self_cid.clone(),
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_extend_all_ttls(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+
+    assert!(matches!(
+        client.try_set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs,),
+        Err(Ok(McmsError::ValidUntilHasAlreadyPassed))
     ));
 }
