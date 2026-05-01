@@ -1,4 +1,4 @@
-package devenv
+package stellardeploy
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	offrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/offramp"
 	onrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/onramp"
@@ -17,7 +18,7 @@ import (
 	routerops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/router"
 )
 
-func (w *work) deployRampsAndProvisionalLanes() error {
+func (w *deployRun) deployRampsAndProvisionalLanes() error {
 	h := w.host
 	stellarRoot := w.stellarRoot
 	remoteSelectors := w.remoteSelectors
@@ -39,6 +40,9 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 	}
 	offRampContractID := offRampOut.ContractID
 	w.offRampContractID = offRampContractID
+	if err := stellarccip.RecordOffRamp(w.ds, w.selector, offRampContractID); err != nil {
+		return fmt.Errorf("record OffRamp in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", offRampContractID).Msg("OffRamp contract deployed")
 
 	offRampClient := offrampbindings.NewOffRampClient(h.Deployer(), offRampContractID)
@@ -70,6 +74,9 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 	}
 	routerContractID := routerOut.ContractID
 	w.routerContractID = routerContractID
+	if err := stellarccip.RecordRouter(w.ds, w.selector, routerContractID); err != nil {
+		return fmt.Errorf("record Router in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", routerContractID).Msg("Router contract deployed")
 
 	routerClient := routerbindings.NewRouterClient(h.Deployer(), routerContractID)
@@ -149,6 +156,9 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 		return fmt.Errorf("failed to deploy RampRegistry contract: %w", err)
 	}
 	rampRegistryContractID := rrOut.ContractID
+	if err := stellarccip.RecordRampRegistry(w.ds, w.selector, rampRegistryContractID); err != nil {
+		return fmt.Errorf("record RampRegistry in datastore: %w", err)
+	}
 	if _, err := execStellarOp(w, rrops.Initialize, rrops.InitializeInput{
 		ContractID: rampRegistryContractID,
 		Owner:      h.DeployerKeypair().Address(),

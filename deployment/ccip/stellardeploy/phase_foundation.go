@@ -1,4 +1,4 @@
-package devenv
+package stellardeploy
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	fqops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/fee_quoter"
@@ -18,7 +19,7 @@ import (
 	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 )
 
-func (w *work) deployFoundationContracts() error {
+func (w *deployRun) deployFoundationContracts() error {
 	h := w.host
 	ctx := w.ctx
 	stellarRoot := w.stellarRoot
@@ -37,6 +38,9 @@ func (w *work) deployFoundationContracts() error {
 	}
 	onrampContractID := onrampOut.ContractID
 	w.onrampContractID = onrampContractID
+	if err := stellarccip.RecordOnRamp(w.ds, w.selector, onrampContractID); err != nil {
+		return fmt.Errorf("record OnRamp in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
 	onRampClient := onrampbindings.NewOnRampClient(h.Deployer(), onrampContractID)
@@ -55,6 +59,9 @@ func (w *work) deployFoundationContracts() error {
 	}
 	rmnRemoteContractID := rmnRemoteOut.ContractID
 	w.rmnRemoteContractID = rmnRemoteContractID
+	if err := stellarccip.RecordRMNRemote(w.ds, w.selector, rmnRemoteContractID); err != nil {
+		return fmt.Errorf("record RMN Remote in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", rmnRemoteContractID).Msg("RMN Remote contract deployed")
 
 	if _, err := execStellarOp(w, rmnremoteops.Initialize, rmnremoteops.InitializeInput{
@@ -103,6 +110,9 @@ func (w *work) deployFoundationContracts() error {
 	}
 	feeQuoterContractID := feeQuoterOut.ContractID
 	w.feeQuoterContractID = feeQuoterContractID
+	if err := stellarccip.RecordFeeQuoter(w.ds, w.selector, feeQuoterContractID); err != nil {
+		return fmt.Errorf("record FeeQuoter in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", feeQuoterContractID).Msg("FeeQuoter contract deployed")
 
 	if h.FriendbotURL() != "" {
@@ -145,6 +155,9 @@ func (w *work) deployFoundationContracts() error {
 	}
 	tarContractID := tarOut.ContractID
 	w.tarContractID = tarContractID
+	if err := stellarccip.RecordTokenAdminRegistry(w.ds, w.selector, tarContractID); err != nil {
+		return fmt.Errorf("record TokenAdminRegistry in datastore: %w", err)
+	}
 	tarClient := tarbindings.NewTokenAdminRegistryClient(h.Deployer(), tarContractID)
 	h.SetTokenAdminRegistry(tarContractID, tarClient)
 	if _, err := execStellarOp(w, tarops.Initialize, tarops.InitializeInput{

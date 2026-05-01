@@ -8,6 +8,7 @@ import (
 
 	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -15,15 +16,15 @@ import (
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
 )
 
-// stellarCCIPDeployHost adapts *Chain to deployment/ccip/devenv.Host without an import cycle.
+// stellarCCIPDeployHost adapts *Chain to [github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy.Host] without an import cycle.
 type stellarCCIPDeployHost struct {
 	c *Chain
 }
 
-var _ stellarccipdevenv.Host = (*stellarCCIPDeployHost)(nil)
+var _ stellardeploy.Host = (*stellarCCIPDeployHost)(nil)
 
 func (h *stellarCCIPDeployHost) Logger() *zerolog.Logger { return &h.c.logger }
 func (h *stellarCCIPDeployHost) Deployer() *stellardeployment.Deployer {
@@ -106,6 +107,6 @@ func (h *stellarCCIPDeployHost) CreateTestToken(ctx context.Context, friendbotUR
 	return h.c.createTestToken(ctx, friendbotURL)
 }
 
-func (c *Chain) deployStellarCCIPContracts(ctx context.Context, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
-	return stellarccipdevenv.DeployStellarCCIPContracts(ctx, &stellarCCIPDeployHost{c: c}, allSelectors, selector, topology)
+func (c *Chain) deployStellarCCIPContracts(opBundle cldf_ops.Bundle, ctx context.Context, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (datastore.DataStore, error) {
+	return stellardeploy.DeployStellarCCIPContracts(ctx, opBundle, &stellarCCIPDeployHost{c: c}, allSelectors, selector, topology, existingAddresses)
 }

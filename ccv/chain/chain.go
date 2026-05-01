@@ -44,6 +44,7 @@ import (
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -54,8 +55,11 @@ import (
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
+	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -66,10 +70,10 @@ const stellarAddressLen = 32
 // CcipReceiverContractType is the datastore contract type for the example CCIP
 // receiver deployed on Stellar so that GetEOAReceiverAddress can return a valid
 // Wasm contract address in tests.
-const CcipReceiverContractType = stellarccipdevenv.CcipReceiverContractType
+const CcipReceiverContractType = stellarccip.CcipReceiverContractType
 
-const TokenAdminRegistryContractType = stellarccipdevenv.TokenAdminRegistryContractType
-const LockReleaseTokenPoolContractType = stellarccipdevenv.LockReleaseTokenPoolContractType
+const TokenAdminRegistryContractType = stellarccip.TokenAdminRegistryContractType
+const LockReleaseTokenPoolContractType = stellarccip.LockReleaseTokenPoolContractType
 
 func ptrU32(v uint32) *uint32 { return &v }
 
@@ -406,7 +410,7 @@ func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployme
 	_ = ctx
 	_ = env
 	ensureStellarFeeAggregatorsInTopology(c, topology)
-	registerStellarDeployChangesetCtx(selector, c, topology)
+	stellarsequences.RegisterStellarDeployChainContext(selector, c, topology)
 	return nil, nil
 }
 
@@ -433,20 +437,20 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 // pricing for the test token, and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
-	defer clearStellarDeployChangesetCtx(selector)
+	defer stellarsequences.ClearStellarDeployChainContext(selector)
 
 	if env == nil {
 		return nil, fmt.Errorf("environment is nil")
 	}
 
 	host := &stellarCCIPDeployHost{c: c}
-	if err := stellarccipdevenv.DeployLockReleaseTestTokenPool(ctx, host); err != nil {
+	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
 	}
 
 	allSelectors := selectorsFromBlockChains(env.BlockChains)
 	if c.testTokenContractID != "" && c.feeQuoterClient != nil {
-		if err := stellarccipdevenv.ApplyFeeQuoterTestTokenConfig(ctx, c.feeQuoterClient, c.deployerKeypair.Address(), c.testTokenContractID, allSelectors); err != nil {
+		if err := stellarccip.ApplyFeeQuoterTestTokenConfig(ctx, c.feeQuoterClient, c.deployerKeypair.Address(), c.testTokenContractID, allSelectors); err != nil {
 			return nil, fmt.Errorf("apply fee quoter test token config: %w", err)
 		}
 		c.logger.Info().Int("destChainCount", len(allSelectors)).Msg("FeeQuoter test token fees applied (post-deploy)")
@@ -455,7 +459,7 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	if c.tokenPoolContractID == "" {
 		return nil, nil
 	}
-	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
+	ds, err := stellarccip.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
 	if err != nil {
 		return nil, err
 	}
@@ -510,9 +514,9 @@ func (c *Chain) GetTokenTransferConfigs(
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
 // shared DeployChainContracts changeset merge path.
-func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccvdeployment.EnvironmentTopology) (seq_core.OnChainOutput, error) {
-	allSelectors := selectorsFromBlockChains(chains)
-	ds, err := c.deployStellarCCIPContracts(ctx, allSelectors, selector, topology)
+// opBundle is the CLDF bundle from the executing sequence (same bundle as nested ExecuteOperation).
+func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, opBundle cldf_ops.Bundle, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (seq_core.OnChainOutput, error) {
+	ds, err := c.deployStellarCCIPContracts(opBundle, ctx, allSelectors, selector, topology, existingAddresses)
 	if err != nil {
 		return seq_core.OnChainOutput{}, err
 	}
@@ -522,6 +526,14 @@ func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chai
 	}
 	return seq_core.OnChainOutput{Addresses: addrs}, nil
 }
+
+// StellarDepsForDeploy implements deployment/sequences.StellarDeployRunner for
+// CLDF inner sequences (same role as passing evm.Chain into EVM ops).
+func (c *Chain) StellarDepsForDeploy() stellardeps.StellarDeps {
+	return stellardeps.FromDeployer(c.deployer)
+}
+
+var _ stellarsequences.StellarDeployRunner = (*Chain)(nil)
 
 // DeployLocalNetwork implements cciptestinterfaces.CCIP17Configuration.
 // Deploys a local Stellar network for testing.

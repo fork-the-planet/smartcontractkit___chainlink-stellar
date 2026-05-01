@@ -1,4 +1,4 @@
-package devenv
+package stellardeploy
 
 import (
 	"fmt"
@@ -19,12 +19,13 @@ import (
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	recvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ccip_receiver"
 )
 
-func (w *work) deployReceiverAndWriteDatastore() error {
+func (w *deployRun) deployReceiverAndWriteDatastore() error {
 	h := w.host
 	stellarRoot := w.stellarRoot
 	ds := w.ds
@@ -42,6 +43,9 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		return fmt.Errorf("failed to deploy ccip_receiver_example contract: %w", err)
 	}
 	receiverContractID := recvOut.ContractID
+	if err := stellarccip.RecordCCIPReceiver(w.ds, w.selector, receiverContractID); err != nil {
+		return fmt.Errorf("record CCIP receiver in datastore: %w", err)
+	}
 
 	if _, err := execStellarOp(w, recvops.Initialize, recvops.InitializeInput{
 		ContractID: receiverContractID,
@@ -83,10 +87,10 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert receiver address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       receiverHex,
 		ChainSelector: selector,
-		Type:          datastore.ContractType(CcipReceiverContractType),
+		Type:          datastore.ContractType(stellarccip.CcipReceiverContractType),
 		Version:       semver.MustParse("1.0.0"),
 	})
 
@@ -94,7 +98,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert OnRamp address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       onrampHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(onrampoperations.ContractType),
@@ -105,7 +109,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert OffRamp address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       offRampHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(offrampoperations.ContractType),
@@ -116,7 +120,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert Router address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       routerHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(router.ContractType),
@@ -127,10 +131,10 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert TokenAdminRegistry address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       tarHex,
 		ChainSelector: selector,
-		Type:          datastore.ContractType(TokenAdminRegistryContractType),
+		Type:          datastore.ContractType(stellarccip.TokenAdminRegistryContractType),
 		Version:       semver.MustParse("1.0.0"),
 	})
 
@@ -139,12 +143,12 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		if err != nil {
 			return fmt.Errorf("failed to convert pool address: %w", err)
 		}
-		ds.AddressRefStore.Add(datastore.AddressRef{
+		ds.AddressRefStore.Upsert(datastore.AddressRef{
 			Address:       poolHex,
 			ChainSelector: selector,
-			Type:          datastore.ContractType(LockReleaseTokenPoolContractType),
+			Type:          datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
 			Version:       semver.MustParse("1.0.0"),
-			Qualifier:     DevenvTestTokenPoolQualifier,
+			Qualifier:     stellarccip.DevenvTestTokenPoolQualifier,
 		})
 	}
 
@@ -155,7 +159,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	for _, qualifier := range []string{
 		devenvcommon.DefaultCommitteeVerifierQualifier,
 	} {
-		ds.AddressRefStore.Add(datastore.AddressRef{
+		ds.AddressRefStore.Upsert(datastore.AddressRef{
 			Address:       vvrHex,
 			Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
 			Version:       versioned_verifier_resolver.Version,
@@ -168,7 +172,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert Committee Verifier address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       cvHex,
 		Type:          datastore.ContractType(committee_verifier.ContractType),
 		Version:       committee_verifier.Version,
@@ -176,7 +180,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		ChainSelector: selector,
 	})
 
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       w.contractHexAddr("stellar-executor"),
 		Type:          datastore.ContractType(executor.ContractType),
 		Version:       executor.Version,
@@ -184,7 +188,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 		ChainSelector: selector,
 	})
 
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       w.contractHexAddr("stellar-executor-proxy"),
 		Type:          datastore.ContractType(proxy.ContractType),
 		Version:       proxy.Version,
@@ -196,7 +200,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert RMN Remote address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       rmnRemoteHex,
 		Type:          datastore.ContractType(rmn_remote.ContractType),
 		Version:       semver.MustParse(rmn_remote.Deploy.Version()),
@@ -207,7 +211,7 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert FeeQuoter address: %w", err)
 	}
-	ds.AddressRefStore.Add(datastore.AddressRef{
+	ds.AddressRefStore.Upsert(datastore.AddressRef{
 		Address:       feeQuoterHex,
 		Type:          datastore.ContractType(fee_quoter.ContractType),
 		Version:       semver.MustParse(fee_quoter.Deploy.Version()),

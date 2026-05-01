@@ -18,7 +18,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
 const evmBurnMintTokenPoolType = "BurnMintTokenPool"
@@ -80,7 +80,7 @@ func evmStellarPoolPreference(ref datastore.AddressRef) int {
 	switch {
 	case strings.Contains(q, "BurnMintTokenPool") && strings.Contains(q, "to LockReleaseTokenPool"):
 		return 0
-	case strings.HasPrefix(q, stellarccipdevenv.DevenvTestTokenPoolQualifier):
+	case strings.HasPrefix(q, stellarccip.DevenvTestTokenPoolQualifier):
 		return 1
 	default:
 		return 2
@@ -114,9 +114,9 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 	stellarPool, err := lookupAddressRef(
 		env.DataStore,
 		stellarSelector,
-		datastore.ContractType(stellarccipdevenv.LockReleaseTokenPoolContractType),
+		datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
 		semver.MustParse("1.0.0"),
-		stellarccipdevenv.DevenvTestTokenPoolQualifier,
+		stellarccip.DevenvTestTokenPoolQualifier,
 	)
 	if err != nil {
 		return fmt.Errorf("lookup Stellar lock-release pool: %w", err)
@@ -124,9 +124,9 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 	stellarToken, err := lookupAddressRef(
 		env.DataStore,
 		stellarSelector,
-		datastore.ContractType(stellarccipdevenv.TestTokenContractType),
+		datastore.ContractType(stellarccip.TestTokenContractType),
 		semver.MustParse("1.0.0"),
-		stellarccipdevenv.DevenvTestTokenPoolQualifier,
+		stellarccip.DevenvTestTokenPoolQualifier,
 	)
 	if err != nil {
 		return fmt.Errorf("lookup Stellar SAC token: %w", err)

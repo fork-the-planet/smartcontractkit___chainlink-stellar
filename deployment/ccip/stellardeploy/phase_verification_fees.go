@@ -1,4 +1,4 @@
-package devenv
+package stellardeploy
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	cvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/committee_verifier"
@@ -19,7 +20,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-func (w *work) configureVerificationAndFeeQuoter() error {
+func (w *deployRun) configureVerificationAndFeeQuoter() error {
 	h := w.host
 	ctx := w.ctx
 	stellarRoot := w.stellarRoot
@@ -43,6 +44,9 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	}
 	vvrContractID := vvrOut.ContractID
 	w.vvrContractID = vvrContractID
+	if err := stellarccip.RecordVVR(w.ds, w.selector, vvrContractID); err != nil {
+		return fmt.Errorf("record VVR in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", vvrContractID).Msg("VVR contract deployed")
 	h.SetVVR(vvrContractID)
 
@@ -75,6 +79,9 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	}
 	cvContractID := cvOut.ContractID
 	w.cvContractID = cvContractID
+	if err := stellarccip.RecordCommitteeVerifier(w.ds, w.selector, cvContractID); err != nil {
+		return fmt.Errorf("record CommitteeVerifier in datastore: %w", err)
+	}
 	h.Logger().Info().Str("contractID", cvContractID).Msg("Committee Verifier contract deployed")
 
 	cvClient := cvbindings.NewCommitteeVerifierClient(h.Deployer(), cvContractID)
@@ -221,7 +228,7 @@ func (w *work) configureVerificationAndFeeQuoter() error {
 	h.Logger().Info().Msg("FeeQuoter prices updated")
 
 	if testToken := h.TestTokenContractID(); testToken != "" {
-		if err := ApplyFeeQuoterTestTokenConfig(ctx, feeQuoterClient, h.DeployerKeypair().Address(), testToken, allSelectors); err != nil {
+		if err := stellarccip.ApplyFeeQuoterTestTokenConfig(ctx, feeQuoterClient, h.DeployerKeypair().Address(), testToken, allSelectors); err != nil {
 			return err
 		}
 		h.Logger().Info().Int("count", len(allSelectors)).Msg("FeeQuoter token transfer fee configs applied")

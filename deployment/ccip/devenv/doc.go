@@ -1,6 +1,8 @@
-// Package devenv implements full Stellar CCIP contract deployment for the CCV devenv.
+// Package devenv holds backward-compatible aliases and thin wrappers around
+// [github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy]
+// and [github.com/smartcontractkit/chainlink-stellar/deployment/ccip].
 //
 // Layout mirrors the intent of github.com/smartcontractkit/chainlink-ccip/deployment
 // (phased configuration applied around a shared orchestration path): helpers live in
-// ../stellarutil; this package wires WASM deploy + bindings + datastore refs via Host.
+// ../stellarutil; Soroban ops run on a caller-supplied CLDF bundle via stellardeploy.
 package devenv

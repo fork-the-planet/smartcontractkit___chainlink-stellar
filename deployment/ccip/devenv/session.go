@@ -9,8 +9,11 @@ import (
 	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
 )
 
-// DeployStellarCCIPContracts forwards to [stellardeploy.DeployStellarCCIPContracts].
-func DeployStellarCCIPContracts(
+// StellarCCIPDeploySession is an alias for [stellardeploy.StellarCCIPDeploySession].
+type StellarCCIPDeploySession = stellardeploy.StellarCCIPDeploySession
+
+// NewStellarCCIPDeploySession forwards to [stellardeploy.NewStellarCCIPDeploySession].
+func NewStellarCCIPDeploySession(
 	ctx context.Context,
 	opBundle cldfops.Bundle,
 	host Host,
@@ -18,6 +21,6 @@ func DeployStellarCCIPContracts(
 	selector uint64,
 	topology *ccvdeployment.EnvironmentTopology,
 	existingAddresses []datastore.AddressRef,
-) (datastore.DataStore, error) {
-	return stellardeploy.DeployStellarCCIPContracts(ctx, opBundle, host, allSelectors, selector, topology, existingAddresses)
+) (*StellarCCIPDeploySession, error) {
+	return stellardeploy.NewStellarCCIPDeploySession(ctx, opBundle, host, allSelectors, selector, topology, existingAddresses)
 }
