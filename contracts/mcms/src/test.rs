@@ -27,6 +27,7 @@ use crate::types::{
 };
 use crate::{McmsContract, McmsContractClient};
 use ccip_ramp_registry::{RampRegistryContract, RampRegistryContractClient};
+use timelock::{Calls, TimelockContract, TimelockContractClient};
 
 const NUM_GROUP_BYTES: usize = 32;
 
@@ -60,6 +61,11 @@ fn all_zero_parents(env: &Env) -> BytesN<32> {
 fn register_client(env: &Env) -> McmsContractClient<'_> {
     let id = env.register(McmsContract, ());
     McmsContractClient::new(env, &id)
+}
+
+fn register_timelock(env: &Env) -> TimelockContractClient<'_> {
+    let id = env.register(TimelockContract, ());
+    TimelockContractClient::new(env, &id)
 }
 
 /// Minimal callee for successful MCMS `execute` tests (no self re-entry).
@@ -404,6 +410,34 @@ fn encode_transfer_ownership_ramp(env: &Env, new_owner: Address) -> Bytes {
     let mut v: SorobanVec<Val> = SorobanVec::new(env);
     v.push_back(Symbol::new(env, "transfer_ownership").into_val(env));
     v.push_back(new_owner.into_val(env));
+    v.to_xdr(env)
+}
+
+fn zero_bytes32(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &[0u8; 32])
+}
+
+fn salt_byte(env: &Env, v: u8) -> BytesN<32> {
+    let mut s = [0u8; 32];
+    s[31] = v;
+    BytesN::from_array(env, &s)
+}
+
+fn encode_schedule_batch(
+    env: &Env,
+    caller: Address,
+    calls: Calls,
+    predecessor: BytesN<32>,
+    salt: BytesN<32>,
+    delay: u64,
+) -> Bytes {
+    let mut v: SorobanVec<Val> = SorobanVec::new(env);
+    v.push_back(Symbol::new(env, "schedule_batch").into_val(env));
+    v.push_back(caller.into_val(env));
+    v.push_back(calls.into_val(env));
+    v.push_back(predecessor.into_val(env));
+    v.push_back(salt.into_val(env));
+    v.push_back(delay.into_val(env));
     v.to_xdr(env)
 }
 
@@ -932,4 +966,103 @@ fn test_mcms_ownership_round_trip_via_ramp_registry() {
     ramp.accept_ownership();
 
     assert_eq!(ramp.owner(), Some(alice.clone()));
+}
+
+/// MCMS `execute` invokes timelock `schedule_batch` with `caller` = MCMS contract; MCMS must be PROPOSER.
+#[test]
+fn test_mcms_execute_timelock_schedule_batch_proposer_self_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 2_000;
+    });
+
+    let admin = Address::generate(&env);
+    let executor = Address::generate(&env);
+    let canceller = Address::generate(&env);
+    let bypasser = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+
+    let mcms_client = register_client(&env);
+    mcms_client.initialize(&admin, &chain);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    mcms_client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let mcms_addr = mcms_client.address.clone();
+    let tl_client = register_timelock(&env);
+    tl_client.initialize(
+        &100u64,
+        &admin,
+        &SorobanVec::from_array(&env, [mcms_addr.clone()]),
+        &SorobanVec::from_array(&env, [executor.clone()]),
+        &SorobanVec::from_array(&env, [canceller.clone()]),
+        &SorobanVec::from_array(&env, [bypasser.clone()]),
+    );
+
+    let tl_cid = test_support::addr_to_contract_id(&tl_client.address, &env);
+    let mcms_cid = test_support::addr_to_contract_id(&mcms_addr, &env);
+
+    let calls_empty = Calls {
+        inner: SorobanVec::new(&env),
+    };
+    let pred = zero_bytes32(&env);
+    let salt_b = salt_byte(&env, 42);
+    let schedule_data = encode_schedule_batch(
+        &env,
+        mcms_addr.clone(),
+        calls_empty.clone(),
+        pred.clone(),
+        salt_b.clone(),
+        100u64,
+    );
+
+    let valid_until: u32 = 3_000_000;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: mcms_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: mcms_cid.clone(),
+        nonce: 0,
+        to: tl_cid,
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: schedule_data,
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves.clone(), 0),
+    };
+    let inner_h = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner_h);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+    mcms_client.set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs);
+
+    let op_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 1),
+    };
+    mcms_client.execute(&op, &op_proof);
+
+    let id = tl_client.hash_operation_batch(&calls_empty, &pred, &salt_b);
+    assert!(tl_client.is_operation(&id));
+    assert!(tl_client.is_operation_pending(&id));
+    assert_eq!(tl_client.get_timestamp(&id), 2_100u64);
 }
