@@ -2010,7 +2010,7 @@ type MessageDirection uint32
 
 const (
 	MessageDirectionOutbound MessageDirection = 0
-	MessageDirectionInbound  MessageDirection = 0
+	MessageDirectionInbound  MessageDirection = 1
 )
 
 // ToScVal converts MessageDirection to an xdr.ScVal.

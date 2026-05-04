@@ -25,6 +25,41 @@ func TestGenerateEnum_UnitOnly(t *testing.T) {
 	mustNotContain(t, out, "type MessageDirection struct")
 }
 
+// TestGenerateEnum_BareUnitsHaveDistinctDiscriminants is the end-to-end
+// regression test for the MessageDirection bug:
+//
+//	const (
+//	    MessageDirectionOutbound MessageDirection = 0
+//	    MessageDirectionInbound  MessageDirection = 0  // <- BUG
+//	)
+//
+// The bug was that bare-identifier unit variants (no explicit `= N`) all
+// got Go's zero value 0, so MessageDirectionInbound serialised as the
+// same on-chain ScVal::U32 as MessageDirectionOutbound. The fix tracks an
+// auto-incrementing counter in parseEnumVariants. This test runs the
+// real parser then runs codegen, so a future regression in either step
+// would be caught here even if the unit test of codegen above still
+// passes (because that one bypasses the parser).
+func TestGenerateEnum_BareUnitsHaveDistinctDiscriminants(t *testing.T) {
+	src := `
+#[soroban_sdk::contracttype]
+pub enum MessageDirection {
+    Outbound,
+    Inbound,
+}
+`
+	c := &Contract{Enums: parseEnums(src)}
+	out := GenerateTypes("test", c)
+	mustContain(t, out,
+		"MessageDirectionOutbound MessageDirection = 0",
+		"MessageDirectionInbound MessageDirection = 1",
+	)
+	// The exact symptom of the bug: Inbound = 0. Refuse to accept it.
+	mustNotContain(t, out,
+		"MessageDirectionInbound MessageDirection = 0",
+	)
+}
+
 // TestGenerateEnum_TupleEmitsUnion is the core regression test for the
 // reviewer's report: an enum with a tuple variant must emit a discriminated
 // union, must use ScVec(Symbol+payloads), and must NOT use Uint32ToScVal.

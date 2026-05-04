@@ -188,6 +188,16 @@ func parseEnumVariants(body string) []EnumVariant {
 	structRe := regexp.MustCompile(`(?s)^\s*(\w+)\s*\{(.+)\}\s*$`)
 	structFieldRe := regexp.MustCompile(`(\w+)\s*:\s*([^,]+)`)
 
+	// Track the next implicit discriminant for bare unit variants.
+	// Rust semantics: bare variants without an explicit `= N` get sequential
+	// values starting at 0 in declaration order, and an explicit discriminant
+	// resets the counter so the next bare variant is `discriminant + 1`.
+	// This must match the on-chain ScVal::U32 wire value Soroban emits for
+	// `#[contracttype]` unit-only enums; otherwise named Go constants
+	// collide on the wire (e.g. MessageDirection::{Outbound,Inbound} both
+	// serialising as 0).
+	nextImplicit := 0
+
 	var variants []EnumVariant
 	for _, raw := range splitTopLevel(body, ',') {
 		v := strings.TrimSpace(raw)
@@ -240,12 +250,15 @@ func parseEnumVariants(body string) []EnumVariant {
 				Kind:  EnumVariantUnit,
 				Value: val,
 			})
+			nextImplicit = val + 1
 		case unitBareRe.MatchString(v):
 			um := unitBareRe.FindStringSubmatch(v)
 			variants = append(variants, EnumVariant{
-				Name: um[1],
-				Kind: EnumVariantUnit,
+				Name:  um[1],
+				Kind:  EnumVariantUnit,
+				Value: nextImplicit,
 			})
+			nextImplicit++
 		}
 	}
 	return variants

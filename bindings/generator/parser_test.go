@@ -7,6 +7,12 @@ import (
 
 // TestParseEnums_PureUnit covers the historical (pre-fix) C-style enum case
 // that we must keep emitting as a Go `uint32` newtype.
+//
+// It also pins the Rust auto-numbering rule: bare unit variants get
+// sequential values starting at 0 in declaration order, matching the
+// on-chain ScVal::U32 Soroban emits. The previous implementation left
+// every bare-variant value at 0, which collapsed Outbound and Inbound to
+// the same wire value.
 func TestParseEnums_PureUnit(t *testing.T) {
 	src := `
 #[soroban_sdk::contracttype]
@@ -28,11 +34,48 @@ pub enum MessageDirection {
 		t.Fatalf("expected IsUnit=true")
 	}
 	want := []EnumVariant{
-		{Name: "Outbound", Kind: EnumVariantUnit},
-		{Name: "Inbound", Kind: EnumVariantUnit},
+		{Name: "Outbound", Kind: EnumVariantUnit, Value: 0},
+		{Name: "Inbound", Kind: EnumVariantUnit, Value: 1},
 	}
 	if !reflect.DeepEqual(got.Variants, want) {
 		t.Fatalf("variants: got %+v want %+v", got.Variants, want)
+	}
+}
+
+// TestParseEnums_ImplicitDiscriminants covers the full Rust auto-numbering
+// rule including discriminant resets:
+//   - bare variants get +1 from the previous variant
+//   - an explicit `= N` resets the counter so the next bare gets `N+1`
+//
+// This is the exact behaviour Soroban's #[contracttype] derive uses for
+// the on-chain wire value, so anything that diverges from this leaks
+// wrong discriminants into Go bindings.
+func TestParseEnums_ImplicitDiscriminants(t *testing.T) {
+	src := `
+#[soroban_sdk::contracttype]
+pub enum E {
+    A,
+    B,
+    C = 10,
+    D,
+    Reset = 0,
+    F,
+}
+`
+	enums := parseEnums(src)
+	if len(enums) != 1 {
+		t.Fatalf("expected 1 enum, got %d", len(enums))
+	}
+	want := []EnumVariant{
+		{Name: "A", Kind: EnumVariantUnit, Value: 0},
+		{Name: "B", Kind: EnumVariantUnit, Value: 1},
+		{Name: "C", Kind: EnumVariantUnit, Value: 10},
+		{Name: "D", Kind: EnumVariantUnit, Value: 11},
+		{Name: "Reset", Kind: EnumVariantUnit, Value: 0},
+		{Name: "F", Kind: EnumVariantUnit, Value: 1},
+	}
+	if !reflect.DeepEqual(enums[0].Variants, want) {
+		t.Fatalf("variants:\n  got %+v\n  want %+v", enums[0].Variants, want)
 	}
 }
 
@@ -91,10 +134,14 @@ pub enum PoolDataKey {
 	if got.IsUnit() {
 		t.Fatalf("expected IsUnit=false for mixed enum")
 	}
+	// Discriminants for unit variants follow Rust's auto-numbering even when
+	// interleaved with tuple variants (the non-unit codegen path doesn't
+	// consult Value, but the parser pins this for consistency and so that
+	// IsUnit-derived behaviour stays predictable if the shape ever changes).
 	want := []EnumVariant{
-		{Name: "Token", Kind: EnumVariantUnit},
+		{Name: "Token", Kind: EnumVariantUnit, Value: 0},
 		{Name: "RemoteChainConfig", Kind: EnumVariantTuple, Payload: []Field{{Type: "u64"}}},
-		{Name: "SupportedChains", Kind: EnumVariantUnit},
+		{Name: "SupportedChains", Kind: EnumVariantUnit, Value: 1},
 		{Name: "OutboundRateLimit", Kind: EnumVariantTuple, Payload: []Field{{Type: "u64"}}},
 	}
 	if !reflect.DeepEqual(got.Variants, want) {
