@@ -3,7 +3,9 @@
 use soroban_sdk::{testutils::Address as _, testutils::Ledger, token, Address, Bytes, Env, Vec};
 
 use crate::{BurnMintTokenPoolContract, BurnMintTokenPoolContractClient};
-use ccip_ramp_registry::{RampRegistryContract, RampRegistryContractClient};
+use ccip_ramp_registry::{
+    OffRampUpdate, OnRampUpdate, RampRegistryContract, RampRegistryContractClient,
+};
 use common_error::CCIPError;
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
@@ -205,7 +207,7 @@ fn setup_env() -> (
     registry_client.initialize(&owner);
 
     let auth_onramp = Address::generate(&env);
-    registry_client.set_onramp(&DEFAULT_REMOTE_CHAIN, &auth_onramp);
+    register_onramp_for_chain(&env, &registry_client, DEFAULT_REMOTE_CHAIN, &auth_onramp);
 
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
@@ -244,12 +246,35 @@ fn setup_env() -> (
     )
 }
 
+fn register_onramp_for_chain(
+    env: &Env,
+    registry_client: &RampRegistryContractClient,
+    dest_chain_selector: u64,
+    onramp: &Address,
+) {
+    registry_client.apply_onramp_updates(&Vec::from_array(
+        env,
+        [OnRampUpdate {
+            dest_chain_selector,
+            onramp: Some(onramp.clone()),
+        }],
+    ));
+}
+
 fn register_offramp_for_chain(
+    env: &Env,
     registry_client: &RampRegistryContractClient,
     stub_client: &inbound_release_stub::PoolInboundReleaseStubClient,
     source_chain_selector: u64,
 ) {
-    registry_client.add_offramp(&source_chain_selector, &stub_client.address);
+    registry_client.apply_offramp_updates(&Vec::from_array(
+        env,
+        [OffRampUpdate {
+            source_chain_selector,
+            offramp: stub_client.address.clone(),
+            enabled: true,
+        }],
+    ));
 }
 
 #[test]
@@ -331,7 +356,7 @@ fn test_burn_and_mint() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     let mint_result = stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(mint_result.destination_amount, burn_amount);
     assert_eq!(token_client.balance(&receiver), burn_amount);
@@ -381,7 +406,7 @@ fn test_wrong_token_rejected() {
         auth_onramp,
     ) = setup_env();
 
-    registry_client.set_onramp(&1u64, &auth_onramp);
+    register_onramp_for_chain(&env, &registry_client, 1u64, &auth_onramp);
 
     let wrong_token = Address::generate(&env);
     let sender = Address::generate(&env);
@@ -514,7 +539,7 @@ fn test_release_or_mint_zero_amount_succeeds() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     let out = stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(out.destination_amount, 0);
     assert_eq!(token_client.balance(&receiver), 0);
@@ -724,7 +749,7 @@ fn test_release_or_mint_scales_down_remote_more_decimals() {
     let registry_client = RampRegistryContractClient::new(&env, &registry_id);
     registry_client.initialize(&owner);
     let auth_onramp = Address::generate(&env);
-    registry_client.set_onramp(&DEFAULT_REMOTE_CHAIN, &auth_onramp);
+    register_onramp_for_chain(&env, &registry_client, DEFAULT_REMOTE_CHAIN, &auth_onramp);
 
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
@@ -753,7 +778,7 @@ fn test_release_or_mint_scales_down_remote_more_decimals() {
         &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
         &Vec::new(&env),
     );
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
 
     let remote_decimals: u32 = 9;
     let source_amount: i128 = 1_000_000_000; // 1e9 in 9dp
@@ -785,7 +810,7 @@ fn test_release_or_mint_scales_up_remote_fewer_decimals() {
     let registry_client = RampRegistryContractClient::new(&env, &registry_id);
     registry_client.initialize(&owner);
     let auth_onramp = Address::generate(&env);
-    registry_client.set_onramp(&DEFAULT_REMOTE_CHAIN, &auth_onramp);
+    register_onramp_for_chain(&env, &registry_client, DEFAULT_REMOTE_CHAIN, &auth_onramp);
 
     let stub_id = env.register(inbound_release_stub::PoolInboundReleaseStub, ());
     let stub_client = inbound_release_stub::PoolInboundReleaseStubClient::new(&env, &stub_id);
@@ -814,7 +839,7 @@ fn test_release_or_mint_scales_up_remote_fewer_decimals() {
         &Vec::from_array(&env, [chain_update(&env, remote_chain, 1, 2)]),
         &Vec::new(&env),
     );
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
 
     let remote_decimals: u32 = 6;
     let source_amount: i128 = 1_000_000;
@@ -866,7 +891,7 @@ fn test_release_or_mint_invalid_source_pool_data_length() {
         source_pool_data: Bytes::from_slice(&env, &[1u8; 31]),
     };
 
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     let e = stub_client
         .try_release(&pool_client.address, &release_input, &0u32)
         .unwrap_err()
@@ -1206,7 +1231,7 @@ fn test_release_or_mint_within_inbound_rate_limit() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &0u32);
     assert_eq!(token_client.balance(&receiver), 500);
 }
@@ -1256,7 +1281,7 @@ fn test_release_or_mint_exceeds_inbound_capacity_rejected() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     let r = stub_client.try_release(&pool_client.address, &release_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::TokenMaxCapacityExceeded);
 }
@@ -1307,7 +1332,7 @@ fn test_release_or_mint_inbound_refills_over_time() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &0u32);
 
     // Advance 30s => refill 300
@@ -1599,7 +1624,7 @@ fn test_both_outbound_and_inbound_limits_enforced() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &0u32);
 
     // Inbound: 1 more should fail (0 tokens remaining, no time elapsed)
@@ -1668,7 +1693,7 @@ fn test_ftf_inbound_uses_ftf_bucket_when_configured() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 200);
 
@@ -1747,7 +1772,7 @@ fn test_ftf_inbound_falls_back_to_default_bucket_when_not_configured() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_input, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 500);
 
@@ -1937,7 +1962,7 @@ fn test_ftf_and_default_buckets_are_independent() {
         source_pool_address: Bytes::from_slice(&env, &[5u8; 20]),
         source_pool_data: Bytes::new(&env),
     };
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     stub_client.release(&pool_client.address, &release_ftf, &WAIT_FOR_SAFE);
     assert_eq!(token_client.balance(&receiver), 300);
 
@@ -2088,7 +2113,7 @@ fn test_postflight_hook_rejects_release_or_mint() {
         source_pool_data: Bytes::new(&env),
     };
 
-    register_offramp_for_chain(&registry_client, &stub_client, remote_chain);
+    register_offramp_for_chain(&env, &registry_client, &stub_client, remote_chain);
     let r = stub_client.try_release(&pool_client.address, &release_input, &0u32);
     assert_eq!(r.unwrap_err().unwrap(), CCIPError::SenderNotAllowed);
     assert_eq!(token_client.balance(&receiver), 0);

@@ -374,7 +374,13 @@ func (s *fullStack) deployTokenPool(
 	if err := s.RampRegistryClient.Initialize(ctx, deployerAddr); err != nil {
 		t.Fatalf("RampRegistry Initialize: %v", err)
 	}
-	if err := s.RampRegistryClient.AddOfframp(ctx, remoteSourceChain, s.OfframpID); err != nil {
+	if err := s.RampRegistryClient.ApplyOfframpUpdates(ctx, []rampregistrybindings.OffRampUpdate{
+		{
+			SourceChainSelector: remoteSourceChain,
+			Offramp:             s.OfframpID,
+			Enabled:             true,
+		},
+	}); err != nil {
 		t.Fatalf("RampRegistry AddOfframp: %v", err)
 	}
 
@@ -672,7 +678,12 @@ func deployOutboundSendWire(
 	}
 
 	if stack.RampRegistryClient != nil {
-		if err := stack.RampRegistryClient.SetOnramp(ctx, remoteDestChainSelector, wire.OnRampID); err != nil {
+		if err := stack.RampRegistryClient.ApplyOnrampUpdates(ctx, []rampregistrybindings.OnRampUpdate{
+			{
+				DestChainSelector: remoteDestChainSelector,
+				Onramp:            &wire.OnRampID,
+			},
+		}); err != nil {
 			t.Fatalf("RampRegistry SetOnramp: %v", err)
 		}
 	}
