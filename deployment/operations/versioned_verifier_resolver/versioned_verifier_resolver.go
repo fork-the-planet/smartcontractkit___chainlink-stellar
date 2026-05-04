@@ -73,3 +73,23 @@ var ApplyInboundImplUpdates = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// WithdrawFeeTokensInput lists fee token contract IDs to withdraw to the configured fee aggregator.
+type WithdrawFeeTokensInput struct {
+	ContractID string   `json:"contract_id"`
+	FeeTokens  []string `json:"fee_tokens"`
+}
+
+// WithdrawFeeTokens calls VVR `withdraw_fee_tokens`.
+var WithdrawFeeTokens = cldfops.NewOperation(
+	"versioned-verifier-resolver:withdraw-fee-tokens",
+	stellarops.ContractDeploymentVersion,
+	"Withdraws listed fee token balances to the Versioned Verifier Resolver fee aggregator",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in WithdrawFeeTokensInput) (stellarops.Void, error) {
+		c := vvrbindings.NewVersionedVerifierResolverClient(d.Invoker, in.ContractID)
+		if err := c.WithdrawFeeTokens(b.GetContext(), in.FeeTokens); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
