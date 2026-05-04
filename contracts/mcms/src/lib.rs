@@ -453,7 +453,7 @@ impl McmsContract {
     }
 
     /// Returns the currently configured `min_secs_per_ledger`, or the default if never set.
-    pub fn min_secs_per_ledger(env: Env) -> Result<u64, McmsError> {
+    pub fn get_min_secs_per_ledger(env: Env) -> Result<u64, McmsError> {
         <Self as Initializable>::require_initialized(&env)?;
         Ok(stored_min_secs_per_ledger(&env))
     }

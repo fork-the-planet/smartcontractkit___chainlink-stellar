@@ -56,7 +56,7 @@ pub trait McmsInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
-    fn min_secs_per_ledger(env: soroban_sdk::Env) -> Result<u64, McmsError>;
+    fn get_min_secs_per_ledger(env: soroban_sdk::Env) -> Result<u64, McmsError>;
     fn set_min_secs_per_ledger(
         env: soroban_sdk::Env,
         secs: u64,

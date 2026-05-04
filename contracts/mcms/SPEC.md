@@ -144,7 +144,7 @@ On `set_root`, the contract records replay protection on **`signedHash`** (same 
   )
   ```
 
-  The dynamic cap binds `validUntil` to the worst-case lifetime of a freshly bumped `SeenHash` entry minus a 1-week safety margin, so the entry is **guaranteed** to outlive `validUntil` and replay protection cannot lapse via TTL archival. `min_secs_per_ledger` defaults to **5** (`MIN_SECS_PER_LEDGER_DEFAULT`) and is owner-configurable via `set_min_secs_per_ledger(secs)` (gated like `set_config`); valid range is `[MIN_SECS_PER_LEDGER_LOWER_BOUND, MIN_SECS_PER_LEDGER_UPPER_BOUND]`. A compile-time assertion in `constants.rs` enforces that the static cap stays strictly below the default-pessimistic seen-entry lifetime so the relation cannot silently regress.
+  The dynamic cap binds `validUntil` to the worst-case lifetime of a freshly bumped `SeenHash` entry minus a 1-week safety margin, so the entry is **guaranteed** to outlive `validUntil` and replay protection cannot lapse via TTL archival. `min_secs_per_ledger` defaults to **5** (`MIN_SECS_PER_LEDGER_DEFAULT`) and is owner-configurable via `set_min_secs_per_ledger(secs)` (gated like `set_config`); read the current value with **`get_min_secs_per_ledger`**. Valid range is `[MIN_SECS_PER_LEDGER_LOWER_BOUND, MIN_SECS_PER_LEDGER_UPPER_BOUND]`. A compile-time assertion in `constants.rs` enforces that the static cap stays strictly below the default-pessimistic seen-entry lifetime so the relation cannot silently regress.
 
 ### 6.4 `SeenHash` TTL & restoring archived entries
 

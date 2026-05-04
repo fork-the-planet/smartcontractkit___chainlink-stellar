@@ -361,17 +361,17 @@ func (c *McmsClient) TransferOwnership(ctx context.Context, newOwner string) err
 	return nil
 }
 
-// MinSecsPerLedger calls the min_secs_per_ledger function on the contract.
-func (c *McmsClient) MinSecsPerLedger(ctx context.Context) (uint64, error) {
+// GetMinSecsPerLedger calls the get_min_secs_per_ledger function on the contract.
+func (c *McmsClient) GetMinSecsPerLedger(ctx context.Context) (uint64, error) {
 	args := []xdr.ScVal{}
 
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "min_secs_per_ledger", args)
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_min_secs_per_ledger", args)
 	if err != nil {
-		return 0, fmt.Errorf("failed to call min_secs_per_ledger: %w", err)
+		return 0, fmt.Errorf("failed to call get_min_secs_per_ledger: %w", err)
 	}
 
 	if result == nil {
-		return 0, fmt.Errorf("no return value from min_secs_per_ledger")
+		return 0, fmt.Errorf("no return value from get_min_secs_per_ledger")
 	}
 
 	v, err := scval.Uint64FromScVal(*result)

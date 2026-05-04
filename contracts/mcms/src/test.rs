@@ -1143,7 +1143,7 @@ fn test_min_secs_per_ledger_default() {
     client.initialize(&owner, &chain);
 
     assert_eq!(
-        client.min_secs_per_ledger(),
+        client.get_min_secs_per_ledger(),
         crate::constants::MIN_SECS_PER_LEDGER_DEFAULT
     );
 }
@@ -1159,7 +1159,7 @@ fn test_set_min_secs_per_ledger_round_trip() {
     client.initialize(&owner, &chain);
 
     client.set_min_secs_per_ledger(&7u64);
-    assert_eq!(client.min_secs_per_ledger(), 7u64);
+    assert_eq!(client.get_min_secs_per_ledger(), 7u64);
 }
 
 /// Out-of-range values (0 and `> MIN_SECS_PER_LEDGER_UPPER_BOUND`) are rejected.
