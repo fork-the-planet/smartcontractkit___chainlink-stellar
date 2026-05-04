@@ -8,10 +8,16 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
+	cldflogger "github.com/smartcontractkit/chainlink-deployments-framework/pkg/logger"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
+	poolops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_pool"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -39,10 +45,13 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 	}
 	h.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract (post-deploy)...")
 	poolSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "lock-release-pool")
-	poolContractID, err := h.Deployer().DeployContract(ctx, poolWasmPath, poolSalt)
+	opBundle := cldfops.NewBundle(func() context.Context { return ctx }, cldflogger.Nop(), cldfops.NewMemoryReporter())
+	deps := stellardeps.FromDeployer(h.Deployer())
+	poolRep, err := cldfops.ExecuteOperation(opBundle, poolops.Deploy, deps, stellarops.DeployInput{WasmPath: poolWasmPath, Salt: poolSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy LockRelease pool: %w", err)
 	}
+	poolContractID := poolRep.Output.ContractID
 	poolClient := tokenpoolbindings.NewTokenPoolClient(h.Deployer(), poolContractID)
 	h.SetTokenPool(poolContractID, poolClient)
 	h.Logger().Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
@@ -73,7 +82,14 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 	if rampRegistryContractID == "" {
 		return fmt.Errorf("ramp registry contract ID is empty; token pool initialize requires ramp registry (deploy core CCIP first)")
 	}
-	if err := poolClient.Initialize(ctx, h.DeployerKeypair().Address(), tokenContractID, testTokenPoolDecimals, routerContractID, rampRegistryContractID); err != nil {
+	if _, err := cldfops.ExecuteOperation(opBundle, poolops.Initialize, deps, poolops.InitializeInput{
+		ContractID:    poolContractID,
+		Owner:         h.DeployerKeypair().Address(),
+		Token:         tokenContractID,
+		TokenDecimals: testTokenPoolDecimals,
+		Router:        routerContractID,
+		RampRegistry:  rampRegistryContractID,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize pool with token: %w", err)
 	}
 
@@ -87,13 +103,27 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 		Int64("amount", initialPoolLiquidity).
 		Msg("Funded lock-release pool with SAC liquidity")
 
-	if err := tarClient.ProposeAdministrator(ctx, deployerAddr, tokenContractID, deployerAddr); err != nil {
+	tarID := tarClient.ContractID()
+	if _, err := cldfops.ExecuteOperation(opBundle, tarops.ProposeAdministrator, deps, tarops.ProposeAdministratorInput{
+		ContractID:    tarID,
+		Caller:        deployerAddr,
+		LocalToken:    tokenContractID,
+		Administrator: deployerAddr,
+	}); err != nil {
 		return fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
 	}
-	if err := tarClient.AcceptAdminRole(ctx, tokenContractID); err != nil {
+	if _, err := cldfops.ExecuteOperation(opBundle, tarops.AcceptAdminRole, deps, tarops.AcceptAdminRoleInput{
+		ContractID: tarID,
+		LocalToken: tokenContractID,
+	}); err != nil {
 		return fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
 	}
-	if err := tarClient.SetPool(ctx, tokenContractID, &poolContractID); err != nil {
+	poolID := poolContractID
+	if _, err := cldfops.ExecuteOperation(opBundle, tarops.SetPool, deps, tarops.SetPoolInput{
+		ContractID: tarID,
+		LocalToken: tokenContractID,
+		Pool:       &poolID,
+	}); err != nil {
 		return fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
 	}
 	h.Logger().Info().
