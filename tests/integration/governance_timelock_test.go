@@ -206,19 +206,33 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-exec")
 	mockStranger := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-stranger")
 
+	// Negative auth checks: simulate rather than InvokeContract so the host's
+	// `Error(Contract, #code)` survives in the error string. A submitted invocation
+	// can collapse a contract revert into a generic "transaction failed" message
+	// without the code, making the assertion ambiguous. Same pattern as
+	// `router_test.go`'s `ccip_send rejects when destination chain is cursed`.
 	t.Run("former owner cannot set_onramp", func(t *testing.T) {
-		err := reg.SetOnramp(ctx, chainReject, mockReject)
-		if err == nil {
-			t.Fatal("expected SetOnramp to fail for non-owner deployer")
+		args := []xdr.ScVal{
+			scval.Uint64ToScVal(chainReject),
+			scval.AddressToScVal(mockReject),
 		}
+		_, err := deployer.SimulateContract(ctx, registryID, "set_onramp", args)
+		if err == nil {
+			t.Fatal("expected set_onramp simulation to fail for non-owner deployer")
+		}
+		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
 
 	t.Run("stranger cannot set_onramp", func(t *testing.T) {
-		regStranger := rampbindings.NewRampRegistryClient(strangerDep, registryID)
-		err := regStranger.SetOnramp(ctx, chainStranger, mockStranger)
-		if err == nil {
-			t.Fatal("expected SetOnramp to fail for unrelated account")
+		args := []xdr.ScVal{
+			scval.Uint64ToScVal(chainStranger),
+			scval.AddressToScVal(mockStranger),
 		}
+		_, err := strangerDep.SimulateContract(ctx, registryID, "set_onramp", args)
+		if err == nil {
+			t.Fatal("expected set_onramp simulation to fail for unrelated account")
+		}
+		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
 
 	t.Run("executor cannot schedule", func(t *testing.T) {
