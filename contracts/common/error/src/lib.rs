@@ -206,4 +206,6 @@ pub enum CCIPError {
     // ============================================================
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
+    /// Fee aggregator must be set for withdrawal (mirrors EVM `FeeTokenHandler.ZeroAddressNotAllowed`).
+    ZeroFeeAggregatorNotAllowed = 803,
 }

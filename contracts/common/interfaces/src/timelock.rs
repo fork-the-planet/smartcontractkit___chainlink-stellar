@@ -271,6 +271,7 @@ pub enum CCIPError {
     RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
+    ZeroFeeAggregatorNotAllowed = 803,
 }
 #[soroban_sdk::contracterror(export = false)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]

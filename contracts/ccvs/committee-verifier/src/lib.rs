@@ -7,11 +7,10 @@ use common_authorization::allowlist::{AllowListEntry, AllowListUpdate, AllowList
 use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
-use common_helpers::curse_checkable::CurseCheckable;
-use common_helpers::validation::Validatable;
+use common_helpers::{curse_checkable::CurseCheckable, validation::Validatable};
 use common_verifier::signatures::{SignatureQuorum, SignatureQuorumConfig};
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
+    contract, contractimpl, symbol_short, token, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 use types::{DynamicConfig, RemoteChainConfig};
 
@@ -439,13 +438,43 @@ impl CommitteeVerifierContract {
     // Fees
     // ========================================
 
+    /// Withdraws outstanding fee token balances to the configured fee aggregator.
+    ///
+    /// Permissionless: only transfers to the trusted aggregator address (same model as EVM).
+    ///
+    /// # Errors
+    /// * [`CCIPError::ZeroFeeAggregatorNotAllowed`] — dynamic config has no fee aggregator or it is the zero account.
     pub fn withdraw_fee_tokens(env: Env, fee_tokens: Vec<Address>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        let dynamic = Self::get_dynamic_config(env.clone())?;
 
-        let _ = (dynamic.fee_aggregator, fee_tokens);
+        let dynamic = Self::get_dynamic_config(env.clone())?;
+        let fee_agg = dynamic
+            .fee_aggregator
+            .ok_or(CCIPError::ZeroFeeAggregatorNotAllowed)?;
+        if is_zero_fee_recipient(&env, &fee_agg) {
+            return Err(CCIPError::ZeroFeeAggregatorNotAllowed);
+        }
+
+        let cv_address = env.current_contract_address();
+        for i in 0..fee_tokens.len() {
+            if let Some(fee_token) = fee_tokens.get(i) {
+                let token_client = token::Client::new(&env, &fee_token);
+                let balance = token_client.balance(&cv_address);
+                if balance > 0 {
+                    token_client.transfer(&cv_address, &fee_agg, &balance);
+                }
+            }
+        }
+
         Ok(())
     }
+}
+
+fn is_zero_fee_recipient(env: &Env, addr: &Address) -> bool {
+    addr == &Address::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    )
 }
 
 mod test;
