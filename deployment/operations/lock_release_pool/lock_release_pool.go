@@ -1,33 +1,37 @@
-package rmn_remote
+// Package lock_release_pool defines CLDF operations for the Soroban lock-release pool contract.
+package lock_release_pool
 
 import (
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
-	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
+	lrpbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/lock_release_pool"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 )
 
-// ContractType labels RMN Remote.
-const ContractType = "RmnRemote"
+// ContractType labels lock-release pool contracts.
+const ContractType = "LockReleasePool"
 
-// Deploy uploads rmn_remote.wasm.
-var Deploy = stellarops.NewDeployOperation("rmn-remote:deploy", "Deploys the RMN Remote Soroban contract from WASM")
+// Deploy uploads pools_lock_release_pool.wasm.
+var Deploy = stellarops.NewDeployOperation("lock-release-pool:deploy", "Deploys the lock-release pool Soroban contract from WASM")
 
-// InitializeInput configures RMN Remote owner and local chain selector.
+// InitializeInput matches lock-release pool `initialize` (same shape as burn-mint pool).
 type InitializeInput struct {
 	ContractID    string `json:"contract_id"`
 	Owner         string `json:"owner"`
-	ChainSelector uint64 `json:"chain_selector"`
+	Token         string `json:"token"`
+	TokenDecimals uint32 `json:"token_decimals"`
+	Router        string `json:"router"`
+	RampRegistry  string `json:"ramp_registry"`
 }
 
-// Initialize calls RMN Remote `initialize`.
+// Initialize calls lock-release pool `initialize`.
 var Initialize = cldfops.NewOperation(
-	"rmn-remote:initialize",
+	"lock-release-pool:initialize",
 	stellarops.ContractDeploymentVersion,
-	"Initializes RMN Remote with owner and chain selector",
+	"Initializes lock-release pool with owner, token, router, and ramp registry",
 	func(b cldfops.Bundle, d stellardeps.StellarDeps, in InitializeInput) (stellarops.Void, error) {
-		c := rmnremotebindings.NewRmnRemoteClient(d.Invoker, in.ContractID)
-		if err := c.Initialize(b.GetContext(), in.Owner, in.ChainSelector); err != nil {
+		c := lrpbindings.NewLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.Initialize(b.GetContext(), in.Owner, in.Token, in.TokenDecimals, in.Router, in.RampRegistry); err != nil {
 			return stellarops.Void{}, err
 		}
 		return stellarops.Void{}, nil
@@ -40,13 +44,13 @@ type TransferOwnershipInput struct {
 	NewOwner   string `json:"new_owner"`
 }
 
-// TransferOwnership calls `transfer_ownership` on RMN Remote.
+// TransferOwnership calls `transfer_ownership` on lock-release pool.
 var TransferOwnership = cldfops.NewOperation(
-	"rmn-remote:transfer-ownership",
+	"lock-release-pool:transfer-ownership",
 	stellarops.ContractDeploymentVersion,
-	"Transfers RMN Remote ownership to a pending new owner",
+	"Transfers lock-release pool ownership to a pending new owner",
 	func(b cldfops.Bundle, d stellardeps.StellarDeps, in TransferOwnershipInput) (stellarops.Void, error) {
-		c := rmnremotebindings.NewRmnRemoteClient(d.Invoker, in.ContractID)
+		c := lrpbindings.NewLockReleasePoolClient(d.Invoker, in.ContractID)
 		if err := c.TransferOwnership(b.GetContext(), in.NewOwner); err != nil {
 			return stellarops.Void{}, err
 		}
@@ -59,13 +63,13 @@ type AcceptOwnershipInput struct {
 	ContractID string `json:"contract_id"`
 }
 
-// AcceptOwnership calls `accept_ownership` on RMN Remote.
+// AcceptOwnership calls `accept_ownership` on lock-release pool.
 var AcceptOwnership = cldfops.NewOperation(
-	"rmn-remote:accept-ownership",
+	"lock-release-pool:accept-ownership",
 	stellarops.ContractDeploymentVersion,
-	"Accepts RMN Remote ownership after transfer_ownership",
+	"Accepts lock-release pool ownership after transfer_ownership",
 	func(b cldfops.Bundle, d stellardeps.StellarDeps, in AcceptOwnershipInput) (stellarops.Void, error) {
-		c := rmnremotebindings.NewRmnRemoteClient(d.Invoker, in.ContractID)
+		c := lrpbindings.NewLockReleasePoolClient(d.Invoker, in.ContractID)
 		if err := c.AcceptOwnership(b.GetContext()); err != nil {
 			return stellarops.Void{}, err
 		}

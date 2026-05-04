@@ -93,3 +93,42 @@ var WithdrawFeeTokens = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// TransferOwnershipInput starts two-step ownership transfer.
+type TransferOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+	NewOwner   string `json:"new_owner"`
+}
+
+// TransferOwnership calls `transfer_ownership` on Versioned Verifier Resolver.
+var TransferOwnership = cldfops.NewOperation(
+	"versioned-verifier-resolver:transfer-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Transfers Versioned Verifier Resolver ownership to a pending new owner",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in TransferOwnershipInput) (stellarops.Void, error) {
+		c := vvrbindings.NewVersionedVerifierResolverClient(d.Invoker, in.ContractID)
+		if err := c.TransferOwnership(b.GetContext(), in.NewOwner); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// AcceptOwnershipInput completes two-step ownership transfer for the caller.
+type AcceptOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+}
+
+// AcceptOwnership calls `accept_ownership` on Versioned Verifier Resolver.
+var AcceptOwnership = cldfops.NewOperation(
+	"versioned-verifier-resolver:accept-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Accepts Versioned Verifier Resolver ownership after transfer_ownership",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in AcceptOwnershipInput) (stellarops.Void, error) {
+		c := vvrbindings.NewVersionedVerifierResolverClient(d.Invoker, in.ContractID)
+		if err := c.AcceptOwnership(b.GetContext()); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

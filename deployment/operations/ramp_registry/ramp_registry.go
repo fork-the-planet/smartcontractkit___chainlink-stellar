@@ -72,3 +72,42 @@ var ApplyOfframpUpdates = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// TransferOwnershipInput starts two-step ownership transfer.
+type TransferOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+	NewOwner   string `json:"new_owner"`
+}
+
+// TransferOwnership calls `transfer_ownership` on RampRegistry.
+var TransferOwnership = cldfops.NewOperation(
+	"ramp-registry:transfer-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Transfers RampRegistry ownership to a pending new owner",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in TransferOwnershipInput) (stellarops.Void, error) {
+		c := rrbindings.NewRampRegistryClient(d.Invoker, in.ContractID)
+		if err := c.TransferOwnership(b.GetContext(), in.NewOwner); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// AcceptOwnershipInput completes two-step ownership transfer for the caller.
+type AcceptOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+}
+
+// AcceptOwnership calls `accept_ownership` on RampRegistry.
+var AcceptOwnership = cldfops.NewOperation(
+	"ramp-registry:accept-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Accepts RampRegistry ownership after transfer_ownership",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in AcceptOwnershipInput) (stellarops.Void, error) {
+		c := rrbindings.NewRampRegistryClient(d.Invoker, in.ContractID)
+		if err := c.AcceptOwnership(b.GetContext()); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

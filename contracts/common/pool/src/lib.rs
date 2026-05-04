@@ -21,7 +21,7 @@ pub use types::*;
 
 use common_error::CCIPError;
 use common_interfaces::pool_hooks::PoolHooksClient;
-use common_interfaces::ramp_registry::RampRegistryClient;
+use common_interfaces::ramp_registry::{self, RampRegistryClient};
 use common_interfaces::token_pool::{
     LockOrBurnIn as IfaceLockOrBurnIn, MessageDirection as IfaceMessageDirection,
     PoolRequiredCCVs as IfacePoolRequiredCCVs, ReleaseOrMintIn as IfaceReleaseOrMintIn,
@@ -29,6 +29,18 @@ use common_interfaces::token_pool::{
 use soroban_sdk::{contracttrait, Address, Bytes, Env, Vec};
 
 pub use types::{PoolFeeResult, PoolRequiredCCVs};
+
+/// Maps the generated `ramp_registry::CCIPError` (WASM / interface copy) to `common_error::CCIPError`.
+///
+/// The interface file duplicates the enum so the bindings generator can parse it; discriminants
+/// are kept identical to `common_error::CCIPError` (`#[repr(u32)]`).
+#[inline]
+fn ramp_registry_ccip_error_to_common(e: ramp_registry::CCIPError) -> CCIPError {
+    let d = e as u32;
+    // SAFETY: interface `CCIPError` discriminants are generated to match `common_error::CCIPError`
+    // (`#[repr(u32)]` on both). Invalid values cannot be produced by an on-chain contract return.
+    unsafe { core::mem::transmute::<u32, CCIPError>(d) }
+}
 
 /// Base token pool trait providing shared pool configuration and chain management.
 ///
@@ -393,8 +405,8 @@ pub trait BaseTokenPool {
         let reg_client = RampRegistryClient::new(env, &reg);
         let expected = match reg_client.try_get_onramp(&dest_chain_selector) {
             Ok(Ok(addr)) => addr,
-            Ok(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
-            Err(Ok(e)) => return Err(e),
+            Ok(Err(_)) => return Err(CCIPError::MessageDecodingError),
+            Err(Ok(e)) => return Err(ramp_registry_ccip_error_to_common(e)),
             Err(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
         };
         if expected != *caller {

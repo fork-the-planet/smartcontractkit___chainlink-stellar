@@ -53,7 +53,7 @@ impl Initializable for ExampleCcipReceiver {
     const INITIALIZED: Symbol = symbol_short!("INIT");
 }
 
-#[contractimpl]
+#[contractimpl(contracttrait)]
 impl Ownable for ExampleCcipReceiver {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
