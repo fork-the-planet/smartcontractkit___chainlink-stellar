@@ -16,7 +16,7 @@ import (
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
-	"github.com/smartcontractkit/chainlink-stellar/ccv/strkeyutil"
+	commonutil "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -322,21 +322,21 @@ func TestTokenPool(t *testing.T) {
 			if len(parsed.CCVReceipts) != numCCVBlobs {
 				t.Fatalf("ParseReceiptStructure CCV count: want %d, got %d", numCCVBlobs, len(parsed.CCVReceipts))
 			}
-			vvrRaw, err := strkeyutil.ToUnknownAddress(stack.VvrID)
+			vvrRaw, err := commonutil.ToUnknownAddress(stack.VvrID)
 			if err != nil {
 				t.Fatalf("ToUnknownAddress(VVR): %v", err)
 			}
 			if !parsed.CCVReceipts[0].Issuer.Equal(vvrRaw) {
 				t.Fatalf("ParseReceiptStructure CCV[0] issuer want VVR %s, got %x", stack.VvrID, parsed.CCVReceipts[0].Issuer)
 			}
-			poolRaw, err := strkeyutil.ToUnknownAddress(stack.TokenPoolID)
+			poolRaw, err := commonutil.ToUnknownAddress(stack.TokenPoolID)
 			if err != nil {
 				t.Fatalf("ToUnknownAddress(pool): %v", err)
 			}
 			if len(parsed.TokenReceipts) != 1 || !parsed.TokenReceipts[0].Issuer.Equal(poolRaw) {
 				t.Fatalf("ParseReceiptStructure token receipt issuer want pool %s, got %+v", stack.TokenPoolID, parsed.TokenReceipts)
 			}
-			execRaw, err := strkeyutil.ToUnknownAddress(defaultExecutor)
+			execRaw, err := commonutil.ToUnknownAddress(defaultExecutor)
 			if err != nil {
 				t.Fatalf("ToUnknownAddress(executor): %v", err)
 			}
@@ -546,7 +546,7 @@ func onrampReceiptsToReceiptWithBlobs(t *testing.T, receipts []onrampbindings.Re
 		if i < len(verifierBlobs) {
 			blob = verifierBlobs[i]
 		}
-		issuer, err := strkeyutil.ToUnknownAddress(r.Issuer)
+		issuer, err := commonutil.ToUnknownAddress(r.Issuer)
 		if err != nil {
 			t.Fatalf("ToUnknownAddress(issuer %q): %v", r.Issuer, err)
 		}

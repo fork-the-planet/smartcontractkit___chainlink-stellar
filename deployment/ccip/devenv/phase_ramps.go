@@ -10,11 +10,15 @@ import (
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	offrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/offramp"
+	onrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/onramp"
+	rrops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ramp_registry"
+	routerops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/router"
 )
 
 func (w *work) deployRampsAndProvisionalLanes() error {
 	h := w.host
-	ctx := w.ctx
 	stellarRoot := w.stellarRoot
 	remoteSelectors := w.remoteSelectors
 
@@ -29,22 +33,26 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 
 	h.Logger().Info().Str("wasmPath", offRampWasmPath).Msg("Deploying OffRamp contract...")
 	offRampSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "offramp")
-	offRampContractID, err := h.Deployer().DeployContract(ctx, offRampWasmPath, offRampSalt)
+	offRampOut, err := execStellarOp(w, offrampops.Deploy, stellarops.DeployInput{WasmPath: offRampWasmPath, Salt: offRampSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy OffRamp contract: %w", err)
 	}
+	offRampContractID := offRampOut.ContractID
 	w.offRampContractID = offRampContractID
 	h.Logger().Info().Str("contractID", offRampContractID).Msg("OffRamp contract deployed")
 
 	offRampClient := offrampbindings.NewOffRampClient(h.Deployer(), offRampContractID)
 	h.SetOffRamp(offRampContractID, offRampClient)
 
-	err = offRampClient.Initialize(ctx, h.DeployerKeypair().Address(), offrampbindings.StaticConfig{
-		ChainSelector:      w.selector,
-		RmnProxy:           rmnProxyContractID,
-		TokenAdminRegistry: tarContractID,
-	})
-	if err != nil {
+	if _, err := execStellarOp(w, offrampops.Initialize, offrampops.InitializeInput{
+		ContractID: offRampContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		Config: offrampbindings.StaticConfig{
+			ChainSelector:      w.selector,
+			RmnProxy:           rmnProxyContractID,
+			TokenAdminRegistry: tarContractID,
+		},
+	}); err != nil {
 		return fmt.Errorf("failed to initialize OffRamp: %w", err)
 	}
 	h.Logger().Info().Str("offRampContractID", offRampContractID).Msg("OffRamp initialized")
@@ -56,16 +64,20 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 
 	h.Logger().Info().Str("wasmPath", routerWasmPath).Msg("Deploying Router contract...")
 	routerSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "router")
-	routerContractID, err := h.Deployer().DeployContract(ctx, routerWasmPath, routerSalt)
+	routerOut, err := execStellarOp(w, routerops.Deploy, stellarops.DeployInput{WasmPath: routerWasmPath, Salt: routerSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy Router contract: %w", err)
 	}
+	routerContractID := routerOut.ContractID
 	w.routerContractID = routerContractID
 	h.Logger().Info().Str("contractID", routerContractID).Msg("Router contract deployed")
 
 	routerClient := routerbindings.NewRouterClient(h.Deployer(), routerContractID)
-	err = routerClient.Initialize(ctx, h.DeployerKeypair().Address(), rmnProxyContractID)
-	if err != nil {
+	if _, err := execStellarOp(w, routerops.Initialize, routerops.InitializeInput{
+		ContractID: routerContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		RmnProxy:   rmnProxyContractID,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize Router: %w", err)
 	}
 	h.SetRouter(routerContractID, routerClient)
@@ -81,7 +93,10 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 	if err != nil {
 		return fmt.Errorf("build provisional onramp dest configs: %w", err)
 	}
-	if err := h.OnRampClient().ApplyDestChainConfigUpdates(ctx, onRampDestConfigs); err != nil {
+	if _, err := execStellarOp(w, onrampops.ApplyDestChainConfigUpdates, onrampops.ApplyDestChainConfigUpdatesInput{
+		ContractID: onrampContractID,
+		Updates:    onRampDestConfigs,
+	}); err != nil {
 		return fmt.Errorf("failed to apply dest chain config updates on OnRamp: %w", err)
 	}
 	h.Logger().Info().Int("count", len(onRampDestConfigs)).Msg("OnRamp dest chain configs applied")
@@ -90,7 +105,10 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 	if err != nil {
 		return fmt.Errorf("build provisional offramp source configs: %w", err)
 	}
-	if err := h.OffRampClient().ApplySourceChainCfgUpdates(ctx, offRampSourceConfigs); err != nil {
+	if _, err := execStellarOp(w, offrampops.ApplySourceChainCfgUpdates, offrampops.ApplySourceChainCfgUpdatesInput{
+		ContractID: offRampContractID,
+		Updates:    offRampSourceConfigs,
+	}); err != nil {
 		return fmt.Errorf("failed to apply source chain config updates on OffRamp: %w", err)
 	}
 	h.Logger().Info().Int("count", len(offRampSourceConfigs)).Msg("OffRamp source chain configs applied")
@@ -107,8 +125,12 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 			Offramp:             offRampContractID,
 		})
 	}
-	err = routerClient.ApplyRampUpdates(ctx, onRampEntries, []routerbindings.OffRampEntry{}, offRampEntries)
-	if err != nil {
+	if _, err := execStellarOp(w, routerops.ApplyRampUpdates, routerops.ApplyRampUpdatesInput{
+		ContractID:     routerContractID,
+		OnRampUpdates:  onRampEntries,
+		OffRampRemoves: []routerbindings.OffRampEntry{},
+		OffRampAdds:    offRampEntries,
+	}); err != nil {
 		return fmt.Errorf("failed to apply ramp updates on Router: %w", err)
 	}
 	h.Logger().Info().
@@ -122,12 +144,15 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 	}
 	h.Logger().Info().Str("wasmPath", rampRegistryWasmPath).Msg("Deploying RampRegistry contract...")
 	rampRegistrySalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "ramp-registry")
-	rampRegistryContractID, err := h.Deployer().DeployContract(ctx, rampRegistryWasmPath, rampRegistrySalt)
+	rrOut, err := execStellarOp(w, rrops.Deploy, stellarops.DeployInput{WasmPath: rampRegistryWasmPath, Salt: rampRegistrySalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy RampRegistry contract: %w", err)
 	}
-	rampRegistryClient := rampregistrybindings.NewRampRegistryClient(h.Deployer(), rampRegistryContractID)
-	if err := rampRegistryClient.Initialize(ctx, h.DeployerKeypair().Address()); err != nil {
+	rampRegistryContractID := rrOut.ContractID
+	if _, err := execStellarOp(w, rrops.Initialize, rrops.InitializeInput{
+		ContractID: rampRegistryContractID,
+		Owner:      h.DeployerKeypair().Address(),
+	}); err != nil {
 		return fmt.Errorf("failed to initialize RampRegistry: %w", err)
 	}
 	rrOnRamp := make([]rampregistrybindings.OnRampUpdate, len(onRampEntries))
@@ -138,7 +163,10 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 			Onramp:            &onramp,
 		}
 	}
-	if err := rampRegistryClient.ApplyOnrampUpdates(ctx, rrOnRamp); err != nil {
+	if _, err := execStellarOp(w, rrops.ApplyOnrampUpdates, rrops.ApplyOnrampUpdatesInput{
+		ContractID: rampRegistryContractID,
+		Updates:    rrOnRamp,
+	}); err != nil {
 		return fmt.Errorf("failed to apply onramp updates on RampRegistry: %w", err)
 	}
 	rrOffRamp := make([]rampregistrybindings.OffRampUpdate, len(offRampEntries))
@@ -149,7 +177,10 @@ func (w *work) deployRampsAndProvisionalLanes() error {
 			Enabled:             true,
 		}
 	}
-	if err := rampRegistryClient.ApplyOfframpUpdates(ctx, rrOffRamp); err != nil {
+	if _, err := execStellarOp(w, rrops.ApplyOfframpUpdates, rrops.ApplyOfframpUpdatesInput{
+		ContractID: rampRegistryContractID,
+		Updates:    rrOffRamp,
+	}); err != nil {
 		return fmt.Errorf("failed to apply offramp updates on RampRegistry: %w", err)
 	}
 	h.SetRampRegistry(rampRegistryContractID)

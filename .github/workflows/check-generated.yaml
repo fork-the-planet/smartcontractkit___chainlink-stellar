@@ -24,19 +24,16 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: ./.github/actions/setup-rust-toolchain
         with:
-          toolchain: "1.93.1"
-          targets: wasm32v1-none
-          components: rustfmt
+          wasm32-target: "true"
+          rustfmt: "true"
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
 
       - name: Install Stellar CLI
-        run: |
-          curl -sL https://github.com/stellar/stellar-cli/releases/download/v25.1.0/stellar-cli-25.1.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          mv stellar /usr/local/bin/stellar
+        uses: ./.github/actions/setup-stellar-cli
 
       - name: Setup Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0

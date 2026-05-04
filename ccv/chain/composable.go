@@ -10,6 +10,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	common "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 )
 
 // StellarSendOptions is the cciptestinterfaces.ChainSendOption implementation for Stellar.
@@ -34,7 +35,7 @@ func (c *Chain) BuildChainMessage(ctx context.Context, destChain uint64, fields 
 	// so callers and any future dest_blob / metadata wiring stay consistent.
 	forced := opts
 	forced.OutOfOrderExecution = true
-	extraArgs, err := EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, forced)
+	extraArgs, err := common.EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, forced)
 	if err != nil {
 		return nil, fmt.Errorf("encode extra args for Stellar OnRamp: %w", err)
 	}

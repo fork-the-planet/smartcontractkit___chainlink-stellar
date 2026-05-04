@@ -1562,16 +1562,6 @@ func (c *Chain) buildOffRampSourceConfigs(ds datastore.DataStore, remoteSelector
 	return configs, nil
 }
 
-// EncodeExtraArgsV3 converts a GenericExtraArgsV3 to XDR bytes suitable for
-// the OnRamp contract's ExtraArgs field (parsed via GenericExtraArgsV3::from_xdr).
-func EncodeExtraArgsV3(args onrampbindings.GenericExtraArgsV3) ([]byte, error) {
-	scVal, err := args.ToScVal()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert extra args to ScVal: %w", err)
-	}
-	return scVal.MarshalBinary()
-}
-
 func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {
 	if c.deployer == nil {
 		return nil, fmt.Errorf("deployer not initialized")

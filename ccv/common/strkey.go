@@ -1,5 +1,4 @@
-// Package strkeyutil maps Stellar strkeys to chainlink-ccv protocol address types.
-package strkeyutil
+package common
 
 import (
 	"fmt"

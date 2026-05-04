@@ -22,7 +22,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
-	stellardevenv "github.com/smartcontractkit/chainlink-stellar/ccv/devenv"
+	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
 
@@ -477,7 +477,7 @@ func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
 //
 //	go test -v -timeout 15m ./tests/e2e/... -run TestEVMToStellarComposableMessaging
 func TestEVMToStellarComposableMessaging(t *testing.T) {
-	stellardevenv.RegisterStellarComponents()
+	ccvchain.RegisterStellarComponents()
 
 	configOutputPath := "../env/env-stellar-evm-out.toml"
 	stellarChainID := chain_selectors.STELLAR_LOCALNET.ChainID

@@ -1,4 +1,4 @@
-package devenv
+package ccvchain
 
 import (
 	"sync"
@@ -17,9 +17,8 @@ import (
 
 	ccvdeploymentadapters "github.com/smartcontractkit/chainlink-ccv/deployment/adapters"
 
-	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/adapter"
-	"github.com/smartcontractkit/chainlink-stellar/ccv/devenv/modifier"
+	adapter "github.com/smartcontractkit/chainlink-stellar/ccv/chain/adapter"
+	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/chain/modifier"
 )
 
 var registerOnce sync.Once
@@ -47,8 +46,8 @@ func RegisterStellarComponents() {
 		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
 		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
 		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
-		ccv.RegisterImplFactory(chainsel.FamilyStellar, ccvchain.NewImplFactory())
-		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, ccvchain.NewCLDFProviderFactory())
+		ccv.RegisterImplFactory(chainsel.FamilyStellar, NewImplFactory())
+		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, NewCLDFProviderFactory())
 
 		ccvadapters.GetCommitteeVerifierContractRegistry().Register(chainsel.FamilyStellar, &adapter.StellarCommitteeVerifierContractAdapter{})
 		stellarChainFamily := &adapter.StellarChainFamilyAdapter{}
@@ -59,7 +58,7 @@ func RegisterStellarComponents() {
 		ccvadapters.GetVerifierJobConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarVerifierConfigAdapter{})
 		ccvadapters.GetExecutorConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarExecutorConfigAdapter{})
 		ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarTokenVerifierConfigAdapter{})
-		ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &ccvchain.StellarDeployChainContractsAdapter{})
+		ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &StellarDeployChainContractsAdapter{})
 
 		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, devenvccipevm.SerializeEVMExtraArgs)
 

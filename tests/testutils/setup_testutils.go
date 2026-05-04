@@ -15,6 +15,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -25,7 +26,6 @@ import (
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	stellardevenv "github.com/smartcontractkit/chainlink-stellar/ccv/devenv"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
@@ -251,7 +251,7 @@ type E2ETestEnv struct {
 func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string, stellarSelector uint64) *E2ETestEnv {
 	// Register all Stellar devenv components: modifier, chain config loader,
 	// chain family adapter, and ImplFactory.
-	stellardevenv.RegisterStellarComponents()
+	ccvchain.RegisterStellarComponents()
 
 	// Load the output config written by the devenv CLI (pre-started separately).
 	// LoadOutput also populates CLDF.DataStore from the serialised addresses.

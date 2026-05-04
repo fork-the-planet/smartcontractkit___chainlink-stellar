@@ -7,7 +7,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/executor"
@@ -18,14 +18,14 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	cciprecv "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/ccip_receiver"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	recvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ccip_receiver"
 )
 
 func (w *work) deployReceiverAndWriteDatastore() error {
 	h := w.host
-	ctx := w.ctx
 	stellarRoot := w.stellarRoot
 	ds := w.ds
 	selector := w.selector
@@ -37,22 +37,30 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 
 	h.Logger().Info().Str("wasmPath", receiverWasmPath).Msg("Deploying CCIP receiver example contract...")
 	receiverSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "ccip-receiver-example")
-	receiverContractID, err := h.Deployer().DeployContract(ctx, receiverWasmPath, receiverSalt)
+	recvOut, err := execStellarOp(w, recvops.Deploy, stellarops.DeployInput{WasmPath: receiverWasmPath, Salt: receiverSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy ccip_receiver_example contract: %w", err)
 	}
+	receiverContractID := recvOut.ContractID
 
-	recvClient := cciprecv.NewExampleCcipReceiverClient(h.Deployer(), receiverContractID)
-	if err := recvClient.Initialize(ctx, h.DeployerKeypair().Address(), w.routerContractID); err != nil {
+	if _, err := execStellarOp(w, recvops.Initialize, recvops.InitializeInput{
+		ContractID: receiverContractID,
+		Owner:      h.DeployerKeypair().Address(),
+		Router:     w.routerContractID,
+	}); err != nil {
 		return fmt.Errorf("failed to initialize ccip_receiver_example: %w", err)
 	}
 
-	// EVM CCIPClientExample.validChain parity: allow inbound `ccip_receive` from each peer-chain selector
-	// (non-empty `extra_args` placeholder; real outbound extra args can be set later by the owner).
 	ownerAddr := h.DeployerKeypair().Address()
 	placeholderExtra := []byte{0x01}
 	for _, rs := range w.remoteSelectors {
-		if err := recvClient.EnableRemoteChain(ctx, ownerAddr, rs, placeholderExtra, 0); err != nil {
+		if _, err := execStellarOp(w, recvops.EnableRemoteChain, recvops.EnableRemoteChainInput{
+			ContractID:            receiverContractID,
+			Caller:                ownerAddr,
+			RemoteChainSelector:   rs,
+			ExtraArgs:             placeholderExtra,
+			AllowedFinalityConfig: 0,
+		}); err != nil {
 			return fmt.Errorf("ccip_receiver_example EnableRemoteChain for source chain %d: %w", rs, err)
 		}
 	}
@@ -111,8 +119,8 @@ func (w *work) deployReceiverAndWriteDatastore() error {
 	ds.AddressRefStore.Add(datastore.AddressRef{
 		Address:       routerHex,
 		ChainSelector: selector,
-		Type:          datastore.ContractType(routeroperations.ContractType),
-		Version:       semver.MustParse(routeroperations.Deploy.Version()),
+		Type:          datastore.ContractType(router.ContractType),
+		Version:       semver.MustParse(router.Deploy.Version()),
 	})
 
 	tarHex, err := stellarutil.StrkeyToHex(tarContractID)

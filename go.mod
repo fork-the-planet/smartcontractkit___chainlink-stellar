@@ -1,6 +1,6 @@
 module github.com/smartcontractkit/chainlink-stellar
 
-go 1.25.7
+go 1.26.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
@@ -11,9 +11,9 @@ require (
 	github.com/smartcontractkit/chain-selectors v1.0.98
 	github.com/smartcontractkit/chainlink-ccip/chains/evm v0.0.0-20260424003531-60cdf88568fc
 	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260424003531-60cdf88568fc
-	github.com/smartcontractkit/chainlink-ccv v0.0.2-0.20260424085901-9a2c52d0c967
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.2-0.20260424085901-9a2c52d0c967
-	github.com/smartcontractkit/chainlink-ccv/deployment v0.0.2-0.20260424085901-9a2c52d0c967
+	github.com/smartcontractkit/chainlink-ccv v0.0.1
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.1
+	github.com/smartcontractkit/chainlink-ccv/deployment v0.0.1
 	github.com/smartcontractkit/chainlink-common v0.11.2-0.20260407150650-8115835abd6e
 	github.com/smartcontractkit/chainlink-deployments-framework v0.98.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.18
@@ -138,7 +138,7 @@ require (
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
 	github.com/smartcontractkit/ccip-contract-examples/chains/evm v0.0.0-20250826190403-aed7f5f33cde // indirect
 	github.com/smartcontractkit/ccip-owner-contracts v0.1.0 // indirect
-	github.com/smartcontractkit/chainlink-ccv/evm v0.0.2-0.20260424085901-9a2c52d0c967 // indirect
+	github.com/smartcontractkit/chainlink-ccv/evm v0.0.1 // indirect
 	github.com/smartcontractkit/chainlink-common/keystore v1.0.2 // indirect
 	github.com/smartcontractkit/chainlink-evm v0.3.4-0.20260410162948-2dca02f24e98 // indirect
 	github.com/smartcontractkit/chainlink-framework/chains v0.0.0-20260326122810-b657beadfb57 // indirect
