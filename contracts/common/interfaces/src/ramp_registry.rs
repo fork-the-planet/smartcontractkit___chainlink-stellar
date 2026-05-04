@@ -22,6 +22,28 @@ pub struct OffRampEntry {
     pub offramp: soroban_sdk::Address,
 }
 
+/// Batch update for the onramp map.
+///
+/// - `onramp = Some(addr)` sets/updates the entry for `dest_chain_selector`.
+/// - `onramp = None` removes the entry for `dest_chain_selector`.
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OnRampUpdate {
+    pub dest_chain_selector: u64,
+    pub onramp: Option<soroban_sdk::Address>,
+}
+
+/// Batch update for the offramp map. Each update targets a single
+/// (source_chain, offramp) pair: `enabled = true` registers it,
+/// `enabled = false` removes it.
+#[soroban_sdk::contracttype(export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OffRampUpdate {
+    pub source_chain_selector: u64,
+    pub offramp: soroban_sdk::Address,
+    pub enabled: bool,
+}
+
 #[soroban_sdk::contractargs(name = "RampRegistryArgs")]
 #[soroban_sdk::contractclient(name = "RampRegistryClient")]
 pub trait RampRegistryInterface {
@@ -36,27 +58,14 @@ pub trait RampRegistryInterface {
         source_chain_selector: u64,
         offramp: soroban_sdk::Address,
     ) -> Result<bool, CCIPError>;
-    fn set_onramp(
-        env: soroban_sdk::Env,
-        dest_chain_selector: u64,
-        onramp: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn add_offramp(
-        env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        offramp: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
-    fn remove_offramp(
-        env: soroban_sdk::Env,
-        source_chain_selector: u64,
-        offramp: soroban_sdk::Address,
-    ) -> Result<(), CCIPError>;
     fn get_onramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OnRampEntry>, CCIPError>;
     fn get_offramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OffRampEntry>, CCIPError>;
-    fn apply_ramp_updates(
+    fn apply_onramp_updates(
         env: soroban_sdk::Env,
-        onramp_updates: soroban_sdk::Vec<OnRampEntry>,
-        offramp_removes: soroban_sdk::Vec<OffRampEntry>,
-        offramp_adds: soroban_sdk::Vec<OffRampEntry>,
+        updates: soroban_sdk::Vec<OnRampUpdate>,
+    ) -> Result<(), CCIPError>;
+    fn apply_offramp_updates(
+        env: soroban_sdk::Env,
+        updates: soroban_sdk::Vec<OffRampUpdate>,
     ) -> Result<(), CCIPError>;
 }

@@ -1290,6 +1290,7 @@ const (
 	CCIPErrorRouterNotConfigured                 = 318
 	CCIPErrorInvalidFeeCalculation               = 801
 	CCIPErrorInvalidFeeTokenConversion           = 802
+	CCIPErrorZeroFeeAggregatorNotAllowed         = 803
 )
 
 // CCIPErrorMessage returns a human-readable message for error codes.
@@ -1409,6 +1410,7 @@ var CCIPErrorMessage = map[int]string{
 	318: "router not configured",
 	801: "invalid fee calculation",
 	802: "invalid fee token conversion",
+	803: "zero fee aggregator not allowed",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.

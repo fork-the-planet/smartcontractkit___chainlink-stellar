@@ -7,7 +7,9 @@ use alloc::vec::Vec as HostVec;
 use common_verifier::signatures::SignatureQuorumConfig;
 use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use sha3::{Digest, Keccak256};
-use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env, Vec as SorobanVec};
+use soroban_sdk::{
+    testutils::Address as _, token, vec, Address, Bytes, BytesN, Env, Vec as SorobanVec,
+};
 
 use crate::types::{DynamicConfig, RemoteChainConfig};
 use crate::{
@@ -839,4 +841,73 @@ fn test_verify_message_fails_with_malformed_payload() {
 
     let verifier_results = build_verifier_results(&env, &sig_payload);
     client.verify_message(&source_chain, &message_hash, &verifier_results);
+}
+
+// ============================================================
+// Withdraw Fee Tokens (EVM FeeTokenHandler parity)
+// ============================================================
+
+#[test]
+fn test_withdraw_fee_tokens_transfers_balance() {
+    let (env, client, ..) = setup();
+
+    let fee_aggregator = client
+        .get_dynamic_config()
+        .fee_aggregator
+        .expect("fee aggregator");
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let sac_client = token::StellarAssetClient::new(&env, &token_address);
+    let token_client = token::Client::new(&env, &token_address);
+
+    sac_client.mint(&client.address, &1000);
+    assert_eq!(token_client.balance(&client.address), 1000);
+
+    client.withdraw_fee_tokens(&vec![&env, token_address.clone()]);
+
+    assert_eq!(token_client.balance(&client.address), 0);
+    assert_eq!(token_client.balance(&fee_aggregator), 1000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #803)")]
+fn test_withdraw_fee_tokens_reverts_without_fee_aggregator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(CommitteeVerifierContract, ());
+    let client = CommitteeVerifierContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let storage_locations = vec![&env];
+
+    let rmn_remote_id = env.register(RmnRemoteContract, ());
+    let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
+    rmn_remote_client.initialize(&owner, &1u64);
+
+    let rmn_proxy = env.register(RmnProxyContract, ());
+    let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy);
+    rmn_proxy_client.initialize(&owner, &rmn_remote_id);
+
+    let dynamic_config = DynamicConfig {
+        fee_aggregator: None,
+        allowlist_admin: None,
+    };
+    let tag = BytesN::from_array(&env, &DEFAULT_VERIFIER_VERSION_TAG);
+    client.initialize(
+        &owner,
+        &dynamic_config,
+        &storage_locations,
+        &rmn_proxy,
+        &tag,
+    );
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let sac_client = token::StellarAssetClient::new(&env, &token_address);
+    sac_client.mint(&client.address, &100);
+
+    client.withdraw_fee_tokens(&vec![&env, token_address]);
 }

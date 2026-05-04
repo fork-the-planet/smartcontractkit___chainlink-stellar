@@ -238,6 +238,21 @@ func (c *VersionedVerifierResolverClient) TransferOwnership(ctx context.Context,
 	return nil
 }
 
+// WithdrawFeeTokens calls the withdraw_fee_tokens function on the contract.
+func (c *VersionedVerifierResolverClient) WithdrawFeeTokens(ctx context.Context, feeTokens []string) error {
+	args := []xdr.ScVal{
+		scval.AddressSliceToScVal(feeTokens),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "withdraw_fee_tokens", args)
+	if err != nil {
+		return fmt.Errorf("failed to call withdraw_fee_tokens: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
 func (c *VersionedVerifierResolverClient) CancelOwnershipTransfer(ctx context.Context) error {
 	args := []xdr.ScVal{}

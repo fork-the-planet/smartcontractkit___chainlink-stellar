@@ -26,6 +26,10 @@ pub trait VersionedVerifierResolverInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn withdraw_fee_tokens(
+        env: soroban_sdk::Env,
+        fee_tokens: soroban_sdk::Vec<soroban_sdk::Address>,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn apply_inbound_impl_updates(
         env: soroban_sdk::Env,
@@ -243,6 +247,7 @@ pub enum CCIPError {
     RouterNotConfigured = 318,
     InvalidFeeCalculation = 801,
     InvalidFeeTokenConversion = 802,
+    ZeroFeeAggregatorNotAllowed = 803,
 }
 #[soroban_sdk::contractevent(topics = ["vvr_InboundImplSet"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

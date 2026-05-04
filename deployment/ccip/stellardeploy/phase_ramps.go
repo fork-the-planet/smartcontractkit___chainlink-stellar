@@ -165,21 +165,33 @@ func (w *deployRun) deployRampsAndProvisionalLanes() error {
 	}); err != nil {
 		return fmt.Errorf("failed to initialize RampRegistry: %w", err)
 	}
-	rrOnRamp := make([]rampregistrybindings.OnRampEntry, len(onRampEntries))
+	rrOnRamp := make([]rampregistrybindings.OnRampUpdate, len(onRampEntries))
 	for i, e := range onRampEntries {
-		rrOnRamp[i] = rampregistrybindings.OnRampEntry{DestChainSelector: e.DestChainSelector, Onramp: e.Onramp}
+		onramp := e.Onramp
+		rrOnRamp[i] = rampregistrybindings.OnRampUpdate{
+			DestChainSelector: e.DestChainSelector,
+			Onramp:            &onramp,
+		}
 	}
-	rrOffRamp := make([]rampregistrybindings.OffRampEntry, len(offRampEntries))
-	for i, e := range offRampEntries {
-		rrOffRamp[i] = rampregistrybindings.OffRampEntry{SourceChainSelector: e.SourceChainSelector, Offramp: e.Offramp}
-	}
-	if _, err := execStellarOp(w, rrops.ApplyRampUpdates, rrops.ApplyRampUpdatesInput{
-		ContractID:     rampRegistryContractID,
-		OnRampUpdates:  rrOnRamp,
-		OffRampRemoves: []rampregistrybindings.OffRampEntry{},
-		OffRampAdds:    rrOffRamp,
+	if _, err := execStellarOp(w, rrops.ApplyOnrampUpdates, rrops.ApplyOnrampUpdatesInput{
+		ContractID: rampRegistryContractID,
+		Updates:    rrOnRamp,
 	}); err != nil {
-		return fmt.Errorf("failed to apply ramp updates on RampRegistry: %w", err)
+		return fmt.Errorf("failed to apply onramp updates on RampRegistry: %w", err)
+	}
+	rrOffRamp := make([]rampregistrybindings.OffRampUpdate, len(offRampEntries))
+	for i, e := range offRampEntries {
+		rrOffRamp[i] = rampregistrybindings.OffRampUpdate{
+			SourceChainSelector: e.SourceChainSelector,
+			Offramp:             e.Offramp,
+			Enabled:             true,
+		}
+	}
+	if _, err := execStellarOp(w, rrops.ApplyOfframpUpdates, rrops.ApplyOfframpUpdatesInput{
+		ContractID: rampRegistryContractID,
+		Updates:    rrOffRamp,
+	}); err != nil {
+		return fmt.Errorf("failed to apply offramp updates on RampRegistry: %w", err)
 	}
 	h.SetRampRegistry(rampRegistryContractID)
 	h.Logger().Info().Str("contractID", rampRegistryContractID).Msg("RampRegistry deployed and ramp maps synced with Router")

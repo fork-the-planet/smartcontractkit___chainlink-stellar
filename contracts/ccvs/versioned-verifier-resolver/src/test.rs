@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use common_authorization::Ownable;
-use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, BytesN, Env};
+use soroban_sdk::{testutils::Address as _, token, vec, Address, Bytes, BytesN, Env};
 
 use crate::{
     InboundImplementationArgs, InboundImplementationUpdate, OutboundImplementationArgs,
@@ -462,4 +462,49 @@ fn test_set_fee_aggregator() {
     client.set_fee_aggregator(&new_fee_agg);
 
     assert_eq!(client.get_fee_aggregator(), new_fee_agg);
+}
+
+#[test]
+fn test_withdraw_fee_tokens_transfers_balance() {
+    let (env, client, _) = setup();
+    let fee_aggregator = client.get_fee_aggregator();
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let sac_client = token::StellarAssetClient::new(&env, &token_address);
+    let token_client = token::Client::new(&env, &token_address);
+
+    sac_client.mint(&client.address, &1000);
+    assert_eq!(token_client.balance(&client.address), 1000);
+
+    client.withdraw_fee_tokens(&vec![&env, token_address.clone()]);
+
+    assert_eq!(token_client.balance(&client.address), 0);
+    assert_eq!(token_client.balance(&fee_aggregator), 1000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #803)")]
+fn test_withdraw_fee_tokens_reverts_for_zero_fee_aggregator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VersionedVerifierResolverContract, ());
+    let client = VersionedVerifierResolverContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let zero_fee_agg = Address::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    );
+    client.initialize(&owner, &zero_fee_agg);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_contract.address();
+    let sac_client = token::StellarAssetClient::new(&env, &token_address);
+    sac_client.mint(&client.address, &50);
+
+    client.withdraw_fee_tokens(&vec![&env, token_address]);
 }

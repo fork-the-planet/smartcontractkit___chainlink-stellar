@@ -8,6 +8,13 @@ pub struct OnRampSetEvent {
     pub onramp: Address,
 }
 
+/// Emitted when an OnRamp is removed for a destination chain.
+#[contractevent(topics = ["ramp_reg_OnRampRemoved"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnRampRemovedEvent {
+    pub dest_chain_selector: u64,
+}
+
 /// Emitted when an OffRamp is added for a source chain.
 #[contractevent(topics = ["ramp_reg_OffRampAdded"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
