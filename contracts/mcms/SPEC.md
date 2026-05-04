@@ -135,7 +135,33 @@ On `set_root`, the contract records replay protection on **`signedHash`** (same 
 
 - Type **`uint32`** everywhere: proposal JSON, MCMS storage, and ABI for `inner` hash.
 - Semantics: **Unix timestamp (seconds)** after which the root **must not** be used — aligned with EVM `ManyChainMultiSig` (`block.timestamp` comparison). **Not** Soroban ledger sequence.
-- **Maximum horizon:** on `set_root`, `validUntil` must be ≤ **current ledger timestamp + 90 days** (`MAX_ROOT_VALIDITY_SECS` in `contracts/mcms/src/constants.rs`). This bounds root lifetime relative to Stellar `SeenHash` replay TTL.
+- **Maximum horizon:** on `set_root`, `validUntil` must be ≤ **current ledger timestamp + effective_max_secs**, where:
+
+  ```
+  effective_max_secs = min(
+      MAX_ROOT_VALIDITY_SECS,                                                      // static absolute cap (90 days)
+      LEDGER_BUMP * min_secs_per_ledger - SEEN_TTL_SAFETY_MARGIN_SECS               // dynamic cap
+  )
+  ```
+
+  The dynamic cap binds `validUntil` to the worst-case lifetime of a freshly bumped `SeenHash` entry minus a 1-week safety margin, so the entry is **guaranteed** to outlive `validUntil` and replay protection cannot lapse via TTL archival. `min_secs_per_ledger` defaults to **5** (`MIN_SECS_PER_LEDGER_DEFAULT`) and is owner-configurable via `set_min_secs_per_ledger(secs)` (gated like `set_config`); valid range is `[MIN_SECS_PER_LEDGER_LOWER_BOUND, MIN_SECS_PER_LEDGER_UPPER_BOUND]`. A compile-time assertion in `constants.rs` enforces that the static cap stays strictly below the default-pessimistic seen-entry lifetime so the relation cannot silently regress.
+
+### 6.4 `SeenHash` TTL & restoring archived entries
+
+`McmsDataKey::SeenHash(h)` entries are persistent ledger entries created (and bumped to `LEDGER_BUMP`) once at successful `set_root`, and are intentionally **not** refreshed by `extend_all_ttls` / `bump_ttls`: they are not enumerable from inside the contract, and the §6.3 dynamic `validUntil` cap already guarantees that any `(root, validUntil)` whose `SeenHash` could be archived has `validUntil < now` and is therefore rejected before the seen-hash check runs. **Replay safety does not require archived seen entries to be readable.**
+
+There is **no** guest-side "restore seen hash" entrypoint on the MCMS contract, and one cannot exist:
+
+- Soroban does **not** expose a `restore` host function to guest contracts; the only TTL primitive available to a contract is `extend_ttl`, which requires the entry to already be live.
+- Restoration is a **host-level operation** (`RestoreFootprintOp`) submitted as part of a Stellar transaction. The transaction submitter declares the archived ledger keys in the operation's footprint, the host re-instates them, and rent is paid by the submitter. The contract has no role in this flow.
+
+If you ever need to read an archived `SeenHash` entry (e.g. for governance forensics or audit), the standard procedure is:
+
+1. Compute the ledger key for `McmsDataKey::SeenHash(h)` against the MCMS contract id.
+2. Submit a transaction that includes a `RestoreFootprintOp` listing that key in its read-write footprint.
+3. After the host pays rent and re-instates the entry, read it via `getLedgerEntries` RPC or a contract-side getter.
+
+This mirrors the pattern documented for `timelock` per-op timestamps (`contracts/timelock/src/lib.rs`) and is consistent with idiomatic Soroban: contracts manage TTL of **live** entries via `extend_ttl`; restoration of archived entries is the **submitter's** responsibility, not the contract's.
 
 ---
 

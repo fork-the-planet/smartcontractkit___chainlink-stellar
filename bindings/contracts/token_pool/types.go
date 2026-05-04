@@ -823,10 +823,13 @@ var CCIPErrorMessage = map[int]string{
 	802: "invalid fee token conversion",
 }
 
-// MessageDirection represents the MessageDirection enum.
+// MessageDirection represents the MessageDirection enum (unit-only Soroban contracttype, encoded as ScVal::U32).
 type MessageDirection uint32
 
-const ()
+const (
+	MessageDirectionOutbound MessageDirection = 0
+	MessageDirectionInbound  MessageDirection = 0
+)
 
 // ToScVal converts MessageDirection to an xdr.ScVal.
 func (e MessageDirection) ToScVal() (xdr.ScVal, error) {

@@ -1129,3 +1129,149 @@ fn test_mcms_execute_timelock_schedule_batch_proposer_self_auth() {
     assert!(tl_client.is_operation_pending(&id));
     assert_eq!(tl_client.get_timestamp(&id), 2_100u64);
 }
+
+// --- min_secs_per_ledger ---
+
+/// Default getter returns `MIN_SECS_PER_LEDGER_DEFAULT` before any setter call.
+#[test]
+fn test_min_secs_per_ledger_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    assert_eq!(
+        client.min_secs_per_ledger(),
+        crate::constants::MIN_SECS_PER_LEDGER_DEFAULT
+    );
+}
+
+/// Owner can update `min_secs_per_ledger`; getter reflects the new value.
+#[test]
+fn test_set_min_secs_per_ledger_round_trip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    client.set_min_secs_per_ledger(&7u64);
+    assert_eq!(client.min_secs_per_ledger(), 7u64);
+}
+
+/// Out-of-range values (0 and `> MIN_SECS_PER_LEDGER_UPPER_BOUND`) are rejected.
+#[test]
+fn test_set_min_secs_per_ledger_rejects_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    assert!(matches!(
+        client.try_set_min_secs_per_ledger(&0u64),
+        Err(Ok(McmsError::InvalidMinSecsPerLedger))
+    ));
+    assert!(matches!(
+        client
+            .try_set_min_secs_per_ledger(&(crate::constants::MIN_SECS_PER_LEDGER_UPPER_BOUND + 1)),
+        Err(Ok(McmsError::InvalidMinSecsPerLedger))
+    ));
+}
+
+/// `set_min_secs_per_ledger` is owner-gated. Without owner auth the call is rejected.
+/// Mirrors the auth-test pattern used by `set_config`.
+#[test]
+#[should_panic]
+fn test_set_min_secs_per_ledger_panics_without_owner_auth() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    env.mock_all_auths();
+    client.initialize(&owner, &chain);
+
+    // Drop mocked auths so the require_owner check fails on the next call.
+    let env2 = client.env.clone();
+    env2.set_auths(&[]);
+    client.set_min_secs_per_ledger(&7u64);
+}
+
+/// When `min_secs_per_ledger` is shrunk such that the dynamic cap drops below the static
+/// 90-day cap, `set_root` enforces the smaller dynamic cap.
+#[test]
+fn test_set_root_dynamic_cap_shrinks_with_lower_min_secs_per_ledger() {
+    let env = Env::default();
+    env.mock_all_auths();
+    const NOW: u64 = 1_000_000;
+    env.ledger().with_mut(|li| {
+        li.timestamp = NOW;
+    });
+
+    let owner = Address::generate(&env);
+    let chain = zero_chain_id(&env);
+    let client = register_client(&env);
+    client.initialize(&owner, &chain);
+
+    // Lower the assumed seconds-per-ledger floor to 1; this collapses the dynamic cap to
+    // LEDGER_BUMP * 1 - SAFETY_MARGIN, which is ~66 days < the static 90-day cap.
+    client.set_min_secs_per_ledger(&1u64);
+
+    let dynamic_cap = (crate::constants::LEDGER_BUMP as u64)
+        .saturating_mul(1)
+        .saturating_sub(crate::constants::SEEN_TTL_SAFETY_MARGIN_SECS);
+    assert!(dynamic_cap < crate::constants::MAX_ROOT_VALIDITY_SECS);
+
+    let sk = SigningKey::from_slice(&ANVIL_SK_0).unwrap();
+    let signer_addr = padded_eth_address(&env, &sk);
+    client.set_config(
+        &SignerAddresses {
+            inner: SorobanVec::from_array(&env, [signer_addr]),
+        },
+        &SignerGroups {
+            inner: SorobanVec::from_array(&env, [0u32]),
+        },
+        &one_of_one_quorum(&env),
+        &all_zero_parents(&env),
+        &false,
+    );
+
+    let self_cid = test_support::addr_to_contract_id(&client.address, &env);
+    // Pick `valid_until` strictly between the dynamic cap and the static cap. With these
+    // values the runtime should reject because the **dynamic** cap is the binding one.
+    let valid_until: u32 = (NOW + dynamic_cap + 1) as u32;
+    let metadata = StellarRootMetadata {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        pre_op_count: 0,
+        post_op_count: 1,
+        override_previous_root: false,
+    };
+    let meta_leaf = hash_root_metadata(&env, &domain_meta(&env), &metadata).unwrap();
+    let op = StellarOp {
+        chain_id: chain.clone(),
+        multisig: self_cid.clone(),
+        nonce: 0,
+        to: self_cid.clone(),
+        value: BytesN::from_array(&env, &[0u8; 32]),
+        data: encode_extend_all_ttls(&env),
+    };
+    let op_leaf = hash_stellar_op(&env, &crate::constants::domain_op(&env), &op).unwrap();
+    let leaves = Vec::from([meta_leaf, op_leaf]);
+    let root = merkle_root_native(&env, &leaves);
+    let metadata_proof = MerkleProof {
+        inner: compute_proof_for_leaf(&env, leaves, 0),
+    };
+    let inner = hash_set_root_inner(&env, &root, valid_until);
+    let signed = eth_signed_message_hash_32(&env, &inner);
+    let sigs = signature_vec_single(&env, &sk, &signed);
+
+    assert!(matches!(
+        client.try_set_root(&root, &valid_until, &metadata, &metadata_proof, &sigs),
+        Err(Ok(McmsError::ValidUntilExceedsMaximum))
+    ));
+}

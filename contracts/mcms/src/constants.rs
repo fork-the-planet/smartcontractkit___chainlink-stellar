@@ -35,4 +35,39 @@ pub const LEDGER_BUMP: u32 = 6_307_200;
 ///
 /// Limits how long a signed root remains acceptable relative to `SeenHash` replay protection and
 /// Stellar persistent entry TTL. **90 days** in seconds.
+///
+/// This is the **static absolute upper bound**. The runtime check in `set_root` further clamps
+/// `valid_until` against a **dynamic** cap derived from [`LEDGER_BUMP`] and the operator-configured
+/// `min_secs_per_ledger` (see `McmsContract::set_min_secs_per_ledger`), so the effective cap is
+/// `min(MAX_ROOT_VALIDITY_SECS, LEDGER_BUMP * min_secs_per_ledger - SEEN_TTL_SAFETY_MARGIN_SECS)`.
 pub const MAX_ROOT_VALIDITY_SECS: u64 = 90 * 24 * 60 * 60;
+
+/// Default pessimistic floor on seconds-per-ledger used by the dynamic `valid_until` cap when the
+/// contract has not been told otherwise. Stellar mainnet has historically targeted ~5 s/ledger.
+pub const MIN_SECS_PER_LEDGER_DEFAULT: u64 = 5;
+
+/// Hard lower bound for the operator-settable `min_secs_per_ledger`. A value of 0 is invalid
+/// (would make the dynamic cap collapse to a negative interval and trivially reject every root).
+pub const MIN_SECS_PER_LEDGER_LOWER_BOUND: u64 = 1;
+
+/// Hard upper bound for the operator-settable `min_secs_per_ledger`. Stellar ledgers don't
+/// realistically take a minute; this prevents accidentally widening the dynamic cap by an
+/// implausibly large multiplier.
+pub const MIN_SECS_PER_LEDGER_UPPER_BOUND: u64 = 60;
+
+/// Safety margin (in seconds) subtracted from the dynamic `valid_until` cap so a freshly bumped
+/// `SeenHash` entry is guaranteed to outlive the longest acceptable `valid_until`. **1 week**.
+pub const SEEN_TTL_SAFETY_MARGIN_SECS: u64 = 7 * 24 * 60 * 60;
+
+// Compile-time invariant: the static cap, plus the safety margin, must stay strictly below the
+// minimum possible lifetime of a freshly bumped `SeenHash` entry under the *default* assumed
+// seconds-per-ledger. Any future change to `LEDGER_BUMP`, `MAX_ROOT_VALIDITY_SECS`,
+// `MIN_SECS_PER_LEDGER_DEFAULT`, or `SEEN_TTL_SAFETY_MARGIN_SECS` that breaks this relation will
+// fail to compile, forcing the change to be reasoned about explicitly.
+const _: () = {
+    assert!(
+        MAX_ROOT_VALIDITY_SECS + SEEN_TTL_SAFETY_MARGIN_SECS
+            < (LEDGER_BUMP as u64) * MIN_SECS_PER_LEDGER_DEFAULT,
+        "MAX_ROOT_VALIDITY_SECS must stay strictly below the default-pessimistic SeenHash TTL window"
+    );
+};

@@ -42,8 +42,14 @@ pub enum McmsError {
     InvalidInvokeData = 50,
     NonZeroValue = 51,
     MissingRootMetadata = 52,
-    /// `valid_until` exceeds [`crate::constants::MAX_ROOT_VALIDITY_SECS`] past current ledger time.
+    /// `valid_until` exceeds the effective max validity (the smaller of
+    /// [`crate::constants::MAX_ROOT_VALIDITY_SECS`] and the dynamic cap derived from
+    /// `LEDGER_BUMP * min_secs_per_ledger - SEEN_TTL_SAFETY_MARGIN_SECS`).
     ValidUntilExceedsMaximum = 53,
+    /// `set_min_secs_per_ledger` was called with a value outside
+    /// [[`crate::constants::MIN_SECS_PER_LEDGER_LOWER_BOUND`],
+    /// [`crate::constants::MIN_SECS_PER_LEDGER_UPPER_BOUND`]].
+    InvalidMinSecsPerLedger = 54,
 }
 
 impl From<common_error::CCIPError> for McmsError {

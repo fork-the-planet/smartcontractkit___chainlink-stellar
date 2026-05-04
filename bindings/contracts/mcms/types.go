@@ -1288,6 +1288,7 @@ const (
 	McmsErrorNonZeroValue                                 = 51
 	McmsErrorMissingRootMetadata                          = 52
 	McmsErrorValidUntilExceedsMaximum                     = 53
+	McmsErrorInvalidMinSecsPerLedger                      = 54
 )
 
 // McmsErrorMessage returns a human-readable message for error codes.
@@ -1328,6 +1329,7 @@ var McmsErrorMessage = map[int]string{
 	51: "non zero value",
 	52: "missing root metadata",
 	53: "valid until exceeds maximum",
+	54: "invalid min secs per ledger",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.
@@ -1437,21 +1439,77 @@ type OpExecutedEvent struct {
 // OpExecutedEventTopic is the event topic identifier.
 const OpExecutedEventTopic = "mcms_OpExecuted"
 
-// McmsDataKey represents the McmsDataKey enum.
-type McmsDataKey uint32
+// MinSecsPerLedgerSetEvent represents the MinSecsPerLedgerSetEvent event.
+// Topics: [mcms_MinSecsPerLedgerSet]
+type MinSecsPerLedgerSetEvent struct {
+	MinSecsPerLedger uint64
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
 
-const ()
+// MinSecsPerLedgerSetEventTopic is the event topic identifier.
+const MinSecsPerLedgerSetEventTopic = "mcms_MinSecsPerLedgerSet"
 
-// ToScVal converts McmsDataKey to an xdr.ScVal.
+// McmsDataKey is a Soroban discriminated-union (#[contracttype] enum with payload(s)).
+// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).
+// Construct by setting exactly one variant pointer to a non-nil value.
+type McmsDataKey struct {
+	SeenHash *McmsDataKeySeenHash
+}
+
+// McmsDataKeySeenHash is the tuple variant McmsDataKey::SeenHash.
+type McmsDataKeySeenHash struct {
+	Field0 [32]byte
+}
+
+// ToScVal converts McmsDataKey to its Soroban discriminated-union encoding.
+// Returns an error if zero or multiple variant pointers are set.
 func (e McmsDataKey) ToScVal() (xdr.ScVal, error) {
-	return scval.Uint32ToScVal(uint32(e)), nil
+	set := 0
+	if e.SeenHash != nil {
+		set++
+	}
+	if set != 1 {
+		return xdr.ScVal{}, fmt.Errorf("McmsDataKey: expected exactly one variant set, got %d", set)
+	}
+	if e.SeenHash != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("SeenHash"),
+			scval.Bytes32ToScVal(e.SeenHash.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	return xdr.ScVal{}, fmt.Errorf("McmsDataKey: unreachable")
 }
 
 // McmsDataKeyFromScVal parses an xdr.ScVal into McmsDataKey.
 func McmsDataKeyFromScVal(val xdr.ScVal) (McmsDataKey, error) {
-	v, ok := val.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 for McmsDataKey enum")
+	vecPtr, ok := val.GetVec()
+	if !ok || vecPtr == nil || *vecPtr == nil {
+		return McmsDataKey{}, fmt.Errorf("expected vec for McmsDataKey enum")
 	}
-	return McmsDataKey(v), nil
+	vec := *vecPtr
+	if len(vec) < 1 {
+		return McmsDataKey{}, fmt.Errorf("McmsDataKey: empty vec")
+	}
+	tag, err := scval.SymbolFromScVal(vec[0])
+	if err != nil {
+		return McmsDataKey{}, fmt.Errorf("McmsDataKey: variant tag: %w", err)
+	}
+	switch tag {
+	case "SeenHash":
+		if len(vec) != 2 {
+			return McmsDataKey{}, fmt.Errorf("McmsDataKey::SeenHash: expected 2 elements, got %d", len(vec))
+		}
+		payload := &McmsDataKeySeenHash{}
+		if v, err := scval.Bytes32FromScVal(vec[1]); err != nil {
+			return McmsDataKey{}, fmt.Errorf("McmsDataKey::SeenHash[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return McmsDataKey{SeenHash: payload}, nil
+	default:
+		return McmsDataKey{}, fmt.Errorf("McmsDataKey: unknown variant %q", tag)
+	}
 }

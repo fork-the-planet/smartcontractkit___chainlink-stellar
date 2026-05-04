@@ -1042,26 +1042,70 @@ type ExecutionStateChangedEvent struct {
 // ExecutionStateChangedEventTopic is the event topic identifier.
 const ExecutionStateChangedEventTopic = "offramp_1_7_ExecStateChanged"
 
-// DataKey represents the DataKey enum.
-type DataKey uint32
+// DataKey is a Soroban discriminated-union (#[contracttype] enum with payload(s)).
+// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).
+// Construct by setting exactly one variant pointer to a non-nil value.
+type DataKey struct {
+	ExecState *DataKeyExecState
+}
 
-const ()
+// DataKeyExecState is the tuple variant DataKey::ExecState.
+type DataKeyExecState struct {
+	Field0 [32]byte
+}
 
-// ToScVal converts DataKey to an xdr.ScVal.
+// ToScVal converts DataKey to its Soroban discriminated-union encoding.
+// Returns an error if zero or multiple variant pointers are set.
 func (e DataKey) ToScVal() (xdr.ScVal, error) {
-	return scval.Uint32ToScVal(uint32(e)), nil
+	set := 0
+	if e.ExecState != nil {
+		set++
+	}
+	if set != 1 {
+		return xdr.ScVal{}, fmt.Errorf("DataKey: expected exactly one variant set, got %d", set)
+	}
+	if e.ExecState != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("ExecState"),
+			scval.Bytes32ToScVal(e.ExecState.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	return xdr.ScVal{}, fmt.Errorf("DataKey: unreachable")
 }
 
 // DataKeyFromScVal parses an xdr.ScVal into DataKey.
 func DataKeyFromScVal(val xdr.ScVal) (DataKey, error) {
-	v, ok := val.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 for DataKey enum")
+	vecPtr, ok := val.GetVec()
+	if !ok || vecPtr == nil || *vecPtr == nil {
+		return DataKey{}, fmt.Errorf("expected vec for DataKey enum")
 	}
-	return DataKey(v), nil
+	vec := *vecPtr
+	if len(vec) < 1 {
+		return DataKey{}, fmt.Errorf("DataKey: empty vec")
+	}
+	tag, err := scval.SymbolFromScVal(vec[0])
+	if err != nil {
+		return DataKey{}, fmt.Errorf("DataKey: variant tag: %w", err)
+	}
+	switch tag {
+	case "ExecState":
+		if len(vec) != 2 {
+			return DataKey{}, fmt.Errorf("DataKey::ExecState: expected 2 elements, got %d", len(vec))
+		}
+		payload := &DataKeyExecState{}
+		if v, err := scval.Bytes32FromScVal(vec[1]); err != nil {
+			return DataKey{}, fmt.Errorf("DataKey::ExecState[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return DataKey{ExecState: payload}, nil
+	default:
+		return DataKey{}, fmt.Errorf("DataKey: unknown variant %q", tag)
+	}
 }
 
-// MessageExecutionState represents the MessageExecutionState enum.
+// MessageExecutionState represents the MessageExecutionState enum (unit-only Soroban contracttype, encoded as ScVal::U32).
 type MessageExecutionState uint32
 
 const (

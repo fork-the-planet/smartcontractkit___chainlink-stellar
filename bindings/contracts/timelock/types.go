@@ -807,21 +807,65 @@ type FunctionSelectorUnblockedEvent struct {
 // FunctionSelectorUnblockedEventTopic is the event topic identifier.
 const FunctionSelectorUnblockedEventTopic = "tl_SelUnblock"
 
-// TimelockDataKey represents the TimelockDataKey enum.
-type TimelockDataKey uint32
+// TimelockDataKey is a Soroban discriminated-union (#[contracttype] enum with payload(s)).
+// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).
+// Construct by setting exactly one variant pointer to a non-nil value.
+type TimelockDataKey struct {
+	OpTime *TimelockDataKeyOpTime
+}
 
-const ()
+// TimelockDataKeyOpTime is the tuple variant TimelockDataKey::OpTime.
+type TimelockDataKeyOpTime struct {
+	Field0 [32]byte
+}
 
-// ToScVal converts TimelockDataKey to an xdr.ScVal.
+// ToScVal converts TimelockDataKey to its Soroban discriminated-union encoding.
+// Returns an error if zero or multiple variant pointers are set.
 func (e TimelockDataKey) ToScVal() (xdr.ScVal, error) {
-	return scval.Uint32ToScVal(uint32(e)), nil
+	set := 0
+	if e.OpTime != nil {
+		set++
+	}
+	if set != 1 {
+		return xdr.ScVal{}, fmt.Errorf("TimelockDataKey: expected exactly one variant set, got %d", set)
+	}
+	if e.OpTime != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("OpTime"),
+			scval.Bytes32ToScVal(e.OpTime.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	return xdr.ScVal{}, fmt.Errorf("TimelockDataKey: unreachable")
 }
 
 // TimelockDataKeyFromScVal parses an xdr.ScVal into TimelockDataKey.
 func TimelockDataKeyFromScVal(val xdr.ScVal) (TimelockDataKey, error) {
-	v, ok := val.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 for TimelockDataKey enum")
+	vecPtr, ok := val.GetVec()
+	if !ok || vecPtr == nil || *vecPtr == nil {
+		return TimelockDataKey{}, fmt.Errorf("expected vec for TimelockDataKey enum")
 	}
-	return TimelockDataKey(v), nil
+	vec := *vecPtr
+	if len(vec) < 1 {
+		return TimelockDataKey{}, fmt.Errorf("TimelockDataKey: empty vec")
+	}
+	tag, err := scval.SymbolFromScVal(vec[0])
+	if err != nil {
+		return TimelockDataKey{}, fmt.Errorf("TimelockDataKey: variant tag: %w", err)
+	}
+	switch tag {
+	case "OpTime":
+		if len(vec) != 2 {
+			return TimelockDataKey{}, fmt.Errorf("TimelockDataKey::OpTime: expected 2 elements, got %d", len(vec))
+		}
+		payload := &TimelockDataKeyOpTime{}
+		if v, err := scval.Bytes32FromScVal(vec[1]); err != nil {
+			return TimelockDataKey{}, fmt.Errorf("TimelockDataKey::OpTime[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return TimelockDataKey{OpTime: payload}, nil
+	default:
+		return TimelockDataKey{}, fmt.Errorf("TimelockDataKey: unknown variant %q", tag)
+	}
 }

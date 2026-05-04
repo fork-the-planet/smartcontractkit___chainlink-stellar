@@ -56,6 +56,11 @@ pub trait McmsInterface {
         env: soroban_sdk::Env,
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn min_secs_per_ledger(env: soroban_sdk::Env) -> Result<u64, McmsError>;
+    fn set_min_secs_per_ledger(
+        env: soroban_sdk::Env,
+        secs: u64,
+    ) -> Result<(), McmsError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 }
 #[soroban_sdk::contracttype(export = false)]
@@ -338,6 +343,7 @@ pub enum McmsError {
     NonZeroValue = 51,
     MissingRootMetadata = 52,
     ValidUntilExceedsMaximum = 53,
+    InvalidMinSecsPerLedger = 54,
 }
 #[soroban_sdk::contractevent(topics = ["auth_RoleGranted"], export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -389,4 +395,9 @@ pub struct OpExecutedEvent {
     pub to: soroban_sdk::BytesN<32>,
     pub data: soroban_sdk::Bytes,
     pub value: soroban_sdk::BytesN<32>,
+}
+#[soroban_sdk::contractevent(topics = ["mcms_MinSecsPerLedgerSet"], export = false)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct MinSecsPerLedgerSetEvent {
+    pub min_secs_per_ledger: u64,
 }
