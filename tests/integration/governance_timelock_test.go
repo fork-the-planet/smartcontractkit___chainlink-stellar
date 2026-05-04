@@ -213,39 +213,37 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-exec")
 	mockStranger := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-stranger")
 
-	// Negative auth checks: simulate rather than InvokeContract so the host's
-	// `Error(Contract, #code)` survives in the error string. A submitted invocation
-	// can collapse a contract revert into a generic "transaction failed" message
-	// without the code, making the assertion ambiguous. Same pattern as
-	// `router_test.go`'s `ccip_send rejects when destination chain is cursed`.
+	// Negative auth checks: call apply_ramp_updates like production (InvokeContract).
+	// The deployer path still runs Soroban simulation inside buildAndSubmitTransaction
+	// before submit; require_auth failures surface there with the same HostError /
+	// Error(Contract, #code) text as standalone SimulateContract, so assertions stay stable.
 	t.Run("former owner cannot apply_ramp_updates", func(t *testing.T) {
-		args := []xdr.ScVal{
-			scval.StructSliceToScVal([]rampbindings.OnRampEntry{{
+		err := reg.ApplyRampUpdates(ctx,
+			[]rampbindings.OnRampEntry{{
 				DestChainSelector: chainReject,
 				Onramp:            mockReject,
-			}}),
-			scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
-			scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
-		}
-		_, err := deployer.SimulateContract(ctx, registryID, "apply_ramp_updates", args)
+			}},
+			[]rampbindings.OffRampEntry{},
+			[]rampbindings.OffRampEntry{},
+		)
 		if err == nil {
-			t.Fatal("expected apply_ramp_updates simulation to fail for non-owner deployer")
+			t.Fatal("expected apply_ramp_updates to fail for non-owner deployer")
 		}
 		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
 
 	t.Run("stranger cannot apply_ramp_updates", func(t *testing.T) {
-		args := []xdr.ScVal{
-			scval.StructSliceToScVal([]rampbindings.OnRampEntry{{
+		strangerReg := rampbindings.NewRampRegistryClient(strangerDep, registryID)
+		err := strangerReg.ApplyRampUpdates(ctx,
+			[]rampbindings.OnRampEntry{{
 				DestChainSelector: chainStranger,
 				Onramp:            mockStranger,
-			}}),
-			scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
-			scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
-		}
-		_, err := strangerDep.SimulateContract(ctx, registryID, "apply_ramp_updates", args)
+			}},
+			[]rampbindings.OffRampEntry{},
+			[]rampbindings.OffRampEntry{},
+		)
 		if err == nil {
-			t.Fatal("expected apply_ramp_updates simulation to fail for unrelated account")
+			t.Fatal("expected apply_ramp_updates to fail for unrelated account")
 		}
 		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
