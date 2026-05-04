@@ -1,4 +1,4 @@
-// Package devenv implements full Stellar CCIP contract deployment for the CCV devenv.
+// Package stellardeploy implements full Stellar CCIP contract deployment for the CCV devenv.
 //
 // Layout mirrors the intent of github.com/smartcontractkit/chainlink-ccip/deployment
 // (phased configuration applied around a shared orchestration path): helpers live in

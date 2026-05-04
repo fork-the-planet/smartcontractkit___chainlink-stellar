@@ -8,7 +8,6 @@ import (
 
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
-	cldflogger "github.com/smartcontractkit/chainlink-deployments-framework/pkg/logger"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
@@ -31,7 +30,8 @@ const initialPoolLiquidity int64 = 1_000_000_000
 // DeployLockReleaseTestTokenPool deploys the lock-release pool and, when Friendbot is
 // available, creates the test SAC token, initializes the pool, and registers token+pool
 // in TokenAdminRegistry. Intended to run from PostDeployContractsForSelector after core CCIP deploy.
-func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
+// opBundle must be the parent CLDF operations bundle for the deploy run (e.g. env.OperationsBundle).
+func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle, host Host) error {
 	h := host
 	stellarRoot, err := stellarutil.FindStellarRoot()
 	if err != nil {
@@ -44,7 +44,6 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, host Host) error {
 	}
 	h.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract (post-deploy)...")
 	poolSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "lock-release-pool")
-	opBundle := cldfops.NewBundle(func() context.Context { return ctx }, cldflogger.Nop(), cldfops.NewMemoryReporter())
 	deps := stellardeps.FromDeployer(h.Deployer())
 	poolRep, err := cldfops.ExecuteOperation(opBundle, poolops.Deploy, deps, stellarops.DeployInput{WasmPath: poolWasmPath, Salt: poolSalt})
 	if err != nil {

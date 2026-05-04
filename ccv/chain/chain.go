@@ -441,7 +441,7 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	}
 
 	host := &stellarCCIPDeployHost{c: c}
-	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, host); err != nil {
+	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
 	}
 
