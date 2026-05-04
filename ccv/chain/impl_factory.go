@@ -174,7 +174,6 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		logger:            lggr,
 		rpcClient:         rpcClient,
 		networkPassphrase: networkPassphrase,
-		sorobanRPCURL:     sorobanRPCURL,
 		deployerKeypair:   deployerKP,
 		deployer:          deployer,
 	}
