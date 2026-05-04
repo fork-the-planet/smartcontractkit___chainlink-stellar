@@ -34,15 +34,15 @@ const RMN: Symbol = symbol_short!("RMN");
 #[contract]
 pub struct RmnProxyContract;
 
+#[contractimpl]
+impl Initializable for RmnProxyContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
 #[contractimpl(contracttrait)]
 impl Ownable for RmnProxyContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
-}
-
-#[contractimpl]
-impl Initializable for RmnProxyContract {
-    const INITIALIZED: Symbol = INITIALIZED;
 }
 
 #[contractimpl]

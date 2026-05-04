@@ -22,15 +22,15 @@ const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
 #[contract]
 pub struct RampRegistryContract;
 
+#[contractimpl]
+impl Initializable for RampRegistryContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
 #[contractimpl(contracttrait)]
 impl Ownable for RampRegistryContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
-}
-
-#[contractimpl]
-impl Initializable for RampRegistryContract {
-    const INITIALIZED: Symbol = INITIALIZED;
 }
 
 #[contractimpl]
