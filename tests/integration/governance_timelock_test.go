@@ -30,18 +30,16 @@ func sorobanInvokePayload(fnName string, args ...xdr.ScVal) ([]byte, error) {
 	return val.MarshalBinary()
 }
 
-// encodeApplyRampUpdatesSingleOnramp builds timelock Call.data for ramp registry
-// apply_ramp_updates(Vec<OnRampEntry>, Vec<OffRampEntry>, Vec<OffRampEntry>) with one on-ramp upsert.
-func encodeApplyRampUpdatesSingleOnramp(destChainSelector uint64, onramp string) ([]byte, error) {
-	update := rampbindings.OnRampEntry{
+// encodeApplyOnrampUpdatesSingle builds timelock Call.data for ramp registry
+// apply_onramp_updates(Vec<OnRampUpdate>) with one on-ramp upsert (Some(addr)).
+func encodeApplyOnrampUpdatesSingle(destChainSelector uint64, onramp string) ([]byte, error) {
+	u := rampbindings.OnRampUpdate{
 		DestChainSelector: destChainSelector,
-		Onramp:            onramp,
+		Onramp:            &onramp,
 	}
 	return sorobanInvokePayload(
-		"apply_ramp_updates",
-		scval.StructSliceToScVal([]rampbindings.OnRampEntry{update}),
-		scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
-		scval.StructSliceToScVal([]rampbindings.OffRampEntry{}),
+		"apply_onramp_updates",
+		scval.StructSliceToScVal([]rampbindings.OnRampUpdate{u}),
 	)
 }
 
@@ -68,7 +66,7 @@ func randSalt(t *testing.T) [32]byte {
 }
 
 // Uses ccip-ramp-registry as the Ownable target: transfer_ownership → timelock schedules
-// accept_ownership → execute; owner-only apply_ramp_updates is denied for the former owner and strangers,
+// accept_ownership → execute; owner-only apply_onramp_updates is denied for the former owner and strangers,
 // and only succeeds via schedule → wait → execute with PROPOSER / EXECUTOR roles.
 func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
@@ -213,43 +211,35 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	mockExecutor := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-exec")
 	mockStranger := helpers.GenerateMockContractID(t, deployerKP.Address(), "gov-tl-mock-stranger")
 
-	// Negative auth checks: call apply_ramp_updates like production (InvokeContract).
+	// Negative auth checks: call apply_onramp_updates like production (InvokeContract).
 	// The deployer path still runs Soroban simulation inside buildAndSubmitTransaction
 	// before submit; require_auth failures surface there with the same HostError /
 	// Error(Contract, #code) text as standalone SimulateContract, so assertions stay stable.
-	t.Run("former owner cannot apply_ramp_updates", func(t *testing.T) {
-		err := reg.ApplyRampUpdates(ctx,
-			[]rampbindings.OnRampEntry{{
-				DestChainSelector: chainReject,
-				Onramp:            mockReject,
-			}},
-			[]rampbindings.OffRampEntry{},
-			[]rampbindings.OffRampEntry{},
-		)
+	t.Run("former owner cannot apply_onramp_updates", func(t *testing.T) {
+		err := reg.ApplyOnrampUpdates(ctx, []rampbindings.OnRampUpdate{{
+			DestChainSelector: chainReject,
+			Onramp:            &mockReject,
+		}})
 		if err == nil {
-			t.Fatal("expected apply_ramp_updates to fail for non-owner deployer")
+			t.Fatal("expected apply_onramp_updates to fail for non-owner deployer")
 		}
 		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
 
-	t.Run("stranger cannot apply_ramp_updates", func(t *testing.T) {
+	t.Run("stranger cannot apply_onramp_updates", func(t *testing.T) {
 		strangerReg := rampbindings.NewRampRegistryClient(strangerDep, registryID)
-		err := strangerReg.ApplyRampUpdates(ctx,
-			[]rampbindings.OnRampEntry{{
-				DestChainSelector: chainStranger,
-				Onramp:            mockStranger,
-			}},
-			[]rampbindings.OffRampEntry{},
-			[]rampbindings.OffRampEntry{},
-		)
+		err := strangerReg.ApplyOnrampUpdates(ctx, []rampbindings.OnRampUpdate{{
+			DestChainSelector: chainStranger,
+			Onramp:            &mockStranger,
+		}})
 		if err == nil {
-			t.Fatal("expected apply_ramp_updates to fail for unrelated account")
+			t.Fatal("expected apply_onramp_updates to fail for unrelated account")
 		}
 		assertHostContractErrorContainsCode(t, err, timelockbindings.CCIPErrorUnauthorized)
 	})
 
 	t.Run("executor cannot schedule", func(t *testing.T) {
-		opData, err := encodeApplyRampUpdatesSingleOnramp(chainExecutor, mockExecutor)
+		opData, err := encodeApplyOnrampUpdatesSingle(chainExecutor, mockExecutor)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,8 +253,8 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 		}
 	})
 
-	t.Run("apply_ramp_updates before delay cannot execute", func(t *testing.T) {
-		opData, err := encodeApplyRampUpdatesSingleOnramp(chainEarly, mockEarly)
+	t.Run("apply_onramp_updates before delay cannot execute", func(t *testing.T) {
+		opData, err := encodeApplyOnrampUpdatesSingle(chainEarly, mockEarly)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -273,7 +263,7 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 			Inner: []timelockbindings.Call{{To: registryRaw, Data: opData}},
 		}
 		if err := tlProposer.ScheduleBatch(ctx, proposerKP.Address(), callsOp, predecessor, saltEarly, minDelaySec); err != nil {
-			t.Fatalf("ScheduleBatch apply_ramp_updates: %v", err)
+			t.Fatalf("ScheduleBatch apply_onramp_updates: %v", err)
 		}
 		err = tlExecutor.ExecuteBatch(ctx, executorKP.Address(), callsOp, predecessor, saltEarly)
 		if err == nil {
@@ -281,12 +271,12 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 		}
 	})
 
-	t.Run("gated apply_ramp_updates via timelock", func(t *testing.T) {
+	t.Run("gated apply_onramp_updates via timelock", func(t *testing.T) {
 		if _, err := reg.GetOnramp(ctx, chainGate); err == nil {
 			t.Fatal("expected GetOnramp to fail before route is configured")
 		}
 
-		opData, err := encodeApplyRampUpdatesSingleOnramp(chainGate, mockGate)
+		opData, err := encodeApplyOnrampUpdatesSingle(chainGate, mockGate)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -295,7 +285,7 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 			Inner: []timelockbindings.Call{{To: registryRaw, Data: opData}},
 		}
 		if err := tlProposer.ScheduleBatch(ctx, proposerKP.Address(), callsOp, predecessor, saltBump, minDelaySec); err != nil {
-			t.Fatalf("ScheduleBatch apply_ramp_updates: %v", err)
+			t.Fatalf("ScheduleBatch apply_onramp_updates: %v", err)
 		}
 		opBump, err := tlAdmin.HashOperationBatch(ctx, callsOp, predecessor, saltBump)
 		if err != nil {
@@ -314,11 +304,11 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 			time.Sleep(400 * time.Millisecond)
 		}
 		if ok, _ := tlAdmin.IsOperationReady(ctx, opBump); !ok {
-			t.Fatal("apply_ramp_updates operation never became ready")
+			t.Fatal("apply_onramp_updates operation never became ready")
 		}
 
 		if err := tlExecutor.ExecuteBatch(ctx, executorKP.Address(), callsOp, predecessor, saltBump); err != nil {
-			t.Fatalf("ExecuteBatch apply_ramp_updates: %v", err)
+			t.Fatalf("ExecuteBatch apply_onramp_updates: %v", err)
 		}
 
 		got, err := reg.GetOnramp(ctx, chainGate)
@@ -331,7 +321,7 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	})
 
 	t.Run("proposer cannot execute", func(t *testing.T) {
-		opData, err := encodeApplyRampUpdatesSingleOnramp(chainProposer, mockProposer)
+		opData, err := encodeApplyOnrampUpdatesSingle(chainProposer, mockProposer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -364,7 +354,7 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	})
 
 	t.Run("stranger cannot schedule or execute", func(t *testing.T) {
-		opData, err := encodeApplyRampUpdatesSingleOnramp(chainGate, mockGate)
+		opData, err := encodeApplyOnrampUpdatesSingle(chainGate, mockGate)
 		if err != nil {
 			t.Fatal(err)
 		}
