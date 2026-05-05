@@ -94,6 +94,7 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 				},
 			},
 			cciptestinterfaces.MessageOptions{},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 		l.Info().
@@ -217,6 +218,7 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 				},
 			},
 			cciptestinterfaces.MessageOptions{},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 
