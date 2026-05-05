@@ -22,7 +22,7 @@ pub mod types;
 
 use common_helpers::map_updater::MapUpdater;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
+    contract, contractimpl, symbol_short, token, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 
 use common_authorization::Ownable;
@@ -341,6 +341,42 @@ impl VersionedVerifierResolverContract {
 
         Ok(())
     }
+
+    /// Withdraws outstanding fee token balances to the configured fee aggregator.
+    ///
+    /// Permissionless: only transfers to the trusted aggregator address (same model as EVM
+    /// [`VersionedVerifierResolver::withdrawFeeTokens`]).
+    ///
+    /// # Errors
+    /// * [`CCIPError::ZeroFeeAggregatorNotAllowed`] — fee aggregator is the zero account (EVM `address(0)` analogue).
+    pub fn withdraw_fee_tokens(env: Env, fee_tokens: Vec<Address>) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+
+        let fee_agg = Self::get_fee_aggregator(env.clone())?;
+        if is_zero_fee_recipient(&env, &fee_agg) {
+            return Err(CCIPError::ZeroFeeAggregatorNotAllowed);
+        }
+
+        let resolver_address = env.current_contract_address();
+        for i in 0..fee_tokens.len() {
+            if let Some(fee_token) = fee_tokens.get(i) {
+                let token_client = token::Client::new(&env, &fee_token);
+                let balance = token_client.balance(&resolver_address);
+                if balance > 0 {
+                    token_client.transfer(&resolver_address, &fee_agg, &balance);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn is_zero_fee_recipient(env: &Env, addr: &Address) -> bool {
+    addr == &Address::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    )
 }
 
 #[cfg(test)]

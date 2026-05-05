@@ -3,6 +3,7 @@ package e2e_tests
 import (
 	"encoding/hex"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -150,6 +151,9 @@ func TestStellarToEVMTokenTransfer(t *testing.T) {
 //  1. Transferred token: sender loses exactly tokenTransferAmount
 //  2. Fee token: sender's fee-token balance decreases (fee charged by Router/OnRamp)
 //
+// The fee SAC is FeeQuoter's link_token (from get_static_config). The test asserts
+// that address appears in get_fee_tokens, then uses it for balance assertions.
+//
 // Note: pool and OnRamp contract balances are not checked because
 // GetTokenBalance encodes all addresses as classic accounts (G-prefix),
 // which fails for contract addresses that hold SAC balances via contract
@@ -181,8 +185,20 @@ func TestStellarToEVMTokenTransferFees(t *testing.T) {
 	tokenRaw, err := strkey.Decode(strkey.VersionByteContract, tokenAddr)
 	require.NoError(t, err)
 
-	feeTokenAddr, err := stellarCcvChain.GetFeeTokenAddress()
+	fqClient := stellarCcvChain.FeeQuoterClient()
+	require.NotNil(t, fqClient, "FeeQuoter must be initialized")
+
+	staticCfg, err := fqClient.GetStaticConfig(ctx)
 	require.NoError(t, err)
+	require.NotEmpty(t, staticCfg.LinkToken, "FeeQuoter static config must set link_token (fee SAC)")
+
+	feeTokenStrkeys, err := fqClient.GetFeeTokens(ctx)
+	require.NoError(t, err)
+	require.True(t, slices.Contains(feeTokenStrkeys, staticCfg.LinkToken),
+		"configured fee token (link_token) %q must be listed by get_fee_tokens; got %#v",
+		staticCfg.LinkToken, feeTokenStrkeys)
+
+	feeTokenAddr := staticCfg.LinkToken
 	feeTokenRaw, err := strkey.Decode(strkey.VersionByteContract, feeTokenAddr)
 	require.NoError(t, err)
 

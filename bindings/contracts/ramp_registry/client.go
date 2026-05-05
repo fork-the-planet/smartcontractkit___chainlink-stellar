@@ -148,38 +148,6 @@ func (c *RampRegistryClient) IsOfframp(ctx context.Context, sourceChainSelector 
 	return v, nil
 }
 
-// SetOnramp calls the set_onramp function on the contract.
-func (c *RampRegistryClient) SetOnramp(ctx context.Context, destChainSelector uint64, onramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(destChainSelector),
-		scval.AddressToScVal(onramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_onramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call set_onramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
-// AddOfframp calls the add_offramp function on the contract.
-func (c *RampRegistryClient) AddOfframp(ctx context.Context, sourceChainSelector uint64, offramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(sourceChainSelector),
-		scval.AddressToScVal(offramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "add_offramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call add_offramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
 // GetOnramps calls the get_onramps function on the contract.
 func (c *RampRegistryClient) GetOnramps(ctx context.Context) ([]OnRampEntry, error) {
 	args := []xdr.ScVal{}
@@ -271,22 +239,6 @@ func (c *RampRegistryClient) SetNewOwner(ctx context.Context, newOwner string) e
 	return nil
 }
 
-// RemoveOfframp calls the remove_offramp function on the contract.
-func (c *RampRegistryClient) RemoveOfframp(ctx context.Context, sourceChainSelector uint64, offramp string) error {
-	args := []xdr.ScVal{
-		scval.Uint64ToScVal(sourceChainSelector),
-		scval.AddressToScVal(offramp),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "remove_offramp", args)
-	if err != nil {
-		return fmt.Errorf("failed to call remove_offramp: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
 // AcceptOwnership calls the accept_ownership function on the contract.
 func (c *RampRegistryClient) AcceptOwnership(ctx context.Context) error {
 	args := []xdr.ScVal{}
@@ -336,23 +288,6 @@ func (c *RampRegistryClient) GetPendingOwner(ctx context.Context) (*string, erro
 	return v, nil
 }
 
-// ApplyRampUpdates calls the apply_ramp_updates function on the contract.
-func (c *RampRegistryClient) ApplyRampUpdates(ctx context.Context, onrampUpdates []OnRampEntry, offrampRemoves []OffRampEntry, offrampAdds []OffRampEntry) error {
-	args := []xdr.ScVal{
-		scval.StructSliceToScVal(onrampUpdates),
-		scval.StructSliceToScVal(offrampRemoves),
-		scval.StructSliceToScVal(offrampAdds),
-	}
-
-	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_ramp_updates", args)
-	if err != nil {
-		return fmt.Errorf("failed to call apply_ramp_updates: %w", err)
-	}
-
-	_ = result // void return
-	return nil
-}
-
 // TransferOwnership calls the transfer_ownership function on the contract.
 func (c *RampRegistryClient) TransferOwnership(ctx context.Context, newOwner string) error {
 	args := []xdr.ScVal{
@@ -362,6 +297,36 @@ func (c *RampRegistryClient) TransferOwnership(ctx context.Context, newOwner str
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "transfer_ownership", args)
 	if err != nil {
 		return fmt.Errorf("failed to call transfer_ownership: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// ApplyOnrampUpdates calls the apply_onramp_updates function on the contract.
+func (c *RampRegistryClient) ApplyOnrampUpdates(ctx context.Context, updates []OnRampUpdate) error {
+	args := []xdr.ScVal{
+		scval.StructSliceToScVal(updates),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_onramp_updates", args)
+	if err != nil {
+		return fmt.Errorf("failed to call apply_onramp_updates: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
+// ApplyOfframpUpdates calls the apply_offramp_updates function on the contract.
+func (c *RampRegistryClient) ApplyOfframpUpdates(ctx context.Context, updates []OffRampUpdate) error {
+	args := []xdr.ScVal{
+		scval.StructSliceToScVal(updates),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_offramp_updates", args)
+	if err != nil {
+		return fmt.Errorf("failed to call apply_offramp_updates: %w", err)
 	}
 
 	_ = result // void return
@@ -525,6 +490,73 @@ func ParseOffRampAddedEvent(e protocolrpc.EventInfo) (*OffRampAddedEvent, error)
 	return result, nil
 }
 
+// WaitForOnRampRemovedEvent waits for a OnRampRemovedEvent event.
+func (c *RampRegistryClient) WaitForOnRampRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OnRampRemovedEvent) bool) (*OnRampRemovedEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OnRampRemovedEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseOnRampRemovedEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseOnRampRemovedEvent(e protocolrpc.EventInfo) (*OnRampRemovedEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &OnRampRemovedEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "dest_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.DestChainSelector = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // WaitForOffRampRemovedEvent waits for a OffRampRemovedEvent event.
 func (c *RampRegistryClient) WaitForOffRampRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OffRampRemovedEvent) bool) (*OffRampRemovedEvent, error) {
 	startTime := time.Now()
@@ -590,366 +622,6 @@ func ParseOffRampRemovedEvent(e protocolrpc.EventInfo) (*OffRampRemovedEvent, er
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err == nil {
 				result.Offramp = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForRoleGrantedEvent waits for a RoleGrantedEvent event.
-func (c *RampRegistryClient) WaitForRoleGrantedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleGrantedEvent) bool) (*RoleGrantedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleGrantedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseRoleGrantedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseRoleGrantedEvent(e protocolrpc.EventInfo) (*RoleGrantedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &RoleGrantedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "role":
-			v, err := scval.SymbolFromScVal(entry.Val)
-			if err == nil {
-				result.Role = v
-			}
-		case "account":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Account = v
-			}
-		case "sender":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Sender = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForRoleRevokedEvent waits for a RoleRevokedEvent event.
-func (c *RampRegistryClient) WaitForRoleRevokedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*RoleRevokedEvent) bool) (*RoleRevokedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{RoleRevokedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseRoleRevokedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseRoleRevokedEvent(e protocolrpc.EventInfo) (*RoleRevokedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &RoleRevokedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "role":
-			v, err := scval.SymbolFromScVal(entry.Val)
-			if err == nil {
-				result.Role = v
-			}
-		case "account":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Account = v
-			}
-		case "sender":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Sender = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForAuthorizedCallerAddedEvent waits for a AuthorizedCallerAddedEvent event.
-func (c *RampRegistryClient) WaitForAuthorizedCallerAddedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerAddedEvent) bool) (*AuthorizedCallerAddedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerAddedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseAuthorizedCallerAddedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseAuthorizedCallerAddedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerAddedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &AuthorizedCallerAddedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "caller":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Caller = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForAuthorizedCallerRemovedEvent waits for a AuthorizedCallerRemovedEvent event.
-func (c *RampRegistryClient) WaitForAuthorizedCallerRemovedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*AuthorizedCallerRemovedEvent) bool) (*AuthorizedCallerRemovedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{AuthorizedCallerRemovedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseAuthorizedCallerRemovedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseAuthorizedCallerRemovedEvent(e protocolrpc.EventInfo) (*AuthorizedCallerRemovedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &AuthorizedCallerRemovedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "caller":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.Caller = v
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// WaitForOwnershipTransferStartedEvent waits for a OwnershipTransferStartedEvent event.
-func (c *RampRegistryClient) WaitForOwnershipTransferStartedEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*OwnershipTransferStartedEvent) bool) (*OwnershipTransferStartedEvent, error) {
-	startTime := time.Now()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Since(startTime) > timeout {
-				return nil, fmt.Errorf("timeout waiting for event")
-			}
-
-			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{OwnershipTransferStartedEventTopic})
-			if err != nil {
-				continue
-			}
-
-			for _, e := range events {
-				parsed, err := ParseOwnershipTransferStartedEvent(e)
-				if err != nil {
-					continue
-				}
-				if filter == nil || filter(parsed) {
-					return parsed, nil
-				}
-			}
-		}
-	}
-}
-
-func ParseOwnershipTransferStartedEvent(e protocolrpc.EventInfo) (*OwnershipTransferStartedEvent, error) {
-	var eventVal xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
-		return nil, fmt.Errorf("failed to decode event: %w", err)
-	}
-
-	scMap, ok := eventVal.GetMap()
-	if !ok || scMap == nil {
-		return nil, fmt.Errorf("event is not a map")
-	}
-
-	result := &OwnershipTransferStartedEvent{
-		Ledger: uint32(e.Ledger),
-		TxHash: e.TransactionHash,
-	}
-
-	for _, entry := range *scMap {
-		key, ok := entry.Key.GetSym()
-		if !ok {
-			continue
-		}
-
-		switch string(key) {
-		case "previous_owner":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.PreviousOwner = v
-			}
-		case "new_owner":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err == nil {
-				result.NewOwner = v
 			}
 		}
 	}

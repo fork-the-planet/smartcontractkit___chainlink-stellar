@@ -33,22 +33,40 @@ var Initialize = cldfops.NewOperation(
 	},
 )
 
-// ApplyRampUpdatesInput mirrors Router ramp map updates on the registry.
-type ApplyRampUpdatesInput struct {
-	ContractID     string                    `json:"contract_id"`
-	OnRampUpdates  []rrbindings.OnRampEntry  `json:"on_ramp_updates"`
-	OffRampRemoves []rrbindings.OffRampEntry `json:"off_ramp_removes"`
-	OffRampAdds    []rrbindings.OffRampEntry `json:"off_ramp_adds"`
+// ApplyOnrampUpdatesInput updates the RampRegistry on-ramp map.
+type ApplyOnrampUpdatesInput struct {
+	ContractID string                    `json:"contract_id"`
+	Updates    []rrbindings.OnRampUpdate `json:"updates"`
 }
 
-// ApplyRampUpdates calls RampRegistry `apply_ramp_updates`.
-var ApplyRampUpdates = cldfops.NewOperation(
-	"ramp-registry:apply-ramp-updates",
+// ApplyOnrampUpdates calls RampRegistry `apply_onramp_updates`.
+var ApplyOnrampUpdates = cldfops.NewOperation(
+	"ramp-registry:apply-onramp-updates",
 	stellarops.ContractDeploymentVersion,
-	"Applies RampRegistry on-ramp and off-ramp map updates",
-	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApplyRampUpdatesInput) (stellarops.Void, error) {
+	"Applies RampRegistry on-ramp map updates",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApplyOnrampUpdatesInput) (stellarops.Void, error) {
 		c := rrbindings.NewRampRegistryClient(d.Invoker, in.ContractID)
-		if err := c.ApplyRampUpdates(b.GetContext(), in.OnRampUpdates, in.OffRampRemoves, in.OffRampAdds); err != nil {
+		if err := c.ApplyOnrampUpdates(b.GetContext(), in.Updates); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// ApplyOfframpUpdatesInput updates the RampRegistry off-ramp map.
+type ApplyOfframpUpdatesInput struct {
+	ContractID string                     `json:"contract_id"`
+	Updates    []rrbindings.OffRampUpdate `json:"updates"`
+}
+
+// ApplyOfframpUpdates calls RampRegistry `apply_offramp_updates`.
+var ApplyOfframpUpdates = cldfops.NewOperation(
+	"ramp-registry:apply-offramp-updates",
+	stellarops.ContractDeploymentVersion,
+	"Applies RampRegistry off-ramp map updates",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApplyOfframpUpdatesInput) (stellarops.Void, error) {
+		c := rrbindings.NewRampRegistryClient(d.Invoker, in.ContractID)
+		if err := c.ApplyOfframpUpdates(b.GetContext(), in.Updates); err != nil {
 			return stellarops.Void{}, err
 		}
 		return stellarops.Void{}, nil
