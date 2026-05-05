@@ -17,8 +17,9 @@ common-guard = { workspace = true }
 common-helpers = { workspace = true }
 
 [dev-dependencies]
-ccip-ramp-registry = { path = "../ccip-ramp-registry" }
+ccip-ramp-registry = { workspace = true }
+common-interfaces = { workspace = true }
 timelock = { path = "../timelock" }
-k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
-sha3 = "0.10"
+k256 = { workspace = true }
+sha3 = { workspace = true }
 soroban-sdk = { workspace = true, features = ["testutils"] }

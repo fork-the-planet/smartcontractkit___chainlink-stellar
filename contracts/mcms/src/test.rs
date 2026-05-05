@@ -26,7 +26,8 @@ use crate::types::{
     StellarRootMetadata,
 };
 use crate::{McmsContract, McmsContractClient};
-use ccip_ramp_registry::{RampRegistryContract, RampRegistryContractClient};
+use ccip_ramp_registry::RampRegistryContract;
+use common_interfaces::ramp_registry::RampRegistryClient;
 use timelock::{Calls, TimelockContract, TimelockContractClient};
 
 const NUM_GROUP_BYTES: usize = 32;
@@ -948,7 +949,7 @@ fn test_mcms_ownership_round_trip_via_ramp_registry() {
     );
 
     let ramp_id = env.register(RampRegistryContract, ());
-    let ramp = RampRegistryContractClient::new(&env, &ramp_id);
+    let ramp = RampRegistryClient::new(&env, &ramp_id);
     ramp.initialize(&alice);
 
     let mcms_addr = mcms_client.address.clone();

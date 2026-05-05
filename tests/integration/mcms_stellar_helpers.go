@@ -15,7 +15,7 @@ import (
 	mcmsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/mcms"
 )
 
-// Domain separators — must match contracts/mcms/src/constants.rs (SPEC).
+// Domain separators — must match contracts/mcms/src/constants.rs and docs/mcms-stellar-plan.md.
 var (
 	domainMetaStellar = [32]byte{
 		0xde, 0x51, 0xf2, 0xd6, 0x7b, 0xb4, 0x89, 0x5d, 0x0d, 0xd1, 0xf3, 0x6a, 0xdb, 0x04, 0x42, 0x27,

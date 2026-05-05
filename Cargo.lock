@@ -954,7 +954,6 @@ dependencies = [
  "elliptic-curve",
  "once_cell",
  "sha2",
- "signature",
 ]
 
 [[package]]
@@ -1004,6 +1003,7 @@ dependencies = [
  "common-error",
  "common-guard",
  "common-helpers",
+ "common-interfaces",
  "k256",
  "sha3",
  "soroban-sdk",

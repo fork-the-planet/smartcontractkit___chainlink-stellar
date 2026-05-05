@@ -24,6 +24,8 @@ members = [
 [workspace.dependencies]
 soroban-sdk = "25.1.1"
 stellar-strkey = "0.0.16"
+sha3 = "0.10"
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 common-message = { path = "contracts/common/message" }
 common-guard = { path = "contracts/common/guard" }
 common-authorization = { path = "contracts/common/authorization" }

@@ -1,4 +1,4 @@
-//! Domain separator constants — must match [`contracts/mcms/SPEC.md`](../SPEC.md).
+//! Domain separator constants — must match [`docs/mcms-stellar-plan.md`](../../../docs/mcms-stellar-plan.md).
 //!
 //! Verified with `cast keccak "$(printf '%s' 'MANY_CHAIN_MULTI_SIG_DOMAIN_SEPARATOR_…')"` (Foundry).
 

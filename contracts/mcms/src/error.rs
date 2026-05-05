@@ -1,4 +1,4 @@
-//! MCMS contract errors (Phase 2 core multisig; timelock comes later).
+//! MCMS contract errors. Timelock lives in [`contracts/timelock`](../../timelock); see `docs/mcms-stellar-plan.md`.
 
 use soroban_sdk::contracterror;
 
