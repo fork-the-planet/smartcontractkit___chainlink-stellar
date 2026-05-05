@@ -394,7 +394,7 @@ pub trait BaseTokenPool {
         let expected = match reg_client.try_get_onramp(&dest_chain_selector) {
             Ok(Ok(addr)) => addr,
             Ok(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
-            Err(Ok(e)) => return Err(e),
+            Err(Ok(e)) => return Err(e.into()),
             Err(Err(_)) => return Err(CCIPError::UnsupportedDestinationChain),
         };
         if expected != *caller {

@@ -43,6 +43,7 @@ CONTRACTS=(
   "rmn_remote|rmn_remote|RmnRemote|0"
   "offramp|offramp|OffRamp|0"
   "router|router|Router|0"
+  "ccip_ramp_registry|ramp_registry|RampRegistry|0"
   "ccip_receiver_example|ccip_receiver|ExampleCcipReceiver|0"
   "token_admin_registry|token_admin_registry|TokenAdminRegistry|0"
   "pools_lock_release_pool|lock_release_pool|LockReleasePool|0"

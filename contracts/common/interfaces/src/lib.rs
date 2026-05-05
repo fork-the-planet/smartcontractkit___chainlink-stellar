@@ -30,3 +30,18 @@ pub mod token_admin_registry;
 pub mod token_lock_box;
 pub mod token_pool;
 pub mod versioned_verifier_resolver;
+
+/// Convert the generated `ramp_registry::CCIPError` into [`common_error::CCIPError`].
+///
+/// The bindings duplicate the on-chain `contracterror` discriminant space; the generated
+/// enum may use a smaller ABI than `common_error::CCIPError` (`#[repr(u32)]`), so we widen
+/// via `as u32` and reinterpret as the canonical type.
+impl From<ramp_registry::CCIPError> for common_error::CCIPError {
+    #[inline]
+    fn from(e: ramp_registry::CCIPError) -> Self {
+        let code = e as u32;
+        // SAFETY: `common_error::CCIPError` is `#[repr(u32)]` and `code` comes from the
+        // interface copy of the same on-chain error table (valid discriminant).
+        unsafe { core::mem::transmute::<u32, Self>(code) }
+    }
+}
