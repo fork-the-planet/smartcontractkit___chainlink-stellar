@@ -109,6 +109,26 @@
               "ext": "v0",
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
               "key": {
+                "bytes": "64269a140f9045a3c98450f4f54c3a08f930a41bfc116e13cc2bde85bedf9955"
+              },
+              "durability": "persistent",
+              "val": {
+                "bool": true
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6307200
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
                 "symbol": "EXPROOT"
               },
               "durability": "persistent",
@@ -328,33 +348,6 @@
                     }
                   }
                 ]
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6307200
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "SeenHash"
-                  },
-                  {
-                    "bytes": "64269a140f9045a3c98450f4f54c3a08f930a41bfc116e13cc2bde85bedf9955"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "bool": true
               }
             }
           },

@@ -344,7 +344,7 @@ func generateUnitEnum(b *strings.Builder, e Enum) {
 // Exactly one pointer must be non-nil for a value to be valid; multiple
 // non-nil pointers cause `ToScVal` to fail loudly. Unit variants are
 // represented by an empty marker struct so they can be set the same way
-// (`X{Foo: &McmsDataKeyFoo{}}`) as payload-bearing ones.
+// (`X{Foo: &PoolDataKeyFoo{}}`) as payload-bearing ones.
 func generateUnionEnum(b *strings.Builder, e Enum) {
 	b.WriteString(fmt.Sprintf("// %s is a Soroban discriminated-union (#[contracttype] enum with payload(s)).\n", e.Name))
 	b.WriteString("// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).\n")

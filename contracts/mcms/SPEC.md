@@ -148,7 +148,7 @@ On `set_root`, the contract records replay protection on **`signedHash`** (same 
 
 ### 6.4 `SeenHash` TTL & restoring archived entries
 
-`McmsDataKey::SeenHash(h)` entries are persistent ledger entries created (and bumped to `LEDGER_BUMP`) once at successful `set_root`, and are intentionally **not** refreshed by `extend_all_ttls` / `bump_ttls`: they are not enumerable from inside the contract, and the §6.3 dynamic `validUntil` cap already guarantees that any `(root, validUntil)` whose `SeenHash` could be archived has `validUntil < now` and is therefore rejected before the seen-hash check runs. **Replay safety does not require archived seen entries to be readable.**
+Replay-protection entries use the **signed hash `h` itself** (`BytesN<32>`) as the persistent storage key. They are created (and bumped to `LEDGER_BUMP`) once at successful `set_root`, and are intentionally **not** refreshed by `extend_all_ttls` / `bump_ttls`: they are not enumerable from inside the contract, and the §6.3 dynamic `validUntil` cap already guarantees that any `(root, validUntil)` whose seen-hash entry could be archived has `validUntil < now` and is therefore rejected before the seen-hash check runs. **Replay safety does not require archived seen entries to be readable.**
 
 There is **no** guest-side "restore seen hash" entrypoint on the MCMS contract, and one cannot exist:
 
@@ -157,7 +157,7 @@ There is **no** guest-side "restore seen hash" entrypoint on the MCMS contract, 
 
 If you ever need to read an archived `SeenHash` entry (e.g. for governance forensics or audit), the standard procedure is:
 
-1. Compute the ledger key for `McmsDataKey::SeenHash(h)` against the MCMS contract id.
+1. Compute the ledger key for persistent contract data keyed by `h` (`BytesN<32>`) against the MCMS contract id.
 2. Submit a transaction that includes a `RestoreFootprintOp` listing that key in its read-write footprint.
 3. After the host pays rent and re-instates the entry, read it via `getLedgerEntries` RPC or a contract-side getter.
 

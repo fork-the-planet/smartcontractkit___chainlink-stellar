@@ -9,8 +9,8 @@ mod types;
 
 pub use error::McmsError;
 pub use types::{
-    Config, ExpiringRootAndOpCount, McmsDataKey, MerkleProof, Signature, SignatureVec, Signer,
-    SignerAddresses, SignerGroups, StellarOp, StellarRootMetadata, MAX_NUM_SIGNERS, NUM_GROUPS,
+    Config, ExpiringRootAndOpCount, MerkleProof, Signature, SignatureVec, Signer, SignerAddresses,
+    SignerGroups, StellarOp, StellarRootMetadata, MAX_NUM_SIGNERS, NUM_GROUPS,
 };
 
 use abi_encoding::{
@@ -192,8 +192,7 @@ impl McmsContract {
         let inner = hash_set_root_inner(&env, &root, valid_until);
         let signed_hash = eth_signed_message_hash_32(&env, &inner);
 
-        let seen_key = McmsDataKey::SeenHash(signed_hash.clone());
-        if env.storage().persistent().has(&seen_key) {
+        if env.storage().persistent().has(&signed_hash) {
             return Err(McmsError::SignedHashAlreadySeen);
         }
 
@@ -265,10 +264,10 @@ impl McmsContract {
             return Err(McmsError::WrongPostOpCount);
         }
 
-        env.storage().persistent().set(&seen_key, &true);
+        env.storage().persistent().set(&signed_hash, &true);
         env.storage()
             .persistent()
-            .extend_ttl(&seen_key, LEDGER_THRESHOLD, LEDGER_BUMP);
+            .extend_ttl(&signed_hash, LEDGER_THRESHOLD, LEDGER_BUMP);
 
         env.storage().persistent().set(
             &EXPIRING_ROOT,
@@ -483,8 +482,8 @@ impl McmsContract {
     /// timestamp entries — see `contracts/timelock/src/lib.rs` for the same pattern.
     ///
     /// In practice you only need this for forensic/audit reads ("did we ever sign hash X?"):
-    /// submit a transaction that (1) includes `RestoreFootprintOp` for the
-    /// `McmsDataKey::SeenHash(X)` ledger key, and (2) calls a read helper or RPC
+    /// submit a transaction that (1) includes `RestoreFootprintOp` for the persistent
+    /// `BytesN<32>` ledger key holding `X`, and (2) calls a read helper or RPC
     /// `getLedgerEntry` against that key.
     pub fn extend_all_ttls(env: Env) -> Result<(), McmsError> {
         <Self as Initializable>::require_initialized(&env)?;
@@ -646,7 +645,7 @@ fn verify_signatures(
 
 /// Extend the TTL of fixed persistent storage keys and instance storage.
 ///
-/// Per-hash seen entries (`McmsDataKey::SeenHash`) are NOT enumerable here; each entry
+/// Per-hash seen entries (persistent key = signed hash as `BytesN<32>`) are NOT enumerable here; each entry
 /// receives its TTL at creation time in `set_root` and can be individually restored if
 /// archived.  This helper covers the fixed keys (CONFIG, SIGNER_MAP, EXPIRING_ROOT,
 /// ROOT_META_STORE) and is called at the end of every successful public function so that

@@ -65,7 +65,7 @@ pub enum MessageDirection {
 // union, must use ScVec(Symbol+payloads), and must NOT use Uint32ToScVal.
 func TestGenerateEnum_TupleEmitsUnion(t *testing.T) {
 	c := &Contract{Enums: []Enum{
-		{Name: "McmsDataKey", Variants: []EnumVariant{
+		{Name: "ReplayKey", Variants: []EnumVariant{
 			{Name: "SeenHash", Kind: EnumVariantTuple, Payload: []Field{
 				{Type: "soroban_sdk::BytesN<32>"},
 			}},
@@ -74,9 +74,9 @@ func TestGenerateEnum_TupleEmitsUnion(t *testing.T) {
 	out := GenerateTypes("test", c)
 
 	mustContain(t, out,
-		"type McmsDataKey struct {",
-		"SeenHash *McmsDataKeySeenHash",
-		"type McmsDataKeySeenHash struct {",
+		"type ReplayKey struct {",
+		"SeenHash *ReplayKeySeenHash",
+		"type ReplayKeySeenHash struct {",
 		"Field0 [32]byte",
 		// ToScVal: discriminant symbol + Bytes32 payload, returned as a vec.
 		"scval.SymbolToScVal(\"SeenHash\")",
@@ -90,7 +90,7 @@ func TestGenerateEnum_TupleEmitsUnion(t *testing.T) {
 	)
 	// Critical: the broken behaviour must be gone.
 	mustNotContain(t, out,
-		"type McmsDataKey uint32",
+		"type ReplayKey uint32",
 		"return scval.Uint32ToScVal(uint32(e)), nil",
 	)
 }
@@ -168,13 +168,13 @@ func TestGenerateEnum_StructVariant(t *testing.T) {
 func TestGenerateEnum_ZeroValue(t *testing.T) {
 	knownEnumNames = map[string]bool{
 		"MessageDirection": true,  // unit-only
-		"McmsDataKey":      false, // union
+		"ReplayKey":        false, // union
 	}
 	if got := zeroValue("MessageDirection"); got != "0" {
 		t.Errorf("unit enum zero: got %q want \"0\"", got)
 	}
-	if got := zeroValue("McmsDataKey"); got != "McmsDataKey{}" {
-		t.Errorf("union enum zero: got %q want \"McmsDataKey{}\"", got)
+	if got := zeroValue("ReplayKey"); got != "ReplayKey{}" {
+		t.Errorf("union enum zero: got %q want \"ReplayKey{}\"", got)
 	}
 }
 

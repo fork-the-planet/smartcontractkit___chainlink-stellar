@@ -79,14 +79,13 @@ pub enum E {
 	}
 }
 
-// TestParseEnums_Tuple covers the regression that motivated this fix:
-// McmsDataKey carries a BytesN<32> payload and must be detected as
-// non-unit so codegen emits the discriminated-union shape.
+// TestParseEnums_Tuple covers tuple-variant enums: a BytesN<32> payload must be
+// detected as non-unit so codegen emits the discriminated-union shape.
 func TestParseEnums_Tuple(t *testing.T) {
 	src := `
 #[soroban_sdk::contracttype]
 #[derive(Debug, Clone)]
-pub enum McmsDataKey {
+pub enum ReplayKey {
     SeenHash(soroban_sdk::BytesN<32>),
 }
 `
