@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stellar/go-stellar-sdk/keypair"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
@@ -49,12 +48,15 @@ func (a *StellarCCVDeploymentAggregatorConfigAdapter) ScanCommitteeStates(
 	if !ok {
 		return nil, fmt.Errorf("Stellar chain %d not found in environment", chainSelector)
 	}
-
-	kp, err := keypair.Random()
-	if err != nil {
-		return nil, fmt.Errorf("generate ephemeral keypair: %w", err)
+	if chain.Signer == nil {
+		return nil, fmt.Errorf("Stellar chain %d has no signer configured", chainSelector)
 	}
-	deployer := stellardeployment.NewDeployer(chain.Client, chain.NetworkPassphrase, kp)
+
+	// GetAllSignatureConfigs is a read-only Soroban simulation, but we use the
+	// CLDF chain signer (an Ed25519 key already provisioned by the deployment
+	// environment) instead of generating an ephemeral keypair. This avoids
+	// creating a fresh unfunded Stellar account on every changeset run.
+	deployer := stellardeployment.NewDeployerWithSigner(chain.Client, chain.NetworkPassphrase, stellardeployment.NewSDKSigner(chain.Signer))
 
 	states := make([]*ccvdeploymentadapters.CommitteeState, 0, len(refs))
 	for _, ref := range refs {
