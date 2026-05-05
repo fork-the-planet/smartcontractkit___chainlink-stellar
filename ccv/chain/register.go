@@ -73,11 +73,12 @@ func RegisterStellarComponents() {
 		// Register Stellar with chainlink-ccv/deployment/adapters so devenv changesets
 		// (GenerateAggregatorConfig, ApplyExecutorConfig, etc.) can resolve Stellar chains.
 		ccvdeploymentadapters.GetRegistry().Register(chainsel.FamilyStellar, ccvdeploymentadapters.ChainAdapters{
-			Aggregator:    &adapter.StellarCCVDeploymentAggregatorConfigAdapter{},
-			Executor:      &adapter.StellarCCVDeploymentExecutorConfigAdapter{},
-			Verifier:      &adapter.StellarCCVDeploymentVerifierConfigAdapter{},
-			Indexer:       &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
-			TokenVerifier: &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
+			Aggregator:               &adapter.StellarCCVDeploymentAggregatorConfigAdapter{},
+			CommitteeVerifierOnchain: &adapter.StellarCCVCommitteeVerifierOnchainAdapter{},
+			Executor:                 &adapter.StellarCCVDeploymentExecutorConfigAdapter{},
+			Verifier:                 &adapter.StellarCCVDeploymentVerifierConfigAdapter{},
+			Indexer:                  &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
+			TokenVerifier:            &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
 		})
 
 		tokenAdapterRegistry := tokenscore.GetTokenAdapterRegistry()
