@@ -1005,14 +1005,21 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 }
 
 // SendMessage implements cciptestinterfaces.Chain.
-// It delegates to BuildChainMessage + SendChainMessage.
-func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
+//
+// DEPRECATED upstream in chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md.
+// New callers should use BuildChainMessage + SendChainMessage directly.
+//
+// Stellar-as-source builds its own Soroban GenericExtraArgsV3 XDR blob inside
+// BuildChainMessage and ignores the provider-shaped extra args supplied here,
+// so we accept any ExtraArgsDataProvider and any messageVersion without
+// type-asserting.
+func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, _ cciptestinterfaces.ExtraArgsDataProvider, _ uint8) (cciptestinterfaces.MessageSentEvent, error) {
 	c.logger.Info().
 		Uint64("destChainSelector", dest).
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	msg, err := c.BuildChainMessage(ctx, dest, fields, opts)
+	msg, err := c.BuildChainMessage(ctx, fields, nil)
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, err
 	}

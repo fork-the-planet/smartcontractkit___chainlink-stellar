@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -61,21 +60,29 @@ func NewImplFactory() *ImplFactory {
 	return &ImplFactory{}
 }
 
-// DefaultSignerKey returns the default signer key for this chain family
-// given the bootstrap keys from a verifier node. Each family selects the
-// appropriate key type (e.g. EVM uses ECDSAAddress, Stellar uses EdDSA).
-// Return "" if no default signer is available.
+// DefaultSignerKey returns the default verifier-result signer key for this
+// chain family given the bootstrap keys from a verifier node. devenv calls
+// this from enrichEnvironmentTopology; the returned address is recorded in
+// the verifier's commit.Config.SignerAddress and ends up as the signer
+// expected by the on-chain committee_verifier.
+//
+// Despite Stellar transmitting Soroban transactions with an Ed25519 keypair,
+// the committee_verifier contract on Stellar stores 20-byte ETH-style signer
+// addresses (see contracts/common/verifier ETH_ADDRESS_OFFSET and
+// ccv/chain/adapter/aggregator_config_adapter.go reading signer[12:32]).
+// That means the verifier signs results with its ECDSA key — the same one
+// EVM verifiers use — so we return keys.ECDSAAddress here. The Stellar
+// Ed25519 transmitter / deployer keypair is a separate concern handled by
+// the accessor's KeystoreSetter path.
+//
+// Pre-2026-05-01 this read keys.EdDSAPublicKey and produced a Stellar G...
+// address, but that never matched the 20-byte ETH-style on-chain entry; the
+// fallback "fetch signing keys from JD" path masked the mismatch. With
+// chainlink-ccv changelog/2026-05-01_executor_keystore_transmitter.md the
+// EdDSA field was removed from BootstrapKeys, so we now return the correct
+// ECDSA address directly.
 func (f *ImplFactory) DefaultSignerKey(keys ccvservices.BootstrapKeys) string {
-	pubHex := strings.TrimPrefix(keys.EdDSAPublicKey, "0x")
-	raw, err := hex.DecodeString(pubHex)
-	if err != nil || len(raw) != 32 {
-		return ""
-	}
-	addr, err := strkey.Encode(strkey.VersionByteAccountID, raw)
-	if err != nil {
-		return ""
-	}
-	return addr
+	return keys.ECDSAAddress
 }
 
 // DefaultFeeAggregator implements [ccv.ImplFactory].
