@@ -1,4 +1,4 @@
-//! Solidity ABI v1 encoding matching `abi.encode` for MCMS-Stellar leaf hashes (see SPEC).
+//! Solidity ABI v1 encoding matching `abi.encode` for MCMS-Stellar leaf hashes (see `docs/mcms-stellar-plan.md`).
 
 use soroban_sdk::{Bytes, BytesN, Env};
 

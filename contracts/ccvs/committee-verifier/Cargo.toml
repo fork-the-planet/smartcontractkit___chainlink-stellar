@@ -20,5 +20,5 @@ common-helpers = { workspace = true }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 rmn_proxy = { workspace = true }
 rmn_remote = { workspace = true }
-k256 = { version = "0.13", features = ["ecdsa"] }
-sha3 = "0.10"
+k256 = { workspace = true }
+sha3 = { workspace = true }

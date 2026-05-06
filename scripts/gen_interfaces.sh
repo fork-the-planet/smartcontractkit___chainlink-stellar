@@ -43,6 +43,7 @@ CONTRACTS=(
   "rmn_remote|rmn_remote|RmnRemote|0"
   "offramp|offramp|OffRamp|0"
   "router|router|Router|0"
+  "ccip_ramp_registry|ramp_registry|RampRegistry|0"
   "ccip_receiver_example|ccip_receiver|ExampleCcipReceiver|0"
   "token_admin_registry|token_admin_registry|TokenAdminRegistry|0"
   "pools_lock_release_pool|lock_release_pool|LockReleasePool|0"
@@ -187,6 +188,31 @@ patch_ccip_receiver_interfaces() {
   ' "$f"
 }
 
+# Ramp registry bindings duplicate workspace `CCIPError` and leak router/onramp contracttypes.
+# Normalize: canonical [`common_error::CCIPError`], drop leaked structs and duplicate auth events.
+patch_ramp_registry_interfaces() {
+  local f="$1"
+  perl -i -0pe '
+    unless (/^use common_error::CCIPError;/m) {
+      $_ = "//! Ramp registry interface (generated from ccip_ramp_registry.wasm; uses common_error::CCIPError).\n\nuse common_error::CCIPError;\n\n$_";
+    }
+
+    # Leaked dependency-graph contracttypes (multi-line structs).
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListEntry \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListUpdate \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct TokenAmount \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct GenericExtraArgsV3 \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AnyToStellarMessage \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct StellarToAnyMessage \{[\s\S]*?\n\}//s;
+
+    # stellar-cli emits a copy of CCIPError; use the workspace enum instead.
+    s/\n#\[soroban_sdk::contracterror\(export = false\)\]\n#\[derive\(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub enum CCIPError \{[\s\S]*?\n\}//s;
+
+    # Auth events duplicate definitions used elsewhere (Ownable / RBAC helpers).
+    s/\n#\[soroban_sdk::contractevent\(topics = \["auth_[^]]+"\], export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct \w+ \{[\s\S]*?\n\}//g;
+  ' "$f"
+}
+
 do_build=true
 for arg in "$@"; do
   case "$arg" in
@@ -227,6 +253,9 @@ for entry in "${CONTRACTS[@]}"; do
 
   if [[ "$output_module" == "ccip_receiver" ]]; then
     patch_ccip_receiver_interfaces "$out_path"
+  fi
+  if [[ "$output_module" == "ramp_registry" ]]; then
+    patch_ramp_registry_interfaces "$out_path"
   fi
 done
 

@@ -876,21 +876,92 @@ type AdministratorTransferredEvent struct {
 // AdministratorTransferredEventTopic is the event topic identifier.
 const AdministratorTransferredEventTopic = "tar_AdminTransferred"
 
-// DataKey represents the DataKey enum.
-type DataKey uint32
+// DataKey is a Soroban discriminated-union (#[contracttype] enum with payload(s)).
+// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).
+// Construct by setting exactly one variant pointer to a non-nil value.
+type DataKey struct {
+	TokenConfig *DataKeyTokenConfig
+	TokenIndex  *DataKeyTokenIndex
+}
 
-const ()
+// DataKeyTokenConfig is the tuple variant DataKey::TokenConfig.
+type DataKeyTokenConfig struct {
+	Field0 string
+}
 
-// ToScVal converts DataKey to an xdr.ScVal.
+// DataKeyTokenIndex is the tuple variant DataKey::TokenIndex.
+type DataKeyTokenIndex struct {
+	Field0 uint32
+}
+
+// ToScVal converts DataKey to its Soroban discriminated-union encoding.
+// Returns an error if zero or multiple variant pointers are set.
 func (e DataKey) ToScVal() (xdr.ScVal, error) {
-	return scval.Uint32ToScVal(uint32(e)), nil
+	set := 0
+	if e.TokenConfig != nil {
+		set++
+	}
+	if e.TokenIndex != nil {
+		set++
+	}
+	if set != 1 {
+		return xdr.ScVal{}, fmt.Errorf("DataKey: expected exactly one variant set, got %d", set)
+	}
+	if e.TokenConfig != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("TokenConfig"),
+			scval.AddressToScVal(e.TokenConfig.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.TokenIndex != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("TokenIndex"),
+			scval.Uint32ToScVal(e.TokenIndex.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	return xdr.ScVal{}, fmt.Errorf("DataKey: unreachable")
 }
 
 // DataKeyFromScVal parses an xdr.ScVal into DataKey.
 func DataKeyFromScVal(val xdr.ScVal) (DataKey, error) {
-	v, ok := val.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 for DataKey enum")
+	vecPtr, ok := val.GetVec()
+	if !ok || vecPtr == nil || *vecPtr == nil {
+		return DataKey{}, fmt.Errorf("expected vec for DataKey enum")
 	}
-	return DataKey(v), nil
+	vec := *vecPtr
+	if len(vec) < 1 {
+		return DataKey{}, fmt.Errorf("DataKey: empty vec")
+	}
+	tag, err := scval.SymbolFromScVal(vec[0])
+	if err != nil {
+		return DataKey{}, fmt.Errorf("DataKey: variant tag: %w", err)
+	}
+	switch tag {
+	case "TokenConfig":
+		if len(vec) != 2 {
+			return DataKey{}, fmt.Errorf("DataKey::TokenConfig: expected 2 elements, got %d", len(vec))
+		}
+		payload := &DataKeyTokenConfig{}
+		if v, err := scval.AddressFromScVal(vec[1]); err != nil {
+			return DataKey{}, fmt.Errorf("DataKey::TokenConfig[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return DataKey{TokenConfig: payload}, nil
+	case "TokenIndex":
+		if len(vec) != 2 {
+			return DataKey{}, fmt.Errorf("DataKey::TokenIndex: expected 2 elements, got %d", len(vec))
+		}
+		payload := &DataKeyTokenIndex{}
+		if v, ok := vec[1].GetU32(); ok {
+			payload.Field0 = uint32(v)
+		} else {
+			return DataKey{}, fmt.Errorf("DataKey::TokenIndex[0]: expected u32")
+		}
+		return DataKey{TokenIndex: payload}, nil
+	default:
+		return DataKey{}, fmt.Errorf("DataKey: unknown variant %q", tag)
+	}
 }

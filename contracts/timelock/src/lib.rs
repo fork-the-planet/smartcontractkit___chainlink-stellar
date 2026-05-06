@@ -29,9 +29,11 @@
 //!   the DONE mark and any partial call side effects.
 //! - Blocked selectors are checked at schedule time only (not at execute time),
 //!   mirroring Solidity semantics. The bypasser ignores blocked selectors.
-//! - TTL expiry of a per-operation timestamp entry silently drops that operation’s state.
-//!   Each entry is refreshed when read/written; call `extend_all_ttls` for fixed keys,
-//!   `extend_op_time_ttl(id)` for rarely queried ids, or rely on normal activity.
+//! - TTL expiry of a per-operation timestamp entry causes it to be archived (not deleted).
+//!   Archived entries can be restored with a `RestoreFootprint` transaction. Each entry is
+//!   refreshed on read/write; call `extend_op_time_ttl(id)` for entries that won’t be touched
+//!   soon (e.g. a DONE predecessor that a future operation will depend on). If `execute_batch`
+//!   fails because a DONE predecessor is archived, restore it first, then retry.
 //!
 //! # Invoke payloads (`Call.data`)
 //! Decoding uses [`common_helpers::soroban_invoke`]; recoverable failures surface as
@@ -548,8 +550,9 @@ impl TimelockContract {
 
     /// Permissionless: extend archival TTL for one operation timestamp entry, if it exists.
     ///
-    /// Prefer relying on normal reads/writes (which refresh TTL). Use this for ids that
-    /// might otherwise stay untouched until archival (e.g. long-lived DONE predecessors).
+    /// Use this for DONE predecessors that won't be touched again for a long time but must
+    /// remain accessible for future dependent operations. If an entry has already been archived,
+    /// restore it with a `RestoreFootprint` transaction before calling this function.
     pub fn extend_op_time_ttl(env: Env, id: BytesN<32>) -> Result<(), TimelockError> {
         <Self as Initializable>::require_initialized(&env).map_err(TimelockError::from)?;
         extend_op_time_entry_ttl(&env, &id);

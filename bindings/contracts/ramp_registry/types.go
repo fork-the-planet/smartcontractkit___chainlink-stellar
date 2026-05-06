@@ -8,6 +8,53 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
+// OffRampKey represents the OffRampKey struct from the contract.
+type OffRampKey struct {
+	Offramp             string
+	SourceChainSelector uint64
+}
+
+// ToScVal converts OffRampKey to an xdr.ScVal for contract calls.
+func (s OffRampKey) ToScVal() (xdr.ScVal, error) {
+	return scval.BuildStructScVal(map[string]xdr.ScVal{
+		"offramp":               scval.AddressToScVal(s.Offramp),
+		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
+	})
+}
+
+// OffRampKeyFromScVal parses an xdr.ScVal into OffRampKey.
+func OffRampKeyFromScVal(val xdr.ScVal) (*OffRampKey, error) {
+	scMap, ok := val.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("not a map type")
+	}
+
+	result := &OffRampKey{}
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "offramp":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("offramp: %w", err)
+			}
+			result.Offramp = v
+		case "source_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("source_chain_selector: %w", err)
+			}
+			result.SourceChainSelector = v
+		}
+	}
+
+	return result, nil
+}
+
 // OnRampEntry represents the OnRampEntry struct from the contract.
 type OnRampEntry struct {
 	DestChainSelector uint64
@@ -57,15 +104,15 @@ func OnRampEntryFromScVal(val xdr.ScVal) (*OnRampEntry, error) {
 
 // OffRampEntry represents the OffRampEntry struct from the contract.
 type OffRampEntry struct {
-	SourceChainSelector uint64
 	Offramp             string
+	SourceChainSelector uint64
 }
 
 // ToScVal converts OffRampEntry to an xdr.ScVal for contract calls.
 func (s OffRampEntry) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 		"offramp":               scval.AddressToScVal(s.Offramp),
+		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 	})
 }
 
@@ -84,18 +131,18 @@ func OffRampEntryFromScVal(val xdr.ScVal) (*OffRampEntry, error) {
 		}
 
 		switch string(key) {
-		case "source_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("source_chain_selector: %w", err)
-			}
-			result.SourceChainSelector = v
 		case "offramp":
 			v, err := scval.AddressFromScVal(entry.Val)
 			if err != nil {
 				return nil, fmt.Errorf("offramp: %w", err)
 			}
 			result.Offramp = v
+		case "source_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("source_chain_selector: %w", err)
+			}
+			result.SourceChainSelector = v
 		}
 	}
 
@@ -151,17 +198,17 @@ func OnRampUpdateFromScVal(val xdr.ScVal) (*OnRampUpdate, error) {
 
 // OffRampUpdate represents the OffRampUpdate struct from the contract.
 type OffRampUpdate struct {
-	SourceChainSelector uint64
-	Offramp             string
 	Enabled             bool
+	Offramp             string
+	SourceChainSelector uint64
 }
 
 // ToScVal converts OffRampUpdate to an xdr.ScVal for contract calls.
 func (s OffRampUpdate) ToScVal() (xdr.ScVal, error) {
 	return scval.BuildStructScVal(map[string]xdr.ScVal{
-		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
-		"offramp":               scval.AddressToScVal(s.Offramp),
 		"enabled":               scval.BoolToScVal(s.Enabled),
+		"offramp":               scval.AddressToScVal(s.Offramp),
+		"source_chain_selector": scval.Uint64ToScVal(s.SourceChainSelector),
 	})
 }
 
@@ -180,26 +227,77 @@ func OffRampUpdateFromScVal(val xdr.ScVal) (*OffRampUpdate, error) {
 		}
 
 		switch string(key) {
-		case "source_chain_selector":
-			v, err := scval.Uint64FromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("source_chain_selector: %w", err)
-			}
-			result.SourceChainSelector = v
-		case "offramp":
-			v, err := scval.AddressFromScVal(entry.Val)
-			if err != nil {
-				return nil, fmt.Errorf("offramp: %w", err)
-			}
-			result.Offramp = v
 		case "enabled":
 			v, ok := entry.Val.GetB()
 			if !ok {
 				return nil, fmt.Errorf("enabled is not bool")
 			}
 			result.Enabled = v
+		case "offramp":
+			v, err := scval.AddressFromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("offramp: %w", err)
+			}
+			result.Offramp = v
+		case "source_chain_selector":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err != nil {
+				return nil, fmt.Errorf("source_chain_selector: %w", err)
+			}
+			result.SourceChainSelector = v
 		}
 	}
 
 	return result, nil
 }
+
+// OnRampSetEvent represents the OnRampSetEvent event.
+// Topics: [ramp_reg_OnRampSet]
+type OnRampSetEvent struct {
+	DestChainSelector uint64
+	Onramp            string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OnRampSetEventTopic is the event topic identifier.
+const OnRampSetEventTopic = "ramp_reg_OnRampSet"
+
+// OffRampAddedEvent represents the OffRampAddedEvent event.
+// Topics: [ramp_reg_OffRampAdded]
+type OffRampAddedEvent struct {
+	SourceChainSelector uint64
+	Offramp             string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OffRampAddedEventTopic is the event topic identifier.
+const OffRampAddedEventTopic = "ramp_reg_OffRampAdded"
+
+// OnRampRemovedEvent represents the OnRampRemovedEvent event.
+// Topics: [ramp_reg_OnRampRemoved]
+type OnRampRemovedEvent struct {
+	DestChainSelector uint64
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OnRampRemovedEventTopic is the event topic identifier.
+const OnRampRemovedEventTopic = "ramp_reg_OnRampRemoved"
+
+// OffRampRemovedEvent represents the OffRampRemovedEvent event.
+// Topics: [ramp_reg_OffRampRemoved]
+type OffRampRemovedEvent struct {
+	SourceChainSelector uint64
+	Offramp             string
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// OffRampRemovedEventTopic is the event topic identifier.
+const OffRampRemovedEventTopic = "ramp_reg_OffRampRemoved"
