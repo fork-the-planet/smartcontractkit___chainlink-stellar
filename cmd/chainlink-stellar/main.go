@@ -50,9 +50,7 @@ type pluginRelayer struct {
 	loop.Plugin
 }
 
-// NewRelayer is the LOOP factory method invoked by the Chainlink node to
-// instantiate a Stellar relayer for each [[Stellar]] chain config block.
-// It mirrors the chainlink-aptos pluginRelayer.NewRelayer pattern.
+// NewRelayer is the LOOP factory method invoked by the Chainlink node
 func (p *pluginRelayer) NewRelayer(
 	ctx context.Context,
 	rawConfig string,
