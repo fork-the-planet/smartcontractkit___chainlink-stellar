@@ -16,7 +16,7 @@ import (
 )
 
 // CCIPDevenvHost is the runtime surface Stellar CCIP devenv deploy needs (implemented by ccv/chain).
-// Kept in deployment/ccip so deployment/sequences can depend on it without importing ccv/chain or creating import cycles with stellardeploy.
+// Kept in deployment/ccip so deployment/sequences can depend on it without importing ccv/chain.
 type CCIPDevenvHost interface {
 	Logger() *zerolog.Logger
 	Deployer() *stellardeployment.Deployer

@@ -1,4 +1,4 @@
-package stellardeploy
+package ccip
 
 import (
 	"context"
@@ -6,20 +6,18 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
-	sacops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/sac_token"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	sacops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/sac_token"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 	poolops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_pool"
 )
 
-// See [github.com/smartcontractkit/chainlink-stellar/deployment/ccip.DevenvTestTokenPoolQualifier].
+// See [DevenvTestTokenPoolQualifier].
 
 // initialPoolLiquidity is the amount of SAC base units seeded into the
 // lock-release pool so that inbound release_or_mint calls have liquidity.
@@ -30,8 +28,7 @@ const initialPoolLiquidity int64 = 1_000_000_000
 // available, creates the test SAC token, initializes the pool, and registers token+pool
 // in TokenAdminRegistry. Intended to run from PostDeployContractsForSelector after core CCIP deploy.
 // opBundle must be the parent CLDF operations bundle for the deploy run (e.g. env.OperationsBundle).
-func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle, host Host) error {
-	h := host
+func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle, host CCIPDevenvHost) error {
 	stellarRoot, err := stellarutil.FindStellarRoot()
 	if err != nil {
 		return fmt.Errorf("find stellar root: %w", err)
@@ -41,47 +38,47 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
 		return fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
 	}
-	h.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract (post-deploy)...")
-	poolSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "lock-release-pool")
-	deps := stellardeps.FromDeployer(h.Deployer())
+	host.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract (post-deploy)...")
+	poolSalt := stellardeployment.GenerateDeterministicSalt(host.DeployerKeypair().Address(), "lock-release-pool")
+	deps := stellardeps.FromDeployer(host.Deployer())
 	poolRep, err := cldfops.ExecuteOperation(opBundle, poolops.Deploy, deps, stellarops.DeployInput{WasmPath: poolWasmPath, Salt: poolSalt})
 	if err != nil {
 		return fmt.Errorf("failed to deploy LockRelease pool: %w", err)
 	}
 	poolContractID := poolRep.Output.ContractID
-	poolClient := tokenpoolbindings.NewTokenPoolClient(h.Deployer(), poolContractID)
-	h.SetTokenPool(poolContractID, poolClient)
-	h.Logger().Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
+	poolClient := tokenpoolbindings.NewTokenPoolClient(host.Deployer(), poolContractID)
+	host.SetTokenPool(poolContractID, poolClient)
+	host.Logger().Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
 
-	tarClient := h.TokenAdminRegistryClient()
+	tarClient := host.TokenAdminRegistryClient()
 	if tarClient == nil {
 		return fmt.Errorf("token admin registry client is nil before pool token setup")
 	}
 
-	if h.FriendbotURL() == "" {
-		h.Logger().Warn().Msg("Friendbot URL not available; skipping test token deployment. Token transfer E2E tests will not work.")
+	if host.FriendbotURL() == "" {
+		host.Logger().Warn().Msg("Friendbot URL not available; skipping test token deployment. Token transfer E2E tests will not work.")
 		return nil
 	}
 
-	tokenContractID, tokenErr := h.CreateTestToken(ctx, h.FriendbotURL())
+	tokenContractID, tokenErr := host.CreateTestToken(ctx, host.FriendbotURL())
 	if tokenErr != nil {
 		return fmt.Errorf("failed to create test token: %w", tokenErr)
 	}
-	h.SetTestToken(tokenContractID)
+	host.SetTestToken(tokenContractID)
 
 	// Match typical Stellar SAC / pool configuration (EVM `uint8` token decimals on the pool).
 	const testTokenPoolDecimals uint32 = 7
-	routerContractID := h.RouterContractID()
+	routerContractID := host.RouterContractID()
 	if routerContractID == "" {
 		return fmt.Errorf("router contract ID is empty; token pool initialize requires router (deploy core CCIP first)")
 	}
-	rampRegistryContractID := h.RampRegistryContractID()
+	rampRegistryContractID := host.RampRegistryContractID()
 	if rampRegistryContractID == "" {
 		return fmt.Errorf("ramp registry contract ID is empty; token pool initialize requires ramp registry (deploy core CCIP first)")
 	}
 	if _, err := cldfops.ExecuteOperation(opBundle, poolops.Initialize, deps, poolops.InitializeInput{
 		ContractID:    poolContractID,
-		Owner:         h.DeployerKeypair().Address(),
+		Owner:         host.DeployerKeypair().Address(),
 		Token:         tokenContractID,
 		TokenDecimals: testTokenPoolDecimals,
 		Router:        routerContractID,
@@ -91,7 +88,7 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 	}
 
 	// Fund the pool with SAC liquidity so inbound release_or_mint calls succeed.
-	deployerAddr := h.DeployerKeypair().Address()
+	deployerAddr := host.DeployerKeypair().Address()
 	if _, err := cldfops.ExecuteOperation(opBundle, sacops.Transfer, deps, sacops.TransferInput{
 		ContractID: tokenContractID,
 		From:       deployerAddr,
@@ -100,7 +97,7 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 	}); err != nil {
 		return fmt.Errorf("fund pool with SAC liquidity: %w", err)
 	}
-	h.Logger().Info().
+	host.Logger().Info().
 		Str("pool", poolContractID).
 		Int64("amount", initialPoolLiquidity).
 		Msg("Funded lock-release pool with SAC liquidity")
@@ -128,14 +125,9 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 	}); err != nil {
 		return fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
 	}
-	h.Logger().Info().
+	host.Logger().Info().
 		Str("token", tokenContractID).
 		Str("pool", poolContractID).
 		Msg("Token pool registered in TokenAdminRegistry")
 	return nil
-}
-
-// LockReleasePoolAddressRefDataStore forwards to [github.com/smartcontractkit/chainlink-stellar/deployment/ccip.LockReleasePoolAddressRefDataStore].
-func LockReleasePoolAddressRefDataStore(chainSelector uint64, poolContractID, tokenContractID string) (datastore.DataStore, error) {
-	return stellarccip.LockReleasePoolAddressRefDataStore(chainSelector, poolContractID, tokenContractID)
 }

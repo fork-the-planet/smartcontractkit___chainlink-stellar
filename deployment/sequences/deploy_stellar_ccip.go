@@ -26,7 +26,7 @@ type DeployStellarCCIPInnerInput struct {
 var StellarDeployChainContracts = cldf_ops.NewSequence(
 	"stellar-deploy-chain-contracts",
 	SequenceVersion,
-	"Deploys Stellar Soroban CCIP contracts via CLDF Stellar chain (adapter path). Topology is nil: committee signer config uses placeholders unless deploy is run via ccv/stellardeploy with topology.",
+	"Deploys Stellar Soroban CCIP contracts via CLDF Stellar chain (adapter path). Topology is nil: committee signer config uses placeholders unless deploy is run via ccv ([RunStellarCCIPFullDeployForCCV]).",
 	func(b cldf_ops.Bundle, chains cldf_chain.BlockChains, input ccvadapters.DeployChainContractsInput) (seq_core.OnChainOutput, error) {
 		ch, ok := chains.StellarChains()[input.ChainSelector]
 		if !ok {
@@ -42,7 +42,7 @@ var StellarDeployChainContracts = cldf_ops.NewSequence(
 		if err != nil {
 			return seq_core.OnChainOutput{}, fmt.Errorf("stellar devenv host: %w", err)
 		}
-		// DeployChainContractsInput has no topology field on this chainlink-ccip/deployment pin; ccv/stellardeploy pass topology via their own entrypoints.
+		// DeployChainContractsInput has no topology field on this chainlink-ccip/deployment pin; ccv uses [RunStellarCCIPFullDeployForCCV].
 		return RunStellarCCIPFullDeploy(b.GetContext(), b, deps, host, nil, DeployStellarCCIPInnerInput{
 			ChainSelector:     input.ChainSelector,
 			AllSelectors:      allSelectorsFromBlockChains(chains),

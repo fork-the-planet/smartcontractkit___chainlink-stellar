@@ -56,10 +56,9 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
-	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
-	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -430,8 +429,8 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 }
 
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
-// Deploys the lock-release test pool and SAC token (EVM post-deploy parity), applies FeeQuoter
-// pricing for the test token, and returns a datastore delta with the pool AddressRef.
+// Post-deploy parity with EVM: deploys the lock-release test pool and test SAC ([stellarccip.DeployLockReleaseTestTokenPool]),
+// applies FeeQuoter pricing for the test token ([stellarccip.ApplyFeeQuoterTestTokenConfig]), and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
 
@@ -440,7 +439,7 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	}
 
 	host := &stellarCCIPDeployHost{c: c}
-	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
+	if err := stellarccip.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
 	}
 
@@ -512,15 +511,7 @@ func (c *Chain) GetTokenTransferConfigs(
 // shared DeployChainContracts changeset merge path.
 // opBundle is the CLDF bundle from the executing sequence (same bundle as nested ExecuteOperation).
 func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, opBundle cldf_ops.Bundle, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (seq_core.OnChainOutput, error) {
-	offTopo, err := stellarccip.CCVEnvironmentTopologyToOffchain(topology)
-	if err != nil {
-		return seq_core.OnChainOutput{}, err
-	}
-	return stellarsequences.RunStellarCCIPFullDeploy(ctx, opBundle, c.StellarDepsForDeploy(), c.CCIPDevenvHost(), offTopo, stellarsequences.DeployStellarCCIPInnerInput{
-		ChainSelector:     selector,
-		AllSelectors:      allSelectors,
-		ExistingAddresses: existingAddresses,
-	})
+	return stellarsequences.RunStellarCCIPFullDeployForCCV(ctx, opBundle, c.StellarDepsForDeploy(), c.CCIPDevenvHost(), allSelectors, selector, topology, existingAddresses)
 }
 
 // StellarDepsForDeploy returns CLDF Stellar operation dependencies from this chain's deployer (same role as passing evm.Chain into EVM ops).

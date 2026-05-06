@@ -67,7 +67,7 @@ func execStellarCCIPOp[IN, OUT any](
 }
 
 // RunStellarCCIPFullDeploy deploys and configures the full Stellar CCIP Soroban stack for devenv using CLDF
-// operations on the given bundle. It mirrors the former stellardeploy phased pipeline (foundation → verification/fees
+// operations on the given bundle. It mirrors the phased devenv pipeline (foundation → verification/fees
 // → ramps → receiver + cross-family datastore refs).
 func RunStellarCCIPFullDeploy(
 	ctx context.Context,
