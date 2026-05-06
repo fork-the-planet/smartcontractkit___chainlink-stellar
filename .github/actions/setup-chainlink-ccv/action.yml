@@ -13,7 +13,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        REF="refs/pull/1057"
+        REF="refs/pull/1057/head"
         EXPECTED_SHA="f3f6026be46c35b3de5d78eb2896b42e91f17f59"
         DEST="${GITHUB_WORKSPACE}/../chainlink-ccv"
         git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git "${DEST}" \
@@ -21,6 +21,6 @@ runs:
           && git -C "${DEST}" checkout FETCH_HEAD
         actual="$(git -C "${DEST}" rev-parse HEAD)"
         if [[ "${actual}" != "${EXPECTED_SHA}" ]]; then
-          echo "::error::chainlink-ccv HEAD ${actual} does not match expected ${EXPECTED_SHA} for tag ${REF}"
+          echo "::error::chainlink-ccv HEAD ${actual} does not match expected ${EXPECTED_SHA} for ref ${REF}"
           exit 1
         fi
