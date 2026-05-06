@@ -41,14 +41,45 @@ type ErrorEnum struct {
 	Variants []ErrorVariant
 }
 
+// EnumVariantKind describes the shape of a Soroban #[contracttype] enum variant.
+//
+// Soroban encodes a unit-only ("C-style") enum as ScVal::U32. Any enum that
+// contains at least one tuple or struct variant is encoded as
+// ScVal::Vec([ ScVal::Symbol(<VariantName>), <payload-fields...> ]) — the
+// variant identifier is used verbatim (no case conversion) as the discriminant
+// symbol. We track per-variant kind so codegen can branch correctly.
+type EnumVariantKind int
+
+const (
+	EnumVariantUnit   EnumVariantKind = iota // `Foo` or `Foo = N`
+	EnumVariantTuple                         // `Foo(T1, T2, ...)`
+	EnumVariantStruct                        // `Foo { a: T1, b: T2 }`
+)
+
 type Enum struct {
 	Name     string
 	Variants []EnumVariant
 }
 
+// IsUnit reports whether every variant is a unit (C-style) variant.
+// Mixed enums (any tuple/struct variant) require the discriminated-union encoding.
+func (e Enum) IsUnit() bool {
+	for _, v := range e.Variants {
+		if v.Kind != EnumVariantUnit {
+			return false
+		}
+	}
+	return true
+}
+
 type EnumVariant struct {
-	Name  string
-	Value int // TODO: do we need to handle advanced Rust enums?
+	Name string
+	Kind EnumVariantKind
+	// Value is the C-style discriminant (only meaningful for EnumVariantUnit).
+	Value int
+	// Payload holds positional fields for tuple variants (Field.Name == "")
+	// and named fields for struct variants. Empty for unit variants.
+	Payload []Field
 }
 
 // ErrorVariant represents an error enum variant.
@@ -87,35 +118,191 @@ func ParseRustBindings(input string) (*Contract, error) {
 }
 
 func parseEnums(input string) []Enum {
-	// Match: #[soroban_sdk::contracttype] pub enum Name { ... }
-	enumRe := regexp.MustCompile(`(?s)#\[soroban_sdk::contracttype[^\]]*\]\s*(?:#\[derive[^\]]*\]\s*)*pub enum (\w+)\s*\{([^}]+)\}`)
-	variantRe := regexp.MustCompile(`(\w+)\s*=\s*(\d+)`)
+	// Match the enum *header* — attribute(s) + `pub enum Name {` — and then
+	// walk the body with bracket-balancing because struct variants can contain
+	// nested `{}`.
+	//
+	// We deliberately capture the full attribute block so we can detect the
+	// `export = false` opt-out (PR#3 below): contract authors that mark a type
+	// non-exportable on the Rust side want it omitted from Go bindings too.
+	headerRe := regexp.MustCompile(`(?s)(#\[soroban_sdk::contracttype([^\]]*)\]\s*(?:#\[derive[^\]]*\]\s*)*)pub enum (\w+)\s*\{`)
 
 	var enums []Enum
-	matches := enumRe.FindAllStringSubmatch(input, -1)
+	matches := headerRe.FindAllStringSubmatchIndex(input, -1)
 
-	for _, match := range matches {
-		name := match[1]
-		body := match[2]
+	for _, m := range matches {
+		// Submatch indices: 0,1 = full match; 2,3 = attribute block; 4,5 = attr args; 6,7 = name; m[1] = char after `{`.
+		// We capture attr args (e.g. `(export = false)`) for forward-compat,
+		// but intentionally do NOT use them as a skip signal: `export = false`
+		// is a Stellar SDK directive that controls whether the type is
+		// emitted in the contract's on-chain interface schema. It is
+		// orthogonal to whether Go callers need to encode the type for
+		// invocations or for `RestoreFootprintOp` ledger-key construction.
+		// Many existing public ABI surfaces use `export = false` enums
+		// (MessageDirection, MessageExecutionState) and still need Go
+		// bindings.
+		_ = input[m[4]:m[5]]
+		name := input[m[6]:m[7]]
+		bodyStart := m[1]
 
-		var variants []EnumVariant
-		variantMatches := variantRe.FindAllStringSubmatch(body, -1)
-		for _, vm := range variantMatches {
-			val := 0
-			fmt.Sscanf(vm[2], "%d", &val)
-			variants = append(variants, EnumVariant{
-				Name:  vm[1],
-				Value: val,
-			})
+		body, ok := extractBalancedBody(input, bodyStart)
+		if !ok {
+			continue
 		}
 
-		enums = append(enums, Enum{
-			Name:     name,
-			Variants: variants,
-		})
+		variants := parseEnumVariants(body)
+		enums = append(enums, Enum{Name: name, Variants: variants})
 	}
 
 	return enums
+}
+
+// extractBalancedBody returns the text between `start` (just past the opening
+// `{`) and the matching `}`, respecting nested braces. The second return value
+// is false if the input is unbalanced.
+func extractBalancedBody(input string, start int) (string, bool) {
+	depth := 1
+	for i := start; i < len(input); i++ {
+		switch input[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return input[start:i], true
+			}
+		}
+	}
+	return "", false
+}
+
+// parseEnumVariants parses the raw body of a `pub enum` into structured variants.
+// Handles three Rust shapes:
+//   - unit (with or without an explicit discriminant): `Foo` / `Foo = 7`
+//   - tuple: `Foo(T1, T2)` (commas inside generics like `Vec<u32, u64>` ignored)
+//   - struct: `Foo { a: T1, b: T2 }`
+func parseEnumVariants(body string) []EnumVariant {
+	unitDiscRe := regexp.MustCompile(`^\s*(\w+)\s*=\s*(-?\d+)\s*$`)
+	unitBareRe := regexp.MustCompile(`^\s*(\w+)\s*$`)
+	tupleRe := regexp.MustCompile(`(?s)^\s*(\w+)\s*\((.+)\)\s*$`)
+	structRe := regexp.MustCompile(`(?s)^\s*(\w+)\s*\{(.+)\}\s*$`)
+	structFieldRe := regexp.MustCompile(`(\w+)\s*:\s*([^,]+)`)
+
+	// Track the next implicit discriminant for bare unit variants.
+	// Rust semantics: bare variants without an explicit `= N` get sequential
+	// values starting at 0 in declaration order, and an explicit discriminant
+	// resets the counter so the next bare variant is `discriminant + 1`.
+	// This must match the on-chain ScVal::U32 wire value Soroban emits for
+	// `#[contracttype]` unit-only enums; otherwise named Go constants
+	// collide on the wire (e.g. MessageDirection::{Outbound,Inbound} both
+	// serialising as 0).
+	nextImplicit := 0
+
+	var variants []EnumVariant
+	for _, raw := range splitTopLevel(body, ',') {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		// Strip a possible doc/attribute prefix on the variant line.
+		// Rust attributes on a variant aren't expected here, but be defensive.
+		switch {
+		case structRe.MatchString(v):
+			sm := structRe.FindStringSubmatch(v)
+			fieldsRaw := sm[2]
+			var payload []Field
+			for _, fm := range structFieldRe.FindAllStringSubmatch(fieldsRaw, -1) {
+				payload = append(payload, Field{
+					Name: strings.TrimSpace(fm[1]),
+					Type: qualifySorobanType(strings.TrimSpace(fm[2])),
+				})
+			}
+			variants = append(variants, EnumVariant{
+				Name:    sm[1],
+				Kind:    EnumVariantStruct,
+				Payload: payload,
+			})
+		case tupleRe.MatchString(v):
+			tm := tupleRe.FindStringSubmatch(v)
+			payloadRaw := tm[2]
+			var payload []Field
+			for _, t := range splitTopLevel(payloadRaw, ',') {
+				t = strings.TrimSpace(t)
+				if t == "" {
+					continue
+				}
+				payload = append(payload, Field{
+					Name: "",
+					Type: qualifySorobanType(t),
+				})
+			}
+			variants = append(variants, EnumVariant{
+				Name:    tm[1],
+				Kind:    EnumVariantTuple,
+				Payload: payload,
+			})
+		case unitDiscRe.MatchString(v):
+			um := unitDiscRe.FindStringSubmatch(v)
+			val := 0
+			fmt.Sscanf(um[2], "%d", &val)
+			variants = append(variants, EnumVariant{
+				Name:  um[1],
+				Kind:  EnumVariantUnit,
+				Value: val,
+			})
+			nextImplicit = val + 1
+		case unitBareRe.MatchString(v):
+			um := unitBareRe.FindStringSubmatch(v)
+			variants = append(variants, EnumVariant{
+				Name:  um[1],
+				Kind:  EnumVariantUnit,
+				Value: nextImplicit,
+			})
+			nextImplicit++
+		}
+	}
+	return variants
+}
+
+// splitTopLevel splits `s` on `sep`, respecting nesting in `<>`, `()`, and `{}`.
+// This lets us handle `Vec<u32, u64>` (no split inside generics) and
+// `Foo { a: T1, b: T2 }` (no split inside the struct body).
+func splitTopLevel(s string, sep rune) []string {
+	var out []string
+	var cur strings.Builder
+	angle, paren, brace := 0, 0, 0
+	for _, r := range s {
+		switch r {
+		case '<':
+			angle++
+		case '>':
+			if angle > 0 {
+				angle--
+			}
+		case '(':
+			paren++
+		case ')':
+			if paren > 0 {
+				paren--
+			}
+		case '{':
+			brace++
+		case '}':
+			if brace > 0 {
+				brace--
+			}
+		}
+		if r == sep && angle == 0 && paren == 0 && brace == 0 {
+			out = append(out, cur.String())
+			cur.Reset()
+			continue
+		}
+		cur.WriteRune(r)
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
 }
 
 func parseStructs(input string) []Struct {

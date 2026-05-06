@@ -28,3 +28,11 @@ pub struct OpExecutedEvent {
     pub data: Bytes,
     pub value: BytesN<32>,
 }
+
+/// Emitted when the owner-configured `min_secs_per_ledger` (used to derive the dynamic
+/// `valid_until` cap) is updated. No Solidity counterpart — Stellar-specific.
+#[contractevent(topics = ["mcms_MinSecsPerLedgerSet"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MinSecsPerLedgerSetEvent {
+    pub min_secs_per_ledger: u64,
+}

@@ -47,15 +47,15 @@ const GLOBAL_CURSE_SUBJECT: [u8; 16] = [
 #[contract]
 pub struct RmnRemoteContract;
 
+#[contractimpl]
+impl Initializable for RmnRemoteContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
 #[contractimpl(contracttrait)]
 impl Ownable for RmnRemoteContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
-}
-
-#[contractimpl]
-impl Initializable for RmnRemoteContract {
-    const INITIALIZED: Symbol = INITIALIZED;
 }
 
 #[contractimpl]

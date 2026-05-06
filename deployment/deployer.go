@@ -14,11 +14,19 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/network"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
+
+// stellarHashTransactionInEnvelope is a thin alias for
+// network.HashTransactionInEnvelope so the indirection is explicit at the call
+// site and tests can mock it without importing go-stellar-sdk/network directly.
+func stellarHashTransactionInEnvelope(env xdr.TransactionEnvelope, passphrase string) ([32]byte, error) {
+	return network.HashTransactionInEnvelope(env, passphrase)
+}
 
 // Compile-time check that Deployer satisfies the common bindings.Invoker interface.
 var _ bindings.Invoker = (*Deployer)(nil)
@@ -41,6 +49,84 @@ type stellarRPCClient interface {
 	GetTransaction(ctx context.Context, req protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error)
 	GetLedgerEntries(ctx context.Context, req protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error)
 	GetEvents(ctx context.Context, req protocolrpc.GetEventsRequest) (protocolrpc.GetEventsResponse, error)
+}
+
+// TxSigner abstracts transaction signing so the Deployer can use either an
+// in-process *keypair.Full (test paths) or a remote keystore-backed signer
+// that never exposes raw key material (production / chainlink-ccv keystore).
+//
+// Implementations MUST NOT mutate the input transaction; they should clone it
+// and return the signed clone, mirroring (*txnbuild.Transaction).Sign.
+type TxSigner interface {
+	// Address returns the Stellar account strkey (G...) of the signer.
+	Address() string
+	// SignTransaction signs the given transaction for the given network passphrase
+	// and returns a new transaction with the signature appended.
+	SignTransaction(networkPassphrase string, tx *txnbuild.Transaction) (*txnbuild.Transaction, error)
+}
+
+// keypairSigner adapts a *keypair.Full to the TxSigner interface for callers
+// that already hold a raw seed (tests, dev tooling, friendbot-funded accounts).
+type keypairSigner struct {
+	kp *keypair.Full
+}
+
+// NewKeypairSigner returns a TxSigner backed by the given Stellar keypair.
+// The keypair MUST be non-nil; the caller is responsible for safe handling
+// of the underlying private seed.
+func NewKeypairSigner(kp *keypair.Full) TxSigner {
+	return &keypairSigner{kp: kp}
+}
+
+func (s *keypairSigner) Address() string { return s.kp.Address() }
+
+func (s *keypairSigner) SignTransaction(networkPassphrase string, tx *txnbuild.Transaction) (*txnbuild.Transaction, error) {
+	return tx.Sign(networkPassphrase, s.kp)
+}
+
+// stellarSDKSigner is a minimal interface satisfied by both *keypair.Full and
+// the chainlink-deployments-framework stellar.StellarSigner. It lets the
+// SDKSigner adapter accept either without taking a hard dependency on CLDF.
+type stellarSDKSigner interface {
+	Address() string
+	SignDecorated(input []byte) (xdr.DecoratedSignature, error)
+}
+
+// sdkTxSigner adapts an SDK-shaped Stellar signer (e.g.
+// chainlink-deployments-framework's StellarSigner, or *keypair.Full itself)
+// to deployment.TxSigner. It is used by deployment changesets that already
+// hold an env.BlockChains.StellarChains()[sel].Signer instance.
+type sdkTxSigner struct {
+	sdk stellarSDKSigner
+}
+
+// NewSDKSigner wraps a Stellar SDK-shaped signer (any value providing
+// Address() and SignDecorated()) as a deployment.TxSigner. Returns nil if
+// sdk is nil so callers can fall back to a different signer source.
+func NewSDKSigner(sdk stellarSDKSigner) TxSigner {
+	if sdk == nil {
+		return nil
+	}
+	return &sdkTxSigner{sdk: sdk}
+}
+
+func (s *sdkTxSigner) Address() string { return s.sdk.Address() }
+
+// SignTransaction hashes the transaction envelope, asks the underlying SDK
+// signer for a decorated signature, and appends it to a clone of tx. This
+// mirrors what (*txnbuild.Transaction).Sign does internally without requiring
+// a *keypair.Full.
+func (s *sdkTxSigner) SignTransaction(networkPassphrase string, tx *txnbuild.Transaction) (*txnbuild.Transaction, error) {
+	envelope := tx.ToXDR()
+	h, err := stellarHashTransactionInEnvelope(envelope, networkPassphrase)
+	if err != nil {
+		return nil, fmt.Errorf("hash transaction envelope: %w", err)
+	}
+	dec, err := s.sdk.SignDecorated(h[:])
+	if err != nil {
+		return nil, fmt.Errorf("sign decorated: %w", err)
+	}
+	return tx.AddSignatureDecorated(dec)
 }
 
 // DeployerOption configures optional Deployer behaviour.
@@ -83,7 +169,7 @@ func WithTxnTimeBound(d time.Duration) DeployerOption {
 type Deployer struct {
 	rpcClient         stellarRPCClient
 	networkPassphrase string
-	signer            *keypair.Full
+	signer            TxSigner
 	// accountSequence tracks the current on-chain sequence number.
 	accountSequence int64
 	// autoRestore controls automatic RestoreFootprint handling for expired
@@ -103,7 +189,20 @@ type Deployer struct {
 // NewDeployer creates a new Deployer instance. Options can be passed to
 // customise behaviour (e.g. WithAutoRestore(false) to disable automatic
 // restoration of expired persistent entries).
+//
+// The signer argument is a *keypair.Full to preserve compatibility with the
+// majority of call sites (tests, dev tooling, deployment changesets) that
+// already hold a raw seed. For keystore-backed signing in production
+// binaries use NewDeployerWithSigner.
 func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *keypair.Full, opts ...DeployerOption) *Deployer {
+	return NewDeployerWithSigner(rpcClient, networkPassphrase, NewKeypairSigner(signer), opts...)
+}
+
+// NewDeployerWithSigner is like NewDeployer but accepts an arbitrary TxSigner,
+// allowing the caller to back the deployer with a keystore-managed key whose
+// raw bytes are never exposed. Used by ccv/accessors when the bootstrapper
+// keystore provides the Stellar transmitter / deployer Ed25519 key.
+func NewDeployerWithSigner(rpcClient *rpcclient.Client, networkPassphrase string, signer TxSigner, opts ...DeployerOption) *Deployer {
 	d := &Deployer{
 		rpcClient:         rpcClient,
 		networkPassphrase: networkPassphrase,
@@ -586,7 +685,7 @@ func (d *Deployer) buildAndSubmitTransaction(ctx context.Context, sourceAccount 
 		return nil, fmt.Errorf("failed to assemble transaction: %w", err)
 	}
 
-	signedTx, err := assembledTx.Sign(d.networkPassphrase, d.signer)
+	signedTx, err := d.signer.SignTransaction(d.networkPassphrase, assembledTx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
@@ -724,7 +823,7 @@ func (d *Deployer) restoreFootprint(ctx context.Context, preamble protocolrpc.Re
 		return fmt.Errorf("failed to build restore transaction: %w", err)
 	}
 
-	signedTx, err := tx.Sign(d.networkPassphrase, d.signer)
+	signedTx, err := d.signer.SignTransaction(d.networkPassphrase, tx)
 	if err != nil {
 		return fmt.Errorf("failed to sign restore transaction: %w", err)
 	}
@@ -1056,7 +1155,7 @@ func (d *Deployer) SubmitClassicOperation(ctx context.Context, op txnbuild.Opera
 		return fmt.Errorf("build transaction: %w", err)
 	}
 
-	signedTx, err := tx.Sign(d.networkPassphrase, d.signer)
+	signedTx, err := d.signer.SignTransaction(d.networkPassphrase, tx)
 	if err != nil {
 		return fmt.Errorf("sign transaction: %w", err)
 	}

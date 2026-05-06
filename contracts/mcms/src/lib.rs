@@ -20,9 +20,13 @@ use common_authorization::Ownable;
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 use common_helpers::soroban_invoke::decode_invoke_payload;
-use constants::{domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD};
+use constants::{
+    domain_meta, domain_op, LEDGER_BUMP, LEDGER_THRESHOLD, MAX_ROOT_VALIDITY_SECS,
+    MIN_SECS_PER_LEDGER_DEFAULT, MIN_SECS_PER_LEDGER_LOWER_BOUND, MIN_SECS_PER_LEDGER_UPPER_BOUND,
+    SEEN_TTL_SAFETY_MARGIN_SECS,
+};
 use crypto::{cmp_bytes32, recover_eth_address_vrs, verify_merkle_proof};
-use events::{ConfigSetEvent, NewRootEvent, OpExecutedEvent};
+use events::{ConfigSetEvent, MinSecsPerLedgerSetEvent, NewRootEvent, OpExecutedEvent};
 use soroban_sdk::{
     address_payload::AddressPayload, contract, contractimpl, symbol_short, Address, BytesN, Env,
     InvokeError, Map, Symbol, Val, Vec,
@@ -39,10 +43,12 @@ const CHAIN_NETWORK_ID: Symbol = symbol_short!("CHNET");
 const CONFIG: Symbol = symbol_short!("MCSCFG");
 /// Map padded signer addr -> Signer
 const SIGNER_MAP: Symbol = symbol_short!("SIGMAP");
-/// replay protection for set_root
-const SEEN_HASHES: Symbol = symbol_short!("SEEN");
 const EXPIRING_ROOT: Symbol = symbol_short!("EXPROOT");
 const ROOT_META_STORE: Symbol = symbol_short!("RTMETA");
+/// Operator-configured pessimistic floor on seconds-per-ledger, used to derive the dynamic
+/// `valid_until` cap in `set_root`. Persistent so it survives entry archival like every other
+/// fixed key, and bumped via [`bump_ttls`] on normal contract activity.
+const MIN_SPL: Symbol = symbol_short!("MINSPL");
 
 #[contract]
 pub struct McmsContract;
@@ -186,13 +192,7 @@ impl McmsContract {
         let inner = hash_set_root_inner(&env, &root, valid_until);
         let signed_hash = eth_signed_message_hash_32(&env, &inner);
 
-        if !env.storage().persistent().has(&SEEN_HASHES) {
-            let empty: Map<BytesN<32>, bool> = Map::new(&env);
-            env.storage().persistent().set(&SEEN_HASHES, &empty);
-        }
-
-        let mut seen: Map<BytesN<32>, bool> = env.storage().persistent().get(&SEEN_HASHES).unwrap();
-        if seen.get(signed_hash.clone()).unwrap_or(false) {
+        if env.storage().persistent().has(&signed_hash) {
             return Err(McmsError::SignedHashAlreadySeen);
         }
 
@@ -208,6 +208,11 @@ impl McmsContract {
         let now = env.ledger().timestamp();
         if u64::from(valid_until) < now {
             return Err(McmsError::ValidUntilHasAlreadyPassed);
+        }
+        let effective_max_secs = effective_max_root_validity_secs(&env);
+        let max_valid = now.saturating_add(effective_max_secs);
+        if u64::from(valid_until) > max_valid {
+            return Err(McmsError::ValidUntilExceedsMaximum);
         }
 
         let dm = domain_meta(&env);
@@ -259,8 +264,10 @@ impl McmsContract {
             return Err(McmsError::WrongPostOpCount);
         }
 
-        seen.set(signed_hash.clone(), true);
-        env.storage().persistent().set(&SEEN_HASHES, &seen);
+        env.storage().persistent().set(&signed_hash, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&signed_hash, LEDGER_THRESHOLD, LEDGER_BUMP);
 
         env.storage().persistent().set(
             &EXPIRING_ROOT,
@@ -418,13 +425,98 @@ impl McmsContract {
             .ok_or(McmsError::NotInitialized)
     }
 
-    /// Permissionless TTL extension. Call periodically (or via a keeper bot) to prevent
-    /// persistent storage entries — especially `SEEN_HASHES` — from being archived.
-    /// Anyone may call this; it changes no logical state.
+    /// Owner-only update of the pessimistic floor on seconds-per-ledger used to derive the
+    /// dynamic `valid_until` cap in `set_root`. Defaults to
+    /// [`crate::constants::MIN_SECS_PER_LEDGER_DEFAULT`] when unset.
+    ///
+    /// The effective `valid_until` cap is:
+    /// `min(MAX_ROOT_VALIDITY_SECS, LEDGER_BUMP * min_secs_per_ledger - SEEN_TTL_SAFETY_MARGIN_SECS)`.
+    /// Lowering this value shrinks the cap; raising it has no effect once it exceeds the static
+    /// `MAX_ROOT_VALIDITY_SECS` (the static bound still applies). Gated like `set_config`.
+    pub fn set_min_secs_per_ledger(env: Env, secs: u64) -> Result<(), McmsError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env).map_err(McmsError::from)?;
+        if secs < MIN_SECS_PER_LEDGER_LOWER_BOUND || secs > MIN_SECS_PER_LEDGER_UPPER_BOUND {
+            return Err(McmsError::InvalidMinSecsPerLedger);
+        }
+        env.storage().persistent().set(&MIN_SPL, &secs);
+        env.storage()
+            .persistent()
+            .extend_ttl(&MIN_SPL, LEDGER_THRESHOLD, LEDGER_BUMP);
+        MinSecsPerLedgerSetEvent {
+            min_secs_per_ledger: secs,
+        }
+        .publish(&env);
+        bump_ttls(&env);
+        Ok(())
+    }
+
+    /// Returns the currently configured `min_secs_per_ledger`, or the default if never set.
+    pub fn get_min_secs_per_ledger(env: Env) -> Result<u64, McmsError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        Ok(stored_min_secs_per_ledger(&env))
+    }
+
+    /// Permissionless TTL extension for fixed persistent keys and instance storage.
+    /// Per-hash seen entries are extended at creation; restore individual archived hashes
+    /// via a `RestoreFootprint` transaction if needed. Anyone may call this.
+    ///
+    /// # Restoring an archived `SeenHash` entry
+    ///
+    /// `SeenHash(h)` entries are bumped once at creation in [`Self::set_root`] and are
+    /// **never** swept by `bump_ttls` (they are not enumerable from inside the contract).
+    /// Once their TTL elapses they are archived; reads from inside the contract will return
+    /// `false` and the entry's bytes are no longer in live ledger state.
+    ///
+    /// **Replay safety does NOT depend on archived seen entries being readable.** The
+    /// dynamic `valid_until` cap (see [`Self::set_min_secs_per_ledger`]) guarantees that any
+    /// `(root, valid_until)` whose `SeenHash` could possibly be archived has already failed
+    /// the `valid_until < now` check in `set_root`, so replay is impossible regardless of
+    /// archive state.
+    ///
+    /// There is **no** guest-side "restore seen hash" entrypoint, and one cannot exist:
+    /// Soroban does not expose a `restore` host function to contracts. Restoration is a
+    /// host-level operation (`RestoreFootprintOp`) initiated by the **transaction submitter**
+    /// who must include the archived ledger key in the operation's footprint and pay the
+    /// rent fee. This is identical to how the `timelock` contract handles its per-op
+    /// timestamp entries — see `contracts/timelock/src/lib.rs` for the same pattern.
+    ///
+    /// In practice you only need this for forensic/audit reads ("did we ever sign hash X?"):
+    /// submit a transaction that (1) includes `RestoreFootprintOp` for the persistent
+    /// `BytesN<32>` ledger key holding `X`, and (2) calls a read helper or RPC
+    /// `getLedgerEntry` against that key.
     pub fn extend_all_ttls(env: Env) -> Result<(), McmsError> {
         <Self as Initializable>::require_initialized(&env)?;
         bump_ttls(&env);
         Ok(())
+    }
+}
+
+/// Returns the operator-configured `min_secs_per_ledger`, falling back to
+/// [`MIN_SECS_PER_LEDGER_DEFAULT`] when unset.
+fn stored_min_secs_per_ledger(env: &Env) -> u64 {
+    env.storage()
+        .persistent()
+        .get(&MIN_SPL)
+        .unwrap_or(MIN_SECS_PER_LEDGER_DEFAULT)
+}
+
+/// Computes the effective max `valid_until` horizon in seconds:
+/// `min(MAX_ROOT_VALIDITY_SECS, LEDGER_BUMP * min_secs_per_ledger - SEEN_TTL_SAFETY_MARGIN_SECS)`.
+///
+/// The dynamic term is derived from the worst-case seen-entry lifetime
+/// (`LEDGER_BUMP` ledgers at the configured pessimistic seconds-per-ledger). Subtracting the
+/// safety margin guarantees `valid_until` always expires *strictly* before any freshly bumped
+/// `SeenHash` entry can be archived, closing the replay window without per-hash maintenance.
+fn effective_max_root_validity_secs(env: &Env) -> u64 {
+    let min_spl = stored_min_secs_per_ledger(env);
+    let dynamic = (LEDGER_BUMP as u64)
+        .saturating_mul(min_spl)
+        .saturating_sub(SEEN_TTL_SAFETY_MARGIN_SECS);
+    if dynamic < MAX_ROOT_VALIDITY_SECS {
+        dynamic
+    } else {
+        MAX_ROOT_VALIDITY_SECS
     }
 }
 
@@ -551,14 +643,13 @@ fn verify_signatures(
     Ok(())
 }
 
-/// Extend the TTL of every persistent storage key that currently exists, plus instance storage.
+/// Extend the TTL of fixed persistent storage keys and instance storage.
 ///
-/// Soroban persistent entries are archived if their TTL reaches zero.  For MCMS the most
-/// dangerous consequence is the loss of `SEEN_HASHES`, which would make all previously-used
-/// `(root, validUntil)` tuples replayable.  This helper is called at the end of every
-/// successful public function so that normal contract activity is sufficient to keep all
-/// entries alive.  A dedicated `extend_all_ttls` entry-point lets operators (or a bot) do the
-/// same without triggering a governance action.
+/// Per-hash seen entries (persistent key = signed hash as `BytesN<32>`) are NOT enumerable here; each entry
+/// receives its TTL at creation time in `set_root` and can be individually restored if
+/// archived.  This helper covers the fixed keys (CONFIG, SIGNER_MAP, EXPIRING_ROOT,
+/// ROOT_META_STORE) and is called at the end of every successful public function so that
+/// normal contract activity is sufficient to keep them alive.
 fn bump_ttls(env: &Env) {
     env.storage()
         .instance()
@@ -573,11 +664,6 @@ fn bump_ttls(env: &Env) {
             .persistent()
             .extend_ttl(&SIGNER_MAP, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
-    if env.storage().persistent().has(&SEEN_HASHES) {
-        env.storage()
-            .persistent()
-            .extend_ttl(&SEEN_HASHES, LEDGER_THRESHOLD, LEDGER_BUMP);
-    }
     if env.storage().persistent().has(&EXPIRING_ROOT) {
         env.storage()
             .persistent()
@@ -587,6 +673,11 @@ fn bump_ttls(env: &Env) {
         env.storage()
             .persistent()
             .extend_ttl(&ROOT_META_STORE, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+    if env.storage().persistent().has(&MIN_SPL) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&MIN_SPL, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
 }
 

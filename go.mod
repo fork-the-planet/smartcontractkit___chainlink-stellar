@@ -9,11 +9,11 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
 	github.com/smartcontractkit/chain-selectors v1.0.98
-	github.com/smartcontractkit/chainlink-ccip/chains/evm v0.0.0-20260424003531-60cdf88568fc
-	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260424003531-60cdf88568fc
-	github.com/smartcontractkit/chainlink-ccv v0.0.1
-	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.1
-	github.com/smartcontractkit/chainlink-ccv/deployment v0.0.1
+	github.com/smartcontractkit/chainlink-ccip/chains/evm v0.0.0-20260429214841-fb2e77efc1aa
+	github.com/smartcontractkit/chainlink-ccip/deployment v0.0.0-20260429214841-fb2e77efc1aa
+	github.com/smartcontractkit/chainlink-ccv v0.0.2-0.20260505141947-8206a97a7d0b
+	github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.2-0.20260505141947-8206a97a7d0b
+	github.com/smartcontractkit/chainlink-ccv/deployment v0.0.2-0.20260505141947-8206a97a7d0b
 	github.com/smartcontractkit/chainlink-common v0.11.2-0.20260407150650-8115835abd6e
 	github.com/smartcontractkit/chainlink-deployments-framework v0.100.0
 	github.com/smartcontractkit/chainlink-testing-framework/framework v0.15.19
@@ -140,10 +140,11 @@ require (
 	github.com/smartcontractkit/ccip-owner-contracts v0.1.0 // indirect
 	github.com/smartcontractkit/chainlink-ccv/evm v0.0.1 // indirect
 	github.com/smartcontractkit/chainlink-common/keystore v1.0.2 // indirect
-	github.com/smartcontractkit/chainlink-evm v0.3.4-0.20260410162948-2dca02f24e98 // indirect
-	github.com/smartcontractkit/chainlink-framework/chains v0.0.0-20260326122810-b657beadfb57 // indirect
-	github.com/smartcontractkit/chainlink-framework/metrics v0.0.0-20260401162955-be2bc6b5264b // indirect
-	github.com/smartcontractkit/chainlink-framework/multinode v0.0.0-20260410144512-ca02ad6ed16a // indirect
+	github.com/smartcontractkit/chainlink-evm v0.3.4-0.20260427132147-1ef18876ae9b // indirect
+	github.com/smartcontractkit/chainlink-framework/chains v0.0.0-20260423135514-5b1a7565a99c // indirect
+	github.com/smartcontractkit/chainlink-framework/metrics v0.0.0-20260423135514-5b1a7565a99c // indirect
+	github.com/smartcontractkit/chainlink-framework/multinode v0.0.0-20260423135514-5b1a7565a99c // indirect
+	github.com/smartcontractkit/chainlink-protos/chainlink-ccv/message-rules v0.0.0-20260505131349-78e491b80735 // indirect
 	github.com/smartcontractkit/chainlink-protos/node-platform v0.0.0-20260211172625-dff40e83b3c9 // indirect
 	github.com/smartcontractkit/chainlink-protos/op-catalog v0.0.4 // indirect
 	github.com/smartcontractkit/chainlink-protos/orchestrator v0.10.0 // indirect

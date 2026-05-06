@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,7 +103,6 @@ type Chain struct {
 	logger                 zerolog.Logger
 	rpcClient              *rpcclient.Client
 	networkPassphrase      string
-	sorobanRPCURL          string
 	deployerKeypair        *keypair.Full
 	deployer               *stellardeployment.Deployer
 	onRampClient           *onrampbindings.OnRampClient
@@ -145,19 +143,6 @@ func New(logger zerolog.Logger, selector uint64) *Chain {
 // NetworkPassphrase returns the network passphrase for this chain.
 func (c *Chain) NetworkPassphrase() string {
 	return c.networkPassphrase
-}
-
-// SorobanRPCURL returns the Soroban RPC URL for this chain.
-func (c *Chain) SorobanRPCURL() string {
-	return c.sorobanRPCURL
-}
-
-// DeployerAddress returns the deployer's Stellar address.
-func (c *Chain) DeployerAddress() string {
-	if c.deployerKeypair == nil {
-		return ""
-	}
-	return c.deployerKeypair.Address()
 }
 
 // ChainFamily implements cciptestinterfaces.CCIP17Configuration.
@@ -529,12 +514,12 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 		return nil, fmt.Errorf("failed to create Stellar blockchain network: %w", err)
 	}
 
-	c.sorobanRPCURL = input.Out.Nodes[0].ExternalHTTPUrl
+	sorobanRPCURL := input.Out.Nodes[0].ExternalHTTPUrl
 	c.networkPassphrase = input.Out.NetworkSpecificData.StellarNetwork.NetworkPassphrase
 	c.friendbotURL = input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL
 
 	// Initialize the Soroban RPC client
-	c.rpcClient = rpcclient.NewClient(c.sorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
+	c.rpcClient = rpcclient.NewClient(sorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
 
 	// Generate a deployer keypair for this network
 	// Use the network passphrase as part of the seed for deterministic key generation
@@ -560,7 +545,7 @@ func (c *Chain) DeployLocalNetwork(ctx context.Context, input *blockchain.Input)
 	c.deployer = stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, c.deployerKeypair)
 
 	c.logger.Info().
-		Str("sorobanRPCURL", c.sorobanRPCURL).
+		Str("sorobanRPCURL", sorobanRPCURL).
 		Str("networkPassphrase", c.networkPassphrase).
 		Str("deployerAddress", c.deployerKeypair.Address()).
 		Msg("Stellar network deployed and configured")
@@ -607,10 +592,10 @@ func (c *Chain) fundViaFriendbot(friendbotURL, address string) error {
 
 // FundAddresses implements cciptestinterfaces.CCIP17Configuration.
 // Funds addresses with native Stellar Lumens (XLM).
-// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently
-// skipped — this handles the case where the framework passes EVM pricer
-// addresses (20 bytes) to every chain implementation.
+// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently skipped.
 func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addresses []protocol.UnknownAddress, nativeAmount *big.Int) error {
+	c.logger.Debug().Int("numAddresses", len(addresses)).Msg("Attempting to fund Stellar addresses")
+
 	for _, addr := range addresses {
 		if len(addr) != stellarccip.StellarAddressByteLen {
 			c.logger.Debug().
@@ -620,52 +605,14 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 			continue
 		}
 		addrStr := strkey.MustEncode(strkey.VersionByteAccountID, addr)
-		faucetUrl := fmt.Sprintf("%s?addr=%s", input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL, addrStr)
 
-		// Retry logic for friendbot - it may take up to 90 seconds to be ready after container start
-		var lastErr error
-		maxRetries := 9
-		retryInterval := 20 * time.Second
-
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			resp, err := http.Get(faucetUrl)
-			if err != nil {
-				lastErr = fmt.Errorf("failed to get faucet (friendbot) URL: %w", err)
-				c.logger.Debug().
-					Err(err).
-					Int("attempt", attempt+1).
-					Int("maxRetries", maxRetries).
-					Msg("Friendbot request failed, retrying...")
-				time.Sleep(retryInterval)
-				continue
-			}
-
-			if resp.StatusCode == http.StatusOK {
-				resp.Body.Close()
-				c.logger.Debug().
-					Str("address", addrStr).
-					Int("attempt", attempt+1).
-					Msg("Successfully funded address via friendbot")
-				lastErr = nil
-				break
-			}
-
-			// Non-OK status, might be 502 if friendbot isn't ready yet
-			resp.Body.Close()
-			lastErr = fmt.Errorf("friendbot returned status %s", resp.Status)
-			c.logger.Debug().
-				Str("status", resp.Status).
-				Int("attempt", attempt+1).
-				Int("maxRetries", maxRetries).
-				Str("address", addrStr).
-				Str("faucetUrl", faucetUrl).
-				Msg("Friendbot not ready, retrying...")
-			time.Sleep(retryInterval)
+		if err := c.fundViaFriendbot(c.friendbotURL, addrStr); err != nil {
+			return fmt.Errorf("fund address %s: %w", addrStr, err)
 		}
 
-		if lastErr != nil {
-			return fmt.Errorf("failed to fund address %s after %d attempts: %w", addrStr, maxRetries, lastErr)
-		}
+		c.logger.Info().
+			Str("address", addrStr).
+			Msg("Funded Stellar address via Friendbot")
 	}
 
 	c.logger.Info().
@@ -870,15 +817,6 @@ func (c *Chain) GetMaxDataBytes(ctx context.Context, remoteChainSelector uint64)
 	return cfg.MaxDataBytes, nil
 }
 
-// GetRoundRobinUser implements cciptestinterfaces.CCIP17.
-// Gets a round-robin user for sending transactions.
-func (c *Chain) GetRoundRobinUser() func() *bind.TransactOpts {
-	// NOTE: bind.TransactOpts is EVM-specific. For Stellar, we would need a different
-	// transaction signing mechanism. This method may need to be refactored for
-	// chain-agnostic transaction signing.
-	return nil
-}
-
 // GetSenderAddress implements cciptestinterfaces.CCIP17.
 // Gets the sender address for this chain (the deployer's address).
 func (c *Chain) GetSenderAddress() (protocol.UnknownAddress, error) {
@@ -935,22 +873,6 @@ func (c *Chain) GetTokenBalanceForAddress(ctx context.Context, holderAddress str
 	return big.NewInt(bal), nil
 }
 
-// GetUserNonce implements cciptestinterfaces.CCIP17.
-// Returns the nonce for the given user address on this chain.
-func (c *Chain) GetUserNonce(ctx context.Context, userAddress protocol.UnknownAddress) (uint64, error) {
-	if c.deployer == nil {
-		return 0, fmt.Errorf("deployer not initialized")
-	}
-	_, seq, exists, err := c.deployer.NativeAccountState(ctx, []byte(userAddress))
-	if err != nil {
-		return 0, err
-	}
-	if !exists {
-		return 0, nil
-	}
-	return seq, nil
-}
-
 // ManuallyExecuteMessage implements cciptestinterfaces.CCIP17.
 // Manually executes a CCIP message on this chain.
 func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Message, gasLimit uint64, ccvs []protocol.UnknownAddress, verifierResults [][]byte) (cciptestinterfaces.ExecutionStateChangedEvent, error) {
@@ -1001,14 +923,21 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 }
 
 // SendMessage implements cciptestinterfaces.Chain.
-// It delegates to BuildChainMessage + SendChainMessage.
-func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
+//
+// DEPRECATED upstream in chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md.
+// New callers should use BuildChainMessage + SendChainMessage directly.
+//
+// Stellar-as-source builds its own Soroban GenericExtraArgsV3 XDR blob inside
+// BuildChainMessage and ignores the provider-shaped extra args supplied here,
+// so we accept any ExtraArgsDataProvider and any messageVersion without
+// type-asserting.
+func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, _ cciptestinterfaces.ExtraArgsDataProvider, _ uint8) (cciptestinterfaces.MessageSentEvent, error) {
 	c.logger.Info().
 		Uint64("destChainSelector", dest).
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	msg, err := c.BuildChainMessage(ctx, dest, fields, opts)
+	msg, err := c.BuildChainMessage(ctx, fields, nil)
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, err
 	}
@@ -1100,31 +1029,10 @@ func (c *Chain) GetReceiverContractAddress() (string, error) {
 	return c.receiverContractID, nil
 }
 
-// GetTokenPoolAddress returns the lock-release pool contract ID deployed during
-// DeployContractsForSelector.
-func (c *Chain) GetTokenPoolAddress() (string, error) {
-	if c.tokenPoolContractID == "" {
-		return "", fmt.Errorf("token pool not deployed; run DeployContractsForSelector first")
-	}
-	return c.tokenPoolContractID, nil
-}
-
-// GetOnRampAddress returns the OnRamp contract ID deployed during
-// DeployContractsForSelector.
-func (c *Chain) GetOnRampAddress() (string, error) {
-	if c.onRampContractID == "" {
-		return "", fmt.Errorf("onramp not deployed; run DeployContractsForSelector first")
-	}
-	return c.onRampContractID, nil
-}
-
-// GetFeeTokenAddress returns the fee token SAC contract ID used for CCIP fee
-// payments on this chain.
-func (c *Chain) GetFeeTokenAddress() (string, error) {
-	if c.feeTokenContractID == "" {
-		return "", fmt.Errorf("fee token not deployed; run DeployContractsForSelector first")
-	}
-	return c.feeTokenContractID, nil
+// FeeQuoterClient returns the FeeQuoter contract client, or nil if deploy has not
+// initialized it yet.
+func (c *Chain) FeeQuoterClient() *fqbindings.FeeQuoterClient {
+	return c.feeQuoterClient
 }
 
 // stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
