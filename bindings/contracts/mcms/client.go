@@ -361,6 +361,41 @@ func (c *McmsClient) TransferOwnership(ctx context.Context, newOwner string) err
 	return nil
 }
 
+// GetMinSecsPerLedger calls the get_min_secs_per_ledger function on the contract.
+func (c *McmsClient) GetMinSecsPerLedger(ctx context.Context) (uint64, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_min_secs_per_ledger", args)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call get_min_secs_per_ledger: %w", err)
+	}
+
+	if result == nil {
+		return 0, fmt.Errorf("no return value from get_min_secs_per_ledger")
+	}
+
+	v, err := scval.Uint64FromScVal(*result)
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
+// SetMinSecsPerLedger calls the set_min_secs_per_ledger function on the contract.
+func (c *McmsClient) SetMinSecsPerLedger(ctx context.Context, secs uint64) error {
+	args := []xdr.ScVal{
+		scval.Uint64ToScVal(secs),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "set_min_secs_per_ledger", args)
+	if err != nil {
+		return fmt.Errorf("failed to call set_min_secs_per_ledger: %w", err)
+	}
+
+	_ = result // void return
+	return nil
+}
+
 // CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.
 func (c *McmsClient) CancelOwnershipTransfer(ctx context.Context) error {
 	args := []xdr.ScVal{}
@@ -958,6 +993,73 @@ func ParseOpExecutedEvent(e protocolrpc.EventInfo) (*OpExecutedEvent, error) {
 			v, err := scval.Bytes32FromScVal(entry.Val)
 			if err == nil {
 				result.Value = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// WaitForMinSecsPerLedgerSetEvent waits for a MinSecsPerLedgerSetEvent event.
+func (c *McmsClient) WaitForMinSecsPerLedgerSetEvent(ctx context.Context, startLedger uint32, timeout time.Duration, filter func(*MinSecsPerLedgerSetEvent) bool) (*MinSecsPerLedgerSetEvent, error) {
+	startTime := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if time.Since(startTime) > timeout {
+				return nil, fmt.Errorf("timeout waiting for event")
+			}
+
+			events, err := c.invoker.GetEvents(ctx, c.contractID, startLedger, []string{MinSecsPerLedgerSetEventTopic})
+			if err != nil {
+				continue
+			}
+
+			for _, e := range events {
+				parsed, err := ParseMinSecsPerLedgerSetEvent(e)
+				if err != nil {
+					continue
+				}
+				if filter == nil || filter(parsed) {
+					return parsed, nil
+				}
+			}
+		}
+	}
+}
+
+func ParseMinSecsPerLedgerSetEvent(e protocolrpc.EventInfo) (*MinSecsPerLedgerSetEvent, error) {
+	var eventVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(e.ValueXDR, &eventVal); err != nil {
+		return nil, fmt.Errorf("failed to decode event: %w", err)
+	}
+
+	scMap, ok := eventVal.GetMap()
+	if !ok || scMap == nil {
+		return nil, fmt.Errorf("event is not a map")
+	}
+
+	result := &MinSecsPerLedgerSetEvent{
+		Ledger: uint32(e.Ledger),
+		TxHash: e.TransactionHash,
+	}
+
+	for _, entry := range *scMap {
+		key, ok := entry.Key.GetSym()
+		if !ok {
+			continue
+		}
+
+		switch string(key) {
+		case "min_secs_per_ledger":
+			v, err := scval.Uint64FromScVal(entry.Val)
+			if err == nil {
+				result.MinSecsPerLedger = v
 			}
 		}
 	}

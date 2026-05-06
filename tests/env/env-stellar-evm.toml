@@ -323,7 +323,8 @@ execution_interval = 15_000_000_000
 
 [[executor]]
   image = "stellarexecutor:dev"
-  port = 8101
+  # The `port` field was removed in chainlink-ccv changelog/2026-04-27_executor_jd_migration.md;
+  # the executor no longer exposes an HTTP port and registers with JD over WSRPC.
   chain_family = "stellar"
   source_code_path = "chainlink-stellar/cmd/executor"
   root_path = ".."
@@ -333,7 +334,6 @@ execution_interval = 15_000_000_000
 
 [[executor]]
   image = "executor:dev"
-  port = 8201
   source_code_path = "chainlink-ccv/executor"
   root_path = "../chainlink-ccv"
   container_name = "evm-executor-1"

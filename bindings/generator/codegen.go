@@ -6,18 +6,31 @@ import (
 	"unicode"
 )
 
+// knownEnumNames maps enum type name → whether it is a unit-only enum
+// (true) or a discriminated-union enum (false). This lets codegen choose the
+// correct Go zero value: unit-only enums are `uint32` newtypes (zero `0`),
+// union enums are structs (zero `T{}`).
 var knownEnumNames = map[string]bool{}
 
 func isEnumType(rustType string) bool {
 	name := extractStructName(rustType)
-	return knownEnumNames[name]
+	_, ok := knownEnumNames[name]
+	return ok
+}
+
+// isUnitEnumType reports whether the named enum is unit-only. Returns false
+// for non-enum types and for discriminated-union enums.
+func isUnitEnumType(rustType string) bool {
+	name := extractStructName(rustType)
+	isUnit, ok := knownEnumNames[name]
+	return ok && isUnit
 }
 
 // GenerateTypes generates the types.go file content.
 func GenerateTypes(pkg string, contract *Contract) string {
 	knownEnumNames = map[string]bool{}
 	for _, e := range contract.Enums {
-		knownEnumNames[e.Name] = true
+		knownEnumNames[e.Name] = e.IsUnit()
 	}
 
 	var b strings.Builder
@@ -284,8 +297,24 @@ func generateErrorEnum(b *strings.Builder, e ErrorEnum) {
 	b.WriteString("}\n\n")
 }
 
+// generateEnum dispatches between the two valid Soroban #[contracttype] enum
+// encodings: unit-only enums become Go uint32 newtypes (ScVal::U32 wire
+// format), and any enum with a tuple/struct variant becomes a discriminated
+// union encoded as ScVal::Vec([Symbol(<VariantName>), <payload-fields...>]).
+//
+// IMPORTANT: the variant identifier is used **verbatim** as the discriminant
+// symbol — Soroban does not snake_case it. This must match the on-chain
+// encoding produced by `#[contracttype]` derive on the Rust side.
 func generateEnum(b *strings.Builder, e Enum) {
-	b.WriteString(fmt.Sprintf("// %s represents the %s enum.\n", e.Name, e.Name))
+	if e.IsUnit() {
+		generateUnitEnum(b, e)
+		return
+	}
+	generateUnionEnum(b, e)
+}
+
+func generateUnitEnum(b *strings.Builder, e Enum) {
+	b.WriteString(fmt.Sprintf("// %s represents the %s enum (unit-only Soroban contracttype, encoded as ScVal::U32).\n", e.Name, e.Name))
 	b.WriteString(fmt.Sprintf("type %s uint32\n\n", e.Name))
 	b.WriteString("const (\n")
 	for _, v := range e.Variants {
@@ -306,6 +335,203 @@ func generateEnum(b *strings.Builder, e Enum) {
 	b.WriteString("\t}\n")
 	b.WriteString(fmt.Sprintf("\treturn %s(v), nil\n", e.Name))
 	b.WriteString("}\n\n")
+}
+
+// generateUnionEnum emits a discriminated-union Go shape for any enum that
+// has at least one tuple or struct variant.
+//
+// The Go layout is one outer struct with one optional pointer per variant.
+// Exactly one pointer must be non-nil for a value to be valid; multiple
+// non-nil pointers cause `ToScVal` to fail loudly. Unit variants are
+// represented by an empty marker struct so they can be set the same way
+// (`X{Foo: &PoolDataKeyFoo{}}`) as payload-bearing ones.
+func generateUnionEnum(b *strings.Builder, e Enum) {
+	b.WriteString(fmt.Sprintf("// %s is a Soroban discriminated-union (#[contracttype] enum with payload(s)).\n", e.Name))
+	b.WriteString("// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).\n")
+	b.WriteString("// Construct by setting exactly one variant pointer to a non-nil value.\n")
+	b.WriteString(fmt.Sprintf("type %s struct {\n", e.Name))
+	for _, v := range e.Variants {
+		b.WriteString(fmt.Sprintf("\t%s *%s%s\n", v.Name, e.Name, v.Name))
+	}
+	b.WriteString("}\n\n")
+
+	for _, v := range e.Variants {
+		generateUnionVariantStruct(b, e, v)
+	}
+
+	generateUnionToScVal(b, e)
+	generateUnionFromScVal(b, e)
+}
+
+func generateUnionVariantStruct(b *strings.Builder, e Enum, v EnumVariant) {
+	typeName := e.Name + v.Name
+	switch v.Kind {
+	case EnumVariantUnit:
+		b.WriteString(fmt.Sprintf("// %s is the unit variant %s::%s.\n", typeName, e.Name, v.Name))
+		b.WriteString(fmt.Sprintf("type %s struct{}\n\n", typeName))
+	case EnumVariantTuple:
+		b.WriteString(fmt.Sprintf("// %s is the tuple variant %s::%s.\n", typeName, e.Name, v.Name))
+		b.WriteString(fmt.Sprintf("type %s struct {\n", typeName))
+		for i, f := range v.Payload {
+			b.WriteString(fmt.Sprintf("\t%s %s\n", tupleFieldName(i), rustTypeToGo(f.Type)))
+		}
+		b.WriteString("}\n\n")
+	case EnumVariantStruct:
+		b.WriteString(fmt.Sprintf("// %s is the struct variant %s::%s.\n", typeName, e.Name, v.Name))
+		b.WriteString(fmt.Sprintf("type %s struct {\n", typeName))
+		for _, f := range v.Payload {
+			b.WriteString(fmt.Sprintf("\t%s %s\n", snakeToPascal(f.Name), rustTypeToGo(f.Type)))
+		}
+		b.WriteString("}\n\n")
+	}
+}
+
+// tupleFieldName produces the Go field name we use for the i-th positional
+// payload of a tuple variant. We exposed it as `Field0`, `Field1`, ... rather
+// than `_0`/`_1` so the field is exported (Go restricts non-ASCII or leading
+// underscore exports) and accessible to callers building keys for
+// RestoreFootprintOp.
+func tupleFieldName(i int) string {
+	return fmt.Sprintf("Field%d", i)
+}
+
+func generateUnionToScVal(b *strings.Builder, e Enum) {
+	b.WriteString(fmt.Sprintf("// ToScVal converts %s to its Soroban discriminated-union encoding.\n", e.Name))
+	b.WriteString(fmt.Sprintf("// Returns an error if zero or multiple variant pointers are set.\n"))
+	b.WriteString(fmt.Sprintf("func (e %s) ToScVal() (xdr.ScVal, error) {\n", e.Name))
+	b.WriteString("\tset := 0\n")
+	for _, v := range e.Variants {
+		b.WriteString(fmt.Sprintf("\tif e.%s != nil { set++ }\n", v.Name))
+	}
+	b.WriteString("\tif set != 1 {\n")
+	b.WriteString(fmt.Sprintf("\t\treturn xdr.ScVal{}, fmt.Errorf(\"%s: expected exactly one variant set, got %%d\", set)\n", e.Name))
+	b.WriteString("\t}\n")
+	for _, v := range e.Variants {
+		b.WriteString(fmt.Sprintf("\tif e.%s != nil {\n", v.Name))
+		// Build the ScVec: [Symbol(VariantName), payload...]
+		b.WriteString("\t\titems := []xdr.ScVal{\n")
+		b.WriteString(fmt.Sprintf("\t\t\tscval.SymbolToScVal(%q),\n", v.Name))
+		switch v.Kind {
+		case EnumVariantUnit:
+			// no payload fields
+		case EnumVariantTuple:
+			for i, f := range v.Payload {
+				expr := fmt.Sprintf("e.%s.%s", v.Name, tupleFieldName(i))
+				b.WriteString(fmt.Sprintf("\t\t\t%s,\n", payloadToScValExpr(f.Type, expr)))
+			}
+		case EnumVariantStruct:
+			for _, f := range v.Payload {
+				expr := fmt.Sprintf("e.%s.%s", v.Name, snakeToPascal(f.Name))
+				b.WriteString(fmt.Sprintf("\t\t\t%s,\n", payloadToScValExpr(f.Type, expr)))
+			}
+		}
+		b.WriteString("\t\t}\n")
+		b.WriteString("\t\treturn scval.VecToScVal(items), nil\n")
+		b.WriteString("\t}\n")
+	}
+	// Unreachable due to the `set != 1` guard above, but the Go compiler
+	// can't see that.
+	b.WriteString(fmt.Sprintf("\treturn xdr.ScVal{}, fmt.Errorf(\"%s: unreachable\")\n", e.Name))
+	b.WriteString("}\n\n")
+}
+
+func generateUnionFromScVal(b *strings.Builder, e Enum) {
+	b.WriteString(fmt.Sprintf("// %sFromScVal parses an xdr.ScVal into %s.\n", e.Name, e.Name))
+	b.WriteString(fmt.Sprintf("func %sFromScVal(val xdr.ScVal) (%s, error) {\n", e.Name, e.Name))
+	b.WriteString(fmt.Sprintf("\tvecPtr, ok := val.GetVec()\n"))
+	b.WriteString(fmt.Sprintf("\tif !ok || vecPtr == nil || *vecPtr == nil {\n"))
+	b.WriteString(fmt.Sprintf("\t\treturn %s{}, fmt.Errorf(\"expected vec for %s enum\")\n", e.Name, e.Name))
+	b.WriteString("\t}\n")
+	b.WriteString("\tvec := *vecPtr\n")
+	b.WriteString("\tif len(vec) < 1 {\n")
+	b.WriteString(fmt.Sprintf("\t\treturn %s{}, fmt.Errorf(\"%s: empty vec\")\n", e.Name, e.Name))
+	b.WriteString("\t}\n")
+	b.WriteString("\ttag, err := scval.SymbolFromScVal(vec[0])\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString(fmt.Sprintf("\t\treturn %s{}, fmt.Errorf(\"%s: variant tag: %%w\", err)\n", e.Name, e.Name))
+	b.WriteString("\t}\n")
+	b.WriteString("\tswitch tag {\n")
+	for _, v := range e.Variants {
+		b.WriteString(fmt.Sprintf("\tcase %q:\n", v.Name))
+		expectedLen := 1 + len(v.Payload)
+		b.WriteString(fmt.Sprintf("\t\tif len(vec) != %d {\n", expectedLen))
+		b.WriteString(fmt.Sprintf("\t\t\treturn %s{}, fmt.Errorf(\"%s::%s: expected %d elements, got %%d\", len(vec))\n", e.Name, e.Name, v.Name, expectedLen))
+		b.WriteString("\t\t}\n")
+		typeName := e.Name + v.Name
+		switch v.Kind {
+		case EnumVariantUnit:
+			b.WriteString(fmt.Sprintf("\t\treturn %s{%s: &%s{}}, nil\n", e.Name, v.Name, typeName))
+		case EnumVariantTuple:
+			b.WriteString(fmt.Sprintf("\t\tpayload := &%s{}\n", typeName))
+			for i, f := range v.Payload {
+				assign := fmt.Sprintf("payload.%s", tupleFieldName(i))
+				generatePayloadFromScVal(b, f.Type, fmt.Sprintf("vec[%d]", i+1), assign, fmt.Sprintf("%s::%s[%d]", e.Name, v.Name, i), e.Name)
+			}
+			b.WriteString(fmt.Sprintf("\t\treturn %s{%s: payload}, nil\n", e.Name, v.Name))
+		case EnumVariantStruct:
+			b.WriteString(fmt.Sprintf("\t\tpayload := &%s{}\n", typeName))
+			for i, f := range v.Payload {
+				assign := fmt.Sprintf("payload.%s", snakeToPascal(f.Name))
+				generatePayloadFromScVal(b, f.Type, fmt.Sprintf("vec[%d]", i+1), assign, fmt.Sprintf("%s::%s.%s", e.Name, v.Name, f.Name), e.Name)
+			}
+			b.WriteString(fmt.Sprintf("\t\treturn %s{%s: payload}, nil\n", e.Name, v.Name))
+		}
+	}
+	b.WriteString("\tdefault:\n")
+	b.WriteString(fmt.Sprintf("\t\treturn %s{}, fmt.Errorf(\"%s: unknown variant %%q\", tag)\n", e.Name, e.Name))
+	b.WriteString("\t}\n")
+	b.WriteString("}\n\n")
+}
+
+// payloadToScValExpr returns the Go expression that converts a single payload
+// field (of the given Rust type) to an xdr.ScVal. We delegate to the existing
+// converter used for struct fields, which already handles all the supported
+// Rust→Soroban scalar/composite types.
+func payloadToScValExpr(rustType, expr string) string {
+	return getToScValConverter(rustType, expr)
+}
+
+// generatePayloadFromScVal emits Go code that decodes vec[i] into the
+// destination `assign` for an enum payload field. It mirrors the supported
+// surface of getToScValConverter so encode/decode stays symmetric.
+//
+// errCtx is a human-readable context string used in error wrapping.
+// enumName is used as the zero-value type for early returns.
+func generatePayloadFromScVal(b *strings.Builder, rustType, src, assign, errCtx, enumName string) {
+	zero := enumName + "{}"
+	switch rustType {
+	case "u32":
+		b.WriteString(fmt.Sprintf("\t\tif v, ok := %s.GetU32(); ok { %s = uint32(v) } else { return %s, fmt.Errorf(\"%s: expected u32\") }\n", src, assign, zero, errCtx))
+	case "u64":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.Uint64FromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	case "i128":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.I128FromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	case "u128":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.U128FromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	case "bool":
+		b.WriteString(fmt.Sprintf("\t\tif v, ok := %s.GetB(); ok { %s = v } else { return %s, fmt.Errorf(\"%s: expected bool\") }\n", src, assign, zero, errCtx))
+	case "soroban_sdk::Address":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.AddressFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	case "soroban_sdk::Bytes":
+		b.WriteString(fmt.Sprintf("\t\tif v, ok := %s.GetBytes(); ok { %s = []byte(v) } else { return %s, fmt.Errorf(\"%s: expected bytes\") }\n", src, assign, zero, errCtx))
+	case "soroban_sdk::String":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.StringFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	case "soroban_sdk::Symbol":
+		b.WriteString(fmt.Sprintf("\t\tif v, err := scval.SymbolFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", src, zero, errCtx, assign))
+	default:
+		switch {
+		case strings.HasPrefix(rustType, "soroban_sdk::BytesN<"):
+			n := extractBytesNSize(rustType)
+			b.WriteString(fmt.Sprintf("\t\tif v, err := scval.Bytes%dFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", n, src, zero, errCtx, assign))
+		case isEnumType(rustType):
+			enumInner := extractStructName(rustType)
+			b.WriteString(fmt.Sprintf("\t\tif v, err := %sFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = v }\n", enumInner, src, zero, errCtx, assign))
+		default:
+			// Assume a struct; FromScVal returns *Struct.
+			structName := extractStructName(rustType)
+			b.WriteString(fmt.Sprintf("\t\tif v, err := %sFromScVal(%s); err != nil { return %s, fmt.Errorf(\"%s: %%w\", err) } else { %s = *v }\n", structName, src, zero, errCtx, assign))
+		}
+	}
 }
 
 func generateEventStruct(b *strings.Builder, e Event) {

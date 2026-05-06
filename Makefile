@@ -1,6 +1,12 @@
 WASM_DIR := target/wasm32v1-none/release
 
-.PHONY: build test test-e2e check fmt clean generate-interfaces generate-bindings docker-verifier docker-executor restart-verifier restart-executor restart-verifier-executor
+# Path to the chainlink-ccv repo that supplies the upstream dev images
+# (verifier:dev, token-verifier:dev, executor:dev, indexer:dev, aggregator:dev,
+# pricer:dev, ccv-fakes:dev). Override on the command line if your checkout
+# lives elsewhere, e.g. `make docker-ccv-dev CCV_REPO=$HOME/code/chainlink-ccv`.
+CCV_REPO ?= ../chainlink-ccv
+
+.PHONY: build test test-e2e check fmt clean generate-interfaces generate-bindings docker-verifier docker-executor docker-ccv-dev restart-verifier restart-executor restart-verifier-executor
 
 build:
 	stellar contract build
@@ -41,6 +47,24 @@ docker-verifier:
 # Build the Stellar (standalone) executor Docker image used by E2E tests.
 docker-executor:
 	docker build -f Dockerfile.executor -t stellarexecutor:dev .
+
+# Rebuild the chainlink-ccv dev Docker images that this devenv depends on. Run
+# this after bumping chainlink-ccv in go.mod or whenever a structural move in
+# chainlink-ccv (for example PR #1058 "Move verifier cmd") changes the WORKDIR
+# baked into a dev image — the devenv container then fails to start with
+# "open air.toml: no such file or directory" because the old image's WORKDIR
+# no longer matches the freshly mounted source tree.
+docker-ccv-dev:
+	@if [ ! -d "$(CCV_REPO)" ]; then \
+		echo "CCV_REPO=$(CCV_REPO) not found; clone smartcontractkit/chainlink-ccv next to chainlink-stellar or pass CCV_REPO=...";\
+		exit 1; \
+	fi
+	cd $(CCV_REPO)/verifier   && just build-dev
+	cd $(CCV_REPO)/executor   && just build-dev
+	cd $(CCV_REPO)/indexer    && just build-dev
+	cd $(CCV_REPO)/aggregator && just build-dev
+	cd $(CCV_REPO)/pricer     && just build-dev
+	cd $(CCV_REPO)/build/devenv/fakes && just build-dev
 
 # Rebuild the verifier image and restart the devenv to pick up the new image.
 restart-verifier: docker-verifier

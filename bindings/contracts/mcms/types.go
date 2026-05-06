@@ -1289,6 +1289,8 @@ const (
 	McmsErrorInvalidInvokeData                            = 50
 	McmsErrorNonZeroValue                                 = 51
 	McmsErrorMissingRootMetadata                          = 52
+	McmsErrorValidUntilExceedsMaximum                     = 53
+	McmsErrorInvalidMinSecsPerLedger                      = 54
 )
 
 // McmsErrorMessage returns a human-readable message for error codes.
@@ -1328,6 +1330,8 @@ var McmsErrorMessage = map[int]string{
 	50: "invalid invoke data",
 	51: "non zero value",
 	52: "missing root metadata",
+	53: "valid until exceeds maximum",
+	54: "invalid min secs per ledger",
 }
 
 // RoleGrantedEvent represents the RoleGrantedEvent event.
@@ -1436,3 +1440,15 @@ type OpExecutedEvent struct {
 
 // OpExecutedEventTopic is the event topic identifier.
 const OpExecutedEventTopic = "mcms_OpExecuted"
+
+// MinSecsPerLedgerSetEvent represents the MinSecsPerLedgerSetEvent event.
+// Topics: [mcms_MinSecsPerLedgerSet]
+type MinSecsPerLedgerSetEvent struct {
+	MinSecsPerLedger uint64
+	// Event metadata
+	Ledger uint32
+	TxHash string
+}
+
+// MinSecsPerLedgerSetEventTopic is the event topic identifier.
+const MinSecsPerLedgerSetEventTopic = "mcms_MinSecsPerLedgerSet"

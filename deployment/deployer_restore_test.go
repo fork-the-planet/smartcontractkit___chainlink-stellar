@@ -114,7 +114,7 @@ func newTestDeployer(t *testing.T, mock *mockRPC) *Deployer {
 	return &Deployer{
 		rpcClient:         mock,
 		networkPassphrase: "Test SDF Network ; September 2015",
-		signer:            kp,
+		signer:            NewKeypairSigner(kp),
 		accountSequence:   -1,
 		autoRestore:       true,
 		feeBumpFactor:     1.25,
@@ -330,7 +330,7 @@ func TestBuildAndSubmitTransaction_WithRestore(t *testing.T) {
 	d := &Deployer{
 		rpcClient:         mock,
 		networkPassphrase: "Test SDF Network ; September 2015",
-		signer:            kp,
+		signer:            NewKeypairSigner(kp),
 		accountSequence:   -1,
 		autoRestore:       true,
 		feeBumpFactor:     1.25,
