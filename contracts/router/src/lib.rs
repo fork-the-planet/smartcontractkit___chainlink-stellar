@@ -40,14 +40,14 @@ const OFFRAMPS: Symbol = symbol_short!("OFFRAMPS");
 pub struct RouterContract;
 
 #[contractimpl]
+impl Initializable for RouterContract {
+    const INITIALIZED: Symbol = INITIALIZED;
+}
+
+#[contractimpl(contracttrait)]
 impl Ownable for RouterContract {
     const OWNER: Symbol = OWNER;
     const PENDING_OWNER: Symbol = PENDING_OWNER;
-}
-
-#[contractimpl]
-impl Initializable for RouterContract {
-    const INITIALIZED: Symbol = INITIALIZED;
 }
 
 #[contractimpl]

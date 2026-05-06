@@ -36,3 +36,42 @@ var Initialize = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// TransferOwnershipInput starts two-step ownership transfer.
+type TransferOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+	NewOwner   string `json:"new_owner"`
+}
+
+// TransferOwnership calls `transfer_ownership` on siloed lock-release pool.
+var TransferOwnership = cldfops.NewOperation(
+	"siloed-lock-release-pool:transfer-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Transfers siloed lock-release pool ownership to a pending new owner",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in TransferOwnershipInput) (stellarops.Void, error) {
+		c := slrbindings.NewSiloedLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.TransferOwnership(b.GetContext(), in.NewOwner); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// AcceptOwnershipInput completes two-step ownership transfer for the caller.
+type AcceptOwnershipInput struct {
+	ContractID string `json:"contract_id"`
+}
+
+// AcceptOwnership calls `accept_ownership` on siloed lock-release pool.
+var AcceptOwnership = cldfops.NewOperation(
+	"siloed-lock-release-pool:accept-ownership",
+	stellarops.ContractDeploymentVersion,
+	"Accepts siloed lock-release pool ownership after transfer_ownership",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in AcceptOwnershipInput) (stellarops.Void, error) {
+		c := slrbindings.NewSiloedLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.AcceptOwnership(b.GetContext()); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

@@ -43,6 +43,7 @@ import (
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -53,22 +54,22 @@ import (
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
+	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
 
-// stellarAddressLen is 32 bytes for ed25519 public key
-const stellarAddressLen = 32
-
 // CcipReceiverContractType is the datastore contract type for the example CCIP
 // receiver deployed on Stellar so that GetEOAReceiverAddress can return a valid
 // Wasm contract address in tests.
-const CcipReceiverContractType = stellarccipdevenv.CcipReceiverContractType
+const CcipReceiverContractType = stellarccip.CcipReceiverContractType
 
-const TokenAdminRegistryContractType = stellarccipdevenv.TokenAdminRegistryContractType
-const LockReleaseTokenPoolContractType = stellarccipdevenv.LockReleaseTokenPoolContractType
+const TokenAdminRegistryContractType = stellarccip.TokenAdminRegistryContractType
+const LockReleaseTokenPoolContractType = stellarccip.LockReleaseTokenPoolContractType
 
 func ptrU32(v uint32) *uint32 { return &v }
 
@@ -163,7 +164,7 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 	feeQuoterOverride := stellarFeeQuoterDestChainConfigOverride(selector)
 	chainDef := lanes.ChainDefinition{
 		Selector:                          selector,
-		AddressBytesLength:                stellarAddressLen,
+		AddressBytesLength:                stellarccip.StellarAddressByteLen,
 		BaseExecutionGasCost:              100_000,
 		FeeQuoterDestChainConfigOverrides: &feeQuoterOverride,
 		DefaultInboundCCVs: []datastore.AddressRef{
@@ -295,7 +296,7 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("ensure local stellar contracts: %w", err)
 	}
 
-	defaultExecutor, err := lookupStellarContractID(
+	defaultExecutor, err := stellarccip.LookupStellarContractStrkey(
 		env.DataStore,
 		selector,
 		datastore.ContractType(proxy.ContractType),
@@ -391,7 +392,7 @@ func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployme
 	_ = ctx
 	_ = env
 	ensureStellarFeeAggregatorsInTopology(c, topology)
-	registerStellarDeployChangesetCtx(selector, c, topology)
+	stellarsequences.RegisterStellarDeployChainContext(selector, c, topology)
 	return nil, nil
 }
 
@@ -418,20 +419,20 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 // pricing for the test token, and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
-	defer clearStellarDeployChangesetCtx(selector)
+	defer stellarsequences.ClearStellarDeployChainContext(selector)
 
 	if env == nil {
 		return nil, fmt.Errorf("environment is nil")
 	}
 
 	host := &stellarCCIPDeployHost{c: c}
-	if err := stellarccipdevenv.DeployLockReleaseTestTokenPool(ctx, host); err != nil {
+	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
 	}
 
 	allSelectors := selectorsFromBlockChains(env.BlockChains)
 	if c.testTokenContractID != "" && c.feeQuoterClient != nil {
-		if err := stellarccipdevenv.ApplyFeeQuoterTestTokenConfig(ctx, c.feeQuoterClient, c.deployerKeypair.Address(), c.testTokenContractID, allSelectors); err != nil {
+		if err := stellarccip.ApplyFeeQuoterTestTokenConfig(ctx, c.feeQuoterClient, c.deployerKeypair.Address(), c.testTokenContractID, allSelectors); err != nil {
 			return nil, fmt.Errorf("apply fee quoter test token config: %w", err)
 		}
 		c.logger.Info().Int("destChainCount", len(allSelectors)).Msg("FeeQuoter test token fees applied (post-deploy)")
@@ -440,7 +441,7 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	if c.tokenPoolContractID == "" {
 		return nil, nil
 	}
-	ds, err := stellarccipdevenv.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
+	ds, err := stellarccip.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
 	if err != nil {
 		return nil, err
 	}
@@ -495,9 +496,9 @@ func (c *Chain) GetTokenTransferConfigs(
 
 // DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
 // shared DeployChainContracts changeset merge path.
-func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chain.BlockChains, selector uint64, topology *ccvdeployment.EnvironmentTopology) (seq_core.OnChainOutput, error) {
-	allSelectors := selectorsFromBlockChains(chains)
-	ds, err := c.deployStellarCCIPContracts(ctx, allSelectors, selector, topology)
+// opBundle is the CLDF bundle from the executing sequence (same bundle as nested ExecuteOperation).
+func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, opBundle cldf_ops.Bundle, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (seq_core.OnChainOutput, error) {
+	ds, err := c.deployStellarCCIPContracts(opBundle, ctx, allSelectors, selector, topology, existingAddresses)
 	if err != nil {
 		return seq_core.OnChainOutput{}, err
 	}
@@ -507,6 +508,14 @@ func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, chains cldf_chai
 	}
 	return seq_core.OnChainOutput{Addresses: addrs}, nil
 }
+
+// StellarDepsForDeploy implements deployment/sequences.StellarDeployRunner for
+// CLDF inner sequences (same role as passing evm.Chain into EVM ops).
+func (c *Chain) StellarDepsForDeploy() stellardeps.StellarDeps {
+	return stellardeps.FromDeployer(c.deployer)
+}
+
+var _ stellarsequences.StellarDeployRunner = (*Chain)(nil)
 
 // DeployLocalNetwork implements cciptestinterfaces.CCIP17Configuration.
 // Deploys a local Stellar network for testing.
@@ -601,10 +610,10 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 	c.logger.Debug().Int("numAddresses", len(addresses)).Msg("Attempting to fund Stellar addresses")
 
 	for _, addr := range addresses {
-		if len(addr) != stellarAddressLen {
+		if len(addr) != stellarccip.StellarAddressByteLen {
 			c.logger.Debug().
 				Int("addressLen", len(addr)).
-				Int("expectedLen", stellarAddressLen).
+				Int("expectedLen", stellarccip.StellarAddressByteLen).
 				Msg("Skipping non-Stellar address in FundAddresses")
 			continue
 		}
@@ -1166,82 +1175,6 @@ func selectorsFromBlockChains(chains cldf_chain.BlockChains) []uint64 {
 	return selectors
 }
 
-func addressBytesLengthForSelector(selector uint64) (uint32, error) {
-	family, err := chainsel.GetSelectorFamily(selector)
-	if err != nil {
-		return 0, fmt.Errorf("get selector family for %d: %w", selector, err)
-	}
-	if family == chainsel.FamilyStellar {
-		return stellarAddressLen, nil
-	}
-	return 20, nil
-}
-
-func zeroAddressBytesForSelector(selector uint64) ([]byte, error) {
-	addressBytesLength, err := addressBytesLengthForSelector(selector)
-	if err != nil {
-		return nil, err
-	}
-	return make([]byte, addressBytesLength), nil
-}
-
-func lookupAddressRef(ds datastore.DataStore, selector uint64, contractType datastore.ContractType, version *semver.Version, qualifier string) (datastore.AddressRef, error) {
-	ref, err := ds.Addresses().Get(datastore.NewAddressRefKey(selector, contractType, version, qualifier))
-	if err != nil {
-		return datastore.AddressRef{}, err
-	}
-	return ref, nil
-}
-
-func lookupStellarContractID(ds datastore.DataStore, selector uint64, contractType datastore.ContractType, version *semver.Version, qualifier string) (string, error) {
-	ref, err := lookupAddressRef(ds, selector, contractType, version, qualifier)
-	if err != nil {
-		return "", err
-	}
-	contractID, err := scval.HexToContractStrkey(ref.Address)
-	if err != nil {
-		return "", fmt.Errorf("convert %s address %s to contract strkey: %w", contractType, ref.Address, err)
-	}
-	return contractID, nil
-}
-
-func addressBytesForSelector(ref datastore.AddressRef, selector uint64) ([]byte, error) {
-	raw, err := hexutil.Decode(ref.Address)
-	if err != nil {
-		return nil, fmt.Errorf("decode address %s: %w", ref.Address, err)
-	}
-	expectedLen, err := addressBytesLengthForSelector(selector)
-	if err != nil {
-		return nil, err
-	}
-	if len(raw) != int(expectedLen) {
-		return nil, fmt.Errorf("address %s has %d bytes, expected %d for selector %d", ref.Address, len(raw), expectedLen, selector)
-	}
-	return raw, nil
-}
-
-func canonicalSourceOnRampBytesForSelector(ref datastore.AddressRef, selector uint64) ([]byte, error) {
-	raw, err := addressBytesForSelector(ref, selector)
-	if err != nil {
-		return nil, err
-	}
-
-	family, err := chainsel.GetSelectorFamily(selector)
-	if err != nil {
-		return nil, fmt.Errorf("get selector family for %d: %w", selector, err)
-	}
-	if family != chainsel.FamilyEVM {
-		return raw, nil
-	}
-
-	// Canonical CCIP messages encode EVM source addresses as 32-byte left-padded
-	// fields. Store the same bytes in Stellar OffRamp source config so
-	// verify_onramp_allowed hashes the exact same payload.
-	padded := make([]byte, 32)
-	copy(padded[len(padded)-len(raw):], raw)
-	return padded, nil
-}
-
 func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) error {
 	if c.deployer == nil {
 		return fmt.Errorf("deployer not initialized")
@@ -1249,25 +1182,25 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 
 	var err error
 	if c.onRampContractID == "" {
-		c.onRampContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
+		c.onRampContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
 		if err != nil {
 			return fmt.Errorf("lookup local onramp: %w", err)
 		}
 	}
 	if c.offRampContractID == "" {
-		c.offRampContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
+		c.offRampContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
 		if err != nil {
 			return fmt.Errorf("lookup local offramp: %w", err)
 		}
 	}
 	if c.routerContractID == "" {
-		c.routerContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(routeroperations.ContractType), routeroperations.Version, "")
+		c.routerContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(routeroperations.ContractType), routeroperations.Version, "")
 		if err != nil {
 			return fmt.Errorf("lookup local router: %w", err)
 		}
 	}
 	if c.vvrContractID == "" {
-		c.vvrContractID, err = lookupStellarContractID(ds, selector, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), versioned_verifier_resolver.Version, devenvcommon.DefaultCommitteeVerifierQualifier)
+		c.vvrContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), versioned_verifier_resolver.Version, devenvcommon.DefaultCommitteeVerifierQualifier)
 		if err != nil {
 			return fmt.Errorf("lookup local versioned verifier resolver: %w", err)
 		}
@@ -1307,7 +1240,7 @@ var remoteTokenContractTypes = []string{
 // other remotes fall back to the first matching pool and token with the same
 // qualifier. Falls back to zero bytes if nothing is found.
 func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (poolBytes, tokenBytes []byte, err error) {
-	addrLen, err := addressBytesLengthForSelector(remoteSelector)
+	addrLen, err := stellarccip.AddressBytesLength(remoteSelector)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1321,11 +1254,11 @@ func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (p
 	family, err := chainsel.GetSelectorFamily(remoteSelector)
 	if err == nil && family == chainsel.FamilyEVM {
 		if poolRef, tokenRef, found := ResolveEVMTokenPoolForStellar(allRefs, remoteSelector); found {
-			poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+			poolBytes, err = stellarccip.AddressBytesHex(poolRef, remoteSelector)
 			if err != nil {
 				return zeroPad(), zeroPad(), nil
 			}
-			tokenBytes, err = addressBytesForSelector(tokenRef, remoteSelector)
+			tokenBytes, err = stellarccip.AddressBytesHex(tokenRef, remoteSelector)
 			if err != nil {
 				return zeroPad(), zeroPad(), nil
 			}
@@ -1365,7 +1298,7 @@ func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (p
 		return zeroPad(), zeroPad(), nil
 	}
 
-	poolBytes, err = addressBytesForSelector(poolRef, remoteSelector)
+	poolBytes, err = stellarccip.AddressBytesHex(poolRef, remoteSelector)
 	if err != nil {
 		return zeroPad(), zeroPad(), nil
 	}
@@ -1374,7 +1307,7 @@ func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (p
 	tokenBytes = zeroPad()
 	for _, ct := range remoteTokenContractTypes {
 		if ref, ok := byKey[refKey{ct, poolRef.Qualifier}]; ok {
-			if tb, err := addressBytesForSelector(ref, remoteSelector); err == nil {
+			if tb, err := stellarccip.AddressBytesHex(ref, remoteSelector); err == nil {
 				tokenBytes = tb
 				break
 			}
@@ -1403,71 +1336,11 @@ func (c *Chain) buildPoolChainUpdates(ds datastore.DataStore, remoteSelectors []
 }
 
 func (c *Chain) buildOnRampDestConfigs(ds datastore.DataStore, remoteSelectors []uint64, defaultExecutor string, useRemoteOffRamp bool) ([]onrampbindings.DestChainConfigArgs, error) {
-	configs := make([]onrampbindings.DestChainConfigArgs, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
-		addressBytesLength, err := addressBytesLengthForSelector(rs)
-		if err != nil {
-			return nil, err
-		}
-
-		offRampBytes, err := zeroAddressBytesForSelector(rs)
-		if err != nil {
-			return nil, err
-		}
-		if useRemoteOffRamp {
-			offRampRef, err := lookupAddressRef(ds, rs, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
-			if err != nil {
-				return nil, fmt.Errorf("lookup remote offramp for %d: %w", rs, err)
-			}
-			offRampBytes, err = addressBytesForSelector(offRampRef, rs)
-			if err != nil {
-				return nil, fmt.Errorf("resolve remote offramp bytes for %d: %w", rs, err)
-			}
-		}
-
-		configs = append(configs, onrampbindings.DestChainConfigArgs{
-			DestChainSelector:         rs,
-			AddressBytesLength:        addressBytesLength,
-			BaseExecutionGasCost:      100_000,
-			DefaultCcvs:               []string{c.vvrContractID},
-			DefaultExecutor:           defaultExecutor,
-			ExecutionFeeUsdCents:      0,
-			LaneMandatedCcvs:          []string{},
-			MessageNetworkFeeUsdCents: 100,
-			OffRamp:                   offRampBytes,
-			Router:                    c.routerContractID,
-			TokenNetworkFeeUsdCents:   50,
-			TokenReceiverAllowed:      true,
-		})
-	}
-	return configs, nil
+	return stellarccip.BuildOnRampDestConfigs(ds, remoteSelectors, defaultExecutor, useRemoteOffRamp, c.vvrContractID, c.routerContractID)
 }
 
 func (c *Chain) buildOffRampSourceConfigs(ds datastore.DataStore, remoteSelectors []uint64, useRemoteOnRamp bool) ([]offrampbindings.SourceChainConfigArgs, error) {
-	configs := make([]offrampbindings.SourceChainConfigArgs, 0, len(remoteSelectors))
-	for _, rs := range remoteSelectors {
-		onRampBytes := make([]byte, 32)
-		if useRemoteOnRamp {
-			onRampRef, err := lookupAddressRef(ds, rs, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
-			if err != nil {
-				return nil, fmt.Errorf("lookup remote onramp for %d: %w", rs, err)
-			}
-			onRampBytes, err = canonicalSourceOnRampBytesForSelector(onRampRef, rs)
-			if err != nil {
-				return nil, fmt.Errorf("resolve remote onramp bytes for %d: %w", rs, err)
-			}
-		}
-
-		configs = append(configs, offrampbindings.SourceChainConfigArgs{
-			SourceChainSelector: rs,
-			IsEnabled:           true,
-			DefaultCcvs:         []string{c.vvrContractID},
-			LaneMandatedCcvs:    []string{},
-			OnRamps:             [][]byte{onRampBytes},
-			Router:              c.routerContractID,
-		})
-	}
-	return configs, nil
+	return stellarccip.BuildOffRampSourceConfigs(ds, remoteSelectors, useRemoteOnRamp, c.vvrContractID, c.routerContractID)
 }
 
 func (c *Chain) NativeBalance(ctx context.Context, address protocol.UnknownAddress) (*big.Int, error) {

@@ -1,19 +1,33 @@
 #[soroban_sdk::contractargs(name = "ExampleCcipReceiverArgs")]
 #[soroban_sdk::contractclient(name = "ExampleCcipReceiverClient")]
 pub trait ExampleCcipReceiverInterface {
+    fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn get_router(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
         router: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
     fn ccip_receive(env: soroban_sdk::Env, message: AnyToStellarMessage) -> Result<(), CCIPError>;
+    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
+    fn set_new_owner(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn get_ccv_config(
         env: soroban_sdk::Env,
         source_chain_selector: u64,
     ) -> Result<CcvChainConfig, CCIPError>;
     fn last_message_id(env: soroban_sdk::Env) -> Result<soroban_sdk::BytesN<32>, CCIPError>;
+    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
+    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
+    fn transfer_ownership(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn enable_remote_chain(
         env: soroban_sdk::Env,
         caller: soroban_sdk::Address,
@@ -44,6 +58,7 @@ pub trait ExampleCcipReceiverInterface {
         caller: soroban_sdk::Address,
         updates: soroban_sdk::Vec<CcvConfigUpdate>,
     ) -> Result<(), CCIPError>;
+    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn get_remote_chain_selectors(
         env: soroban_sdk::Env,
     ) -> Result<soroban_sdk::Vec<u64>, CCIPError>;

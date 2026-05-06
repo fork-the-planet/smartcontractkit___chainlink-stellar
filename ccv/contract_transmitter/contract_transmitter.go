@@ -2,6 +2,7 @@ package contracttransmitter
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
+	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
@@ -194,4 +197,81 @@ func (ct *ContractTransmitter) ConvertAndWriteMessageToChain(ctx context.Context
 	}
 
 	return err
+}
+
+// LogRestorePreambleFootprint decodes simulateTransaction.restorePreamble.transactionData
+// (SorobanTransactionData XDR) and logs each footprint LedgerKey (read-only vs read-write),
+// plus fee fields from the preamble and decoded Soroban data. Intended for debugging which
+// archived ledger entries a RestoreFootprint tx would touch.
+//
+// No-op if lggr is nil, preamble is nil, or transaction data is empty. Decode errors are logged
+// at warn level.
+func LogRestorePreambleFootprint(lggr *zerolog.Logger, preamble *protocolrpc.RestorePreamble) {
+	if lggr == nil || preamble == nil || preamble.TransactionDataXDR == "" {
+		return
+	}
+
+	var sorobanData xdr.SorobanTransactionData
+	if err := xdr.SafeUnmarshalBase64(preamble.TransactionDataXDR, &sorobanData); err != nil {
+		lggr.Warn().Err(err).Msg("restore preamble: failed to decode SorobanTransactionData XDR")
+		return
+	}
+
+	fp := sorobanData.Resources.Footprint
+	event := lggr.Info().
+		Int64("restore_preamble_min_resource_fee_stroops", preamble.MinResourceFee).
+		Int64("decoded_soroban_resource_fee_stroops", int64(sorobanData.ResourceFee)).
+		Int("footprint_read_only_keys", len(fp.ReadOnly)).
+		Int("footprint_read_write_keys", len(fp.ReadWrite))
+
+	event.Msg("restore preamble: Soroban footprint (ledger keys to restore / touch)")
+
+	for i, key := range fp.ReadOnly {
+		lggr.Info().
+			Int("index", i).
+			Str("set", "read_only").
+			Str("ledger_key", ledgerKeySummary(key)).
+			Msg("restore preamble footprint key")
+	}
+	for i, key := range fp.ReadWrite {
+		lggr.Info().
+			Int("index", i).
+			Str("set", "read_write").
+			Str("ledger_key", ledgerKeySummary(key)).
+			Msg("restore preamble footprint key")
+	}
+}
+
+func ledgerKeySummary(k xdr.LedgerKey) string {
+	switch k.Type {
+	case xdr.LedgerEntryTypeContractCode:
+		cc := k.MustContractCode()
+		return fmt.Sprintf("contract_code wasm_hash=%x", cc.Hash)
+	case xdr.LedgerEntryTypeContractData:
+		cd := k.MustContractData()
+		contractStr, err := cd.Contract.String()
+		if err != nil {
+			contractStr = fmt.Sprintf("(contract_err:%v)", err)
+		}
+		keyB64 := scValToBase64(cd.Key)
+		return fmt.Sprintf("contract_data contract=%s durability=%s storage_key_scval_b64=%s",
+			contractStr, cd.Durability.String(), keyB64)
+	case xdr.LedgerEntryTypeTtl:
+		t := k.MustTtl()
+		return fmt.Sprintf("ttl key_hash=%x", t.KeyHash)
+	default:
+		b64, err := k.MarshalBinaryBase64()
+		if err != nil {
+			return fmt.Sprintf("%s marshal_err=%v", k.Type.String(), err)
+		}
+		return fmt.Sprintf("%s ledger_key_xdr_b64=%s", k.Type.String(), b64)
+	}
+}
+
+func scValToBase64(v xdr.ScVal) string {
+	b, err := v.MarshalBinary()
+	if err != nil {
+		return fmt.Sprintf("(scval_marshal_err:%v)", err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }

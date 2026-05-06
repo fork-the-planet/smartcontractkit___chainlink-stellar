@@ -1,11 +1,13 @@
 #[soroban_sdk::contractargs(name = "RouterArgs")]
 #[soroban_sdk::contractclient(name = "RouterClient")]
 pub trait RouterInterface {
+    fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn get_fee(
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
         message: StellarToAnyMessage,
     ) -> Result<i128, CCIPError>;
+    fn is_owner(env: soroban_sdk::Env, addr: soroban_sdk::Address) -> bool;
     fn ccip_send(
         env: soroban_sdk::Env,
         sender: soroban_sdk::Address,
@@ -18,6 +20,7 @@ pub trait RouterInterface {
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
     ) -> Result<soroban_sdk::Address, CCIPError>;
+    fn init_owner(env: soroban_sdk::Env, owner: soroban_sdk::Address) -> Result<(), CCIPError>;
     fn initialize(
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
@@ -40,6 +43,7 @@ pub trait RouterInterface {
     ) -> Result<(), CCIPError>;
     fn get_onramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OnRampEntry>, CCIPError>;
     fn get_offramps(env: soroban_sdk::Env) -> Result<soroban_sdk::Vec<OffRampEntry>, CCIPError>;
+    fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
     fn route_message(
         env: soroban_sdk::Env,
         offramp: soroban_sdk::Address,
@@ -47,12 +51,18 @@ pub trait RouterInterface {
         receiver: soroban_sdk::Address,
         message: AnyToStellarMessage,
     ) -> Result<(), CCIPError>;
+    fn set_new_owner(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
     fn remove_offramp(
         env: soroban_sdk::Env,
         source_chain_selector: u64,
         offramp: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
+    fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
+    fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn apply_ramp_updates(
         env: soroban_sdk::Env,
         onramp_updates: soroban_sdk::Vec<OnRampEntry>,
@@ -63,6 +73,11 @@ pub trait RouterInterface {
         env: soroban_sdk::Env,
         dest_chain_selector: u64,
     ) -> Result<bool, CCIPError>;
+    fn transfer_ownership(
+        env: soroban_sdk::Env,
+        new_owner: soroban_sdk::Address,
+    ) -> Result<(), CCIPError>;
+    fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 }
 #[soroban_sdk::contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]

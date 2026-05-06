@@ -1,4 +1,4 @@
-package devenv
+package stellardeploy
 
 import (
 	"context"
@@ -12,11 +12,12 @@ import (
 	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 )
 
-// work holds shared state for phased Stellar CCIP devenv deployment.
-type work struct {
+// deployRun holds shared state for phased Stellar CCIP deployment.
+type deployRun struct {
 	host Host
 	ctx  context.Context
 
@@ -24,6 +25,8 @@ type work struct {
 
 	allSelectors []uint64
 	topology     *ccvdeployment.EnvironmentTopology
+
+	existingAddresses []datastore.AddressRef
 
 	ds              *datastore.MemoryDataStore
 	stellarRoot     string
@@ -47,18 +50,22 @@ type work struct {
 	cvClient     *cvbindings.CommitteeVerifierClient
 	routerClient *routerbindings.RouterClient
 
+	// opBundle is the CLDF bundle used for all execStellarOp calls (caller supplies it, same as EVM/Solana sequences).
 	opBundle cldfops.Bundle
 }
 
-func (w *work) contractHexAddr(name string) string {
+func (w *deployRun) contractHexAddr(name string) string {
 	return hexutil.Encode(stellarutil.GenerateContractAddress(name, w.host.NetworkPassphrase()))
 }
 
-func (w *work) setup() error {
+func (w *deployRun) setup() error {
 	host := w.host
 	host.Logger().Info().Uint64("selector", w.selector).Msg("Deploying Stellar CCIP contracts")
 
 	w.ds = datastore.NewMemoryDataStore()
+	if err := stellarccip.MergeExistingAddressRefs(w.ds, w.existingAddresses); err != nil {
+		return fmt.Errorf("merge existing address refs: %w", err)
+	}
 
 	root, err := stellarutil.FindStellarRoot()
 	if err != nil {
@@ -68,6 +75,5 @@ func (w *work) setup() error {
 	host.Logger().Info().Str("stellarRoot", root).Msg("Stellar root")
 
 	w.remoteSelectors = stellarutil.FilterRemoteSelectors(w.allSelectors, w.selector)
-	w.initOperationsBundle()
 	return nil
 }

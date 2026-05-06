@@ -40,7 +40,7 @@ import (
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
 var _ ccv.ImplFactory = &ImplFactory{}
@@ -291,9 +291,9 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 
 		poolKey := datastore.NewAddressRefKey(
 			details.ChainSelector,
-			datastore.ContractType(stellarccipdevenv.LockReleaseTokenPoolContractType),
+			datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
 			semver.MustParse("1.0.0"),
-			stellarccipdevenv.DevenvTestTokenPoolQualifier,
+			stellarccip.DevenvTestTokenPoolQualifier,
 		)
 		poolRef, err := env.DataStore.Addresses().Get(poolKey)
 		if err == nil && poolRef.Address != "" {

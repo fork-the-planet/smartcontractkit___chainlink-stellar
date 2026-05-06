@@ -1,4 +1,4 @@
-package adapter
+package adapters
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
 	ccvdeploymentadapters "github.com/smartcontractkit/chainlink-ccv/deployment/adapters"
-	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
 // StellarCCVCommitteeVerifierOnchainAdapter implements

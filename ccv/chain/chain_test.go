@@ -13,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +57,7 @@ func TestGetConnectionProfile(t *testing.T) {
 
 	t.Run("chain definition has correct selector and address length", func(t *testing.T) {
 		assert.Equal(t, selector, chainDef.Selector)
-		assert.Equal(t, uint8(stellarAddressLen), chainDef.AddressBytesLength)
+		assert.Equal(t, uint8(stellarccip.StellarAddressByteLen), chainDef.AddressBytesLength)
 	})
 
 	t.Run("base execution gas cost is set", func(t *testing.T) {
@@ -176,8 +177,8 @@ func TestBuildOnRampDestConfigs_UsesSelectorSpecificAddressLengths(t *testing.T)
 
 	assert.Equal(t, uint32(20), configs[0].AddressBytesLength)
 	assert.Len(t, configs[0].OffRamp, 20)
-	assert.Equal(t, uint32(stellarAddressLen), configs[1].AddressBytesLength)
-	assert.Len(t, configs[1].OffRamp, stellarAddressLen)
+	assert.Equal(t, uint32(stellarccip.StellarAddressByteLen), configs[1].AddressBytesLength)
+	assert.Len(t, configs[1].OffRamp, stellarccip.StellarAddressByteLen)
 }
 
 func TestBuildOffRampSourceConfigs_UsesPlaceholderOnRampBytes(t *testing.T) {

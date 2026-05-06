@@ -1,4 +1,4 @@
-package adapter
+package adapters
 
 import (
 	"encoding/hex"
@@ -15,7 +15,7 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
-	stellarccipdevenv "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/devenv"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
 var _ tokens.TokenAdapter = (*StellarTokenAdapter)(nil)
@@ -40,10 +40,10 @@ func (a *StellarTokenAdapter) AddressRefToBytes(ref datastore.AddressRef) ([]byt
 func (a *StellarTokenAdapter) DeriveTokenAddress(e deployment.Environment, chainSelector uint64, poolRef datastore.AddressRef) ([]byte, error) {
 	qualifier := poolRef.Qualifier
 	if qualifier == "" {
-		qualifier = stellarccipdevenv.DevenvTestTokenPoolQualifier
+		qualifier = stellarccip.DevenvTestTokenPoolQualifier
 	}
 	tokenRef, err := datastore_utils.FindAndFormatRef(e.DataStore, datastore.AddressRef{
-		Type:      datastore.ContractType(stellarccipdevenv.TestTokenContractType),
+		Type:      datastore.ContractType(stellarccip.TestTokenContractType),
 		Version:   semver.MustParse("1.0.0"),
 		Qualifier: qualifier,
 	}, chainSelector, datastore_utils.FullRef)
