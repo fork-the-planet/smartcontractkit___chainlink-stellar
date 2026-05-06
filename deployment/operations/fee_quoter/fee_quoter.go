@@ -55,6 +55,27 @@ var ApplyDestChainConfigs = cldfops.NewOperation(
 	},
 )
 
+// ApplyTokenFeeConfigsInput sets per-token transfer fee overrides on FeeQuoter.
+type ApplyTokenFeeConfigsInput struct {
+	ContractID string                          `json:"contract_id"`
+	AddConfigs []fqbindings.TokenFeeConfigArgs `json:"add_configs"`
+	RemoveArgs []fqbindings.TokenFeeConfigRemoveArgs `json:"remove_args"`
+}
+
+// ApplyTokenFeeConfigs calls FeeQuoter `apply_token_fee_configs`.
+var ApplyTokenFeeConfigs = cldfops.NewOperation(
+	"fee-quoter:apply-token-fee-configs",
+	stellarops.ContractDeploymentVersion,
+	"Applies per-token transfer fee configurations on Stellar FeeQuoter",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApplyTokenFeeConfigsInput) (stellarops.Void, error) {
+		c := fqbindings.NewFeeQuoterClient(d.Invoker, in.ContractID)
+		if err := c.ApplyTokenFeeConfigs(b.GetContext(), in.AddConfigs, in.RemoveArgs); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
 // TransferOwnershipInput starts two-step ownership transfer.
 type TransferOwnershipInput struct {
 	ContractID string `json:"contract_id"`

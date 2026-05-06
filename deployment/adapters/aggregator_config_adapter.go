@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
 
 	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
@@ -41,11 +40,10 @@ func (a *StellarAggregatorConfigAdapter) ScanCommitteeStates(ctx context.Context
 		return nil, fmt.Errorf("Stellar chain %d not found in environment", chainSelector)
 	}
 
-	kp, err := keypair.Random()
+	deployer, err := stellardeployment.NewDeployerFromChain(chain)
 	if err != nil {
-		return nil, fmt.Errorf("generate ephemeral keypair: %w", err)
+		return nil, fmt.Errorf("create deployer from chain: %w", err)
 	}
-	deployer := stellardeployment.NewDeployer(chain.Client, chain.NetworkPassphrase, kp)
 
 	states := make([]*ccvadapters.CommitteeState, 0, len(refs))
 	for _, ref := range refs {

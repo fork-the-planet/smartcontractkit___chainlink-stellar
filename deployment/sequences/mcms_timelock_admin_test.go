@@ -5,6 +5,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	cldfstellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
+	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/require"
 
@@ -13,13 +14,10 @@ import (
 
 type testStellarSigner struct{ addr string }
 
-func (testStellarSigner) Sign([]byte) ([]byte, error) { return nil, nil }
-
-func (testStellarSigner) SignDecorated([]byte) (xdr.DecoratedSignature, error) {
-	return xdr.DecoratedSignature{}, nil
-}
-
-func (s testStellarSigner) Address() string { return s.addr }
+func (testStellarSigner) Sign([]byte) ([]byte, error)                          { return nil, nil }
+func (testStellarSigner) SignDecorated([]byte) (xdr.DecoratedSignature, error)  { return xdr.DecoratedSignature{}, nil }
+func (s testStellarSigner) Address() string                                     { return s.addr }
+func (testStellarSigner) KeypairFull() *keypair.Full                            { return nil }
 
 func TestStellarTimelockAdmin_zeroEVMUsesChainSigner(t *testing.T) {
 	ch := cldfstellar.Chain{Signer: testStellarSigner{addr: "G_CHAIN_SIGNER"}}
