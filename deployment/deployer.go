@@ -11,6 +11,8 @@ import (
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/relayer/chain"
+
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/network"
@@ -39,16 +41,6 @@ const (
 	// used as a floor when the percentage bump (feeBumpFactor) would yield less.
 	minFeeBuffer = int64(10_000)
 )
-
-// stellarRPCClient abstracts the Soroban RPC methods used by Deployer,
-// allowing tests to inject a mock without hitting a real network.
-type stellarRPCClient interface {
-	SimulateTransaction(ctx context.Context, req protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error)
-	SendTransaction(ctx context.Context, req protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error)
-	GetTransaction(ctx context.Context, req protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error)
-	GetLedgerEntries(ctx context.Context, req protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error)
-	GetEvents(ctx context.Context, req protocolrpc.GetEventsRequest) (protocolrpc.GetEventsResponse, error)
-}
 
 // TxSigner abstracts transaction signing so the Deployer can use either an
 // in-process *keypair.Full (test paths) or a remote keystore-backed signer
@@ -166,7 +158,7 @@ func WithTxnTimeBound(d time.Duration) DeployerOption {
 
 // Deployer handles Soroban contract deployment and initialization.
 type Deployer struct {
-	rpcClient         stellarRPCClient
+	rpcClient         chain.RPCClient
 	networkPassphrase string
 	signer            TxSigner
 	// accountSequence tracks the current on-chain sequence number.
