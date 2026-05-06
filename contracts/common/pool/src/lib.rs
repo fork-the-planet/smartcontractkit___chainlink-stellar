@@ -35,7 +35,7 @@ pub use types::{PoolFeeResult, PoolRequiredCCVs};
 /// The interface file duplicates the enum so the bindings generator can parse it; discriminants
 /// are kept identical to `common_error::CCIPError` (`#[repr(u32)]`).
 #[inline]
-fn ramp_registry_ccip_error_to_common(e: ramp_registry::CCIPError) -> CCIPError {
+fn ramp_registry_ccip_error_to_common(e: common_error::CCIPError) -> CCIPError {
     let d = e as u32;
     // SAFETY: interface `CCIPError` discriminants are generated to match `common_error::CCIPError`
     // (`#[repr(u32)]` on both). Invalid values cannot be produced by an on-chain contract return.
