@@ -1,22 +1,28 @@
 package helpers
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
+	"github.com/smartcontractkit/chainlink-common/keystore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
+	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
@@ -232,7 +238,6 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 
 type E2ETestEnv struct {
 	DeployerKP         *keypair.Full
-	ExecutorKP         *keypair.Full
 	Deployer           *deployment.Deployer
 	RPCClient          *rpcclient.Client
 	NetworkPassphrase  string
@@ -348,32 +353,18 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	require.NoError(t, err)
 	l.Info().Str("deployerAddress", deployerKP.Address()).Msg("Derived deployer keypair (matches chain.go)")
 
-	// Fund the executor account so the Docker-based executor can submit
-	// transactions (OffRamp.execute) without sharing the deployer's sequence.
-	executorSeed := sha256.Sum256(fmt.Appendf(nil, "executor-%s", networkPassphrase))
-	executorKP, err := keypair.FromRawSeed(executorSeed)
-	require.NoError(t, err)
-	resp, err := http.Get(fmt.Sprintf("%s?addr=%s", friendbotURL, executorKP.Address()))
-	require.NoError(t, err)
-	resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
-		l.Info().Str("executorAddress", executorKP.Address()).Msg("Funded executor account via Friendbot")
-	} else {
-		l.Info().Str("executorAddress", executorKP.Address()).Int("status", resp.StatusCode).Msg("Executor account already funded")
-	}
-
 	// Create Soroban RPC client
 	rpc := rpcclient.NewClient(stellarRPCURL, &http.Client{Timeout: 60 * time.Second})
 	t.Cleanup(func() { rpc.Close() })
 
 	// Create the Deployer (implements bindings.Invoker) for contract interactions.
-	// No Friendbot funding is needed here: the deployer was already funded by
-	// chain.go DeployLocalNetwork during ccv.NewEnvironment().
+	// The deployer was funded during ccv.NewEnvironment().
 	deployer := stellardeployment.NewDeployer(rpc, networkPassphrase, deployerKP)
+
+	fundStellarExecutorTransmitters(t, ctx, in, friendbotURL, deployer, l)
 
 	return &E2ETestEnv{
 		DeployerKP:         deployerKP,
-		ExecutorKP:         executorKP,
 		Deployer:           deployer,
 		RPCClient:          rpc,
 		NetworkPassphrase:  networkPassphrase,
@@ -387,4 +378,89 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		IndexerMonitor:     indexerMonitor,
 		FriendbotURL:       friendbotURL,
 	}
+}
+
+// The methods below are a temporary workaround to fund the Stellar executor transmitter.
+// TODO: Remove this once upstream handles Stellar-family executor transmitters in the fundExecutorTransmitters function.
+func fundStellarExecutorTransmitters(
+	t *testing.T,
+	ctx context.Context,
+	in *ccv.Cfg,
+	friendbotURL string,
+	deployer *stellardeployment.Deployer,
+	l *zerolog.Logger,
+) {
+	t.Helper()
+
+	for _, exec := range in.Executor {
+		if exec == nil || exec.ChainFamily != chain_selectors.FamilyStellar {
+			continue
+		}
+		require.NotNil(t, exec.Out, "stellar executor %q must have output", exec.ContainerName)
+		require.NotEmpty(t, exec.Out.BootstrapDBURL, "stellar executor %q must expose bootstrap URL", exec.ContainerName)
+
+		pubKey, err := fetchBootstrapPublicKey(ctx, exec.Out.BootstrapDBURL, stellarcommon.StellarTransmitterKeyName)
+		require.NoError(t, err, "fetch Stellar transmitter key for executor %q", exec.ContainerName)
+		require.Len(t, pubKey, 32, "stellar executor %q transmitter public key must be 32 bytes", exec.ContainerName)
+
+		address, err := strkey.Encode(strkey.VersionByteAccountID, pubKey)
+		require.NoError(t, err, "encode Stellar transmitter account for executor %q", exec.ContainerName)
+
+		_, _, exists, err := deployer.NativeAccountState(ctx, pubKey)
+		require.NoError(t, err, "check Stellar transmitter account for executor %q", exec.ContainerName)
+		if exists {
+			l.Info().
+				Str("executor", exec.ContainerName).
+				Str("address", address).
+				Msg("Stellar executor transmitter already funded")
+			continue
+		}
+
+		require.NoError(t, FundViaFriendbot(friendbotURL, address), "fund Stellar transmitter for executor %q", exec.ContainerName)
+		l.Info().
+			Str("executor", exec.ContainerName).
+			Str("address", address).
+			Msg("Funded Stellar executor transmitter via Friendbot")
+	}
+}
+
+func fetchBootstrapPublicKey(ctx context.Context, bootstrapURL, keyName string) ([]byte, error) {
+	reqBody, err := json.Marshal(keystore.GetKeysRequest{KeyNames: []string{keyName}})
+	if err != nil {
+		return nil, fmt.Errorf("marshal get keys request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		strings.TrimRight(bootstrapURL, "/")+bootstrap.GetKeysEndpoint,
+		bytes.NewReader(reqBody),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create get keys request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get bootstrap keys: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get bootstrap keys returned %s", resp.Status)
+	}
+
+	var keyResp keystore.GetKeysResponse
+	if err := json.NewDecoder(resp.Body).Decode(&keyResp); err != nil {
+		return nil, fmt.Errorf("decode get keys response: %w", err)
+	}
+
+	for _, key := range keyResp.Keys {
+		if key.KeyInfo.Name == keyName {
+			return append([]byte(nil), key.KeyInfo.PublicKey...), nil
+		}
+	}
+
+	return nil, fmt.Errorf("bootstrap key %q not found", keyName)
 }

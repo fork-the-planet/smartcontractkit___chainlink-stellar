@@ -2,20 +2,16 @@ package ccvchain
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
@@ -31,8 +27,6 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
-	"github.com/smartcontractkit/chainlink-ccv/protocol"
-	cldfstellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -61,21 +55,29 @@ func NewImplFactory() *ImplFactory {
 	return &ImplFactory{}
 }
 
-// DefaultSignerKey returns the default signer key for this chain family
-// given the bootstrap keys from a verifier node. Each family selects the
-// appropriate key type (e.g. EVM uses ECDSAAddress, Stellar uses EdDSA).
-// Return "" if no default signer is available.
+// DefaultSignerKey returns the default verifier-result signer key for this
+// chain family given the bootstrap keys from a verifier node. devenv calls
+// this from enrichEnvironmentTopology; the returned address is recorded in
+// the verifier's commit.Config.SignerAddress and ends up as the signer
+// expected by the on-chain committee_verifier.
+//
+// Despite Stellar transmitting Soroban transactions with an Ed25519 keypair,
+// the committee_verifier contract on Stellar stores 20-byte ETH-style signer
+// addresses (see contracts/common/verifier ETH_ADDRESS_OFFSET and
+// ccv/chain/adapter/aggregator_config_adapter.go reading signer[12:32]).
+// That means the verifier signs results with its ECDSA key — the same one
+// EVM verifiers use — so we return keys.ECDSAAddress here. The Stellar
+// Ed25519 transmitter / deployer keypair is a separate concern handled by
+// the accessor's KeystoreSetter path.
+//
+// Pre-2026-05-01 this read keys.EdDSAPublicKey and produced a Stellar G...
+// address, but that never matched the 20-byte ETH-style on-chain entry; the
+// fallback "fetch signing keys from JD" path masked the mismatch. With
+// chainlink-ccv changelog/2026-05-01_executor_keystore_transmitter.md the
+// EdDSA field was removed from BootstrapKeys, so we now return the correct
+// ECDSA address directly.
 func (f *ImplFactory) DefaultSignerKey(keys ccvservices.BootstrapKeys) string {
-	pubHex := strings.TrimPrefix(keys.EdDSAPublicKey, "0x")
-	raw, err := hex.DecodeString(pubHex)
-	if err != nil || len(raw) != 32 {
-		return ""
-	}
-	addr, err := strkey.Encode(strkey.VersionByteAccountID, raw)
-	if err != nil {
-		return ""
-	}
-	return addr
+	return keys.ECDSAAddress
 }
 
 // DefaultFeeAggregator implements [ccv.ImplFactory].
@@ -100,30 +102,6 @@ func (f *ImplFactory) SupportsFunding() bool {
 // use standalone executors (legacy mode, no bootstrap) return false.
 func (f *ImplFactory) SupportsBootstrapExecutor() bool {
 	return true
-}
-
-// GenerateTransmitterKey generates a fresh private key for executor
-// transaction signing in the native format for this chain family.
-// Returns the hex-encoded private key string.
-func (f *ImplFactory) GenerateTransmitterKey() (string, error) {
-	var seed [32]byte
-	if _, err := rand.Read(seed[:]); err != nil {
-		return "", fmt.Errorf("generate transmitter seed: %w", err)
-	}
-	return hex.EncodeToString(seed[:]), nil
-}
-
-// TransmitterAddress implements [ccv.ImplFactory].
-func (f *ImplFactory) TransmitterAddress(privateKeyHex string) (protocol.UnknownAddress, error) {
-	kp, err := cldfstellar.KeypairFromHex(privateKeyHex)
-	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("invalid Stellar transmitter private key: %w", err)
-	}
-	raw, err := strkey.Decode(strkey.VersionByteAccountID, kp.Address())
-	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("decode Stellar account id: %w", err)
-	}
-	return protocol.UnknownAddress(raw), nil
 }
 
 // NewEmpty implements [registry.ImplFactory].

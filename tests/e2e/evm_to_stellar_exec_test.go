@@ -1,8 +1,10 @@
 package e2e_tests
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,7 +17,6 @@ import (
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/composable/messaging"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/tests"
@@ -25,6 +26,12 @@ import (
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
+
+// messageV3Version is the CCIP message version we send across the EVM→Stellar
+// lane. Per chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md the
+// version is now an explicit argument on Chain.SendMessage rather than a field
+// inside MessageOptions.
+const messageV3Version uint8 = 3
 
 const (
 	evmSentTimeout = 30 * time.Second
@@ -85,9 +92,9 @@ func TestEVMToStellarExecutionHappyPath(t *testing.T) {
 				Data:     []byte("hello from evm"),
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 		l.Info().
@@ -226,9 +233,9 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 				Data:     []byte("message from cursed source"),
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 		l.Info().
@@ -321,9 +328,9 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 				Data:     []byte("hello from evm after uncurse"),
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 		l.Info().
@@ -402,9 +409,9 @@ func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
 				Data:     []byte("hello to nowhere"),
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err, "EVM send should succeed — receiver validation happens on the destination")
 		l.Info().
@@ -464,9 +471,22 @@ func TestEVMToStellarExecutionInvalidReceiver(t *testing.T) {
 	})
 }
 
-// TestEVMToStellarComposableMessaging runs messaging.BasicMessageTestScenario with
-// EVM as ChainAsSource and Stellar as ChainAsDestination (same devenv as
-// tests/e2e/evm_to_stellar_test.go).
+// TestEVMToStellarComposableMessaging exercises the same EVM→Stellar happy
+// path as TestEVMToStellarExecutionHappyPath but routed through the
+// chainlink-ccv generic V3 messaging scenario, which exercises the
+// ChainAsSource / ChainAsDestination interfaces directly.
+//
+// chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md replaced
+// messaging.BasicMessageTestScenario (an importable helper) with
+// MessageV3TestScenario inside an *_test.go file (so it cannot be imported
+// from outside the messaging package). The V3 helper additionally requires
+// the destination to implement cciptestinterfaces.MessageV3Destination
+// (GetExecutorArgs / GetTokenArgs). The Stellar chain implementation does
+// not implement that interface yet, so we inline the equivalent flow here
+// using the EVM-source dispatcher (evm.SerializeEVMExtraArgs) and skip the
+// V3 destination type assertion. Once the Stellar Chain grows
+// MessageV3Destination support, this test can switch to the upstream
+// MessageV3TestScenario by copying the helper into this package.
 //
 // Prerequisites:
 //
@@ -503,13 +523,71 @@ func TestEVMToStellarComposableMessaging(t *testing.T) {
 	receiver, err := dest.GetEOAReceiverAddress()
 	require.NoError(t, err)
 
-	// Match evm_to_stellar_test: EVM OnRamp uses GenericExtraArgsV3 for this lane.
-	err = messaging.BasicMessageTestScenario(ctx, t, src, dest, cciptestinterfaces.MessageFields{
-		Receiver: receiver,
-		Data:     []byte("composable evm→stellar"),
-	}, cciptestinterfaces.MessageOptions{
-		Version:           3,
-		ExecutionGasLimit: 200_000,
-	}, nil)
-	require.NoError(t, err)
+	require.NoError(t, runEVMToStellarV3Scenario(
+		ctx,
+		src,
+		dest,
+		cciptestinterfaces.MessageFields{
+			Receiver: receiver,
+			Data:     []byte("composable evm→stellar"),
+		},
+		cciptestinterfaces.MessageOptions{ExecutionGasLimit: 200_000},
+	))
+}
+
+// runEVMToStellarV3Scenario mirrors messaging.MessageV3TestScenario but uses
+// the per-(family, version) extra-args serializer registry instead of the
+// MessageV3Source / MessageV3Destination interfaces. The Stellar Chain does
+// not yet implement MessageV3Destination (GetExecutorArgs / GetTokenArgs), so
+// MessageV3Source.BuildV3ExtraArgs would dereference a nil destination and
+// panic. We use the CLI / load-gun pattern documented in
+// chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md, looking up
+// the registered FamilyStellar V3 serializer (registered by ccv/chain in
+// register.go) and feeding the result straight into BuildChainMessage.
+//
+// Once the Stellar Chain implements MessageV3Destination this can be replaced
+// with a verbatim copy of messaging.MessageV3TestScenario from
+// chainlink-ccv/build/devenv/tests/composable/messaging.
+func runEVMToStellarV3Scenario(
+	ctx context.Context,
+	src cciptestinterfaces.ChainAsSource,
+	dest cciptestinterfaces.ChainAsDestination,
+	fields cciptestinterfaces.MessageFields,
+	opts cciptestinterfaces.MessageOptions,
+) error {
+	serializer, ok := cciptestinterfaces.GetExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{
+		Family:  chain_selectors.FamilyStellar,
+		Version: messageV3Version,
+	})
+	if !ok {
+		return fmt.Errorf("no extra args serializer registered for (Stellar, V3) — did ccv/chain.RegisterStellarComponents run?")
+	}
+
+	extraArgs, err := serializer(opts)
+	if err != nil {
+		return fmt.Errorf("serialize V3 extra args for Stellar destination: %w", err)
+	}
+
+	srcMessage, err := src.BuildChainMessage(ctx, fields, extraArgs)
+	if err != nil {
+		return fmt.Errorf("build chain message: %w", err)
+	}
+
+	sentEvent, _, err := src.SendChainMessage(ctx, dest.ChainSelector(), srcMessage, nil)
+	if err != nil {
+		return fmt.Errorf("send chain message: %w", err)
+	}
+
+	if _, err := src.ConfirmSendOnSource(ctx, dest.ChainSelector(), cciptestinterfaces.MessageEventKey{MessageID: sentEvent.MessageID}, evmSentTimeout); err != nil {
+		return fmt.Errorf("confirm send on source: %w", err)
+	}
+
+	execEvent, err := dest.ConfirmExecOnDest(ctx, src.ChainSelector(), cciptestinterfaces.MessageEventKey{MessageID: sentEvent.MessageID}, execTimeout)
+	if err != nil {
+		return fmt.Errorf("confirm exec on dest: %w", err)
+	}
+	if execEvent.State != cciptestinterfaces.ExecutionStateSuccess {
+		return fmt.Errorf("unexpected execution state %s, return data: %x", execEvent.State, execEvent.ReturnData)
+	}
+	return nil
 }

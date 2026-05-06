@@ -36,10 +36,11 @@ var registerOnce sync.Once
 // Stellar does not register deployment/lanes.LaneAdapter (legacy 1.6 ConnectChains path);
 // use ConfigureChainsForLanesFromTopology with ChainFamilyRegistry only.
 //
-// cciptestinterfaces.RegisterExtraArgsSerializer(FamilyStellar, devenvccipevm.SerializeEVMExtraArgs)
-// is only for EVM-as-source: CCIP17EVM.BuildChainMessage looks up the serializer by destination
-// family; the EVM OnRamp still emits EVM ABI GenericExtraArgs for a Stellar destination selector.
-// That is unrelated to Stellar-as-source Soroban/XDR extra_args, which ccvchain.Chain builds via
+// cciptestinterfaces.RegisterExtraArgsSerializer(ExtraArgsSerializerEntry{Family: FamilyStellar, Version: …}, …)
+// is only for EVM-as-source: CCIP17EVM.BuildChainMessage looks up the serializer by
+// (destination family, message version); the EVM OnRamp still emits EVM ABI
+// GenericExtraArgs for a Stellar destination selector. That is unrelated to
+// Stellar-as-source Soroban/XDR extra_args, which ccvchain.Chain builds via
 // EncodeStellarSourceExtraArgsForOnRamp and never uses this registry entry.
 func RegisterStellarComponents() {
 	registerOnce.Do(func() {
@@ -60,16 +61,24 @@ func RegisterStellarComponents() {
 		ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &adapter.StellarTokenVerifierConfigAdapter{})
 		ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &StellarDeployChainContractsAdapter{})
 
-		cciptestinterfaces.RegisterExtraArgsSerializer(chainsel.FamilyStellar, devenvccipevm.SerializeEVMExtraArgs)
+		// Register every CCIP message version we expect EVM-as-source to send to
+		// a Stellar destination. The EVM OnRamp serialises EVM ABI extra args
+		// regardless of destination family; chainlink-ccv's evm package now
+		// keys serializers by (family, version) so we mirror its FamilyEVM
+		// registrations for FamilyStellar destinations.
+		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 3}, devenvccipevm.SerializeMessageV3ExtraArgs)
+		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 2}, devenvccipevm.BuildEVMExtraArgsV2)
+		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 1}, devenvccipevm.BuildEVMExtraArgsV1)
 
 		// Register Stellar with chainlink-ccv/deployment/adapters so devenv changesets
 		// (GenerateAggregatorConfig, ApplyExecutorConfig, etc.) can resolve Stellar chains.
 		ccvdeploymentadapters.GetRegistry().Register(chainsel.FamilyStellar, ccvdeploymentadapters.ChainAdapters{
-			Aggregator:    &adapter.StellarCCVDeploymentAggregatorConfigAdapter{},
-			Executor:      &adapter.StellarCCVDeploymentExecutorConfigAdapter{},
-			Verifier:      &adapter.StellarCCVDeploymentVerifierConfigAdapter{},
-			Indexer:       &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
-			TokenVerifier: &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
+			Aggregator:               &adapter.StellarCCVDeploymentAggregatorConfigAdapter{},
+			CommitteeVerifierOnchain: &adapter.StellarCCVCommitteeVerifierOnchainAdapter{},
+			Executor:                 &adapter.StellarCCVDeploymentExecutorConfigAdapter{},
+			Verifier:                 &adapter.StellarCCVDeploymentVerifierConfigAdapter{},
+			Indexer:                  &adapter.StellarCCVDeploymentIndexerConfigAdapter{},
+			TokenVerifier:            &adapter.StellarCCVDeploymentTokenVerifierConfigAdapter{},
 		})
 
 		tokenAdapterRegistry := tokenscore.GetTokenAdapterRegistry()

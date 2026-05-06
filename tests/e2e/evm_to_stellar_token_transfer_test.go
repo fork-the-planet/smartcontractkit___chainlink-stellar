@@ -109,9 +109,9 @@ func TestEVMToStellarTokenTransfer(t *testing.T) {
 				},
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 		l.Info().
@@ -245,9 +245,9 @@ func TestEVMToStellarTokenTransferFees(t *testing.T) {
 				},
 			},
 			cciptestinterfaces.MessageOptions{
-				Version:           3,
 				ExecutionGasLimit: 200_000,
 			},
+			messageV3Version,
 		)
 		require.NoError(t, err)
 

@@ -596,10 +596,10 @@ func (c *Chain) fundViaFriendbot(friendbotURL, address string) error {
 
 // FundAddresses implements cciptestinterfaces.CCIP17Configuration.
 // Funds addresses with native Stellar Lumens (XLM).
-// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently
-// skipped — this handles the case where the framework passes EVM pricer
-// addresses (20 bytes) to every chain implementation.
+// Addresses that are not exactly 32 bytes (ed25519 public keys) are silently skipped.
 func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addresses []protocol.UnknownAddress, nativeAmount *big.Int) error {
+	c.logger.Debug().Int("numAddresses", len(addresses)).Msg("Attempting to fund Stellar addresses")
+
 	for _, addr := range addresses {
 		if len(addr) != stellarAddressLen {
 			c.logger.Debug().
@@ -609,52 +609,14 @@ func (c *Chain) FundAddresses(ctx context.Context, input *blockchain.Input, addr
 			continue
 		}
 		addrStr := strkey.MustEncode(strkey.VersionByteAccountID, addr)
-		faucetUrl := fmt.Sprintf("%s?addr=%s", input.Out.NetworkSpecificData.StellarNetwork.FriendbotURL, addrStr)
 
-		// Retry logic for friendbot - it may take up to 90 seconds to be ready after container start
-		var lastErr error
-		maxRetries := 9
-		retryInterval := 20 * time.Second
-
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			resp, err := http.Get(faucetUrl)
-			if err != nil {
-				lastErr = fmt.Errorf("failed to get faucet (friendbot) URL: %w", err)
-				c.logger.Debug().
-					Err(err).
-					Int("attempt", attempt+1).
-					Int("maxRetries", maxRetries).
-					Msg("Friendbot request failed, retrying...")
-				time.Sleep(retryInterval)
-				continue
-			}
-
-			if resp.StatusCode == http.StatusOK {
-				resp.Body.Close()
-				c.logger.Debug().
-					Str("address", addrStr).
-					Int("attempt", attempt+1).
-					Msg("Successfully funded address via friendbot")
-				lastErr = nil
-				break
-			}
-
-			// Non-OK status, might be 502 if friendbot isn't ready yet
-			resp.Body.Close()
-			lastErr = fmt.Errorf("friendbot returned status %s", resp.Status)
-			c.logger.Debug().
-				Str("status", resp.Status).
-				Int("attempt", attempt+1).
-				Int("maxRetries", maxRetries).
-				Str("address", addrStr).
-				Str("faucetUrl", faucetUrl).
-				Msg("Friendbot not ready, retrying...")
-			time.Sleep(retryInterval)
+		if err := c.fundViaFriendbot(c.friendbotURL, addrStr); err != nil {
+			return fmt.Errorf("fund address %s: %w", addrStr, err)
 		}
 
-		if lastErr != nil {
-			return fmt.Errorf("failed to fund address %s after %d attempts: %w", addrStr, maxRetries, lastErr)
-		}
+		c.logger.Info().
+			Str("address", addrStr).
+			Msg("Funded Stellar address via Friendbot")
 	}
 
 	c.logger.Info().
@@ -965,14 +927,21 @@ func (c *Chain) ManuallyExecuteMessage(ctx context.Context, message protocol.Mes
 }
 
 // SendMessage implements cciptestinterfaces.Chain.
-// It delegates to BuildChainMessage + SendChainMessage.
-func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.MessageSentEvent, error) {
+//
+// DEPRECATED upstream in chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md.
+// New callers should use BuildChainMessage + SendChainMessage directly.
+//
+// Stellar-as-source builds its own Soroban GenericExtraArgsV3 XDR blob inside
+// BuildChainMessage and ignores the provider-shaped extra args supplied here,
+// so we accept any ExtraArgsDataProvider and any messageVersion without
+// type-asserting.
+func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestinterfaces.MessageFields, _ cciptestinterfaces.ExtraArgsDataProvider, _ uint8) (cciptestinterfaces.MessageSentEvent, error) {
 	c.logger.Info().
 		Uint64("destChainSelector", dest).
 		Str("receiver", hex.EncodeToString(fields.Receiver)).
 		Msg("Sending CCIP message from Stellar via Router")
 
-	msg, err := c.BuildChainMessage(ctx, dest, fields, opts)
+	msg, err := c.BuildChainMessage(ctx, fields, nil)
 	if err != nil {
 		return cciptestinterfaces.MessageSentEvent{}, err
 	}

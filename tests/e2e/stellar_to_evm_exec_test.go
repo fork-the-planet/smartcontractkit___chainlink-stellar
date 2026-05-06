@@ -110,6 +110,7 @@ func TestStellarToEVMExecution(t *testing.T) {
 				Data:     []byte("should fail - chain is cursed"),
 			},
 			cciptestinterfaces.MessageOptions{},
+			messageV3Version,
 		)
 		require.Error(t, sendErr, "sending message to cursed chain should fail")
 		l.Info().Err(sendErr).Msg("✅ Message send failed as expected due to curse on destination chain")
@@ -222,6 +223,7 @@ func TestStellarToEVMFeeQuoterDestChainDisabled(t *testing.T) {
 				Data:     []byte("should fail - dest chain disabled"),
 			},
 			cciptestinterfaces.MessageOptions{},
+			messageV3Version,
 		)
 		require.Error(t, sendErr, "sending message to disabled dest chain should fail")
 		l.Info().Err(sendErr).Msg("Message send failed as expected (dest chain disabled on FeeQuoter)")
@@ -269,6 +271,7 @@ func sendAndVerifyMessage(
 			Data:     []byte(messageData),
 		},
 		cciptestinterfaces.MessageOptions{},
+		messageV3Version,
 	)
 	require.NoError(t, err)
 	l.Info().
