@@ -2,9 +2,7 @@ package ccvchain
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
@@ -30,8 +27,6 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
-	"github.com/smartcontractkit/chainlink-ccv/protocol"
-	cldfstellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -107,30 +102,6 @@ func (f *ImplFactory) SupportsFunding() bool {
 // use standalone executors (legacy mode, no bootstrap) return false.
 func (f *ImplFactory) SupportsBootstrapExecutor() bool {
 	return true
-}
-
-// GenerateTransmitterKey generates a fresh private key for executor
-// transaction signing in the native format for this chain family.
-// Returns the hex-encoded private key string.
-func (f *ImplFactory) GenerateTransmitterKey() (string, error) {
-	var seed [32]byte
-	if _, err := rand.Read(seed[:]); err != nil {
-		return "", fmt.Errorf("generate transmitter seed: %w", err)
-	}
-	return hex.EncodeToString(seed[:]), nil
-}
-
-// TransmitterAddress implements [ccv.ImplFactory].
-func (f *ImplFactory) TransmitterAddress(privateKeyHex string) (protocol.UnknownAddress, error) {
-	kp, err := cldfstellar.KeypairFromHex(privateKeyHex)
-	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("invalid Stellar transmitter private key: %w", err)
-	}
-	raw, err := strkey.Decode(strkey.VersionByteAccountID, kp.Address())
-	if err != nil {
-		return protocol.UnknownAddress{}, fmt.Errorf("decode Stellar account id: %w", err)
-	}
-	return protocol.UnknownAddress(raw), nil
 }
 
 // NewEmpty implements [registry.ImplFactory].
