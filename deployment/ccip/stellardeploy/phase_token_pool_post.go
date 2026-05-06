@@ -9,15 +9,14 @@ import (
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	sacops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/sac_token"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 	poolops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_pool"
-	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // See [github.com/smartcontractkit/chainlink-stellar/deployment/ccip.DevenvTestTokenPoolQualifier].
@@ -93,7 +92,12 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 
 	// Fund the pool with SAC liquidity so inbound release_or_mint calls succeed.
 	deployerAddr := h.DeployerKeypair().Address()
-	if err := fundPoolWithSAC(ctx, h.Deployer(), tokenContractID, deployerAddr, poolContractID, initialPoolLiquidity); err != nil {
+	if _, err := cldfops.ExecuteOperation(opBundle, sacops.Transfer, deps, sacops.TransferInput{
+		ContractID: tokenContractID,
+		From:       deployerAddr,
+		To:         poolContractID,
+		Amount:     initialPoolLiquidity,
+	}); err != nil {
 		return fmt.Errorf("fund pool with SAC liquidity: %w", err)
 	}
 	h.Logger().Info().
@@ -128,21 +132,6 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 		Str("token", tokenContractID).
 		Str("pool", poolContractID).
 		Msg("Token pool registered in TokenAdminRegistry")
-	return nil
-}
-
-// fundPoolWithSAC transfers SAC tokens from the deployer to the pool contract,
-// providing liquidity for inbound release_or_mint operations.
-func fundPoolWithSAC(ctx context.Context, deployer *stellardeployment.Deployer, sacContractID, fromStrkey, poolStrkey string, amount int64) error {
-	args := []xdr.ScVal{
-		scval.AddressToScVal(fromStrkey),
-		scval.AddressToScVal(poolStrkey),
-		scval.I128ToScVal(amount),
-	}
-	_, err := deployer.InvokeContract(ctx, sacContractID, "transfer", args)
-	if err != nil {
-		return fmt.Errorf("SAC transfer %s -> %s amount=%d: %w", fromStrkey, poolStrkey, amount, err)
-	}
 	return nil
 }
 

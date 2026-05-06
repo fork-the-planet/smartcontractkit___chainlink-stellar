@@ -6,9 +6,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/keypair"
 
-	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -16,6 +13,7 @@ import (
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
 )
 
@@ -99,6 +97,7 @@ func (h *stellarCCIPDeployHost) CreateTestToken(ctx context.Context, friendbotUR
 	return h.c.createTestToken(ctx, friendbotURL)
 }
 
-func (c *Chain) deployStellarCCIPContracts(opBundle cldf_ops.Bundle, ctx context.Context, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (datastore.DataStore, error) {
-	return stellardeploy.DeployStellarCCIPContracts(ctx, opBundle, &stellarCCIPDeployHost{c: c}, allSelectors, selector, topology, existingAddresses)
+// CCIPDevenvHost returns the Soroban devenv host used by stellardeploy and by RunStellarCCIPFullDeploy when invoked from ccv chain helpers.
+func (c *Chain) CCIPDevenvHost() stellarccip.CCIPDevenvHost {
+	return &stellarCCIPDeployHost{c: c}
 }

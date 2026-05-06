@@ -6,9 +6,10 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/require"
 
+	fqopstype "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/fees"
-	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
@@ -31,6 +32,14 @@ func TestStellarFeeAdapter_GetDefaultDestChainConfig(t *testing.T) {
 	require.Greater(t, cfg.MaxPerMsgGasLimit, uint32(0))
 }
 
+func testFQRef() datastore.AddressRef {
+	return datastore.AddressRef{
+		Type:    datastore.ContractType(fqopstype.ContractType),
+		Version: semver.MustParse(fqopstype.Deploy.Version()),
+		Address: "CFQADDR",
+	}
+}
+
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
@@ -41,12 +50,8 @@ func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	ds := datastore.NewMemoryDataStore()
-	ref := datastore.AddressRef{
-		ChainSelector: 42,
-		Type:          "FeeQuoter",
-		Version:       semver.MustParse("2.0.0"),
-		Address:       "CFQADDR",
-	}
+	ref := testFQRef()
+	ref.ChainSelector = 42
 	require.NoError(t, ds.Addresses().Upsert(ref))
 	env := envWithDatastore(ds.Seal())
 	got, err := a.GetFeeContractRef(env, 42, 0)

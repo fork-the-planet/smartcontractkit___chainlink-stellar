@@ -5,12 +5,9 @@ import (
 	"testing"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
-	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_stellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	cldflogger "github.com/smartcontractkit/chainlink-deployments-framework/pkg/logger"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
@@ -20,9 +17,14 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-func TestDeployStellarCCIPInnerSequenceID(t *testing.T) {
+func TestStellarDeployChainContractsSequenceID(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "deploy-stellar-ccip-inner", DeployStellarCCIPInner.ID())
+	require.Equal(t, "stellar-deploy-chain-contracts", StellarDeployChainContracts.ID())
+}
+
+func TestDeployChainContractsInnerSequenceID(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, StellarDeployChainContracts.ID(), DeployChainContractsInner.ID())
 }
 
 func newTestBundle(t *testing.T) cldf_ops.Bundle {
@@ -69,34 +71,6 @@ func (stubInvoker) GetEvents(ctx context.Context, contractID string, startLedger
 	return nil, nil
 }
 
-type stubStellarDeployRunner struct {
-	lastOpBundle cldf_ops.Bundle
-}
-
-func (s *stubStellarDeployRunner) DeployStellarCCIPContracts(
-	ctx context.Context,
-	opBundle cldf_ops.Bundle,
-	allSelectors []uint64,
-	selector uint64,
-	topology *ccvdeployment.EnvironmentTopology,
-	existingAddresses []datastore.AddressRef,
-) (seq_core.OnChainOutput, error) {
-	_ = ctx
-	_ = allSelectors
-	_ = topology
-	_ = existingAddresses
-	_ = selector
-	s.lastOpBundle = opBundle
-	return seq_core.OnChainOutput{}, nil
-}
-
-func (s *stubStellarDeployRunner) StellarDepsForDeploy() stellardeps.StellarDeps {
-	return stellardeps.StellarDeps{
-		Deploy:  stubDeployer{},
-		Invoker: stubInvoker{},
-	}
-}
-
 func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
@@ -111,7 +85,7 @@ func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
-	// Unique selector so parallel tests that register STELLAR_LOCALNET deploy context do not mask this case.
+	// Unique selector so parallel tests do not collide on BlockChains maps.
 	sel := uint64(424242420001)
 	st := cldf_stellar.Chain{ChainMetadata: cldf_stellar.ChainMetadata{Selector: sel}}
 	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: st})
@@ -122,18 +96,18 @@ func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDeployStellarCCIPInner_ForwardsParentOperationsBundle(t *testing.T) {
+func TestRunStellarCCIPFullDeploy_ErrorsWhenCCIPDevenvHostNil(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
 	sel := chainsel.STELLAR_LOCALNET.Selector
-	runner := &stubStellarDeployRunner{}
-	RegisterStellarDeployChainContext(sel, runner, nil)
-	t.Cleanup(func() { ClearStellarDeployChainContext(sel) })
-
-	_, err := cldf_ops.ExecuteSequence(b, DeployStellarCCIPInner, runner.StellarDepsForDeploy(), DeployStellarCCIPInnerInput{
+	deps := stellardeps.StellarDeps{
+		Deploy:  stubDeployer{},
+		Invoker: stubInvoker{},
+	}
+	_, err := RunStellarCCIPFullDeploy(b.GetContext(), b, deps, nil, nil, DeployStellarCCIPInnerInput{
 		ChainSelector: sel,
 		AllSelectors:  []uint64{sel, 123},
 	})
-	require.NoError(t, err)
-	require.NotNil(t, runner.lastOpBundle.GetContext, "inner sequence should pass the parent CLDF bundle into DeployStellarCCIPContracts (EVM-style)")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "CCIPDevenvHost")
 }

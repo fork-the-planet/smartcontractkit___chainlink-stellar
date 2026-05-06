@@ -55,6 +55,27 @@ var ApplyDestChainConfigs = cldfops.NewOperation(
 	},
 )
 
+// UpdatePricesInput sets gas and token price updates on FeeQuoter.
+type UpdatePricesInput struct {
+	ContractID   string                    `json:"contract_id"`
+	Updater      string                    `json:"updater"`
+	PriceUpdates fqbindings.PriceUpdates   `json:"price_updates"`
+}
+
+// UpdatePrices calls FeeQuoter `update_prices`.
+var UpdatePrices = cldfops.NewOperation(
+	"fee-quoter:update-prices",
+	stellarops.ContractDeploymentVersion,
+	"Updates gas and token prices on Stellar FeeQuoter",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in UpdatePricesInput) (stellarops.Void, error) {
+		c := fqbindings.NewFeeQuoterClient(d.Invoker, in.ContractID)
+		if err := c.UpdatePrices(b.GetContext(), in.Updater, in.PriceUpdates); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
 // ApplyTokenFeeConfigsInput sets per-token transfer fee overrides on FeeQuoter.
 type ApplyTokenFeeConfigsInput struct {
 	ContractID string                          `json:"contract_id"`

@@ -122,6 +122,9 @@ func NewDeployer(rpcClient *rpcclient.Client, networkPassphrase string, signer *
 // NewDeployerFromChain creates a Deployer directly from a CLDF Stellar chain,
 // using the chain's Signer, Client, and NetworkPassphrase.
 func NewDeployerFromChain(ch cldfstellar.Chain, opts ...DeployerOption) (*Deployer, error) {
+	if ch.Signer == nil {
+		return nil, fmt.Errorf("stellar chain Signer is nil")
+	}
 	kp := ch.Signer.KeypairFull()
 	if kp == nil {
 		return nil, fmt.Errorf("chain signer returned nil KeypairFull")

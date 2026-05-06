@@ -3,65 +3,50 @@ package sequences
 import (
 	"fmt"
 
-	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
+	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 )
 
-// DeployStellarCCIPInnerInput is the input for the inner full-stack deploy sequence.
-// AllSelectors must list every chain selector in the environment (from the outer BlockChains map);
-// it is stored as a plain slice so CLDF can persist sequence inputs (BlockChains is not serializable).
+// DeployStellarCCIPInnerInput carries per-chain inputs for the Stellar full-stack deploy sequence.
+// AllSelectors must list every chain selector in the environment (from BlockChains).
 type DeployStellarCCIPInnerInput struct {
 	ChainSelector     uint64
 	AllSelectors      []uint64
 	ExistingAddresses []datastore.AddressRef
 }
 
-// DeployStellarCCIPInner runs the full Stellar CCIP devenv deploy in one inner sequence
-// with DEP=stellardeps.StellarDeps (EVM-style: one inner sequence, same role as evm.Chain).
-var DeployStellarCCIPInner = cldf_ops.NewSequence(
-	"deploy-stellar-ccip-inner",
-	SequenceVersion,
-	"Deploys the full Stellar CCIP Soroban stack (inner sequence; DEP=stellardeps.StellarDeps).",
-	func(b cldf_ops.Bundle, deps stellardeps.StellarDeps, in DeployStellarCCIPInnerInput) (seq_core.OnChainOutput, error) {
-		if deps.Deploy == nil || deps.Invoker == nil {
-			return seq_core.OnChainOutput{}, fmt.Errorf("deploy-stellar-ccip-inner: incomplete StellarDeps (nil deploy or invoker)")
-		}
-		runner, topology, err := takeStellarDeployChainContext(in.ChainSelector)
-		if err != nil {
-			return seq_core.OnChainOutput{}, err
-		}
-		return runner.DeployStellarCCIPContracts(b.GetContext(), b, in.AllSelectors, in.ChainSelector, topology, in.ExistingAddresses)
-	},
-)
-
-// StellarDeployChainContracts is the outer adapter-facing sequence: DEP is
-// cldf_chain.BlockChains. It validates the Stellar chain entry, resolves
-// StellarDeps from the registered runner, and ExecuteSequence on the inner deploy.
+// StellarDeployChainContracts is the adapter sequence: DEP is BlockChains.
+// It builds StellarDeps and a [stellarccip.CCIPDevenvHost] from the CLDF Stellar chain entry — no sync.Map / PreDeploy runner stash.
 var StellarDeployChainContracts = cldf_ops.NewSequence(
 	"stellar-deploy-chain-contracts",
 	SequenceVersion,
-	"Deploys Stellar Soroban CCIP contracts for devenv (outer sequence; validates BlockChains, runs inner sequence).",
+	"Deploys Stellar Soroban CCIP contracts via CLDF Stellar chain (adapter path). Topology is nil: committee signer config uses placeholders unless deploy is run via ccv/stellardeploy with topology.",
 	func(b cldf_ops.Bundle, chains cldf_chain.BlockChains, input ccvadapters.DeployChainContractsInput) (seq_core.OnChainOutput, error) {
-		if _, ok := chains.StellarChains()[input.ChainSelector]; !ok {
+		ch, ok := chains.StellarChains()[input.ChainSelector]
+		if !ok {
 			return seq_core.OnChainOutput{}, fmt.Errorf("stellar chain not found for selector %d", input.ChainSelector)
 		}
-		runner, _, err := takeStellarDeployChainContext(input.ChainSelector)
+		dep, err := stellardeployment.NewDeployerFromChain(ch)
 		if err != nil {
-			return seq_core.OnChainOutput{}, err
+			return seq_core.OnChainOutput{}, fmt.Errorf("stellar deployer from chain: %w", err)
 		}
-		deps := runner.StellarDepsForDeploy()
-		report, err := cldf_ops.ExecuteSequence(b, DeployChainContractsInner, deps, DeployChainContractsInnerInput{
+		deps := stellardeps.FromDeployer(dep)
+		lg := stellarccip.DefaultStellarDeployZerolog()
+		host, err := stellarccip.NewCLDFStellarCCIPDevenvHost(ch, lg, dep)
+		if err != nil {
+			return seq_core.OnChainOutput{}, fmt.Errorf("stellar devenv host: %w", err)
+		}
+		// DeployChainContractsInput has no topology field on this chainlink-ccip/deployment pin; ccv/stellardeploy pass topology via their own entrypoints.
+		return RunStellarCCIPFullDeploy(b.GetContext(), b, deps, host, nil, DeployStellarCCIPInnerInput{
 			ChainSelector:     input.ChainSelector,
 			AllSelectors:      allSelectorsFromBlockChains(chains),
 			ExistingAddresses: input.ExistingAddresses,
 		})
-		if err != nil {
-			return seq_core.OnChainOutput{}, fmt.Errorf("stellar deploy inner sequence: %w", err)
-		}
-		return report.Output, nil
 	},
 )
