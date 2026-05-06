@@ -1,11 +1,7 @@
 package adapters
 
 import (
-	"context"
 	"fmt"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/stellar/go-stellar-sdk/keypair"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
@@ -17,81 +13,15 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
-	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
-	ccvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
 // StellarCCVDeploymentAggregatorConfigAdapter implements
 // github.com/smartcontractkit/chainlink-ccv/deployment/adapters.AggregatorConfigAdapter
-// for the devenv GenerateAggregatorConfig changeset (distinct from the chainlink-ccip
-// AggregatorConfigAdapter used by CLD-style registries).
+// for the devenv (datastore-only verifier address resolution). On-chain committee
+// state for GenerateAggregatorConfig lives on StellarCCVCommitteeVerifierOnchainAdapter.
 type StellarCCVDeploymentAggregatorConfigAdapter struct{}
 
 var _ ccvdeploymentadapters.AggregatorConfigAdapter = (*StellarCCVDeploymentAggregatorConfigAdapter)(nil)
-
-func (a *StellarCCVDeploymentAggregatorConfigAdapter) ScanCommitteeStates(
-	ctx context.Context,
-	env deployment.Environment,
-	chainSelector uint64,
-) ([]*ccvdeploymentadapters.CommitteeState, error) {
-	refs := env.DataStore.Addresses().Filter(
-		datastore.AddressRefByType(datastore.ContractType(committee_verifier.ContractType)),
-		datastore.AddressRefByChainSelector(chainSelector),
-	)
-
-	if len(refs) == 0 {
-		return nil, nil
-	}
-
-	stellarChains := env.BlockChains.StellarChains()
-	chain, ok := stellarChains[chainSelector]
-	if !ok {
-		return nil, fmt.Errorf("Stellar chain %d not found in environment", chainSelector)
-	}
-
-	kp, err := keypair.Random()
-	if err != nil {
-		return nil, fmt.Errorf("generate ephemeral keypair: %w", err)
-	}
-	deployer := stellardeployment.NewDeployer(chain.Client, chain.NetworkPassphrase, kp)
-
-	states := make([]*ccvdeploymentadapters.CommitteeState, 0, len(refs))
-	for _, ref := range refs {
-		contractID, err := hexToStellarContractID(ref.Address)
-		if err != nil {
-			return nil, fmt.Errorf("convert address %s to Stellar contract ID: %w", ref.Address, err)
-		}
-
-		client := ccvbindings.NewCommitteeVerifierClient(deployer, contractID)
-		configs, err := client.GetAllSignatureConfigs(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("get signature configs from %s on chain %d: %w", ref.Address, chainSelector, err)
-		}
-
-		sigConfigs := make([]ccvdeploymentadapters.SignatureConfig, 0, len(configs))
-		for _, cfg := range configs {
-			signers := make([]string, 0, len(cfg.Signers))
-			for _, signer := range cfg.Signers {
-				signers = append(signers, common.BytesToAddress(signer[12:32]).Hex())
-			}
-			sigConfigs = append(sigConfigs, ccvdeploymentadapters.SignatureConfig{
-				SourceChainSelector: cfg.SourceChainSelector,
-				Signers:             signers,
-				Threshold:           uint8(cfg.Threshold),
-			})
-		}
-
-		states = append(states, &ccvdeploymentadapters.CommitteeState{
-			Qualifier:        ref.Qualifier,
-			ChainSelector:    chainSelector,
-			Address:          ref.Address,
-			SignatureConfigs: sigConfigs,
-		})
-	}
-
-	return states, nil
-}
 
 func (a *StellarCCVDeploymentAggregatorConfigAdapter) ResolveVerifierAddress(
 	ds datastore.DataStore,
