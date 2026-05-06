@@ -55,8 +55,7 @@ func (c *TOMLConfig) IsEnabled() bool {
 	return c.Enabled == nil || *c.Enabled
 }
 
-// ValidateConfig returns a combined error for all invalid or missing required
-// fields. All errors are accumulated rather than failing on the first one.
+// ValidateConfig returns a combined error for all invalid or missing required fields
 func (c *TOMLConfig) ValidateConfig() (err error) {
 	if !slices.Contains([]string{
 		chain_selectors.STELLAR_MAINNET.ChainID,
