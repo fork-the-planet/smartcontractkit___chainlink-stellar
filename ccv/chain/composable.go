@@ -18,7 +18,10 @@ import (
 type StellarSendOptions struct{}
 
 // IsSendOption implements cciptestinterfaces.ChainSendOption.
-func (StellarSendOptions) IsSendOption() bool { return true }
+//
+// Per chainlink-ccv changelog/2026-04-27_extra_args_data_provider.md the marker
+// no longer returns a bool — the previous return value was never inspected.
+func (StellarSendOptions) IsSendOption() {}
 
 var (
 	_ cciptestinterfaces.ChainAsSource      = (*Chain)(nil)
@@ -26,16 +29,30 @@ var (
 )
 
 // BuildChainMessage implements cciptestinterfaces.ChainAsSource.
-// It returns a routerbindings.StellarToAnyMessage as cciptestinterfaces.ChainAsSourceMessage.
-func (c *Chain) BuildChainMessage(ctx context.Context, destChain uint64, fields cciptestinterfaces.MessageFields, opts cciptestinterfaces.MessageOptions) (cciptestinterfaces.ChainAsSourceMessage, error) {
+//
+// The pre-2026-04-27 signature took a destination chain selector and a
+// MessageOptions struct, and the source was responsible for serialising the
+// extra args. The new signature receives pre-serialised GenericExtraArgs from
+// the caller (load gun / scenario / CLI) along with destination-family
+// awareness via the (family, version) lookup. For Stellar-as-source the
+// pre-serialised extra args are not directly usable because the Stellar
+// OnRamp expects Soroban GenericExtraArgsV3 XDR rather than the destination's
+// wire format, so we ignore the provided extraArgs and re-encode using the
+// Stellar-side helper.
+func (c *Chain) BuildChainMessage(ctx context.Context, fields cciptestinterfaces.MessageFields, extraArgs cciptestinterfaces.GenericExtraArgs) (cciptestinterfaces.GenericChainMessage, error) {
 	_ = ctx
-	_ = destChain
-	// CCIP devenv policy: allow out-of-order execution on the destination path. The
-	// Soroban GenericExtraArgsV3 struct has no OOO field yet; we still normalize opts
-	// so callers and any future dest_blob / metadata wiring stay consistent.
-	forced := opts
-	forced.OutOfOrderExecution = true
-	extraArgs, err := common.EncodeStellarSourceExtraArgsForOnRamp(c.deployerKeypair.Address(), c.vvrContractID, forced)
+	_ = extraArgs
+
+	// CCIP devenv policy: allow out-of-order execution on the destination
+	// path. The Soroban GenericExtraArgsV3 struct has no OOO field today; we
+	// pre-populate a MessageOptions so EncodeStellarSourceExtraArgsForOnRamp
+	// emits sensible defaults. Callers that need richer per-send overrides
+	// should construct the Soroban extraArgs externally.
+	encodedExtraArgs, err := common.EncodeStellarSourceExtraArgsForOnRamp(
+		c.deployerKeypair.Address(),
+		c.vvrContractID,
+		cciptestinterfaces.MessageOptions{OutOfOrderExecution: true},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("encode extra args for Stellar OnRamp: %w", err)
 	}
@@ -72,14 +89,14 @@ func (c *Chain) BuildChainMessage(ctx context.Context, destChain uint64, fields 
 		Data:         fields.Data,
 		TokenAmounts: tokenAmounts,
 		FeeToken:     feeToken,
-		ExtraArgs:    extraArgs,
+		ExtraArgs:    encodedExtraArgs,
 	}
 	return msg, nil
 }
 
 // SendChainMessage implements cciptestinterfaces.ChainAsSource.
 // msg must be the routerbindings.StellarToAnyMessage returned from BuildChainMessage.
-func (c *Chain) SendChainMessage(ctx context.Context, destChain uint64, msg cciptestinterfaces.ChainAsSourceMessage, sendOption cciptestinterfaces.ChainSendOption) (cciptestinterfaces.MessageSentEvent, protocol.ByteSlice, error) {
+func (c *Chain) SendChainMessage(ctx context.Context, destChain uint64, msg cciptestinterfaces.GenericChainMessage, sendOption cciptestinterfaces.ChainSendOption) (cciptestinterfaces.MessageSentEvent, protocol.ByteSlice, error) {
 	// Optional StellarSendOptions; other ChainSendOption types are ignored (EVM-style defaults).
 	if _, ok := sendOption.(StellarSendOptions); ok {
 		// Reserved for future per-send overrides.

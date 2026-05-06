@@ -39,11 +39,16 @@ func (a *StellarAggregatorConfigAdapter) ScanCommitteeStates(ctx context.Context
 	if !ok {
 		return nil, fmt.Errorf("Stellar chain %d not found in environment", chainSelector)
 	}
-
-	deployer, err := stellardeployment.NewDeployerFromChain(chain)
-	if err != nil {
-		return nil, fmt.Errorf("create deployer from chain: %w", err)
+	if chain.Signer == nil {
+		return nil, fmt.Errorf("Stellar chain %d has no signer configured", chainSelector)
 	}
+
+	// GetAllSignatureConfigs is a read-only Soroban simulation, but we use the
+	// CLDF chain signer (an Ed25519 key already provisioned by the deployment
+	// environment) instead of generating an ephemeral keypair. This avoids
+	// creating a fresh unfunded Stellar account on every changeset run and
+	// keeps the deployer account stable across calls.
+	deployer := stellardeployment.NewDeployerWithSigner(chain.Client, chain.NetworkPassphrase, stellardeployment.NewSDKSigner(chain.Signer))
 
 	states := make([]*ccvadapters.CommitteeState, 0, len(refs))
 	for _, ref := range refs {

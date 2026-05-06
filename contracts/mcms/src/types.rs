@@ -1,4 +1,4 @@
-//! On-chain structs for MCMS-Stellar (see `contracts/mcms/SPEC.md`).
+//! On-chain structs for MCMS-Stellar (see `docs/mcms-stellar-plan.md`).
 
 use soroban_sdk::{contracttype, Bytes, BytesN};
 

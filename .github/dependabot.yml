@@ -1,0 +1,19 @@
+# Dependabot version updates — Go modules only, scoped deps.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot-yml-file
+
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directories:
+      - "/"
+      - "/bindings"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies-go
+    allow:
+      # Only these modules receive version-update PRs (others are ignored).
+      - dependency-name: "github.com/smartcontractkit/chainlink-deployments-framework"
+      - dependency-name: "github.com/smartcontractkit/chainlink-testing-framework/framework"
+      - dependency-name: "github.com/stellar/go-stellar-sdk"

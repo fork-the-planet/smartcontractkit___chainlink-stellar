@@ -1665,29 +1665,355 @@ type LockBoxConfiguredEvent struct {
 // LockBoxConfiguredEventTopic is the event topic identifier.
 const LockBoxConfiguredEventTopic = "pool_LockBoxConfigured"
 
-// PoolDataKey represents the PoolDataKey enum.
-type PoolDataKey uint32
+// PoolDataKey is a Soroban discriminated-union (#[contracttype] enum with payload(s)).
+// Wire format: ScVal::Vec([ScVal::Symbol(<VariantName>), <payload fields...>]).
+// Construct by setting exactly one variant pointer to a non-nil value.
+type PoolDataKey struct {
+	Token                 *PoolDataKeyToken
+	RemoteChainConfig     *PoolDataKeyRemoteChainConfig
+	SupportedChains       *PoolDataKeySupportedChains
+	TokenDecimals         *PoolDataKeyTokenDecimals
+	OutboundRateLimit     *PoolDataKeyOutboundRateLimit
+	InboundRateLimit      *PoolDataKeyInboundRateLimit
+	RateLimitAdmin        *PoolDataKeyRateLimitAdmin
+	FtfOutboundRateLimit  *PoolDataKeyFtfOutboundRateLimit
+	FtfInboundRateLimit   *PoolDataKeyFtfInboundRateLimit
+	AllowedFinalityConfig *PoolDataKeyAllowedFinalityConfig
+	RampRegistry          *PoolDataKeyRampRegistry
+	AdvancedPoolHooks     *PoolDataKeyAdvancedPoolHooks
+	PoolFeeConfig         *PoolDataKeyPoolFeeConfig
+	Router                *PoolDataKeyRouter
+}
 
-const ()
+// PoolDataKeyToken is the unit variant PoolDataKey::Token.
+type PoolDataKeyToken struct{}
 
-// ToScVal converts PoolDataKey to an xdr.ScVal.
+// PoolDataKeyRemoteChainConfig is the tuple variant PoolDataKey::RemoteChainConfig.
+type PoolDataKeyRemoteChainConfig struct {
+	Field0 uint64
+}
+
+// PoolDataKeySupportedChains is the unit variant PoolDataKey::SupportedChains.
+type PoolDataKeySupportedChains struct{}
+
+// PoolDataKeyTokenDecimals is the unit variant PoolDataKey::TokenDecimals.
+type PoolDataKeyTokenDecimals struct{}
+
+// PoolDataKeyOutboundRateLimit is the tuple variant PoolDataKey::OutboundRateLimit.
+type PoolDataKeyOutboundRateLimit struct {
+	Field0 uint64
+}
+
+// PoolDataKeyInboundRateLimit is the tuple variant PoolDataKey::InboundRateLimit.
+type PoolDataKeyInboundRateLimit struct {
+	Field0 uint64
+}
+
+// PoolDataKeyRateLimitAdmin is the unit variant PoolDataKey::RateLimitAdmin.
+type PoolDataKeyRateLimitAdmin struct{}
+
+// PoolDataKeyFtfOutboundRateLimit is the tuple variant PoolDataKey::FtfOutboundRateLimit.
+type PoolDataKeyFtfOutboundRateLimit struct {
+	Field0 uint64
+}
+
+// PoolDataKeyFtfInboundRateLimit is the tuple variant PoolDataKey::FtfInboundRateLimit.
+type PoolDataKeyFtfInboundRateLimit struct {
+	Field0 uint64
+}
+
+// PoolDataKeyAllowedFinalityConfig is the unit variant PoolDataKey::AllowedFinalityConfig.
+type PoolDataKeyAllowedFinalityConfig struct{}
+
+// PoolDataKeyRampRegistry is the unit variant PoolDataKey::RampRegistry.
+type PoolDataKeyRampRegistry struct{}
+
+// PoolDataKeyAdvancedPoolHooks is the unit variant PoolDataKey::AdvancedPoolHooks.
+type PoolDataKeyAdvancedPoolHooks struct{}
+
+// PoolDataKeyPoolFeeConfig is the tuple variant PoolDataKey::PoolFeeConfig.
+type PoolDataKeyPoolFeeConfig struct {
+	Field0 uint64
+}
+
+// PoolDataKeyRouter is the unit variant PoolDataKey::Router.
+type PoolDataKeyRouter struct{}
+
+// ToScVal converts PoolDataKey to its Soroban discriminated-union encoding.
+// Returns an error if zero or multiple variant pointers are set.
 func (e PoolDataKey) ToScVal() (xdr.ScVal, error) {
-	return scval.Uint32ToScVal(uint32(e)), nil
+	set := 0
+	if e.Token != nil {
+		set++
+	}
+	if e.RemoteChainConfig != nil {
+		set++
+	}
+	if e.SupportedChains != nil {
+		set++
+	}
+	if e.TokenDecimals != nil {
+		set++
+	}
+	if e.OutboundRateLimit != nil {
+		set++
+	}
+	if e.InboundRateLimit != nil {
+		set++
+	}
+	if e.RateLimitAdmin != nil {
+		set++
+	}
+	if e.FtfOutboundRateLimit != nil {
+		set++
+	}
+	if e.FtfInboundRateLimit != nil {
+		set++
+	}
+	if e.AllowedFinalityConfig != nil {
+		set++
+	}
+	if e.RampRegistry != nil {
+		set++
+	}
+	if e.AdvancedPoolHooks != nil {
+		set++
+	}
+	if e.PoolFeeConfig != nil {
+		set++
+	}
+	if e.Router != nil {
+		set++
+	}
+	if set != 1 {
+		return xdr.ScVal{}, fmt.Errorf("PoolDataKey: expected exactly one variant set, got %d", set)
+	}
+	if e.Token != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("Token"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.RemoteChainConfig != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("RemoteChainConfig"),
+			scval.Uint64ToScVal(e.RemoteChainConfig.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.SupportedChains != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("SupportedChains"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.TokenDecimals != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("TokenDecimals"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.OutboundRateLimit != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("OutboundRateLimit"),
+			scval.Uint64ToScVal(e.OutboundRateLimit.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.InboundRateLimit != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("InboundRateLimit"),
+			scval.Uint64ToScVal(e.InboundRateLimit.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.RateLimitAdmin != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("RateLimitAdmin"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.FtfOutboundRateLimit != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("FtfOutboundRateLimit"),
+			scval.Uint64ToScVal(e.FtfOutboundRateLimit.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.FtfInboundRateLimit != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("FtfInboundRateLimit"),
+			scval.Uint64ToScVal(e.FtfInboundRateLimit.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.AllowedFinalityConfig != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("AllowedFinalityConfig"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.RampRegistry != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("RampRegistry"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.AdvancedPoolHooks != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("AdvancedPoolHooks"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.PoolFeeConfig != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("PoolFeeConfig"),
+			scval.Uint64ToScVal(e.PoolFeeConfig.Field0),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	if e.Router != nil {
+		items := []xdr.ScVal{
+			scval.SymbolToScVal("Router"),
+		}
+		return scval.VecToScVal(items), nil
+	}
+	return xdr.ScVal{}, fmt.Errorf("PoolDataKey: unreachable")
 }
 
 // PoolDataKeyFromScVal parses an xdr.ScVal into PoolDataKey.
 func PoolDataKeyFromScVal(val xdr.ScVal) (PoolDataKey, error) {
-	v, ok := val.GetU32()
-	if !ok {
-		return 0, fmt.Errorf("expected u32 for PoolDataKey enum")
+	vecPtr, ok := val.GetVec()
+	if !ok || vecPtr == nil || *vecPtr == nil {
+		return PoolDataKey{}, fmt.Errorf("expected vec for PoolDataKey enum")
 	}
-	return PoolDataKey(v), nil
+	vec := *vecPtr
+	if len(vec) < 1 {
+		return PoolDataKey{}, fmt.Errorf("PoolDataKey: empty vec")
+	}
+	tag, err := scval.SymbolFromScVal(vec[0])
+	if err != nil {
+		return PoolDataKey{}, fmt.Errorf("PoolDataKey: variant tag: %w", err)
+	}
+	switch tag {
+	case "Token":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::Token: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{Token: &PoolDataKeyToken{}}, nil
+	case "RemoteChainConfig":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::RemoteChainConfig: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyRemoteChainConfig{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::RemoteChainConfig[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{RemoteChainConfig: payload}, nil
+	case "SupportedChains":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::SupportedChains: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{SupportedChains: &PoolDataKeySupportedChains{}}, nil
+	case "TokenDecimals":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::TokenDecimals: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{TokenDecimals: &PoolDataKeyTokenDecimals{}}, nil
+	case "OutboundRateLimit":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::OutboundRateLimit: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyOutboundRateLimit{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::OutboundRateLimit[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{OutboundRateLimit: payload}, nil
+	case "InboundRateLimit":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::InboundRateLimit: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyInboundRateLimit{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::InboundRateLimit[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{InboundRateLimit: payload}, nil
+	case "RateLimitAdmin":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::RateLimitAdmin: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{RateLimitAdmin: &PoolDataKeyRateLimitAdmin{}}, nil
+	case "FtfOutboundRateLimit":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::FtfOutboundRateLimit: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyFtfOutboundRateLimit{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::FtfOutboundRateLimit[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{FtfOutboundRateLimit: payload}, nil
+	case "FtfInboundRateLimit":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::FtfInboundRateLimit: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyFtfInboundRateLimit{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::FtfInboundRateLimit[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{FtfInboundRateLimit: payload}, nil
+	case "AllowedFinalityConfig":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::AllowedFinalityConfig: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{AllowedFinalityConfig: &PoolDataKeyAllowedFinalityConfig{}}, nil
+	case "RampRegistry":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::RampRegistry: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{RampRegistry: &PoolDataKeyRampRegistry{}}, nil
+	case "AdvancedPoolHooks":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::AdvancedPoolHooks: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{AdvancedPoolHooks: &PoolDataKeyAdvancedPoolHooks{}}, nil
+	case "PoolFeeConfig":
+		if len(vec) != 2 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::PoolFeeConfig: expected 2 elements, got %d", len(vec))
+		}
+		payload := &PoolDataKeyPoolFeeConfig{}
+		if v, err := scval.Uint64FromScVal(vec[1]); err != nil {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::PoolFeeConfig[0]: %w", err)
+		} else {
+			payload.Field0 = v
+		}
+		return PoolDataKey{PoolFeeConfig: payload}, nil
+	case "Router":
+		if len(vec) != 1 {
+			return PoolDataKey{}, fmt.Errorf("PoolDataKey::Router: expected 1 elements, got %d", len(vec))
+		}
+		return PoolDataKey{Router: &PoolDataKeyRouter{}}, nil
+	default:
+		return PoolDataKey{}, fmt.Errorf("PoolDataKey: unknown variant %q", tag)
+	}
 }
 
-// MessageDirection represents the MessageDirection enum.
+// MessageDirection represents the MessageDirection enum (unit-only Soroban contracttype, encoded as ScVal::U32).
 type MessageDirection uint32
 
-const ()
+const (
+	MessageDirectionOutbound MessageDirection = 0
+	MessageDirectionInbound  MessageDirection = 1
+)
 
 // ToScVal converts MessageDirection to an xdr.ScVal.
 func (e MessageDirection) ToScVal() (xdr.ScVal, error) {

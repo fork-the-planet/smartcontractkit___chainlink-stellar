@@ -11,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
+	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 	executorpkg "github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -56,11 +57,24 @@ func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput 
 
 // buildExecutorStellarConfig constructs a common.Config with TransmitterConfigs,
 // DestinationReaderConfigs, and ReaderConfigs, then serialises it as TOML.
+//
+// The chainlink-ccv executor moved from a single GeneratedConfig string to a
+// list of GeneratedJobSpecs (each carrying its own AppConfig); see
+// chainlink-ccv changelog/2026-04-27_executor_jd_migration.md and the May 1
+// keystore-transmitter change. We parse the first job spec's AppConfig as the
+// executor configuration and pull per-chain OffRamp / RMN-Remote addresses
+// from there.
 func buildExecutorStellarConfig(executorInput *executor.Input, outputs []*blockchain.Output) ([]byte, error) {
 	var executorCfg executorpkg.Configuration
-	if executorInput.GeneratedConfig != "" {
-		if _, err := toml.Decode(executorInput.GeneratedConfig, &executorCfg); err != nil {
-			return nil, fmt.Errorf("parse GeneratedConfig: %w", err)
+	if len(executorInput.GeneratedJobSpecs) > 0 {
+		var spec bootstrap.JobSpec
+		if _, err := toml.Decode(executorInput.GeneratedJobSpecs[0], &spec); err != nil {
+			return nil, fmt.Errorf("parse generated job spec: %w", err)
+		}
+		if spec.AppConfig != "" {
+			if _, err := toml.Decode(spec.AppConfig, &executorCfg); err != nil {
+				return nil, fmt.Errorf("parse executor app config: %w", err)
+			}
 		}
 	}
 
