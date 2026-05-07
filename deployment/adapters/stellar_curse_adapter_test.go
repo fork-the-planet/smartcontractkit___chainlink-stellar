@@ -6,7 +6,10 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
 	"github.com/stretchr/testify/require"
 
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
@@ -90,4 +93,15 @@ func TestStellarContractIDOnChain_emptyDatastore(t *testing.T) {
 	env := envWithDatastore(ds)
 	_, err := stellarContractIDOnChain(env, 42, stellarccip.RouterDatastoreRef())
 	require.Error(t, err)
+}
+
+func TestStellarContractIDOnChain_routerResolvesToStrkey(t *testing.T) {
+	ds := datastore.NewMemoryDataStore()
+	sel := uint64(7)
+	routerStrkey := stellarutil.MustGenerateMockContractID("deployer", "router-curse-adapter-test")
+	require.NoError(t, stellarccip.RecordRouter(ds, sel, routerStrkey))
+	env := envWithDatastore(ds.Seal())
+	got, err := stellarContractIDOnChain(env, sel, stellarccip.RouterDatastoreRef())
+	require.NoError(t, err)
+	require.Equal(t, routerStrkey, got)
 }

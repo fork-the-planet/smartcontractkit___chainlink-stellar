@@ -15,6 +15,7 @@ import (
 	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
@@ -42,9 +43,13 @@ func (a *StellarFeeAdapter) SetTokenTransferFee(e cldf.Environment) *cldf_ops.Se
 			if err != nil {
 				return seqcore.OnChainOutput{}, fmt.Errorf("resolve FeeQuoter for chain %d: %w", in.Selector, err)
 			}
+			fqStrkey, err := scval.HexToContractStrkey(fqRef.Address)
+			if err != nil {
+				return seqcore.OnChainOutput{}, fmt.Errorf("fee quoter datastore address to strkey for chain %d: %w", in.Selector, err)
+			}
 			report, err := cldf_ops.ExecuteSequence(b, stellarsequences.StellarSetTokenTransferFee, chains, stellarsequences.StellarSetTokenTransferFeeInput{
 				SetTokenTransferFeeSequenceInput: in,
-				FQContractID:                     fqRef.Address,
+				FQContractID:                     fqStrkey,
 			})
 			if err != nil {
 				return seqcore.OnChainOutput{}, err
@@ -79,9 +84,13 @@ func (a *StellarFeeAdapter) ApplyDestChainConfigUpdates(e cldf.Environment) *cld
 			if err != nil {
 				return seqcore.OnChainOutput{}, fmt.Errorf("resolve FeeQuoter for chain %d: %w", in.Selector, err)
 			}
+			fqStrkey, err := scval.HexToContractStrkey(fqRef.Address)
+			if err != nil {
+				return seqcore.OnChainOutput{}, fmt.Errorf("fee quoter datastore address to strkey for chain %d: %w", in.Selector, err)
+			}
 			report, err := cldf_ops.ExecuteSequence(b, stellarsequences.StellarApplyDestChainConfig, chains, stellarsequences.StellarApplyDestChainConfigInput{
 				ApplyDestChainConfigSequenceInput: in,
-				FQContractID:                      fqRef.Address,
+				FQContractID:                      fqStrkey,
 			})
 			if err != nil {
 				return seqcore.OnChainOutput{}, err

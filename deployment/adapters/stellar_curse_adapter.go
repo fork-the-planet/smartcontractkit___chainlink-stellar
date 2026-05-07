@@ -17,6 +17,7 @@ import (
 
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
@@ -192,6 +193,11 @@ func (a *StellarCurseAdapter) ListConnectedChains(e cldf.Environment, selector u
 }
 
 func stellarContractIDOnChain(e cldf.Environment, selector uint64, ref stellarccip.DatastoreSorobanContractRef) (string, error) {
-	toAddress := func(r datastore.AddressRef) (string, error) { return r.Address, nil }
-	return datastore_utils.FindAndFormatRef(e.DataStore, ref.PartialAddressRef(), selector, toAddress)
+	hexAddr, err := datastore_utils.FindAndFormatRef(e.DataStore, ref.PartialAddressRef(), selector, func(r datastore.AddressRef) (string, error) {
+		return r.Address, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return scval.HexToContractStrkey(hexAddr)
 }
