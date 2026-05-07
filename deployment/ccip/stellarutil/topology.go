@@ -7,16 +7,20 @@ import (
 	"strconv"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/offchain"
+	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 )
 
 // ResolveSignersFromTopology extracts signer addresses and threshold for a
-// given source chain selector from the environment topology. All committee
-// verifier DONs sign with ECDSA (secp256k1), so we always look up the EVM
-// family signer address (20-byte Ethereum address) and left-pad it to 32
-// bytes to match the on-chain Soroban storage format.
-func ResolveSignersFromTopology(topology *ccvdeployment.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
+// given source chain selector from the environment topology.
+//
+// Committee verifier contracts store 20-byte ETH-style ECDSA addresses, left-padded to 32
+// bytes on Soroban. Topology may record those under [chainsel.FamilyEVM] and/or
+// [chainsel.FamilyStellar] (devenv enriches NOPs per impl factory family).
+//
+// preferredFamily is tried first for each NOP (e.g. [chainsel.FamilyStellar] when the source
+// lane is Stellar), then [chainsel.FamilyEVM], then [chainsel.FamilyStellar], without duplicates.
+func ResolveSignersFromTopology(topology *ccvdeployment.EnvironmentTopology, sourceChainSelector uint64, preferredFamily string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}
@@ -35,19 +39,14 @@ func ResolveSignersFromTopology(topology *ccvdeployment.EnvironmentTopology, sou
 			if !found {
 				continue
 			}
-			addrHex := nop.SignerAddressByFamily[chainsel.FamilyEVM]
+			addrHex := committeeVerifierSignerHex(nop.SignerAddressByFamily, preferredFamily)
 			if addrHex == "" {
 				continue
 			}
-			decoded, decErr := hex.DecodeString(addrHex)
-			if decErr != nil {
+			signer, ok := decodeCommitteeVerifierSigner(addrHex)
+			if !ok {
 				continue
 			}
-			if len(decoded) != 20 {
-				continue
-			}
-			var signer [32]byte
-			copy(signer[32-len(decoded):], decoded)
 			signers = append(signers, signer)
 		}
 
@@ -64,7 +63,7 @@ func ResolveSignersFromTopology(topology *ccvdeployment.EnvironmentTopology, sou
 
 // ResolveSignersFromOffchainTopology is the same as [ResolveSignersFromTopology] but uses the chainlink-ccip
 // offchain topology type carried on DeployChainContractsInput.
-func ResolveSignersFromOffchainTopology(topology *offchain.EnvironmentTopology, sourceChainSelector uint64, _ string) ([][32]byte, uint32) {
+func ResolveSignersFromOffchainTopology(topology *offchain.EnvironmentTopology, sourceChainSelector uint64, preferredFamily string) ([][32]byte, uint32) {
 	if topology == nil || topology.NOPTopology == nil {
 		return nil, 0
 	}
@@ -83,19 +82,14 @@ func ResolveSignersFromOffchainTopology(topology *offchain.EnvironmentTopology, 
 			if !found {
 				continue
 			}
-			addrHex := nop.SignerAddressByFamily[chainsel.FamilyEVM]
+			addrHex := committeeVerifierSignerHex(nop.SignerAddressByFamily, preferredFamily)
 			if addrHex == "" {
 				continue
 			}
-			decoded, decErr := hex.DecodeString(addrHex)
-			if decErr != nil {
+			signer, ok := decodeCommitteeVerifierSigner(addrHex)
+			if !ok {
 				continue
 			}
-			if len(decoded) != 20 {
-				continue
-			}
-			var signer [32]byte
-			copy(signer[32-len(decoded):], decoded)
 			signers = append(signers, signer)
 		}
 
@@ -108,4 +102,36 @@ func ResolveSignersFromOffchainTopology(topology *offchain.EnvironmentTopology, 
 	}
 
 	return nil, 0
+}
+
+// committeeVerifierSignerHex picks a 40-nibble hex string (20-byte ECDSA) from SignerAddressByFamily.
+func committeeVerifierSignerHex(signerByFamily map[string]string, preferredFamily string) string {
+	if len(signerByFamily) == 0 {
+		return ""
+	}
+	seen := make(map[string]struct{})
+	order := []string{preferredFamily, chainsel.FamilyEVM, chainsel.FamilyStellar}
+	for _, fam := range order {
+		if fam == "" {
+			continue
+		}
+		if _, dup := seen[fam]; dup {
+			continue
+		}
+		seen[fam] = struct{}{}
+		if h := signerByFamily[fam]; h != "" {
+			return h
+		}
+	}
+	return ""
+}
+
+func decodeCommitteeVerifierSigner(addrHex string) ([32]byte, bool) {
+	decoded, err := hex.DecodeString(addrHex)
+	if err != nil || len(decoded) != 20 {
+		return [32]byte{}, false
+	}
+	var signer [32]byte
+	copy(signer[32-len(decoded):], decoded)
+	return signer, true
 }

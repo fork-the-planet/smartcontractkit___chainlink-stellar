@@ -22,11 +22,14 @@ type DeployStellarCCIPInnerInput struct {
 }
 
 // StellarDeployChainContracts is the adapter sequence: DEP is BlockChains.
-// It builds StellarDeps and a [stellarccip.CCIPDevenvHost] from the CLDF Stellar chain entry — no sync.Map / PreDeploy runner stash.
+// It builds StellarDeps and a [stellarccip.CCIPDevenvHost] from the CLDF Stellar chain entry.
+// CCV stashes offchain topology in [RegisterStellarDeployOffchainTopologyForSelector] during
+// PreDeployContractsForSelector; this sequence [TakeStellarDeployOffchainTopologyForSelector] before
+// [RunStellarCCIPFullDeploy]. Without a stash entry (e.g. standalone tests), topology is nil.
 var StellarDeployChainContracts = cldf_ops.NewSequence(
 	"stellar-deploy-chain-contracts",
 	SequenceVersion,
-	"Deploys Stellar Soroban CCIP contracts via CLDF Stellar chain (adapter path). Topology is nil: committee signer config uses placeholders unless deploy is run via ccv ([RunStellarCCIPFullDeployForCCV]).",
+	"Deploys Stellar Soroban CCIP contracts via CLDF Stellar chain (adapter path); uses pre-stashed offchain topology from CCV pre-deploy when present.",
 	func(b cldf_ops.Bundle, chains cldf_chain.BlockChains, input ccvadapters.DeployChainContractsInput) (seq_core.OnChainOutput, error) {
 		ch, ok := chains.StellarChains()[input.ChainSelector]
 		if !ok {
@@ -42,8 +45,8 @@ var StellarDeployChainContracts = cldf_ops.NewSequence(
 		if err != nil {
 			return seq_core.OnChainOutput{}, fmt.Errorf("stellar devenv host: %w", err)
 		}
-		// DeployChainContractsInput has no topology field on this chainlink-ccip/deployment pin; ccv uses [RunStellarCCIPFullDeployForCCV].
-		return RunStellarCCIPFullDeploy(b.GetContext(), b, deps, host, nil, DeployStellarCCIPInnerInput{
+		offTopo, _ := TakeStellarDeployOffchainTopologyForSelector(input.ChainSelector)
+		return RunStellarCCIPFullDeploy(b.GetContext(), b, deps, host, offTopo, DeployStellarCCIPInnerInput{
 			ChainSelector:     input.ChainSelector,
 			AllSelectors:      allSelectorsFromBlockChains(chains),
 			ExistingAddresses: input.ExistingAddresses,

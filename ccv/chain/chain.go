@@ -356,7 +356,15 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
-	_ = selector
+	stellarsequences.ClearStellarDeployOffchainTopologyForSelector(selector)
+	if topology != nil {
+		offTopo, err := stellarccip.CCVEnvironmentTopologyToOffchain(topology)
+		if err != nil {
+			c.logger.Warn().Err(err).Uint64("selector", selector).Msg("stellar pre-deploy: topology stash skipped (CCV→offchain convert failed)")
+		} else if offTopo != nil {
+			stellarsequences.RegisterStellarDeployOffchainTopologyForSelector(selector, offTopo)
+		}
+	}
 	ensureStellarFeeAggregatorsInTopology(c, topology)
 	return nil, nil
 }
@@ -384,6 +392,7 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 // applies FeeQuoter pricing for the test token ([stellarccip.ApplyFeeQuoterTestTokenConfig]), and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
+	stellarsequences.ClearStellarDeployOffchainTopologyForSelector(selector)
 
 	if env == nil {
 		return nil, fmt.Errorf("environment is nil")

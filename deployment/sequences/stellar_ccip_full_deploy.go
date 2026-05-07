@@ -371,9 +371,7 @@ func RunStellarCCIPFullDeploy(
 	for _, rs := range allSelectors {
 		signers, threshold := stellarutil.ResolveSignersFromOffchainTopology(topology, rs, chainsel.FamilyEVM)
 		if len(signers) == 0 {
-			h.Logger().Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
-			signers = [][32]byte{{1}}
-			threshold = 1
+			return seq_core.OnChainOutput{}, fmt.Errorf("no signers found in topology for chain selector %d and family %s", rs, chainsel.FamilyEVM)
 		}
 		signatureQuorumConfigs = append(signatureQuorumConfigs, cvbindings.SignatureQuorumConfig{
 			SourceChainSelector: rs,
