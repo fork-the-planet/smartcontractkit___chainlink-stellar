@@ -106,6 +106,7 @@ var StellarApplyDestChainConfig = cldfops.NewSequence(
 					DefaultTokenDestGas:   cfg.DefaultTokenDestGasOverhead,
 					DefaultTxGasLimit:     cfg.DefaultTxGasLimit,
 					NetworkFeeUsdCents:    uint32(cfg.NetworkFeeUSDCents),
+					LinkPremiumPercent:    uint32(cfg.V2Params.LinkFeeMultiplierPercent),
 				},
 			})
 		}
