@@ -7,7 +7,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
 	api "github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
 	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
 	seqcore "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
@@ -16,11 +15,12 @@ import (
 	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
-	rmnremoteops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/rmn_remote"
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
@@ -52,9 +52,7 @@ func (a *StellarCurseAdapter) Initialize(e cldf.Environment, selector uint64) er
 	}
 
 	if _, exists := a.rmnContractID[selector]; !exists {
-		addr, err := stellarContractIDOnChain(e, selector,
-			datastore.ContractType(rmnremoteops.ContractType),
-			stellarops.ContractDeploymentVersion)
+		addr, err := stellarContractIDOnChain(e, selector, stellarccip.RMNRemoteDatastoreRef())
 		if err != nil {
 			return fmt.Errorf("resolve RMN Remote on chain %d: %w", selector, err)
 		}
@@ -62,9 +60,7 @@ func (a *StellarCurseAdapter) Initialize(e cldf.Environment, selector uint64) er
 	}
 
 	if _, exists := a.routerContractID[selector]; !exists {
-		addr, err := stellarContractIDOnChain(e, selector,
-			datastore.ContractType(routeroperations.ContractType),
-			routeroperations.Version)
+		addr, err := stellarContractIDOnChain(e, selector, stellarccip.RouterDatastoreRef())
 		if err != nil {
 			return fmt.Errorf("resolve Router on chain %d: %w", selector, err)
 		}
@@ -196,10 +192,12 @@ func (a *StellarCurseAdapter) ListConnectedChains(e cldf.Environment, selector u
 	return connected, nil
 }
 
-func stellarContractIDOnChain(e cldf.Environment, selector uint64, ct datastore.ContractType, version *semver.Version) (string, error) {
-	toAddress := func(ref datastore.AddressRef) (string, error) { return ref.Address, nil }
-	return datastore_utils.FindAndFormatRef(e.DataStore, datastore.AddressRef{
-		Type:    ct,
-		Version: version,
-	}, selector, toAddress)
+func stellarContractIDOnChain(e cldf.Environment, selector uint64, ref stellarccip.DatastoreSorobanContractRef) (string, error) {
+	hexAddr, err := datastore_utils.FindAndFormatRef(e.DataStore, ref.PartialAddressRef(), selector, func(r datastore.AddressRef) (string, error) {
+		return r.Address, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return scval.HexToContractStrkey(hexAddr)
 }

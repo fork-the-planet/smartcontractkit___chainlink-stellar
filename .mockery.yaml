@@ -11,6 +11,7 @@ packages:
     interfaces:
       Invoker:
 
-  github.com/smartcontractkit/chainlink-stellar/ccv/source_reader:
+  github.com/smartcontractkit/chainlink-stellar/relayer/chain:
     interfaces:
       RPCClient:
+      Chain:

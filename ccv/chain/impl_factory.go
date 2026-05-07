@@ -8,26 +8,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_0_0/operations/rmn_proxy"
-	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
-	fee_quoter "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
-	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
@@ -158,13 +147,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 
 	// Look up deployed contract addresses from the datastore and wire up clients.
 	if env.DataStore != nil {
-		onrampKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(onrampoperations.ContractType),
-			semver.MustParse(onrampoperations.Deploy.Version()),
-			"",
-		)
-		onrampRef, err := env.DataStore.Addresses().Get(onrampKey)
+		onrampRef, err := env.DataStore.Addresses().Get(stellarccip.OnRampDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && onrampRef.Address != "" {
 			onrampContractID, convErr := scval.HexToContractStrkey(onrampRef.Address)
 			if convErr == nil {
@@ -173,13 +156,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		offrampKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(offrampoperations.ContractType),
-			semver.MustParse(offrampoperations.Deploy.Version()),
-			"",
-		)
-		offrampRef, err := env.DataStore.Addresses().Get(offrampKey)
+		offrampRef, err := env.DataStore.Addresses().Get(stellarccip.OffRampDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && offrampRef.Address != "" {
 			offrampContractID, convErr := scval.HexToContractStrkey(offrampRef.Address)
 			if convErr == nil {
@@ -188,13 +165,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		routerKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(routeroperations.ContractType),
-			semver.MustParse(routeroperations.Deploy.Version()),
-			"",
-		)
-		routerRef, err := env.DataStore.Addresses().Get(routerKey)
+		routerRef, err := env.DataStore.Addresses().Get(stellarccip.RouterDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && routerRef.Address != "" {
 			routerContractID, convErr := scval.HexToContractStrkey(routerRef.Address)
 			if convErr == nil {
@@ -203,13 +174,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		fqKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(fee_quoter.ContractType),
-			semver.MustParse(fee_quoter.Deploy.Version()),
-			"",
-		)
-		fqRef, err := env.DataStore.Addresses().Get(fqKey)
+		fqRef, err := env.DataStore.Addresses().Get(stellarccip.FeeQuoterDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && fqRef.Address != "" {
 			fqContractID, convErr := scval.HexToContractStrkey(fqRef.Address)
 			if convErr == nil {
@@ -217,13 +182,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		vvrKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-			versioned_verifier_resolver.Version,
-			devenvcommon.DefaultCommitteeVerifierQualifier,
-		)
-		vvrRef, err := env.DataStore.Addresses().Get(vvrKey)
+		vvrRef, err := env.DataStore.Addresses().Get(stellarccip.VVRDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && vvrRef.Address != "" {
 			vvrContractID, convErr := scval.HexToContractStrkey(vvrRef.Address)
 			if convErr == nil {
@@ -231,13 +190,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		cvKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(committee_verifier.ContractType),
-			committee_verifier.Version,
-			devenvcommon.DefaultCommitteeVerifierQualifier,
-		)
-		cvRef, err := env.DataStore.Addresses().Get(cvKey)
+		cvRef, err := env.DataStore.Addresses().Get(stellarccip.CommitteeVerifierDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && cvRef.Address != "" {
 			cvContractID, convErr := scval.HexToContractStrkey(cvRef.Address)
 			if convErr == nil {
@@ -245,13 +198,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		receiverKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(CcipReceiverContractType),
-			semver.MustParse("1.0.0"),
-			"",
-		)
-		receiverRef, err := env.DataStore.Addresses().Get(receiverKey)
+		receiverRef, err := env.DataStore.Addresses().Get(stellarccip.CCIPReceiverDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && receiverRef.Address != "" {
 			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
 			if convErr == nil {
@@ -259,13 +206,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		rmnProxyKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(rmn_proxy.ContractType),
-			semver.MustParse(rmn_proxy.Deploy.Version()),
-			"",
-		)
-		rmnProxyRef, err := env.DataStore.Addresses().Get(rmnProxyKey)
+		rmnProxyRef, err := env.DataStore.Addresses().Get(stellarccip.RMNProxyDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && rmnProxyRef.Address != "" {
 			rmnProxyContractID, convErr := scval.HexToContractStrkey(rmnProxyRef.Address)
 			if convErr == nil {
@@ -274,13 +215,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		rmnRemoteKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(rmn_remote.ContractType),
-			semver.MustParse(rmn_remote.Deploy.Version()),
-			"",
-		)
-		rmnRemoteRef, err := env.DataStore.Addresses().Get(rmnRemoteKey)
+		rmnRemoteRef, err := env.DataStore.Addresses().Get(stellarccip.RMNRemoteDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && rmnRemoteRef.Address != "" {
 			rmnRemoteContractID, convErr := scval.HexToContractStrkey(rmnRemoteRef.Address)
 			if convErr == nil {
@@ -289,13 +224,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		poolKey := datastore.NewAddressRefKey(
-			details.ChainSelector,
-			datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
-			semver.MustParse("1.0.0"),
-			stellarccip.DevenvTestTokenPoolQualifier,
-		)
-		poolRef, err := env.DataStore.Addresses().Get(poolKey)
+		poolRef, err := env.DataStore.Addresses().Get(stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(details.ChainSelector))
 		if err == nil && poolRef.Address != "" {
 			poolContractID, convErr := scval.HexToContractStrkey(poolRef.Address)
 			if convErr == nil {

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,11 +25,6 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
@@ -167,27 +161,12 @@ func (c *Chain) GetConnectionProfile(_ *deployment.Environment, selector uint64)
 		BaseExecutionGasCost:              100_000,
 		FeeQuoterDestChainConfigOverrides: &feeQuoterOverride,
 		DefaultInboundCCVs: []datastore.AddressRef{
-			{
-				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-				Version:       versioned_verifier_resolver.Version,
-				ChainSelector: selector,
-				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-			},
+			stellarccip.VVRDatastoreRef().LaneAddressRef(selector),
 		},
 		DefaultOutboundCCVs: []datastore.AddressRef{
-			{
-				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-				Version:       versioned_verifier_resolver.Version,
-				ChainSelector: selector,
-				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-			},
+			stellarccip.VVRDatastoreRef().LaneAddressRef(selector),
 		},
-		DefaultExecutor: datastore.AddressRef{
-			Type:          datastore.ContractType(proxy.ContractType),
-			Version:       proxy.Version,
-			ChainSelector: selector,
-			Qualifier:     devenvcommon.DefaultExecutorQualifier,
-		},
+		DefaultExecutor: stellarccip.ExecutorProxyDatastoreRef(devenvcommon.DefaultExecutorQualifier).LaneAddressRef(selector),
 		ExecutorDestChainConfig: lanes.ExecutorDestChainConfig{
 			Enabled: true,
 		},
@@ -257,20 +236,10 @@ func (c *Chain) GetChainLaneProfile(_ *deployment.Environment, selector uint64) 
 		},
 		DefaultExecutorQualifier: devenvcommon.DefaultExecutorQualifier,
 		DefaultInboundCCVs: []datastore.AddressRef{
-			{
-				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-				Version:       versioned_verifier_resolver.Version,
-				ChainSelector: selector,
-				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-			},
+			stellarccip.VVRDatastoreRef().LaneAddressRef(selector),
 		},
 		DefaultOutboundCCVs: []datastore.AddressRef{
-			{
-				Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-				Version:       versioned_verifier_resolver.Version,
-				ChainSelector: selector,
-				Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-			},
+			stellarccip.VVRDatastoreRef().LaneAddressRef(selector),
 		},
 		GasForVerification: ptrU32(10_000),
 	}, nil
@@ -295,12 +264,9 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 		return fmt.Errorf("ensure local stellar contracts: %w", err)
 	}
 
-	defaultExecutor, err := stellarccip.LookupStellarContractStrkey(
+	defaultExecutor, err := stellarccip.ExecutorProxyDatastoreRef(devenvcommon.DefaultExecutorQualifier).LookupStrkey(
 		env.DataStore,
 		selector,
-		datastore.ContractType(proxy.ContractType),
-		proxy.Version,
-		devenvcommon.DefaultExecutorQualifier,
 	)
 	if err != nil {
 		return fmt.Errorf("resolve default executor proxy: %w", err)
@@ -1109,25 +1075,25 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 
 	var err error
 	if c.onRampContractID == "" {
-		c.onRampContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
+		c.onRampContractID, err = stellarccip.OnRampDatastoreRef().LookupStrkey(ds, selector)
 		if err != nil {
 			return fmt.Errorf("lookup local onramp: %w", err)
 		}
 	}
 	if c.offRampContractID == "" {
-		c.offRampContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
+		c.offRampContractID, err = stellarccip.OffRampDatastoreRef().LookupStrkey(ds, selector)
 		if err != nil {
 			return fmt.Errorf("lookup local offramp: %w", err)
 		}
 	}
 	if c.routerContractID == "" {
-		c.routerContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(routeroperations.ContractType), routeroperations.Version, "")
+		c.routerContractID, err = stellarccip.RouterDatastoreRef().LookupStrkey(ds, selector)
 		if err != nil {
 			return fmt.Errorf("lookup local router: %w", err)
 		}
 	}
 	if c.vvrContractID == "" {
-		c.vvrContractID, err = stellarccip.LookupStellarContractStrkey(ds, selector, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), versioned_verifier_resolver.Version, devenvcommon.DefaultCommitteeVerifierQualifier)
+		c.vvrContractID, err = stellarccip.VVRDatastoreRef().LookupStrkey(ds, selector)
 		if err != nil {
 			return fmt.Errorf("lookup local versioned verifier resolver: %w", err)
 		}

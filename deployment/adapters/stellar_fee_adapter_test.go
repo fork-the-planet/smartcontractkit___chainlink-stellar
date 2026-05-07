@@ -9,6 +9,9 @@ import (
 	fqopstype "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/fees"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
@@ -50,13 +53,25 @@ func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	ds := datastore.NewMemoryDataStore()
-	ref := testFQRef()
-	ref.ChainSelector = 42
+	// Datastore stores Soroban contract ids as 0x-hex (see deployment/ccip.UpsertDeployedStrKey).
+	fqStrkey := stellarutil.MustGenerateMockContractID("deployer", "fee-quoter-adapter-test")
+	hexAddr, err := stellarutil.StrkeyToHex(fqStrkey)
+	require.NoError(t, err)
+	ref := datastore.AddressRef{
+		ChainSelector: 42,
+		Type:          datastore.ContractType(fqopstype.ContractType),
+		Version:       semver.MustParse(fqopstype.Deploy.Version()),
+		Address:       hexAddr,
+	}
 	require.NoError(t, ds.Addresses().Upsert(ref))
 	env := envWithDatastore(ds.Seal())
 	got, err := a.GetFeeContractRef(env, 42, 0)
 	require.NoError(t, err)
-	require.Equal(t, "CFQADDR", got.Address)
+	require.Equal(t, hexAddr, got.Address)
+
+	roundTrip, err := scval.HexToContractStrkey(got.Address)
+	require.NoError(t, err)
+	require.Equal(t, fqStrkey, roundTrip)
 }
 
 func TestStellarFeeAdapter_SetTokenTransferFee_nonNil(t *testing.T) {

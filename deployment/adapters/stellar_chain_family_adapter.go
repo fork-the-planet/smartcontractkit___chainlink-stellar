@@ -9,11 +9,6 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	routeroperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/finality"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
@@ -22,6 +17,8 @@ import (
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
+
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
 // StellarChainFamilyAdapter implements ccvadapters.ChainFamily for CCIP 2.0.
@@ -48,31 +45,19 @@ func toStellarAddressBytes(ref datastore.AddressRef) ([]byte, error) {
 }
 
 func (a *StellarChainFamilyAdapter) GetOnRampAddress(ds datastore.DataStore, chainSelector uint64) ([]byte, error) {
-	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
-		Type:    datastore.ContractType(onrampoperations.ContractType),
-		Version: semver.MustParse(onrampoperations.Deploy.Version()),
-	}, chainSelector, toStellarAddressBytes)
+	return datastore_utils.FindAndFormatRef(ds, stellarccip.OnRampDatastoreRef().PartialAddressRef(), chainSelector, toStellarAddressBytes)
 }
 
 func (a *StellarChainFamilyAdapter) GetOffRampAddress(ds datastore.DataStore, chainSelector uint64) ([]byte, error) {
-	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
-		Type:    datastore.ContractType(offrampoperations.ContractType),
-		Version: semver.MustParse(offrampoperations.Deploy.Version()),
-	}, chainSelector, toStellarAddressBytes)
+	return datastore_utils.FindAndFormatRef(ds, stellarccip.OffRampDatastoreRef().PartialAddressRef(), chainSelector, toStellarAddressBytes)
 }
 
 func (a *StellarChainFamilyAdapter) GetRouterAddress(ds datastore.DataStore, chainSelector uint64) ([]byte, error) {
-	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
-		Type:    datastore.ContractType(routeroperations.ContractType),
-		Version: routeroperations.Version,
-	}, chainSelector, toStellarAddressBytes)
+	return datastore_utils.FindAndFormatRef(ds, stellarccip.RouterDatastoreRef().PartialAddressRef(), chainSelector, toStellarAddressBytes)
 }
 
 func (a *StellarChainFamilyAdapter) GetFQAddress(ds datastore.DataStore, chainSelector uint64) ([]byte, error) {
-	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
-		Type:    datastore.ContractType(fee_quoter.ContractType),
-		Version: semver.MustParse(fee_quoter.Deploy.Version()),
-	}, chainSelector, toStellarAddressBytes)
+	return datastore_utils.FindAndFormatRef(ds, stellarccip.FeeQuoterDatastoreRef().PartialAddressRef(), chainSelector, toStellarAddressBytes)
 }
 
 // GetFeeQuoterDestChainConfig returns defaults for the legacy lanes package (e.g. connection profile helpers).
@@ -131,11 +116,7 @@ func (a *StellarChainFamilyAdapter) GetTestRouter(ds datastore.DataStore, chainS
 
 func (a *StellarChainFamilyAdapter) ResolveExecutor(ds datastore.DataStore, chainSelector uint64, qualifier string) (string, error) {
 	toAddress := func(ref datastore.AddressRef) (string, error) { return ref.Address, nil }
-	return datastore_utils.FindAndFormatRef(ds, datastore.AddressRef{
-		Type:      datastore.ContractType(proxy.ContractType),
-		Version:   proxy.Version,
-		Qualifier: qualifier,
-	}, chainSelector, toAddress)
+	return datastore_utils.FindAndFormatRef(ds, stellarccip.ExecutorProxyDatastoreRef(qualifier).PartialAddressRef(), chainSelector, toAddress)
 }
 
 func (a *StellarChainFamilyAdapter) GetAddressBytesLength() uint8 {

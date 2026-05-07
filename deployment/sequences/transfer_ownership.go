@@ -20,19 +20,20 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// StellarTransferOwnershipInput extends the shared input with pre-resolved addresses.
+// StellarTransferOwnershipInput extends the shared input with the RBAC timelock
+// (governance) address from the datastore — same role as EVM OpTransferOwnershipInput.TimelockAddress.
 type StellarTransferOwnershipInput struct {
 	deploy.TransferOwnershipPerChainInput
 	GovernanceAddr string
-	MCMSAddr       string
 }
 
 func stellarMCMSTxAdditionalFields() json.RawMessage {
 	return json.RawMessage(`{"version":1,"family":"stellar"}`)
 }
 
-// StellarTransferOwnershipViaMCMS transfers contract ownership via deployer direct call
-// or builds an MCMS batch operation when the current owner is the MCMS contract.
+// StellarTransferOwnershipViaMCMS mirrors EVM chains/evm/.../operations/mcms OpTransferOwnership:
+// deployer sends the tx directly; when the current owner is the timelock (governance), emit an
+// MCMS batch op (MCMS is the transport, not compared to timelock).
 var StellarTransferOwnershipViaMCMS = cldfops.NewSequence(
 	"stellar-seq-transfer-ownership-via-mcms",
 	deploy.MCMSVersion,
@@ -69,12 +70,6 @@ var StellarTransferOwnershipViaMCMS = cldfops.NewSequence(
 					ExecInfo:      &evmcontract.ExecInfo{Hash: "stellar-direct-transfer"},
 				}
 			case owner == in.GovernanceAddr:
-				if owner != in.MCMSAddr {
-					return output, fmt.Errorf(
-						"contract %s is owned by RBACTimelock %q; Soroban timelock-scheduled ownership changes are not implemented (use deployer or MCMS-as-owner legacy layout)",
-						ref.Address, owner,
-					)
-				}
 				data, err := mcmsutil.EncodeSorobanMCMSInvokePayload("transfer_ownership", []xdr.ScVal{scval.AddressToScVal(in.ProposedOwner)})
 				if err != nil {
 					return output, err
@@ -106,8 +101,8 @@ var StellarTransferOwnershipViaMCMS = cldfops.NewSequence(
 	},
 )
 
-// StellarAcceptOwnership accepts contract ownership via deployer direct call
-// or builds an MCMS batch operation when the proposed owner is the MCMS contract.
+// StellarAcceptOwnership mirrors EVM OpAcceptOwnership: deployer accepts directly; when the
+// pending owner is the timelock (governance), emit an MCMS batch op — no timelock==MCMS check.
 var StellarAcceptOwnership = cldfops.NewSequence(
 	"stellar-seq-accept-ownership",
 	deploy.MCMSVersion,
@@ -144,12 +139,6 @@ var StellarAcceptOwnership = cldfops.NewSequence(
 					ExecInfo:      &evmcontract.ExecInfo{Hash: "stellar-direct-accept"},
 				}
 			case in.ProposedOwner == in.GovernanceAddr:
-				if in.GovernanceAddr != in.MCMSAddr {
-					return output, fmt.Errorf(
-						"accept via RBACTimelock %q is not implemented for %s (legacy MCMS-as-governance only)",
-						in.GovernanceAddr, ref.Address,
-					)
-				}
 				data, err := mcmsutil.EncodeSorobanMCMSInvokePayload("accept_ownership", nil)
 				if err != nil {
 					return output, err
