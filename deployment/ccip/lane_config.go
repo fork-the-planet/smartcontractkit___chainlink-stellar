@@ -6,8 +6,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
@@ -117,7 +115,7 @@ func BuildOnRampDestConfigs(
 			return nil, err
 		}
 		if useRemoteOffRamp {
-			offRampRef, err := LookupAddressRef(ds, rs, datastore.ContractType(offrampoperations.ContractType), semver.MustParse(offrampoperations.Deploy.Version()), "")
+			offRampRef, err := OffRampDatastoreRef().LookupAddressRef(ds, rs)
 			if err != nil {
 				return nil, fmt.Errorf("lookup remote offramp for %d: %w", rs, err)
 			}
@@ -157,7 +155,7 @@ func BuildOffRampSourceConfigs(
 	for _, rs := range remoteSelectors {
 		onRampBytes := make([]byte, 32)
 		if useRemoteOnRamp {
-			onRampRef, err := LookupAddressRef(ds, rs, datastore.ContractType(onrampoperations.ContractType), semver.MustParse(onrampoperations.Deploy.Version()), "")
+			onRampRef, err := OnRampDatastoreRef().LookupAddressRef(ds, rs)
 			if err != nil {
 				return nil, fmt.Errorf("lookup remote onramp for %d: %w", rs, err)
 			}

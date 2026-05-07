@@ -3,10 +3,10 @@ package adapters
 import (
 	"testing"
 
-	"github.com/Masterminds/semver/v3"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
 	"github.com/stretchr/testify/require"
 
-	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
@@ -88,6 +88,6 @@ func TestStellarCurseAdapter_Registration(t *testing.T) {
 func TestStellarContractIDOnChain_emptyDatastore(t *testing.T) {
 	ds := newSealedDatastore()
 	env := envWithDatastore(ds)
-	_, err := stellarContractIDOnChain(env, 42, "SomeType", semver.MustParse("1.0.0"))
+	_, err := stellarContractIDOnChain(env, 42, stellarccip.RouterDatastoreRef())
 	require.Error(t, err)
 }

@@ -5,19 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Masterminds/semver/v3"
-
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/rmn_remote"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/executor"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/fee_quoter"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
@@ -87,136 +75,67 @@ func (w *deployRun) deployReceiverAndWriteDatastore() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert receiver address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       receiverHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(stellarccip.CcipReceiverContractType),
-		Version:       semver.MustParse("1.0.0"),
-	})
+	ds.AddressRefStore.Upsert(stellarccip.CCIPReceiverDatastoreRef().FullAddressRef(selector, receiverHex))
 
 	onrampHex, err := stellarutil.StrkeyToHex(onrampContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert OnRamp address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       onrampHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(onrampoperations.ContractType),
-		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
-	})
+	ds.AddressRefStore.Upsert(stellarccip.OnRampDatastoreRef().FullAddressRef(selector, onrampHex))
 
 	offRampHex, err := stellarutil.StrkeyToHex(offRampContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert OffRamp address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       offRampHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(offrampoperations.ContractType),
-		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
-	})
+	ds.AddressRefStore.Upsert(stellarccip.OffRampDatastoreRef().FullAddressRef(selector, offRampHex))
 
 	routerHex, err := stellarutil.StrkeyToHex(routerContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert Router address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       routerHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(router.ContractType),
-		Version:       semver.MustParse(router.Deploy.Version()),
-	})
+	ds.AddressRefStore.Upsert(stellarccip.RouterDatastoreRef().FullAddressRef(selector, routerHex))
 
 	tarHex, err := stellarutil.StrkeyToHex(tarContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert TokenAdminRegistry address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       tarHex,
-		ChainSelector: selector,
-		Type:          datastore.ContractType(stellarccip.TokenAdminRegistryContractType),
-		Version:       semver.MustParse("1.0.0"),
-	})
+	ds.AddressRefStore.Upsert(stellarccip.TokenAdminRegistryDatastoreRef().FullAddressRef(selector, tarHex))
 
 	if poolContractID != "" {
 		poolHex, err := stellarutil.StrkeyToHex(poolContractID)
 		if err != nil {
 			return fmt.Errorf("failed to convert pool address: %w", err)
 		}
-		ds.AddressRefStore.Upsert(datastore.AddressRef{
-			Address:       poolHex,
-			ChainSelector: selector,
-			Type:          datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
-			Version:       semver.MustParse("1.0.0"),
-			Qualifier:     stellarccip.DevenvTestTokenPoolQualifier,
-		})
+		ds.AddressRefStore.Upsert(stellarccip.LockReleasePoolDevenvDatastoreRef().FullAddressRef(selector, poolHex))
 	}
 
 	vvrHex, err := stellarutil.StrkeyToHex(vvrContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert VVR address: %w", err)
 	}
-	for _, qualifier := range []string{
-		devenvcommon.DefaultCommitteeVerifierQualifier,
-	} {
-		ds.AddressRefStore.Upsert(datastore.AddressRef{
-			Address:       vvrHex,
-			Type:          datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType),
-			Version:       versioned_verifier_resolver.Version,
-			Qualifier:     qualifier,
-			ChainSelector: selector,
-		})
-	}
+	ds.AddressRefStore.Upsert(stellarccip.VVRDatastoreRef().FullAddressRef(selector, vvrHex))
 
 	cvHex, err := stellarutil.StrkeyToHex(cvContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert Committee Verifier address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       cvHex,
-		Type:          datastore.ContractType(committee_verifier.ContractType),
-		Version:       committee_verifier.Version,
-		Qualifier:     devenvcommon.DefaultCommitteeVerifierQualifier,
-		ChainSelector: selector,
-	})
+	ds.AddressRefStore.Upsert(stellarccip.CommitteeVerifierDatastoreRef().FullAddressRef(selector, cvHex))
 
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       w.contractHexAddr("stellar-executor"),
-		Type:          datastore.ContractType(executor.ContractType),
-		Version:       executor.Version,
-		Qualifier:     devenvcommon.DefaultExecutorQualifier,
-		ChainSelector: selector,
-	})
+	ds.AddressRefStore.Upsert(stellarccip.DefaultExecutorDatastoreRef().FullAddressRef(selector, w.contractHexAddr("stellar-executor")))
 
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       w.contractHexAddr("stellar-executor-proxy"),
-		Type:          datastore.ContractType(proxy.ContractType),
-		Version:       proxy.Version,
-		Qualifier:     devenvcommon.DefaultExecutorQualifier,
-		ChainSelector: selector,
-	})
+	ds.AddressRefStore.Upsert(stellarccip.ExecutorProxyDatastoreRef(devenvcommon.DefaultExecutorQualifier).FullAddressRef(selector, w.contractHexAddr("stellar-executor-proxy")))
 
 	rmnRemoteHex, err := stellarutil.StrkeyToHex(rmnRemoteContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert RMN Remote address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       rmnRemoteHex,
-		Type:          datastore.ContractType(rmn_remote.ContractType),
-		Version:       semver.MustParse(rmn_remote.Deploy.Version()),
-		ChainSelector: selector,
-	})
+	ds.AddressRefStore.Upsert(stellarccip.RMNRemoteDatastoreRef().FullAddressRef(selector, rmnRemoteHex))
 
 	feeQuoterHex, err := stellarutil.StrkeyToHex(feeQuoterContractID)
 	if err != nil {
 		return fmt.Errorf("failed to convert FeeQuoter address: %w", err)
 	}
-	ds.AddressRefStore.Upsert(datastore.AddressRef{
-		Address:       feeQuoterHex,
-		Type:          datastore.ContractType(fee_quoter.ContractType),
-		Version:       semver.MustParse(fee_quoter.Deploy.Version()),
-		ChainSelector: selector,
-	})
+	ds.AddressRefStore.Upsert(stellarccip.FeeQuoterDatastoreRef().FullAddressRef(selector, feeQuoterHex))
 
 	return nil
 }

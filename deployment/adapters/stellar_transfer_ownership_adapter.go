@@ -19,15 +19,17 @@ import (
 )
 
 // StellarTransferOwnershipAdapter builds MCMS batch operations (or executes directly when the
-// deployer account is still owner), mirroring the EVM timelock vs deployer split.
+// deployer account is still owner). Wiring matches EVM OpTransferOwnership / OpAcceptOwnership:
+// the datastore timelock (governance) address gates the MCMS-batch path; MCMS contract address is
+// not required to equal timelock.
 type StellarTransferOwnershipAdapter struct {
 	governanceAddr map[uint64]string
-	mcmsAddr       map[uint64]string
 }
 
 var _ deploy.TransferOwnershipAdapter = (*StellarTransferOwnershipAdapter)(nil)
 
-// InitializeTimelockAddress caches timelock (or legacy MCMS) and MCMS addresses per chain.
+// InitializeTimelockAddress caches the RBAC timelock (governance) address per chain from the
+// datastore — same responsibility as the EVM adapter’s timelock cache.
 func (a *StellarTransferOwnershipAdapter) InitializeTimelockAddress(e cldf.Environment, input mcms.Input) error {
 	reader, ok := changesets.GetRegistry().GetMCMSReader(chainsel.FamilyStellar)
 	if !ok {
@@ -36,19 +38,7 @@ func (a *StellarTransferOwnershipAdapter) InitializeTimelockAddress(e cldf.Envir
 	if a.governanceAddr == nil {
 		a.governanceAddr = make(map[uint64]string)
 	}
-	if a.mcmsAddr == nil {
-		a.mcmsAddr = make(map[uint64]string)
-	}
 	for sel := range e.BlockChains.StellarChains() {
-		mcmsRef, err := reader.GetMCMSRef(e, sel, input)
-		if err != nil {
-			return err
-		}
-		if mcmsRef.Address == "" {
-			return fmt.Errorf("empty MCMS address for stellar chain %d", sel)
-		}
-		a.mcmsAddr[sel] = mcmsRef.Address
-
 		tlRef, err := reader.GetTimelockRef(e, sel, input)
 		if err != nil {
 			return err
@@ -69,6 +59,8 @@ func (a *StellarTransferOwnershipAdapter) SequenceAcceptOwnership() *cldfops.Seq
 	return a.wrapOwnershipSequence(stellarsequences.StellarAcceptOwnership)
 }
 
+// ShouldAcceptOwnershipWithTransferOwnership matches EVM: run accept when ProposedOwner is the
+// timelock (governance) or the deployer.
 func (a *StellarTransferOwnershipAdapter) ShouldAcceptOwnershipWithTransferOwnership(e cldf.Environment, in deploy.TransferOwnershipPerChainInput) (bool, error) {
 	gov, ok := a.governanceAddr[in.ChainSelector]
 	if !ok {
@@ -103,14 +95,9 @@ func (a *StellarTransferOwnershipAdapter) wrapOwnershipSequence(
 			if !ok {
 				return seqcore.OnChainOutput{}, fmt.Errorf("governance address not initialized for chain %d", in.ChainSelector)
 			}
-			mcmsContract, ok := a.mcmsAddr[in.ChainSelector]
-			if !ok {
-				return seqcore.OnChainOutput{}, fmt.Errorf("MCMS address not initialized for chain %d", in.ChainSelector)
-			}
 			report, err := cldfops.ExecuteSequence(b, inner, chains, stellarsequences.StellarTransferOwnershipInput{
 				TransferOwnershipPerChainInput: in,
 				GovernanceAddr:                gov,
-				MCMSAddr:                      mcmsContract,
 			})
 			if err != nil {
 				return seqcore.OnChainOutput{}, err

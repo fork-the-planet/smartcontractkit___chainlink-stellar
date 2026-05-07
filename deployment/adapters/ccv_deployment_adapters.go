@@ -5,7 +5,6 @@ import (
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/committee_verifier"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/proxy"
 	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	dsutils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
 	ccipdevenvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
@@ -13,6 +12,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccv/executor"
 	"github.com/smartcontractkit/chainlink-ccv/pkg/chainaccess"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
 // StellarCCVDeploymentAggregatorConfigAdapter implements
@@ -53,7 +54,7 @@ func (a *StellarCCVDeploymentExecutorConfigAdapter) GetDeployedChains(ds datasto
 	}
 	refs := ds.Addresses().Filter(
 		datastore.AddressRefByQualifier(qualifier),
-		datastore.AddressRefByType(datastore.ContractType(proxy.ContractType)),
+		datastore.AddressRefByType(stellarccip.ExecutorProxyDatastoreRef(qualifier).Type),
 	)
 	seen := make(map[uint64]struct{}, len(refs))
 	chains := make([]uint64, 0, len(refs))
