@@ -303,6 +303,9 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 				chain.tokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, poolContractID)
 			}
 		}
+
+		// TokenAdminRegistry and RampRegistry are not loaded above; fill from DS using shared lookups.
+		chain.hydrateDevenvClientsFromDataStore(env.DataStore, details.ChainSelector)
 	}
 
 	// Re-derive the deterministic test SAC token address so that token transfer

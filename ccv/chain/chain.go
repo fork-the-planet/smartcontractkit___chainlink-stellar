@@ -423,6 +423,12 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 		return nil, fmt.Errorf("environment is nil")
 	}
 
+	// DeployChainContracts runs on a CLDF-backed host; post-deploy uses *Chain.
+	// Rehydrate Soroban clients from env.DataStore (same pattern as EVM post-deploy).
+	if env.DataStore != nil {
+		c.hydrateDevenvClientsFromDataStore(env.DataStore, selector)
+	}
+
 	host := &stellarCCIPDeployHost{c: c}
 	if err := stellarccip.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
@@ -1138,6 +1144,40 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 	}
 
 	return nil
+}
+
+// hydrateDevenvClientsFromDataStore fills TokenAdminRegistry, FeeQuoter, Router, and RampRegistry
+// clients/IDs from the deployment datastore when they are missing on Chain. After the shared
+// DeployChainContracts changeset, contract state lives in env.DataStore while the CLDF deploy host
+// held the in-memory clients; this aligns Stellar with EVM post-deploy reading env.DataStore.
+func (c *Chain) hydrateDevenvClientsFromDataStore(ds datastore.DataStore, selector uint64) {
+	if c == nil || ds == nil || c.deployer == nil {
+		return
+	}
+	if c.tokenAdminRegistryClient == nil {
+		if id, err := stellarccip.GetTokenAdminRegistryStrkey(ds, selector); err == nil && id != "" {
+			c.tokenAdminRegistryContractID = id
+			c.tokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(c.deployer, id)
+		}
+	}
+	if c.feeQuoterClient == nil {
+		if id, err := stellarccip.GetFeeQuoterStrkey(ds, selector); err == nil && id != "" {
+			c.feeQuoterClient = fqbindings.NewFeeQuoterClient(c.deployer, id)
+		}
+	}
+	if c.routerContractID == "" {
+		if id, err := stellarccip.GetRouterStrkey(ds, selector); err == nil && id != "" {
+			c.routerContractID = id
+			c.routerClient = routerbindings.NewRouterClient(c.deployer, id)
+		}
+	} else if c.routerClient == nil && c.routerContractID != "" {
+		c.routerClient = routerbindings.NewRouterClient(c.deployer, c.routerContractID)
+	}
+	if c.rampRegistryContractID == "" {
+		if id, err := stellarccip.GetRampRegistryStrkey(ds, selector); err == nil && id != "" {
+			c.rampRegistryContractID = id
+		}
+	}
 }
 
 // remotePoolContractTypes lists pool contract types to probe when looking up
