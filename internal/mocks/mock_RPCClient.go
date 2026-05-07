@@ -22,6 +22,51 @@ func (_m *MockRPCClient) EXPECT() *MockRPCClient_Expecter {
 	return &MockRPCClient_Expecter{mock: &_m.Mock}
 }
 
+// Close provides a mock function with no fields
+func (_m *MockRPCClient) Close() error {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Close")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRPCClient_Close_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Close'
+type MockRPCClient_Close_Call struct {
+	*mock.Call
+}
+
+// Close is a helper method to define mock.On call
+func (_e *MockRPCClient_Expecter) Close() *MockRPCClient_Close_Call {
+	return &MockRPCClient_Close_Call{Call: _e.mock.On("Close")}
+}
+
+func (_c *MockRPCClient_Close_Call) Run(run func()) *MockRPCClient_Close_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_Close_Call) Return(_a0 error) *MockRPCClient_Close_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRPCClient_Close_Call) RunAndReturn(run func() error) *MockRPCClient_Close_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEvents provides a mock function with given fields: ctx, req
 func (_m *MockRPCClient) GetEvents(ctx context.Context, req protocol.GetEventsRequest) (protocol.GetEventsResponse, error) {
 	ret := _m.Called(ctx, req)
@@ -135,6 +180,63 @@ func (_c *MockRPCClient_GetLatestLedger_Call) RunAndReturn(run func(context.Cont
 	return _c
 }
 
+// GetLedgerEntries provides a mock function with given fields: ctx, req
+func (_m *MockRPCClient) GetLedgerEntries(ctx context.Context, req protocol.GetLedgerEntriesRequest) (protocol.GetLedgerEntriesResponse, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLedgerEntries")
+	}
+
+	var r0 protocol.GetLedgerEntriesResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.GetLedgerEntriesRequest) (protocol.GetLedgerEntriesResponse, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.GetLedgerEntriesRequest) protocol.GetLedgerEntriesResponse); ok {
+		r0 = rf(ctx, req)
+	} else {
+		r0 = ret.Get(0).(protocol.GetLedgerEntriesResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, protocol.GetLedgerEntriesRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRPCClient_GetLedgerEntries_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLedgerEntries'
+type MockRPCClient_GetLedgerEntries_Call struct {
+	*mock.Call
+}
+
+// GetLedgerEntries is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req protocol.GetLedgerEntriesRequest
+func (_e *MockRPCClient_Expecter) GetLedgerEntries(ctx interface{}, req interface{}) *MockRPCClient_GetLedgerEntries_Call {
+	return &MockRPCClient_GetLedgerEntries_Call{Call: _e.mock.On("GetLedgerEntries", ctx, req)}
+}
+
+func (_c *MockRPCClient_GetLedgerEntries_Call) Run(run func(ctx context.Context, req protocol.GetLedgerEntriesRequest)) *MockRPCClient_GetLedgerEntries_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(protocol.GetLedgerEntriesRequest))
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_GetLedgerEntries_Call) Return(_a0 protocol.GetLedgerEntriesResponse, _a1 error) *MockRPCClient_GetLedgerEntries_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRPCClient_GetLedgerEntries_Call) RunAndReturn(run func(context.Context, protocol.GetLedgerEntriesRequest) (protocol.GetLedgerEntriesResponse, error)) *MockRPCClient_GetLedgerEntries_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLedgers provides a mock function with given fields: ctx, req
 func (_m *MockRPCClient) GetLedgers(ctx context.Context, req protocol.GetLedgersRequest) (protocol.GetLedgersResponse, error) {
 	ret := _m.Called(ctx, req)
@@ -188,6 +290,177 @@ func (_c *MockRPCClient_GetLedgers_Call) Return(_a0 protocol.GetLedgersResponse,
 }
 
 func (_c *MockRPCClient_GetLedgers_Call) RunAndReturn(run func(context.Context, protocol.GetLedgersRequest) (protocol.GetLedgersResponse, error)) *MockRPCClient_GetLedgers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTransaction provides a mock function with given fields: ctx, req
+func (_m *MockRPCClient) GetTransaction(ctx context.Context, req protocol.GetTransactionRequest) (protocol.GetTransactionResponse, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransaction")
+	}
+
+	var r0 protocol.GetTransactionResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.GetTransactionRequest) (protocol.GetTransactionResponse, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.GetTransactionRequest) protocol.GetTransactionResponse); ok {
+		r0 = rf(ctx, req)
+	} else {
+		r0 = ret.Get(0).(protocol.GetTransactionResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, protocol.GetTransactionRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRPCClient_GetTransaction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransaction'
+type MockRPCClient_GetTransaction_Call struct {
+	*mock.Call
+}
+
+// GetTransaction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req protocol.GetTransactionRequest
+func (_e *MockRPCClient_Expecter) GetTransaction(ctx interface{}, req interface{}) *MockRPCClient_GetTransaction_Call {
+	return &MockRPCClient_GetTransaction_Call{Call: _e.mock.On("GetTransaction", ctx, req)}
+}
+
+func (_c *MockRPCClient_GetTransaction_Call) Run(run func(ctx context.Context, req protocol.GetTransactionRequest)) *MockRPCClient_GetTransaction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(protocol.GetTransactionRequest))
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_GetTransaction_Call) Return(_a0 protocol.GetTransactionResponse, _a1 error) *MockRPCClient_GetTransaction_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRPCClient_GetTransaction_Call) RunAndReturn(run func(context.Context, protocol.GetTransactionRequest) (protocol.GetTransactionResponse, error)) *MockRPCClient_GetTransaction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SendTransaction provides a mock function with given fields: ctx, req
+func (_m *MockRPCClient) SendTransaction(ctx context.Context, req protocol.SendTransactionRequest) (protocol.SendTransactionResponse, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendTransaction")
+	}
+
+	var r0 protocol.SendTransactionResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.SendTransactionRequest) (protocol.SendTransactionResponse, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.SendTransactionRequest) protocol.SendTransactionResponse); ok {
+		r0 = rf(ctx, req)
+	} else {
+		r0 = ret.Get(0).(protocol.SendTransactionResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, protocol.SendTransactionRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRPCClient_SendTransaction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendTransaction'
+type MockRPCClient_SendTransaction_Call struct {
+	*mock.Call
+}
+
+// SendTransaction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req protocol.SendTransactionRequest
+func (_e *MockRPCClient_Expecter) SendTransaction(ctx interface{}, req interface{}) *MockRPCClient_SendTransaction_Call {
+	return &MockRPCClient_SendTransaction_Call{Call: _e.mock.On("SendTransaction", ctx, req)}
+}
+
+func (_c *MockRPCClient_SendTransaction_Call) Run(run func(ctx context.Context, req protocol.SendTransactionRequest)) *MockRPCClient_SendTransaction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(protocol.SendTransactionRequest))
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_SendTransaction_Call) Return(_a0 protocol.SendTransactionResponse, _a1 error) *MockRPCClient_SendTransaction_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRPCClient_SendTransaction_Call) RunAndReturn(run func(context.Context, protocol.SendTransactionRequest) (protocol.SendTransactionResponse, error)) *MockRPCClient_SendTransaction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SimulateTransaction provides a mock function with given fields: ctx, req
+func (_m *MockRPCClient) SimulateTransaction(ctx context.Context, req protocol.SimulateTransactionRequest) (protocol.SimulateTransactionResponse, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SimulateTransaction")
+	}
+
+	var r0 protocol.SimulateTransactionResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.SimulateTransactionRequest) (protocol.SimulateTransactionResponse, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, protocol.SimulateTransactionRequest) protocol.SimulateTransactionResponse); ok {
+		r0 = rf(ctx, req)
+	} else {
+		r0 = ret.Get(0).(protocol.SimulateTransactionResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, protocol.SimulateTransactionRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRPCClient_SimulateTransaction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SimulateTransaction'
+type MockRPCClient_SimulateTransaction_Call struct {
+	*mock.Call
+}
+
+// SimulateTransaction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req protocol.SimulateTransactionRequest
+func (_e *MockRPCClient_Expecter) SimulateTransaction(ctx interface{}, req interface{}) *MockRPCClient_SimulateTransaction_Call {
+	return &MockRPCClient_SimulateTransaction_Call{Call: _e.mock.On("SimulateTransaction", ctx, req)}
+}
+
+func (_c *MockRPCClient_SimulateTransaction_Call) Run(run func(ctx context.Context, req protocol.SimulateTransactionRequest)) *MockRPCClient_SimulateTransaction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(protocol.SimulateTransactionRequest))
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_SimulateTransaction_Call) Return(_a0 protocol.SimulateTransactionResponse, _a1 error) *MockRPCClient_SimulateTransaction_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRPCClient_SimulateTransaction_Call) RunAndReturn(run func(context.Context, protocol.SimulateTransactionRequest) (protocol.SimulateTransactionResponse, error)) *MockRPCClient_SimulateTransaction_Call {
 	_c.Call.Return(run)
 	return _c
 }
