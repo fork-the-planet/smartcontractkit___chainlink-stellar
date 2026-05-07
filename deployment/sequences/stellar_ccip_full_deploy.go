@@ -37,17 +37,17 @@ import (
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
-	cvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/committee_verifier"
 	recvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ccip_receiver"
+	cvops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/committee_verifier"
 	fqops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/fee_quoter"
 	offrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/offramp"
 	onrampops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/onramp"
+	rrops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ramp_registry"
 	rmnproxyops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/rmn_proxy"
 	rmnremoteops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/rmn_remote"
-	rrops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/ramp_registry"
 	routerops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/router"
-	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 	vvrops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/versioned_verifier_resolver"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
@@ -369,7 +369,7 @@ func RunStellarCCIPFullDeploy(
 
 	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(allSelectors))
 	for _, rs := range allSelectors {
-		signers, threshold := stellarutil.ResolveSignersFromOffchainTopology(topology, rs, chainsel.FamilyStellar)
+		signers, threshold := stellarutil.ResolveSignersFromOffchainTopology(topology, rs, chainsel.FamilyEVM)
 		if len(signers) == 0 {
 			h.Logger().Warn().Uint64("sourceChainSelector", rs).Msg("No signers found in topology, using placeholder")
 			signers = [][32]byte{{1}}
