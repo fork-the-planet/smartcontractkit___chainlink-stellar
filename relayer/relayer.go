@@ -19,22 +19,22 @@ var _ relaytypes.StellarService = (*Relayer)(nil)
 type Relayer struct {
 	relaytypes.UnimplementedRelayer
 
-	ch      chain.Chain
-	lggr    logger.Logger
-	starter services.StateMachine
-	stopCh  services.StopChan
+	chainService chain.Chain
+	lggr         logger.Logger
+	starter      services.StateMachine
+	stopCh       services.StopChan
 
 	stellarService
 }
 
 // NewRelayer constructs a Relayer from an already-built chain.
-func NewRelayer(lggr logger.Logger, ch chain.Chain) *Relayer {
+func NewRelayer(lggr logger.Logger, chainService chain.Chain) *Relayer {
 	lggr = logger.Named(lggr, "StellarRelayer")
 	return &Relayer{
-		ch:             ch,
+		chainService:   chainService,
 		lggr:           lggr,
 		stopCh:         make(chan struct{}),
-		stellarService: newStellarService(ch),
+		stellarService: newStellarService(chainService),
 	}
 }
 
@@ -43,11 +43,11 @@ func (r *Relayer) Name() string { return r.lggr.Name() }
 func (r *Relayer) Start(ctx context.Context) error {
 	return r.starter.StartOnce("StellarRelayer", func() error {
 		r.lggr.Debugw("Starting")
-		if r.ch == nil {
+		if r.chainService == nil {
 			return errors.New("stellar chain unavailable")
 		}
 		var ms services.MultiStart
-		return ms.Start(ctx, r.ch)
+		return ms.Start(ctx, r.chainService)
 	})
 }
 
@@ -55,7 +55,7 @@ func (r *Relayer) Close() error {
 	return r.starter.StopOnce("StellarRelayer", func() error {
 		r.lggr.Debugw("Stopping")
 		close(r.stopCh)
-		return services.CloseAll(r.ch)
+		return services.CloseAll(r.chainService)
 	})
 }
 
@@ -65,32 +65,32 @@ func (r *Relayer) Healthy() error { return r.starter.Healthy() }
 
 func (r *Relayer) HealthReport() map[string]error {
 	report := map[string]error{r.Name(): r.starter.Healthy()}
-	services.CopyHealth(report, r.ch.HealthReport())
+	services.CopyHealth(report, r.chainService.HealthReport())
 	return report
 }
 
 func (r *Relayer) GetChainInfo(ctx context.Context) (relaytypes.ChainInfo, error) {
-	return r.ch.GetChainInfo(ctx)
+	return r.chainService.GetChainInfo(ctx)
 }
 
 func (r *Relayer) GetChainStatus(ctx context.Context) (relaytypes.ChainStatus, error) {
-	return r.ch.GetChainStatus(ctx)
+	return r.chainService.GetChainStatus(ctx)
 }
 
 func (r *Relayer) LatestHead(ctx context.Context) (relaytypes.Head, error) {
-	return r.ch.LatestHead(ctx)
+	return r.chainService.LatestHead(ctx)
 }
 
 func (r *Relayer) FinalizedHead(ctx context.Context) (relaytypes.Head, error) {
-	return r.ch.FinalizedHead(ctx)
+	return r.chainService.FinalizedHead(ctx)
 }
 
 func (r *Relayer) ListNodeStatuses(ctx context.Context, pageSize int32, pageToken string) ([]relaytypes.NodeStatus, string, int, error) {
-	return r.ch.ListNodeStatuses(ctx, pageSize, pageToken)
+	return r.chainService.ListNodeStatuses(ctx, pageSize, pageToken)
 }
 
 func (r *Relayer) Transact(ctx context.Context, from, to string, amount *big.Int, balanceCheck bool) error {
-	return r.ch.Transact(ctx, from, to, amount, balanceCheck)
+	return r.chainService.Transact(ctx, from, to, amount, balanceCheck)
 }
 
 func (r *Relayer) Stellar() (relaytypes.StellarService, error) {

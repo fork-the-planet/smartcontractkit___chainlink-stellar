@@ -31,7 +31,7 @@ func (s *stellarService) GetLedgerEntries(ctx context.Context, req stellartypes.
 
 	keys := make([]string, len(req.Keys))
 	for i, k := range req.Keys {
-		keys[i] = string(k)
+		keys[i] = k
 	}
 
 	resp, err := rpc.GetLedgerEntries(ctx, protocol.GetLedgerEntriesRequest{Keys: keys})
@@ -42,10 +42,10 @@ func (s *stellarService) GetLedgerEntries(ctx context.Context, req stellartypes.
 	entries := make([]stellartypes.LedgerEntryResult, 0, len(resp.Entries))
 	for _, e := range resp.Entries {
 		entry := stellartypes.LedgerEntryResult{
-			KeyXDR:             stellartypes.XDR(e.KeyXDR),
-			DataXDR:            stellartypes.XDR(e.DataXDR),
+			KeyXDR:             e.KeyXDR,
+			DataXDR:            e.DataXDR,
 			LastModifiedLedger: e.LastModifiedLedger,
-			ExtensionXDR:       stellartypes.XDR(e.ExtensionXDR),
+			ExtensionXDR:       e.ExtensionXDR,
 		}
 		if e.LiveUntilLedgerSeq != nil {
 			v := *e.LiveUntilLedgerSeq
@@ -72,11 +72,11 @@ func (s *stellarService) GetLatestLedger(ctx context.Context) (stellartypes.GetL
 	}
 
 	return stellartypes.GetLatestLedgerResponse{
-		Hash:              stellartypes.LedgerHash(resp.Hash),
+		Hash:              resp.Hash,
 		ProtocolVersion:   resp.ProtocolVersion,
 		Sequence:          resp.Sequence,
 		LedgerCloseTime:   resp.LedgerCloseTime,
-		LedgerHeaderXDR:   stellartypes.XDR(resp.LedgerHeader),
-		LedgerMetadataXDR: stellartypes.XDR(resp.LedgerMetadata),
+		LedgerHeaderXDR:   resp.LedgerHeader,
+		LedgerMetadataXDR: resp.LedgerMetadata,
 	}, nil
 }

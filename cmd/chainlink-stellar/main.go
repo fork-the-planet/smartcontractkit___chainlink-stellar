@@ -88,12 +88,12 @@ func (p *pluginRelayer) NewRelayer(
 		}
 	}
 
-	ch, err := chain.NewChain(cfg, chain.Opts{Logger: p.Logger}, stellarChain)
+	chainService, err := chain.NewChain(cfg, chain.Opts{Logger: p.Logger}, stellarChain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Stellar chain: %w", err)
 	}
 
-	relay := relayer.NewRelayer(p.Logger, ch)
+	relay := relayer.NewRelayer(p.Logger, chainService)
 	p.SubService(relay)
 
 	return relay, nil
