@@ -27,28 +27,28 @@ func DefaultStellarDeployZerolog() zerolog.Logger {
 // CLDFStellarCCIPDevenvHost implements [CCIPDevenvHost] from a CLDF [cldfstellar.Chain] (BlockChains entry),
 // so DeployChainContracts does not need a side-registered *ccvchain.Chain.
 type CLDFStellarCCIPDevenvHost struct {
-	ch     cldfstellar.Chain
-	lg     zerolog.Logger
-	dep    *stellardeployment.Deployer
+	ch      cldfstellar.Chain
+	lg      zerolog.Logger
+	dep     *stellardeployment.Deployer
 	ownerKp *keypair.Full
 
-	onRampContractID    string
-	onRampClient        *onrampbindings.OnRampClient
-	feeQuoterClient     *fqbindings.FeeQuoterClient
-	tarContractID       string
-	tarClient           *tarbindings.TokenAdminRegistryClient
-	tokenPoolContractID string
-	tokenPoolClient     *tokenpoolbindings.TokenPoolClient
-	testTokenContractID string
-	offRampContractID   string
-	offRampClient       *offrampbindings.OffRampClient
-	routerContractID    string
-	routerClient        *routerbindings.RouterClient
+	onRampContractID       string
+	onRampClient           *onrampbindings.OnRampClient
+	feeQuoterClient        *fqbindings.FeeQuoterClient
+	tarContractID          string
+	tarClient              *tarbindings.TokenAdminRegistryClient
+	tokenPoolContractID    string
+	tokenPoolClient        *tokenpoolbindings.TokenPoolClient
+	testTokenContractID    string
+	offRampContractID      string
+	offRampClient          *offrampbindings.OffRampClient
+	routerContractID       string
+	routerClient           *routerbindings.RouterClient
 	rampRegistryContractID string
-	vvrContractID       string
-	cvContractID        string
-	receiverContractID  string
-	feeTokenContractID  string
+	vvrContractID          string
+	cvContractID           string
+	receiverContractID     string
+	feeTokenContractID     string
 }
 
 var _ CCIPDevenvHost = (*CLDFStellarCCIPDevenvHost)(nil)
@@ -57,6 +57,9 @@ var _ CCIPDevenvHost = (*CLDFStellarCCIPDevenvHost)(nil)
 func NewCLDFStellarCCIPDevenvHost(ch cldfstellar.Chain, lg zerolog.Logger, dep *stellardeployment.Deployer) (*CLDFStellarCCIPDevenvHost, error) {
 	if dep == nil {
 		return nil, fmt.Errorf("deployer is nil")
+	}
+	if ch.Signer == nil {
+		return nil, fmt.Errorf("stellar chain Signer is nil")
 	}
 	kp := ch.Signer.KeypairFull()
 	if kp == nil {
@@ -79,7 +82,9 @@ func (h *CLDFStellarCCIPDevenvHost) SetOnRamp(contractID string, client *onrampb
 	h.onRampContractID = contractID
 	h.onRampClient = client
 }
-func (h *CLDFStellarCCIPDevenvHost) OnRampClient() *onrampbindings.OnRampClient { return h.onRampClient }
+func (h *CLDFStellarCCIPDevenvHost) OnRampClient() *onrampbindings.OnRampClient {
+	return h.onRampClient
+}
 
 func (h *CLDFStellarCCIPDevenvHost) FeeQuoterClient() *fqbindings.FeeQuoterClient {
 	return h.feeQuoterClient
@@ -101,8 +106,10 @@ func (h *CLDFStellarCCIPDevenvHost) SetTokenPool(contractID string, client *toke
 	h.tokenPoolClient = client
 }
 
-func (h *CLDFStellarCCIPDevenvHost) SetTestToken(contractID string) { h.testTokenContractID = contractID }
-func (h *CLDFStellarCCIPDevenvHost) TestTokenContractID() string    { return h.testTokenContractID }
+func (h *CLDFStellarCCIPDevenvHost) SetTestToken(contractID string) {
+	h.testTokenContractID = contractID
+}
+func (h *CLDFStellarCCIPDevenvHost) TestTokenContractID() string { return h.testTokenContractID }
 
 func (h *CLDFStellarCCIPDevenvHost) SetOffRamp(contractID string, client *offrampbindings.OffRampClient) {
 	h.offRampContractID = contractID

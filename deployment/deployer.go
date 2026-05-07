@@ -230,10 +230,6 @@ func NewDeployerFromChain(ch cldfstellar.Chain, opts ...DeployerOption) (*Deploy
 	if ch.Signer == nil {
 		return nil, fmt.Errorf("stellar chain Signer is nil")
 	}
-	kp := ch.Signer.KeypairFull()
-	if kp == nil {
-		return nil, fmt.Errorf("chain signer returned nil KeypairFull")
-	}
 	if kp := ch.Signer.KeypairFull(); kp != nil {
 		return NewDeployer(ch.Client, ch.NetworkPassphrase, kp, opts...), nil
 	}
