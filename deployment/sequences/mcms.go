@@ -21,15 +21,7 @@ import (
 )
 
 func stellarDeployerFromChain(ch cldfstellar.Chain) (*stellardeployment.Deployer, error) {
-	hexKey, err := mcmsutil.StellarDeployerPrivateKeyHex()
-	if err != nil {
-		return nil, err
-	}
-	kp, err := cldfstellar.KeypairFromHex(hexKey)
-	if err != nil {
-		return nil, fmt.Errorf("STELLAR_DEPLOYER_PRIVATE_KEY: %w", err)
-	}
-	return stellardeployment.NewDeployer(ch.Client, ch.NetworkPassphrase, kp), nil
+	return stellardeployment.NewDeployerFromChain(ch)
 }
 
 func stellarTimelockAdmin(in deploy.MCMSDeploymentConfigPerChainWithAddress, ch cldfstellar.Chain) (string, error) {

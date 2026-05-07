@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	cldfstellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
 	"github.com/smartcontractkit/chainlink-stellar/bindings"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
@@ -215,6 +216,24 @@ func NewDeployerWithSigner(rpcClient *rpcclient.Client, networkPassphrase string
 		opt(d)
 	}
 	return d
+}
+
+// NewDeployerFromChain creates a Deployer directly from a CLDF Stellar chain,
+// using the chain's Signer, Client, and NetworkPassphrase.
+//
+// When the chain signer exposes a non-nil [keypair.Full] via KeypairFull(), the
+// deployer uses [NewKeypairSigner] (same path as [NewDeployer]). When KeypairFull
+// is nil (e.g. keystore-backed signers that only implement SignDecorated), the
+// deployer uses [NewSDKSigner] with [NewDeployerWithSigner] so raw key material
+// is not required.
+func NewDeployerFromChain(ch cldfstellar.Chain, opts ...DeployerOption) (*Deployer, error) {
+	if ch.Signer == nil {
+		return nil, fmt.Errorf("chain signer is nil")
+	}
+	if kp := ch.Signer.KeypairFull(); kp != nil {
+		return NewDeployer(ch.Client, ch.NetworkPassphrase, kp, opts...), nil
+	}
+	return NewDeployerWithSigner(ch.Client, ch.NetworkPassphrase, NewSDKSigner(ch.Signer), opts...), nil
 }
 
 // DeployContract deploys a Soroban contract from a WASM file and returns the contract ID.

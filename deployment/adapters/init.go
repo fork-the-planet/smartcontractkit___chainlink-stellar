@@ -4,10 +4,13 @@ import (
 	"github.com/Masterminds/semver/v3"
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/deploy"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/fees"
 	tokenscore "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/changesets"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
 	ccvdeploymentadapters "github.com/smartcontractkit/chainlink-ccv/deployment/adapters"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
 func init() {
@@ -37,4 +40,15 @@ func init() {
 	tokenscore.GetTokenAdapterRegistry().RegisterTokenAdapter(
 		chainsel.FamilyStellar, semver.MustParse("1.0.0"), &StellarTokenAdapter{},
 	)
+
+	fees.GetRegistry().RegisterFeeAdapter(chainsel.FamilyStellar, v2, &StellarFeeAdapter{})
+	fees.GetFeeAggregatorRegistry().RegisterFeeAggregatorAdapter(chainsel.FamilyStellar, v2, &StellarFeeAggregatorAdapter{})
+
+	curseAdapter := NewStellarCurseAdapter()
+	fastcurse.GetCurseRegistry().RegisterNewCurse(fastcurse.CurseRegistryInput{
+		CursingFamily:       chainsel.FamilyStellar,
+		CursingVersion:      stellarops.ContractDeploymentVersion,
+		CurseAdapter:        curseAdapter,
+		CurseSubjectAdapter: curseAdapter,
+	})
 }

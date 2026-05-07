@@ -1,7 +1,6 @@
 package mcmsutil
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -27,16 +26,6 @@ func ResolveMCMSWasmPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(cwd, DefaultMCMSWasmRelative), nil
-}
-
-// StellarDeployerPrivateKeyHex returns the 32-byte seed hex for the account that signs MCMS deploy txs.
-// Must match the Stellar chain signer used in the environment. Set STELLAR_DEPLOYER_PRIVATE_KEY.
-func StellarDeployerPrivateKeyHex() (string, error) {
-	k := os.Getenv("STELLAR_DEPLOYER_PRIVATE_KEY")
-	if k == "" {
-		return "", fmt.Errorf("STELLAR_DEPLOYER_PRIVATE_KEY is required for Stellar MCMS deploy/update sequences (32-byte hex seed, same signer as the Stellar chain in CLDF)")
-	}
-	return k, nil
 }
 
 // ResolveTimelockWasmPath returns the path to timelock.wasm.

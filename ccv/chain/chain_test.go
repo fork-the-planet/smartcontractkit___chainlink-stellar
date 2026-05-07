@@ -7,11 +7,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
-	onrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/onramp"
-	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/versioned_verifier_resolver"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
-	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/stretchr/testify/assert"
@@ -67,19 +63,15 @@ func TestGetConnectionProfile(t *testing.T) {
 	t.Run("default inbound CCVs reference the VVR contract", func(t *testing.T) {
 		require.Len(t, chainDef.DefaultInboundCCVs, 1)
 		ref := chainDef.DefaultInboundCCVs[0]
-		assert.Equal(t, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), ref.Type)
-		assert.Equal(t, versioned_verifier_resolver.Version, ref.Version)
-		assert.Equal(t, selector, ref.ChainSelector)
-		assert.Equal(t, devenvcommon.DefaultCommitteeVerifierQualifier, ref.Qualifier)
+		want := stellarccip.VVRDatastoreRef().LaneAddressRef(selector)
+		assert.Equal(t, want, ref)
 	})
 
 	t.Run("default outbound CCVs reference the VVR contract", func(t *testing.T) {
 		require.Len(t, chainDef.DefaultOutboundCCVs, 1)
 		ref := chainDef.DefaultOutboundCCVs[0]
-		assert.Equal(t, datastore.ContractType(versioned_verifier_resolver.CommitteeVerifierResolverType), ref.Type)
-		assert.Equal(t, versioned_verifier_resolver.Version, ref.Version)
-		assert.Equal(t, selector, ref.ChainSelector)
-		assert.Equal(t, devenvcommon.DefaultCommitteeVerifierQualifier, ref.Qualifier)
+		want := stellarccip.VVRDatastoreRef().LaneAddressRef(selector)
+		assert.Equal(t, want, ref)
 	})
 
 	t.Run("committee verifier config has verification gas set", func(t *testing.T) {
@@ -199,18 +191,8 @@ func TestBuildOffRampSourceConfigs_UsesPlaceholderOnRampBytes(t *testing.T) {
 
 func TestBuildRemoteRampConfigs_ResolveDatastoreAddresses(t *testing.T) {
 	ds := datastore.NewMemoryDataStore()
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       "0x" + strings.Repeat("ab", 20),
-		ChainSelector: testEVMSelector,
-		Type:          datastore.ContractType(onrampoperations.ContractType),
-		Version:       semver.MustParse(onrampoperations.Deploy.Version()),
-	})
-	ds.AddressRefStore.Add(datastore.AddressRef{
-		Address:       "0x" + strings.Repeat("cd", 20),
-		ChainSelector: testEVMSelector,
-		Type:          datastore.ContractType(offrampoperations.ContractType),
-		Version:       semver.MustParse(offrampoperations.Deploy.Version()),
-	})
+	require.NoError(t, ds.AddressRefStore.Add(stellarccip.OnRampDatastoreRef().FullAddressRef(testEVMSelector, "0x"+strings.Repeat("ab", 20))))
+	require.NoError(t, ds.AddressRefStore.Add(stellarccip.OffRampDatastoreRef().FullAddressRef(testEVMSelector, "0x"+strings.Repeat("cd", 20))))
 
 	chain := &Chain{
 		vvrContractID:    "vvr",

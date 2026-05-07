@@ -1,10 +1,7 @@
 package adapters
 
 import (
-	"context"
 	"fmt"
-
-	"github.com/stellar/go-stellar-sdk/keypair"
 
 	frameworkdatastore "github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
@@ -37,17 +34,11 @@ func (StellarMCMSReader) GetChainMetadata(e cldf.Environment, chainSelector uint
 	if !ok {
 		return mcmstypes.ChainMetadata{}, fmt.Errorf("stellar chain %d not in environment", chainSelector)
 	}
-	kp, err := keypair.Random()
+	dep, err := stellardeployment.NewDeployerFromChain(ch)
 	if err != nil {
-		return mcmstypes.ChainMetadata{}, fmt.Errorf("keypair: %w", err)
+		return mcmstypes.ChainMetadata{}, fmt.Errorf("deployer from chain: %w", err)
 	}
-	dep := stellardeployment.NewDeployer(ch.Client, ch.NetworkPassphrase, kp)
 	deps := stellardeps.FromDeployer(dep)
-	ctx := context.Background()
-	if e.GetContext != nil {
-		ctx = e.GetContext()
-	}
-	_ = ctx
 	rep, err := cldfops.ExecuteOperation(e.OperationsBundle, mcmsops.GetOpCount, deps, mcmsops.GetOpCountInput{ContractID: ref.Address})
 	if err != nil {
 		return mcmstypes.ChainMetadata{}, fmt.Errorf("get_op_count: %w", err)
