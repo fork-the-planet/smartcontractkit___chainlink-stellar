@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockRPC satisfies chain.RPCClient and delegates every call to a
+// mockRPC satisfies stellarRPCClient and delegates every call to a
 // configurable function field. Tests set only the fields they need.
 type mockRPC struct {
 	SimulateTransactionFn func(ctx context.Context, req protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error)
@@ -26,18 +26,6 @@ type mockRPC struct {
 	GetTransactionFn      func(ctx context.Context, req protocolrpc.GetTransactionRequest) (protocolrpc.GetTransactionResponse, error)
 	GetLedgerEntriesFn    func(ctx context.Context, req protocolrpc.GetLedgerEntriesRequest) (protocolrpc.GetLedgerEntriesResponse, error)
 	GetEventsFn           func(ctx context.Context, req protocolrpc.GetEventsRequest) (protocolrpc.GetEventsResponse, error)
-}
-
-func (m *mockRPC) GetLedgers(ctx context.Context, req protocolrpc.GetLedgersRequest) (protocolrpc.GetLedgersResponse, error) {
-	return protocolrpc.GetLedgersResponse{}, nil
-}
-
-func (m *mockRPC) GetLatestLedger(ctx context.Context) (protocolrpc.GetLatestLedgerResponse, error) {
-	return protocolrpc.GetLatestLedgerResponse{}, nil
-}
-
-func (m *mockRPC) Close() error {
-	return nil
 }
 
 func (m *mockRPC) SimulateTransaction(ctx context.Context, req protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error) {
