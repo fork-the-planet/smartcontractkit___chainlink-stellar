@@ -108,7 +108,7 @@ func TestStellarFeeAggregatorAdapter_SetFeeAggregator_nonNil(t *testing.T) {
 	require.NotNil(t, seq)
 }
 
-func TestStellarFeeAggregatorAdapter_GetFeeAggregator_notImplemented(t *testing.T) {
+func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(t *testing.T) {
 	a := &StellarFeeAggregatorAdapter{}
 	env := envWithDatastore(newSealedDatastore())
 	_, err := a.GetFeeAggregator(env, 42)

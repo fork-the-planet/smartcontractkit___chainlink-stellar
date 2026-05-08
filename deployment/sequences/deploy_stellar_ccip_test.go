@@ -13,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 	"github.com/stretchr/testify/require"
 
+	"github.com/stellar/go-stellar-sdk/keypair"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
@@ -82,11 +83,12 @@ func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
+func TestStellarDeployChainContracts_RejectsNilChainSigner(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
 	// Unique selector so parallel tests do not collide on BlockChains maps.
 	sel := uint64(424242420001)
+	// Stellar chain entry without Signer: NewDeployerFromChain fails before any deploy.
 	st := cldf_stellar.Chain{ChainMetadata: cldf_stellar.ChainMetadata{Selector: sel}}
 	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: st})
 
@@ -94,6 +96,35 @@ func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
 		ChainSelector: sel,
 	})
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "Signer is nil")
+}
+
+func TestRunStellarCCIPFullDeployForCCV_ErrorsWhenTopologyNil(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	ctx := context.Background()
+	_, err := RunStellarCCIPFullDeployForCCV(ctx, b, stellardeps.StellarDeps{}, nil, []uint64{1}, 1, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "EnvironmentTopology is nil")
+}
+
+func TestStellarDeployChainContracts_RejectsMissingStashedTopology(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	sel := uint64(424242420098)
+	kp := keypair.MustRandom()
+	ch := cldf_stellar.Chain{
+		ChainMetadata:     cldf_stellar.ChainMetadata{Selector: sel},
+		Signer:            cldf_stellar.NewStellarKeypairSigner(kp),
+		Client:            nil,
+		NetworkPassphrase: "Standalone Network ; February 2017",
+	}
+	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: ch})
+	_, err := cldf_ops.ExecuteSequence(b, StellarDeployChainContracts, chains, ccvadapters.DeployChainContractsInput{
+		ChainSelector: sel,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "topology")
 }
 
 func TestRunStellarCCIPFullDeploy_ErrorsWhenCCIPDevenvHostNil(t *testing.T) {

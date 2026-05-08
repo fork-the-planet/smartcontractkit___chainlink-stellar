@@ -1,3 +1,12 @@
+// Package adapters registers Stellar with chainlink-ccip CCIP 2.0 tooling (v2_0_0 adapter
+// registries), chainlink-ccv/deployment/adapters for service-config changesets, and shared
+// infrastructure (MCMS, transfer ownership, token pools, fees, RMN curse).
+//
+// Devenv-only hooks under chainlink-ccv/build/devenv (chain config loader, verifier/executor
+// modifiers, ImplFactory, CLDF provider, extra-args serializers) are not registered here; they
+// live in ccv/chain/register.go and run when RegisterStellarDevenvComponents is called;
+// see the package doc there for the full split.
+// The ccvchain package blank-imports this package so its init runs as soon as ccvchain loads.
 package adapters
 
 import (
@@ -13,6 +22,8 @@ import (
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
+// init performs CCIP-platform tooling API registration for FamilyStellar. It does not call
+// into chainlink-ccv build/devenv registries; those are populated from ccv/chain/register.go.
 func init() {
 	v2 := semver.MustParse("2.0.0")
 	deploy.GetRegistry().RegisterDeployer(chainsel.FamilyStellar, v2, &StellarMCMSDeployer{})
@@ -29,12 +40,15 @@ func init() {
 	ccvadapters.GetTokenVerifierConfigRegistry().Register(chainsel.FamilyStellar, &StellarTokenVerifierConfigAdapter{})
 	ccvadapters.GetDeployChainContractsRegistry().Register(chainsel.FamilyStellar, &StellarDeployChainContractsAdapter{})
 
+	// chainlink-ccv/deployment/adapters: service-config changesets need CommitteeVerifierOnchain
+	// for on-chain committee scans plus the StellarCCVDeployment* adapters below.
 	ccvdeploymentadapters.GetRegistry().Register(chainsel.FamilyStellar, ccvdeploymentadapters.ChainAdapters{
-		Aggregator:    &StellarCCVDeploymentAggregatorConfigAdapter{},
-		Executor:      &StellarCCVDeploymentExecutorConfigAdapter{},
-		Verifier:      &StellarCCVDeploymentVerifierConfigAdapter{},
-		Indexer:       &StellarCCVDeploymentIndexerConfigAdapter{},
-		TokenVerifier: &StellarCCVDeploymentTokenVerifierConfigAdapter{},
+		Aggregator:               &StellarCCVDeploymentAggregatorConfigAdapter{},
+		CommitteeVerifierOnchain: &StellarCCVCommitteeVerifierOnchainAdapter{},
+		Executor:                 &StellarCCVDeploymentExecutorConfigAdapter{},
+		Verifier:                 &StellarCCVDeploymentVerifierConfigAdapter{},
+		Indexer:                  &StellarCCVDeploymentIndexerConfigAdapter{},
+		TokenVerifier:            &StellarCCVDeploymentTokenVerifierConfigAdapter{},
 	})
 
 	tokenscore.GetTokenAdapterRegistry().RegisterTokenAdapter(

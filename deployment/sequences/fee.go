@@ -1,16 +1,24 @@
 package sequences
 
 import (
+	"context"
 	"fmt"
 
 	cldfchain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
 	"github.com/smartcontractkit/chainlink-ccip/deployment/fees"
 	seqcore "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 
+	cvbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/committee_verifier"
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
+	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
+	vvrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/versioned_verifier_resolver"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
+	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	fqops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/fee_quoter"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
@@ -124,18 +132,110 @@ var StellarApplyDestChainConfig = cldfops.NewSequence(
 	},
 )
 
+// StellarSetFeeAggregatorSequenceID is the sequence ID for Stellar SetFeeAggregator.
+const StellarSetFeeAggregatorSequenceID = "stellar-set-fee-aggregator"
+
 // StellarSetFeeAggregatorInput is the sequence input for setting the fee aggregator.
 type StellarSetFeeAggregatorInput struct {
 	fees.FeeAggregatorForChain
 }
 
-// StellarSetFeeAggregator is a no-op placeholder.
-// Stellar fee aggregator is configured during contract deployment (PostDeployContractsForSelector).
+// StellarSetFeeAggregator is kept for tests and callers that execute the sequence without a closure;
+// prefer building the sequence via [StellarFeeAggregatorAdapter.SetFeeAggregator] in deployment/adapters,
+// which supplies the [cldf.Environment] for datastore lookups.
 var StellarSetFeeAggregator = cldfops.NewSequence(
-	"stellar-set-fee-aggregator",
+	StellarSetFeeAggregatorSequenceID,
 	stellarops.ContractDeploymentVersion,
-	"No-op: Stellar fee aggregator is configured during contract deployment",
-	func(_ cldfops.Bundle, _ cldfchain.BlockChains, _ StellarSetFeeAggregatorInput) (seqcore.OnChainOutput, error) {
-		return seqcore.OnChainOutput{}, nil
+	"Sets fee aggregator on Stellar OnRamp, VVR, and CommitteeVerifier (requires env: use adapter SetFeeAggregator)",
+	func(b cldfops.Bundle, chains cldfchain.BlockChains, in StellarSetFeeAggregatorInput) (seqcore.OnChainOutput, error) {
+		return seqcore.OnChainOutput{}, fmt.Errorf("execute Stellar fee aggregator via StellarFeeAggregatorAdapter.SetFeeAggregator(env) so datastore is available; legacy sequence invoked without environment")
 	},
 )
+
+// ApplyStellarFeeAggregator updates the fee aggregator on Stellar contracts that hold CCIP fee funds.
+// When in.Contracts is empty, OnRamp, Versioned Verifier Resolver, and Committee Verifier are updated.
+func ApplyStellarFeeAggregator(_ cldfops.Bundle, chains cldfchain.BlockChains, env cldf.Environment, in fees.FeeAggregatorForChain) (seqcore.OnChainOutput, error) {
+	if env.DataStore == nil {
+		return seqcore.OnChainOutput{}, fmt.Errorf("environment DataStore is nil")
+	}
+	feeAgg, err := stellarutil.ParseFeeAggregatorAddress(in.FeeAggregator)
+	if err != nil {
+		return seqcore.OnChainOutput{}, err
+	}
+	ch, ok := chains.StellarChains()[in.ChainSelector]
+	if !ok {
+		return seqcore.OnChainOutput{}, fmt.Errorf("stellar chain %d not found in environment", in.ChainSelector)
+	}
+	dep, err := stellardeployment.NewDeployerFromChain(ch)
+	if err != nil {
+		return seqcore.OnChainOutput{}, fmt.Errorf("stellar deployer from chain: %w", err)
+	}
+	ctx := context.Background()
+	if env.GetContext != nil {
+		ctx = env.GetContext()
+	}
+
+	want := map[datastore.ContractType]struct{}{}
+	if len(in.Contracts) == 0 {
+		want[stellarccip.OnRampDatastoreRef().Type] = struct{}{}
+		want[stellarccip.VVRDatastoreRef().Type] = struct{}{}
+		want[stellarccip.CommitteeVerifierDatastoreRef().Type] = struct{}{}
+	} else {
+		for _, c := range in.Contracts {
+			want[c.Type] = struct{}{}
+		}
+	}
+
+	if _, ok := want[stellarccip.OnRampDatastoreRef().Type]; ok {
+		onID, lerr := stellarccip.GetOnRampStrkey(env.DataStore, in.ChainSelector)
+		if lerr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("resolve OnRamp: %w", lerr)
+		}
+		onClient := onrampbindings.NewOnRampClient(dep, onID)
+		dyn, gerr := onClient.GetDynamicConfig(ctx)
+		if gerr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("onramp get dynamic config: %w", gerr)
+		}
+		if dyn == nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("onramp dynamic config is nil")
+		}
+		next := *dyn
+		next.FeeAggregator = feeAgg
+		if serr := onClient.SetDynamicConfig(ctx, next); serr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("onramp set dynamic config: %w", serr)
+		}
+	}
+
+	if _, ok := want[stellarccip.VVRDatastoreRef().Type]; ok {
+		vvrID, lerr := stellarccip.GetVVRStrkey(env.DataStore, in.ChainSelector)
+		if lerr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("resolve VVR: %w", lerr)
+		}
+		vvrClient := vvrbindings.NewVersionedVerifierResolverClient(dep, vvrID)
+		if serr := vvrClient.SetFeeAggregator(ctx, feeAgg); serr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("vvr set_fee_aggregator: %w", serr)
+		}
+	}
+
+	if _, ok := want[stellarccip.CommitteeVerifierDatastoreRef().Type]; ok {
+		cvID, lerr := stellarccip.GetCommitteeVerifierStrkey(env.DataStore, in.ChainSelector)
+		if lerr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("resolve CommitteeVerifier: %w", lerr)
+		}
+		cvClient := cvbindings.NewCommitteeVerifierClient(dep, cvID)
+		dyn, gerr := cvClient.GetDynamicConfig(ctx)
+		if gerr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("committee verifier get dynamic config: %w", gerr)
+		}
+		if dyn == nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("committee verifier dynamic config is nil")
+		}
+		next := *dyn
+		next.FeeAggregator = &feeAgg
+		if serr := cvClient.SetDynamicConfig(ctx, next); serr != nil {
+			return seqcore.OnChainOutput{}, fmt.Errorf("committee verifier set dynamic config: %w", serr)
+		}
+	}
+
+	return seqcore.OnChainOutput{}, nil
+}

@@ -8,6 +8,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_stellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
+	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -28,11 +30,11 @@ func TestStellarApplyDestChainConfig_sequenceMetadata(t *testing.T) {
 
 func TestStellarSetFeeAggregator_sequenceMetadata(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "stellar-set-fee-aggregator", StellarSetFeeAggregator.ID())
+	require.Equal(t, StellarSetFeeAggregatorSequenceID, StellarSetFeeAggregator.ID())
 	require.Equal(t, stellarops.ContractDeploymentVersion.String(), StellarSetFeeAggregator.Version())
 }
 
-func TestStellarSetFeeAggregator_isNoOp(t *testing.T) {
+func TestStellarSetFeeAggregator_legacySequenceRequiresEnv(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
 	chains := cldf_chain.NewBlockChains(nil)
@@ -43,7 +45,36 @@ func TestStellarSetFeeAggregator_isNoOp(t *testing.T) {
 		},
 	}
 	_, err := cldf_ops.ExecuteSequence(b, StellarSetFeeAggregator, chains, in)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "StellarFeeAggregatorAdapter")
+}
+
+func TestApplyStellarFeeAggregator_RejectsNilDatastore(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	chains := cldf_chain.NewBlockChains(nil)
+	env := cldf.Environment{}
+	kp := keypair.MustRandom()
+	_, err := ApplyStellarFeeAggregator(b, chains, env, fees.FeeAggregatorForChain{
+		ChainSelector: chainsel.STELLAR_LOCALNET.Selector,
+		FeeAggregator: kp.Address(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "DataStore")
+}
+
+func TestApplyStellarFeeAggregator_RejectsMissingStellarChain(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	chains := cldf_chain.NewBlockChains(nil)
+	env := cldf.Environment{DataStore: datastore.NewMemoryDataStore().Seal()}
+	kp := keypair.MustRandom()
+	_, err := ApplyStellarFeeAggregator(b, chains, env, fees.FeeAggregatorForChain{
+		ChainSelector: chainsel.STELLAR_LOCALNET.Selector,
+		FeeAggregator: kp.Address(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 }
 
 func TestStellarSetTokenTransferFee_RejectsMissingStellarChain(t *testing.T) {

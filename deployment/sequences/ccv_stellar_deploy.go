@@ -14,6 +14,7 @@ import (
 
 // RunStellarCCIPFullDeployForCCV runs the full Stellar CCIP Soroban deploy with CCV environment topology
 // (converted to offchain). Used by ccv/chain and by [DeployStellarCCIPContracts].
+// topology must be non-nil so committee verifier signature config can be derived after conversion.
 func RunStellarCCIPFullDeployForCCV(
 	ctx context.Context,
 	opBundle cldfops.Bundle,
@@ -24,6 +25,9 @@ func RunStellarCCIPFullDeployForCCV(
 	topology *ccvdeployment.EnvironmentTopology,
 	existingAddresses []datastore.AddressRef,
 ) (seq_core.OnChainOutput, error) {
+	if topology == nil {
+		return seq_core.OnChainOutput{}, fmt.Errorf("RunStellarCCIPFullDeployForCCV: CCV EnvironmentTopology is nil (required for Stellar committee verifier signature quorum config)")
+	}
 	offTopo, err := stellarccip.CCVEnvironmentTopologyToOffchain(topology)
 	if err != nil {
 		return seq_core.OnChainOutput{}, err
@@ -38,6 +42,7 @@ func RunStellarCCIPFullDeployForCCV(
 // DeployStellarCCIPContracts deploys the full Stellar CCIP stack and returns a sealed in-memory datastore
 // containing address refs for merge into the environment datastore. opBundle must be the CLDF bundle for
 // this run (parent changeset bundle from sequences, or [cldfops.NewBundle] for tests).
+// topology must be non-nil so committee verifier signature config can be applied ([RunStellarCCIPFullDeployForCCV]).
 func DeployStellarCCIPContracts(
 	ctx context.Context,
 	opBundle cldfops.Bundle,

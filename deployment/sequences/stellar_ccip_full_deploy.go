@@ -69,6 +69,11 @@ func execStellarCCIPOp[IN, OUT any](
 // RunStellarCCIPFullDeploy deploys and configures the full Stellar CCIP Soroban stack for devenv using CLDF
 // operations on the given bundle. It mirrors the phased devenv pipeline (foundation → verification/fees
 // → ramps → receiver + cross-family datastore refs).
+//
+// topology must be non-nil with a non-nil NOP graph: committee verifier signature quorum configuration
+// (ApplySignatureConfigs) is derived from offchain NOP/committee data. CCV supplies this via
+// RegisterStellarDeployOffchainTopologyForSelector → Take in [StellarDeployChainContracts], or
+// [RunStellarCCIPFullDeployForCCV] which converts CCV topology before calling this function.
 func RunStellarCCIPFullDeploy(
 	ctx context.Context,
 	b cldf_ops.Bundle,
@@ -82,6 +87,12 @@ func RunStellarCCIPFullDeploy(
 	}
 	if deps.Deploy == nil || deps.Invoker == nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("RunStellarCCIPFullDeploy: incomplete StellarDeps")
+	}
+	if topology == nil {
+		return seq_core.OnChainOutput{}, fmt.Errorf("RunStellarCCIPFullDeploy: offchain EnvironmentTopology is nil (committee verifier signature quorum requires NOP topology; use CCV pre-deploy stash + StellarDeployChainContracts or RunStellarCCIPFullDeployForCCV with a non-nil CCV topology)")
+	}
+	if topology.NOPTopology == nil {
+		return seq_core.OnChainOutput{}, fmt.Errorf("RunStellarCCIPFullDeploy: topology.NOPTopology is nil (cannot resolve committee signers for ApplySignatureConfigs)")
 	}
 
 	ds := datastore.NewMemoryDataStore()
@@ -239,7 +250,8 @@ func RunStellarCCIPFullDeploy(
 	}
 	h.Logger().Info().Str("contractID", tarContractID).Msg("TokenAdminRegistry deployed and initialized")
 
-	mockFeeAggregator := stellarutil.MustGenerateMockContractID(h.DeployerKeypair().Address(), "fee-aggregator")
+	// Fee aggregator receivable account: devenv uses the deployer account (real on-chain identity, not a synthetic C… mock).
+	feeAggregatorAddr := h.DeployerKeypair().Address()
 	if _, err := execStellarCCIPOp(b, deps, onrampops.Initialize, onrampops.InitializeInput{
 		ContractID: onrampContractID,
 		Owner:      h.DeployerKeypair().Address(),
@@ -251,7 +263,7 @@ func RunStellarCCIPFullDeploy(
 		},
 		DynamicConfig: onrampbindings.DynamicConfig{
 			FeeQuoter:     feeQuoterContractID,
-			FeeAggregator: mockFeeAggregator,
+			FeeAggregator: feeAggregatorAddr,
 		},
 	}); err != nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("initialize OnRamp: %w", err)
@@ -259,8 +271,6 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("onRampContractID", onrampContractID).Msg("OnRamp client initialized")
 
 	// --- Verification + FeeQuoter config ---
-	mockFeeAggregatorV := mockFeeAggregator
-
 	vvrWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccvs_versioned_verifier_resolver.wasm")
 	if _, statErr := os.Stat(vvrWasmPath); os.IsNotExist(statErr) {
 		return seq_core.OnChainOutput{}, fmt.Errorf("VVR WASM not found at %s. Run 'make build'", vvrWasmPath)
@@ -281,7 +291,7 @@ func RunStellarCCIPFullDeploy(
 	if _, err := execStellarCCIPOp(b, deps, vvrops.Initialize, vvrops.InitializeInput{
 		ContractID:    vvrContractID,
 		Owner:         h.DeployerKeypair().Address(),
-		FeeAggregator: mockFeeAggregatorV,
+		FeeAggregator: feeAggregatorAddr,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("initialize VVR: %w", err)
 	}
@@ -304,13 +314,14 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("contractID", cvContractID).Msg("Committee Verifier contract deployed")
 
 	allowlistAdmin := h.DeployerKeypair().Address()
+	cvFeeAgg := feeAggregatorAddr
 	mockStorageLocation := stellarutil.GenerateContractAddress("storage-location", h.NetworkPassphrase())
 	if _, err := execStellarCCIPOp(b, deps, cvops.Initialize, cvops.InitializeInput{
 		ContractID: cvContractID,
 		Owner:      h.DeployerKeypair().Address(),
 		DynamicConfig: cvbindings.DynamicConfig{
 			AllowlistAdmin: &allowlistAdmin,
-			FeeAggregator:  &mockFeeAggregatorV,
+			FeeAggregator:  &cvFeeAgg,
 		},
 		StorageLocations: [][]byte{mockStorageLocation},
 		RmnProxy:         rmnProxyContractID,
@@ -346,25 +357,6 @@ func RunStellarCCIPFullDeploy(
 		Implementations: inboundImplUpdates,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("apply inbound implementation updates: %w", err)
-	}
-
-	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(allSelectors))
-	for _, rs := range allSelectors {
-		router := h.DeployerKeypair().Address()
-		remoteChainConfigs = append(remoteChainConfigs, cvbindings.RemoteChainConfig{
-			RemoteChainSelector: rs,
-			FeeUsdCents:         0,
-			GasForVerification:  10000,
-			PayloadSizeBytes:    0,
-			AllowlistEnabled:    false,
-			Router:              &router,
-		})
-	}
-	if _, err := execStellarCCIPOp(b, deps, cvops.ApplyRemoteChainCfgUpdates, cvops.ApplyRemoteChainCfgUpdatesInput{
-		ContractID: cvContractID,
-		Configs:    remoteChainConfigs,
-	}); err != nil {
-		return seq_core.OnChainOutput{}, fmt.Errorf("apply remote chain config updates on committee verifier: %w", err)
 	}
 
 	signatureQuorumConfigs := make([]cvbindings.SignatureQuorumConfig, 0, len(allSelectors))
@@ -524,6 +516,27 @@ func RunStellarCCIPFullDeploy(
 	}
 	h.SetRouter(routerContractID, routerClient)
 	h.Logger().Info().Str("routerContractID", routerContractID).Msg("Router initialized")
+
+	// CommitteeVerifier RemoteChainConfig.Router must be this chain's Router contract (not the deployer);
+	// router exists only after deploy + Initialize above (matches tests/integration/contract_deploy_helpers_test.go).
+	routerRef := routerContractID
+	remoteChainConfigs := make([]cvbindings.RemoteChainConfig, 0, len(allSelectors))
+	for _, rs := range allSelectors {
+		remoteChainConfigs = append(remoteChainConfigs, cvbindings.RemoteChainConfig{
+			RemoteChainSelector: rs,
+			FeeUsdCents:         0,
+			GasForVerification:  10000,
+			PayloadSizeBytes:    0,
+			AllowlistEnabled:    false,
+			Router:              &routerRef,
+		})
+	}
+	if _, err := execStellarCCIPOp(b, deps, cvops.ApplyRemoteChainCfgUpdates, cvops.ApplyRemoteChainCfgUpdatesInput{
+		ContractID: cvContractID,
+		Configs:    remoteChainConfigs,
+	}); err != nil {
+		return seq_core.OnChainOutput{}, fmt.Errorf("apply remote chain config updates on committee verifier: %w", err)
+	}
 
 	contractHexAddr := func(name string) string {
 		return hexutil.Encode(stellarutil.GenerateContractAddress(name, h.NetworkPassphrase()))

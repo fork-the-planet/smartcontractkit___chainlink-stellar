@@ -25,6 +25,29 @@ func TestGenerateContractAddress(t *testing.T) {
 	assert.NotEqual(t, addr, addr4)
 }
 
+func TestParseFeeAggregatorAddress(t *testing.T) {
+	t.Run("account_strkey", func(t *testing.T) {
+		kp, err := keypair.FromRawSeed([32]byte{9, 8, 7, 6, 5, 4, 3, 2, 1, 0})
+		require.NoError(t, err)
+		got, err := ParseFeeAggregatorAddress(kp.Address())
+		require.NoError(t, err)
+		require.Equal(t, kp.Address(), got)
+	})
+	t.Run("hex_roundtrip", func(t *testing.T) {
+		kp, err := keypair.FromRawSeed([32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+		require.NoError(t, err)
+		hexAddr, err := StrkeyToHex(kp.Address())
+		require.NoError(t, err)
+		got, err := ParseFeeAggregatorAddress(hexAddr)
+		require.NoError(t, err)
+		require.Equal(t, kp.Address(), got)
+	})
+	t.Run("empty", func(t *testing.T) {
+		_, err := ParseFeeAggregatorAddress("  ")
+		require.Error(t, err)
+	})
+}
+
 func TestStrkeyToHex(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		_, err := StrkeyToHex("")

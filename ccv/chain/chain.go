@@ -476,6 +476,8 @@ func (c *Chain) GetTokenTransferConfigs(
 // DeployStellarCCIPContracts runs the sequences-based full Soroban CCIP deploy and returns output for the
 // shared DeployChainContracts changeset merge path.
 // opBundle is the CLDF bundle from the executing sequence (same bundle as nested ExecuteOperation).
+// topology must be non-nil (with NOP data): Stellar full deploy configures committee verifier signature
+// quorum from the converted offchain topology.
 func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, opBundle cldf_ops.Bundle, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (seq_core.OnChainOutput, error) {
 	return stellarsequences.RunStellarCCIPFullDeployForCCV(ctx, opBundle, c.StellarDepsForDeploy(), c.CCIPDevenvHost(), allSelectors, selector, topology, existingAddresses)
 }
@@ -1016,19 +1018,17 @@ func (c *Chain) FeeQuoterClient() *fqbindings.FeeQuoterClient {
 	return c.feeQuoterClient
 }
 
-// stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
-// deterministic mock fee-aggregator contract ID used when initializing Stellar FeeQuoter,
-// CommitteeVerifier, and VVR (mustGenerateMockContractID(..., "fee-aggregator")).
-// Topology FeeAggregator must match that on-chain value so downstream tooling and
-// changesets stay consistent; an EVM-style 0x1 placeholder does not match Soroban state.
+// stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the deployer account
+// bytes used as the on-chain fee aggregator in Stellar devenv (same address as [RunStellarCCIPFullDeploy]
+// passes into OnRamp/VVR/CommitteeVerifier). Topology FeeAggregator must match that value so downstream
+// tooling and changesets stay aligned.
 func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	if c.deployerKeypair == nil {
 		return "", fmt.Errorf("deployer keypair not set")
 	}
-	mockStrkey := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
-	raw, err := strkey.Decode(strkey.VersionByteContract, mockStrkey)
+	raw, err := strkey.Decode(strkey.VersionByteAccountID, c.deployerKeypair.Address())
 	if err != nil {
-		return "", fmt.Errorf("decode mock fee aggregator strkey: %w", err)
+		return "", fmt.Errorf("decode deployer account for fee aggregator hex: %w", err)
 	}
 	return hexutil.Encode(raw), nil
 }

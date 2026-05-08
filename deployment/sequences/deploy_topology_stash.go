@@ -11,6 +11,8 @@ import (
 // only receives chainlink-ccip DeployChainContractsInput, with no topology field on the current pin).
 // CCV calls Register in pre-deploy, the CLDF adapter sequence calls Take before RunStellarCCIPFullDeploy,
 // and PostDeploy clears any leftover entry after the changeset returns.
+// The stashed topology must be non-nil with NOP data: RunStellarCCIPFullDeploy applies committee
+// verifier signature quorum config from it; a missing stash causes the adapter sequence to error.
 var stellarDeployOffchainTopologyBySelector sync.Map // uint64 -> *offchain.EnvironmentTopology
 
 // RegisterStellarDeployOffchainTopologyForSelector records offchain topology for the Stellar chain
