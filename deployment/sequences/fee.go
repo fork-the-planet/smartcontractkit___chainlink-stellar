@@ -132,32 +132,18 @@ var StellarApplyDestChainConfig = cldfops.NewSequence(
 	},
 )
 
-// StellarSetFeeAggregatorSequenceID is the sequence ID for Stellar SetFeeAggregator.
+// StellarSetFeeAggregatorSequenceID is the pipeline sequence ID for SetFeeAggregator on Stellar
+// (OnRamp, VVR, Committee Verifier). Use [StellarFeeAggregatorAdapter.SetFeeAggregator], which
+// wraps [ApplyStellarFeeAggregator] with the [cldf.Environment] needed for datastore lookups.
 const StellarSetFeeAggregatorSequenceID = "stellar-set-fee-aggregator"
-
-// StellarSetFeeAggregatorInput is the sequence input for setting the fee aggregator.
-type StellarSetFeeAggregatorInput struct {
-	fees.FeeAggregatorForChain
-}
-
-// StellarSetFeeAggregator is kept for tests and callers that execute the sequence without a closure;
-// prefer building the sequence via [StellarFeeAggregatorAdapter.SetFeeAggregator] in deployment/adapters,
-// which supplies the [cldf.Environment] for datastore lookups.
-var StellarSetFeeAggregator = cldfops.NewSequence(
-	StellarSetFeeAggregatorSequenceID,
-	stellarops.ContractDeploymentVersion,
-	"Sets fee aggregator on Stellar OnRamp, VVR, and CommitteeVerifier (requires env: use adapter SetFeeAggregator)",
-	func(b cldfops.Bundle, chains cldfchain.BlockChains, in StellarSetFeeAggregatorInput) (seqcore.OnChainOutput, error) {
-		return seqcore.OnChainOutput{}, fmt.Errorf("execute Stellar fee aggregator via StellarFeeAggregatorAdapter.SetFeeAggregator(env) so datastore is available; legacy sequence invoked without environment")
-	},
-)
 
 // ApplyStellarFeeAggregator updates the fee aggregator on Stellar contracts that hold CCIP fee funds.
 // When in.Contracts is empty, OnRamp, Versioned Verifier Resolver, and Committee Verifier are updated.
-func ApplyStellarFeeAggregator(_ cldfops.Bundle, chains cldfchain.BlockChains, env cldf.Environment, in fees.FeeAggregatorForChain) (seqcore.OnChainOutput, error) {
+func ApplyStellarFeeAggregator(b cldfops.Bundle, chains cldfchain.BlockChains, env cldf.Environment, in fees.FeeAggregatorForChain) (seqcore.OnChainOutput, error) {
 	if env.DataStore == nil {
 		return seqcore.OnChainOutput{}, fmt.Errorf("environment DataStore is nil")
 	}
+	ctx := stellarFeeAggregatorContext(b, env)
 	feeAgg, err := stellarutil.ParseFeeAggregatorAddress(in.FeeAggregator)
 	if err != nil {
 		return seqcore.OnChainOutput{}, err
@@ -169,10 +155,6 @@ func ApplyStellarFeeAggregator(_ cldfops.Bundle, chains cldfchain.BlockChains, e
 	dep, err := stellardeployment.NewDeployerFromChain(ch)
 	if err != nil {
 		return seqcore.OnChainOutput{}, fmt.Errorf("stellar deployer from chain: %w", err)
-	}
-	ctx := context.Background()
-	if env.GetContext != nil {
-		ctx = env.GetContext()
 	}
 
 	want := map[datastore.ContractType]struct{}{}
@@ -238,4 +220,16 @@ func ApplyStellarFeeAggregator(_ cldfops.Bundle, chains cldfchain.BlockChains, e
 	}
 
 	return seqcore.OnChainOutput{}, nil
+}
+
+// stellarFeeAggregatorContext prefers the CLDF operations bundle context (cancellation/timeouts
+// from ExecuteSequence), then [cldf.Environment.GetContext], then [context.Background].
+func stellarFeeAggregatorContext(b cldfops.Bundle, env cldf.Environment) context.Context {
+	if b.GetContext != nil {
+		return b.GetContext()
+	}
+	if env.GetContext != nil {
+		return env.GetContext()
+	}
+	return context.Background()
 }

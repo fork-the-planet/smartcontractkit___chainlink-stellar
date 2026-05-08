@@ -8,8 +8,8 @@ import (
 	"github.com/smartcontractkit/chainlink-ccip/deployment/lanes"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_stellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
-	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -26,27 +26,6 @@ func TestStellarApplyDestChainConfig_sequenceMetadata(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "stellar-apply-dest-chain-config", StellarApplyDestChainConfig.ID())
 	require.Equal(t, stellarops.ContractDeploymentVersion.String(), StellarApplyDestChainConfig.Version())
-}
-
-func TestStellarSetFeeAggregator_sequenceMetadata(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, StellarSetFeeAggregatorSequenceID, StellarSetFeeAggregator.ID())
-	require.Equal(t, stellarops.ContractDeploymentVersion.String(), StellarSetFeeAggregator.Version())
-}
-
-func TestStellarSetFeeAggregator_legacySequenceRequiresEnv(t *testing.T) {
-	t.Parallel()
-	b := newTestBundle(t)
-	chains := cldf_chain.NewBlockChains(nil)
-	in := StellarSetFeeAggregatorInput{
-		FeeAggregatorForChain: fees.FeeAggregatorForChain{
-			ChainSelector: chainsel.STELLAR_LOCALNET.Selector,
-			FeeAggregator: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-		},
-	}
-	_, err := cldf_ops.ExecuteSequence(b, StellarSetFeeAggregator, chains, in)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "StellarFeeAggregatorAdapter")
 }
 
 func TestApplyStellarFeeAggregator_RejectsNilDatastore(t *testing.T) {

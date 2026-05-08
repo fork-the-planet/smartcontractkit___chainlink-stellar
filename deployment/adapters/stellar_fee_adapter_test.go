@@ -13,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
@@ -106,6 +107,8 @@ func TestStellarFeeAggregatorAdapter_SetFeeAggregator_nonNil(t *testing.T) {
 	env := envWithDatastore(newSealedDatastore())
 	seq := a.SetFeeAggregator(env)
 	require.NotNil(t, seq)
+	require.Equal(t, stellarsequences.StellarSetFeeAggregatorSequenceID, seq.ID())
+	require.Equal(t, stellarops.ContractDeploymentVersion.String(), seq.Version())
 }
 
 func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(t *testing.T) {
@@ -113,6 +116,7 @@ func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(
 	env := envWithDatastore(newSealedDatastore())
 	_, err := a.GetFeeAggregator(env, 42)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 }
 
 func TestStellarFeeAggregatorAdapter_Registration(t *testing.T) {

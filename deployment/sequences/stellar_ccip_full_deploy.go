@@ -66,6 +66,21 @@ func execStellarCCIPOp[IN, OUT any](
 	return rep.Output, nil
 }
 
+// statReleaseWasm checks that a release-profile WASM path exists and is a regular file.
+func statReleaseWasm(path, displayName string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s WASM not found at %s. Run 'make build'", displayName, path)
+		}
+		return fmt.Errorf("stat %s WASM at %s: %w", displayName, path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s WASM at %s is not a regular file (mode %s)", displayName, path, info.Mode())
+	}
+	return nil
+}
+
 // RunStellarCCIPFullDeploy deploys and configures the full Stellar CCIP Soroban stack for devenv using CLDF
 // operations on the given bundle. It mirrors the phased devenv pipeline (foundation → verification/fees
 // → ramps → receiver + cross-family datastore refs).
@@ -124,8 +139,8 @@ func RunStellarCCIPFullDeploy(
 
 	// --- Foundation (OnRamp deploy first; initialize after TAR + FeeQuoter) ---
 	onrampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "onramp.wasm")
-	if _, statErr := os.Stat(onrampWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("OnRamp WASM not found at %s. Run 'make build' from the chainlink-stellar root", onrampWasmPath)
+	if err := statReleaseWasm(onrampWasmPath, "OnRamp"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", onrampWasmPath).Msg("Deploying OnRamp contract...")
 	onrampSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "onramp")
@@ -142,8 +157,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("contractID", onrampContractID).Msg("OnRamp contract deployed")
 
 	rmnRemoteWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
-	if _, statErr := os.Stat(rmnRemoteWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("RMN Remote WASM not found at %s. Run 'make build'", rmnRemoteWasmPath)
+	if err := statReleaseWasm(rmnRemoteWasmPath, "RMN Remote"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", rmnRemoteWasmPath).Msg("Deploying RMN Remote contract...")
 	rmnRemoteSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "rmn-remote")
@@ -165,8 +180,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("rmnRemoteContractID", rmnRemoteContractID).Msg("RMN Remote initialized")
 
 	rmnProxyWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "rmn_proxy.wasm")
-	if _, statErr := os.Stat(rmnProxyWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("RMN Proxy WASM not found at %s. Run 'make build'", rmnProxyWasmPath)
+	if err := statReleaseWasm(rmnProxyWasmPath, "RMN Proxy"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", rmnProxyWasmPath).Msg("Deploying RMN Proxy contract...")
 	rmnProxySalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "rmn-proxy")
@@ -185,8 +200,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("rmnProxyContractID", rmnProxyContractID).Msg("RMN Proxy initialized")
 
 	feeQuoterWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "fee_quoter.wasm")
-	if _, statErr := os.Stat(feeQuoterWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("FeeQuoter WASM not found at %s. Run 'make build'", feeQuoterWasmPath)
+	if err := statReleaseWasm(feeQuoterWasmPath, "FeeQuoter"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", feeQuoterWasmPath).Msg("Deploying FeeQuoter contract...")
 	feeQuoterSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "fee-quoter")
@@ -227,8 +242,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("feeQuoterContractID", feeQuoterContractID).Msg("FeeQuoter initialized")
 
 	tarWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "token_admin_registry.wasm")
-	if _, statErr := os.Stat(tarWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("TokenAdminRegistry WASM not found at %s. Run 'make build'", tarWasmPath)
+	if err := statReleaseWasm(tarWasmPath, "TokenAdminRegistry"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", tarWasmPath).Msg("Deploying TokenAdminRegistry contract...")
 	tarSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "token-admin-registry")
@@ -272,8 +287,8 @@ func RunStellarCCIPFullDeploy(
 
 	// --- Verification + FeeQuoter config ---
 	vvrWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccvs_versioned_verifier_resolver.wasm")
-	if _, statErr := os.Stat(vvrWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("VVR WASM not found at %s. Run 'make build'", vvrWasmPath)
+	if err := statReleaseWasm(vvrWasmPath, "VVR"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", vvrWasmPath).Msg("Deploying Versioned Verifier Resolver contract...")
 	vvrSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "versioned-verifier-resolver")
@@ -298,8 +313,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("vvrContractID", vvrContractID).Msg("VVR client initialized")
 
 	cvWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccvs_committee_verifier.wasm")
-	if _, statErr := os.Stat(cvWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("Committee Verifier WASM not found at %s. Run 'make build'", cvWasmPath)
+	if err := statReleaseWasm(cvWasmPath, "Committee Verifier"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", cvWasmPath).Msg("Deploying Committee Verifier contract...")
 	cvSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "committee-verifier")
@@ -463,8 +478,8 @@ func RunStellarCCIPFullDeploy(
 
 	// --- Ramps, router, registry, provisional lanes ---
 	offRampWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "offramp.wasm")
-	if _, statErr := os.Stat(offRampWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("OffRamp WASM not found at %s. Run 'make build'", offRampWasmPath)
+	if err := statReleaseWasm(offRampWasmPath, "OffRamp"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", offRampWasmPath).Msg("Deploying OffRamp contract...")
 	offRampSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "offramp")
@@ -493,8 +508,8 @@ func RunStellarCCIPFullDeploy(
 	h.Logger().Info().Str("offRampContractID", offRampContractID).Msg("OffRamp initialized")
 
 	routerWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "router.wasm")
-	if _, statErr := os.Stat(routerWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("Router WASM not found at %s. Run 'make build'", routerWasmPath)
+	if err := statReleaseWasm(routerWasmPath, "Router"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", routerWasmPath).Msg("Deploying Router contract...")
 	routerSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "router")
@@ -590,8 +605,8 @@ func RunStellarCCIPFullDeploy(
 	}
 
 	rampRegistryWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccip_ramp_registry.wasm")
-	if _, statErr := os.Stat(rampRegistryWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("RampRegistry WASM not found at %s. Run 'make build'", rampRegistryWasmPath)
+	if err := statReleaseWasm(rampRegistryWasmPath, "RampRegistry"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", rampRegistryWasmPath).Msg("Deploying RampRegistry contract...")
 	rampRegistrySalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "ramp-registry")
@@ -642,8 +657,8 @@ func RunStellarCCIPFullDeploy(
 
 	// --- Receiver + EVM-typed datastore refs for CCIP v2 tooling ---
 	receiverWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "ccip_receiver_example.wasm")
-	if _, statErr := os.Stat(receiverWasmPath); os.IsNotExist(statErr) {
-		return seq_core.OnChainOutput{}, fmt.Errorf("ccip_receiver_example WASM not found at %s. Run 'make build'", receiverWasmPath)
+	if err := statReleaseWasm(receiverWasmPath, "ccip_receiver_example"); err != nil {
+		return seq_core.OnChainOutput{}, err
 	}
 	h.Logger().Info().Str("wasmPath", receiverWasmPath).Msg("Deploying CCIP receiver example contract...")
 	receiverSalt := stellardeployment.GenerateDeterministicSalt(h.DeployerKeypair().Address(), "ccip-receiver-example")
