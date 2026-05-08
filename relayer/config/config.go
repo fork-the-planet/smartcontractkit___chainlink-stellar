@@ -46,6 +46,9 @@ type TOMLConfig struct {
 	// ChainID is the unique identifier for this chain configuration
 	ChainID string `toml:"ChainID"`
 
+	// NetworkPassphrase is the Stellar network passphrase used for transaction
+	NetworkPassphrase string `toml:"NetworkPassphrase"`
+
 	// Nodes lists the Soroban RPC endpoints for this chain.
 	Nodes Nodes `toml:"Nodes"`
 }
@@ -63,6 +66,10 @@ func (c *TOMLConfig) ValidateConfig() (err error) {
 		chain_selectors.STELLAR_LOCALNET.ChainID},
 		c.ChainID) {
 		err = errors.Join(err, fmt.Errorf("invalid chain ID %q", c.ChainID))
+	}
+
+	if c.NetworkPassphrase == "" {
+		err = errors.Join(err, clconfig.ErrEmpty{Name: "NetworkPassphrase", Msg: "required for transaction signing"})
 	}
 
 	if len(c.Nodes) == 0 {
