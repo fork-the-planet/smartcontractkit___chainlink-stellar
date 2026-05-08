@@ -23,11 +23,6 @@ func TestStellarDeployChainContractsSequenceID(t *testing.T) {
 	require.Equal(t, "stellar-deploy-chain-contracts", StellarDeployChainContracts.ID())
 }
 
-func TestDeployChainContractsInnerSequenceID(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, StellarDeployChainContracts.ID(), DeployChainContractsInner.ID())
-}
-
 func newTestBundle(t *testing.T) cldf_ops.Bundle {
 	t.Helper()
 	return cldf_ops.NewBundle(

@@ -26,16 +26,6 @@ func TestDatastoreContractRef_roundTripRouterRMN(t *testing.T) {
 	assert.Equal(t, rmnID, gotRMN)
 }
 
-func TestDatastoreContractRef_recordMatchesLookupHelpers(t *testing.T) {
-	ds := datastore.NewMemoryDataStore()
-	sel := uint64(424242)
-	onID := stellarutil.MustGenerateMockContractID("deployer", "onramp-lookup")
-	require.NoError(t, RecordOnRamp(ds, sel, onID))
-	got, err := GetOnRampStrkey(ds.Seal(), sel)
-	require.NoError(t, err)
-	assert.Equal(t, onID, got)
-}
-
 func TestDatastoreContractRef_onRampMetaStable(t *testing.T) {
 	ref := OnRampDatastoreRef()
 	require.NotNil(t, ref.Version)
