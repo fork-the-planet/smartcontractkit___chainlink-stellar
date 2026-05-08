@@ -1,6 +1,8 @@
 package ccvchain
 
 import (
+	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stellar/go-stellar-sdk/strkey"
 )
 
 const testEVMSelector = uint64(3379446385462418246)
@@ -214,14 +217,28 @@ func TestBuildRemoteRampConfigs_ResolveDatastoreAddresses(t *testing.T) {
 	)
 }
 
-func TestStellarAdapter(t *testing.T) {
-	adapter := NewChainFamilyAdapter()
-	require.NotNil(t, adapter)
+// decodeDatastoreAddressRefToStellarBytes decodes a Stellar contract (C...), account (G...),
+// or 32-byte hex datastore address into raw bytes. Test-only helper (no production analogue in this package).
+func decodeDatastoreAddressRefToStellarBytes(ref datastore.AddressRef) ([]byte, error) {
+	if decoded, err := strkey.Decode(strkey.VersionByteContract, ref.Address); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := strkey.Decode(strkey.VersionByteAccountID, ref.Address); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := hex.DecodeString(strings.TrimPrefix(ref.Address, "0x")); err == nil {
+		if len(decoded) == 32 {
+			return decoded, nil
+		}
+	}
+	return nil, fmt.Errorf("failed to decode Stellar address %q: not a valid contract (C...), account (G...), or hex address", ref.Address)
+}
 
+func TestDatastoreAddressRefToStellarBytes(t *testing.T) {
 	t.Run("decodes contract address (C...)", func(t *testing.T) {
 		contractAddr := "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 		ref := datastore.AddressRef{Address: contractAddr}
-		decoded, err := adapter.AddressRefToBytes(ref)
+		decoded, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.NoError(t, err)
 		assert.Len(t, decoded, 32)
 	})
@@ -229,7 +246,7 @@ func TestStellarAdapter(t *testing.T) {
 	t.Run("decodes account address (G...)", func(t *testing.T) {
 		accountAddr := "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7"
 		ref := datastore.AddressRef{Address: accountAddr}
-		decoded, err := adapter.AddressRefToBytes(ref)
+		decoded, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.NoError(t, err)
 		assert.Len(t, decoded, 32)
 	})
@@ -237,7 +254,7 @@ func TestStellarAdapter(t *testing.T) {
 	t.Run("decodes 32-byte hex address", func(t *testing.T) {
 		hexAddr := "0x" + strings.Repeat("ab", 32)
 		ref := datastore.AddressRef{Address: hexAddr}
-		decoded, err := adapter.AddressRefToBytes(ref)
+		decoded, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.NoError(t, err)
 		assert.Len(t, decoded, 32)
 	})
@@ -245,21 +262,21 @@ func TestStellarAdapter(t *testing.T) {
 	t.Run("decodes 32-byte hex address without 0x prefix", func(t *testing.T) {
 		hexAddr := strings.Repeat("cd", 32)
 		ref := datastore.AddressRef{Address: hexAddr}
-		decoded, err := adapter.AddressRefToBytes(ref)
+		decoded, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.NoError(t, err)
 		assert.Len(t, decoded, 32)
 	})
 
 	t.Run("fails on invalid address", func(t *testing.T) {
 		ref := datastore.AddressRef{Address: "not-a-valid-address"}
-		_, err := adapter.AddressRefToBytes(ref)
+		_, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to decode Stellar address")
 	})
 
 	t.Run("fails on short hex (not 32 bytes)", func(t *testing.T) {
 		ref := datastore.AddressRef{Address: "0xabcdef"}
-		_, err := adapter.AddressRefToBytes(ref)
+		_, err := decodeDatastoreAddressRefToStellarBytes(ref)
 		require.Error(t, err)
 	})
 }
