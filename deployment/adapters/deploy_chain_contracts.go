@@ -2,7 +2,6 @@ package adapters
 
 import (
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
-	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
@@ -21,6 +20,6 @@ func (a *StellarDeployChainContractsAdapter) SetContractParamsFromImportedConfig
 }
 
 // DeployChainContracts implements ccvadapters.DeployChainContractsAdapter.
-func (a *StellarDeployChainContractsAdapter) DeployChainContracts() *cldf_ops.Sequence[ccvadapters.DeployChainContractsInput, seq_core.OnChainOutput, cldf_chain.BlockChains] {
+func (a *StellarDeployChainContractsAdapter) DeployChainContracts() *cldf_ops.Sequence[ccvadapters.DeployChainContractsInput, ccvadapters.DeployChainContractsOutput, cldf_chain.BlockChains] {
 	return sequences.StellarDeployChainContracts
 }

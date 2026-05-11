@@ -47,7 +47,7 @@ func testFQRef() datastore.AddressRef {
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	_, err := a.GetFeeContractRef(env, 42, 0)
+	_, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.Error(t, err)
 }
 
@@ -66,7 +66,7 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 	}
 	require.NoError(t, ds.Addresses().Upsert(ref))
 	env := envWithDatastore(ds.Seal())
-	got, err := a.GetFeeContractRef(env, 42, 0)
+	got, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.NoError(t, err)
 	require.Equal(t, hexAddr, got.Address)
 
@@ -78,14 +78,14 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 func TestStellarFeeAdapter_SetTokenTransferFee_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.SetTokenTransferFee(env)
+	seq := a.SetTokenTransferFee(env, testFQRef())
 	require.NotNil(t, seq)
 }
 
 func TestStellarFeeAdapter_ApplyDestChainConfigUpdates_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.ApplyDestChainConfigUpdates(env)
+	seq := a.ApplyDestChainConfigUpdates(env, testFQRef())
 	require.NotNil(t, seq)
 }
 
