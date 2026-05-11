@@ -78,8 +78,8 @@ func (s *TxStore) GetLastResyncedNonce() int64 {
 // If there are failed (recycled) sequences, it returns the smallest of
 // (nextSequence, min(failedSequences)) to plug gaps.
 func (s *TxStore) GetNextSequence() int64 {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 
 	next := s.nextSequence
 	for seq := range s.failedSequences {
