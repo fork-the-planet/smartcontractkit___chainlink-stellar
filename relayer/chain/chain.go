@@ -12,17 +12,21 @@ import (
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
+	"go.uber.org/multierr"
 
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
-	"github.com/smartcontractkit/chainlink-common/pkg/loop"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
 	"github.com/smartcontractkit/chainlink-common/pkg/types"
+	"github.com/smartcontractkit/chainlink-common/pkg/types/core"
 
 	"github.com/smartcontractkit/chainlink-stellar/relayer/config"
 	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
 
-// RPCClient is the subset of the Stellar Soroban JSON-RPC client used by the chain.
+// RPCClient is the subset of the Stellar Soroban JSON-RPC client used across
+// the Stellar relayer (chain + per-component callers). It mirrors the public
+// surface of *rpcclient.Client so production wiring passes the SDK type
+// unchanged and tests can inject mocks.
 type RPCClient interface {
 	SimulateTransaction(ctx context.Context, req protocolrpc.SimulateTransactionRequest) (protocolrpc.SimulateTransactionResponse, error)
 	SendTransaction(ctx context.Context, req protocolrpc.SendTransactionRequest) (protocolrpc.SendTransactionResponse, error)
@@ -42,7 +46,7 @@ type Chain interface {
 	ID() string
 	Config() *config.TOMLConfig
 	TxManager() *txm.StellarTxm
-	KeyStore() loop.Keystore
+	KeyStore() core.Keystore
 	GetClient() (RPCClient, error)
 }
 
@@ -55,7 +59,7 @@ type chain struct {
 	chainInfo chainsel.StellarChain
 	cfg       *config.TOMLConfig
 	lggr      logger.Logger
-	keyStore  loop.Keystore
+	keyStore  core.Keystore
 
 	txm *txm.StellarTxm
 
@@ -67,7 +71,7 @@ type chain struct {
 // Opts are the external dependencies required to construct a Chain.
 type Opts struct {
 	Logger   logger.Logger
-	KeyStore loop.Keystore
+	KeyStore core.Keystore
 }
 
 func (o *Opts) Validate() error {
@@ -97,9 +101,9 @@ func NewChain(cfg *config.TOMLConfig, opts Opts, chainInfo chainsel.StellarChain
 		keyStore:  opts.KeyStore,
 	}
 
-	t, err := txm.New(lggr, opts.KeyStore, txm.Config{}, func() (txm.RPCClient, error) {
+	t, err := txm.New(lggr, opts.KeyStore, func() (txm.RPCClient, error) {
 		return ch.GetClient()
-	}, chainInfo.ChainID, cfg.NetworkPassphrase)
+	}, chainInfo.ChainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create txm: %w", err)
 	}
@@ -112,7 +116,7 @@ func (c *chain) Name() string               { return c.lggr.Name() }
 func (c *chain) ID() string                 { return c.chainInfo.ChainID }
 func (c *chain) Config() *config.TOMLConfig { return c.cfg }
 func (c *chain) TxManager() *txm.StellarTxm { return c.txm }
-func (c *chain) KeyStore() loop.Keystore    { return c.keyStore }
+func (c *chain) KeyStore() core.Keystore    { return c.keyStore }
 
 func (c *chain) Start(ctx context.Context) error {
 	return c.StartOnce("StellarChain", func() error {
@@ -124,12 +128,18 @@ func (c *chain) Start(ctx context.Context) error {
 func (c *chain) Close() error {
 	return c.StopOnce("StellarChain", func() error {
 		c.lggr.Debugw("Stopping")
+		var errs error
 		if c.client != nil {
 			if err := c.client.Close(); err != nil {
 				c.lggr.Warnw("Error closing RPC client", "err", err)
+				errs = multierr.Append(errs, fmt.Errorf("close rpc client: %w", err))
 			}
 		}
-		return c.txm.Close()
+		if err := c.txm.Close(); err != nil {
+			c.lggr.Warnw("Error closing txm", "err", err)
+			errs = multierr.Append(errs, fmt.Errorf("close txm: %w", err))
+		}
+		return errs
 	})
 }
 
@@ -143,13 +153,12 @@ func (c *chain) HealthReport() map[string]error {
 	return report
 }
 
-// GetClient returns the single Soroban RPC client
 func (c *chain) GetClient() (RPCClient, error) {
 	if len(c.cfg.Nodes) == 0 || c.cfg.Nodes[0].URL == nil {
 		return nil, errors.New("no nodes configured")
 	}
 
-	// TODO: add multi-node
+	// TODO: add multi-node rotation and health-check eviction.
 	node := c.cfg.Nodes[0]
 	c.once.Do(func() {
 		c.client = rpcclient.NewClient(node.URL.String(), &http.Client{Timeout: 30 * time.Second})
