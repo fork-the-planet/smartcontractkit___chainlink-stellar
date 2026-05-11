@@ -28,13 +28,23 @@ const defaultStellarExecutorImage = "stellarexecutor:dev"
 // StellarExecutorModifier is an executor.ReqModifier that configures the container
 // request for the Stellar executor:
 //  1. Switches the image to stellarexecutor:dev.
-//  2. Builds a stellar.toml from the executor's GeneratedConfig and Stellar network
+//  2. Sets BootstrapKeyNames to fetch CSA + Stellar Ed25519 transmitter key.
+//  3. Builds a stellar.toml from the executor's GeneratedConfig and Stellar network
 //     info (passphrase + internal RPC URL from blockchain outputs), including
 //     TransmitterConfigs, DestinationReaderConfigs, and ReaderConfigs, then
 //     bind-mounts it at DefaultStellarConfigPath so the binary reads it on startup.
 func StellarExecutorModifier(req testcontainers.ContainerRequest, executorInput *executor.Input, outputs []*blockchain.Output) (testcontainers.ContainerRequest, error) {
 	req.Image = defaultStellarExecutorImage
 	req.Name = fmt.Sprintf("stellar-%s", executorInput.ContainerName)
+
+	// Set the bootstrap key names for Stellar: CSA + Stellar Ed25519 transmitter key
+	// The EVM transmitter key is also fetched for backward compatibility with the bootstrapper,
+	// but Stellar uses the Ed25519 key for actual Soroban transaction signing.
+	executorInput.BootstrapKeyNames = []string{
+		bootstrap.DefaultCSAKeyName,
+		executorpkg.DefaultEVMTransmitterKeyName, // Required for bootstrap HTTP health check
+		common.StellarTransmitterKeyName,         // Ed25519 key for Soroban signing
+	}
 
 	configBytes, err := buildExecutorStellarConfig(executorInput, outputs)
 	if err != nil {

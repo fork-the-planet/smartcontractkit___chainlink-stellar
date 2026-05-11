@@ -24,8 +24,9 @@ type StellarSendOptions struct{}
 func (StellarSendOptions) IsSendOption() {}
 
 var (
-	_ cciptestinterfaces.ChainAsSource      = (*Chain)(nil)
-	_ cciptestinterfaces.ChainAsDestination = (*Chain)(nil)
+	_ cciptestinterfaces.ChainAsSource       = (*Chain)(nil)
+	_ cciptestinterfaces.ChainAsDestination  = (*Chain)(nil)
+	_ cciptestinterfaces.MessageV3Destination = (*Chain)(nil)
 )
 
 // BuildChainMessage implements cciptestinterfaces.ChainAsSource.
@@ -130,4 +131,31 @@ func (c *Chain) SendChainMessage(ctx context.Context, destChain uint64, msg ccip
 		MessageID: messageID,
 		Sender:    protocol.UnknownAddress([]byte(sender)),
 	}, nil, nil
+}
+
+// GetExecutorArgs implements cciptestinterfaces.MessageV3Destination.
+// Returns empty executor args for Stellar (executor args are destination-specific).
+func (c *Chain) GetExecutorArgs(opts any) (cciptestinterfaces.MessageV3ExecutorArgs, error) {
+	// For Stellar, executor args are not used as the destination determines execution
+	// Return nil to indicate no executor args needed
+	// TODO: verify
+	return nil, nil
+}
+
+// GetTokenReceiver implements cciptestinterfaces.MessageV3Destination.
+// Returns nil for Stellar as token receiver is typically the same as message receiver.
+func (c *Chain) GetTokenReceiver(opts any) (cciptestinterfaces.MessageV3TokenReceiver, error) {
+	// For Stellar, token receiver is typically the same as the message receiver
+	// Return nil to indicate no distinct token receiver
+	// TODO: verify
+	return nil, nil
+}
+
+// GetTokenArgs implements cciptestinterfaces.MessageV3Destination.
+// Returns empty token args for Stellar (token args are destination-specific).
+func (c *Chain) GetTokenArgs(opts any) (cciptestinterfaces.MessageV3TokenArgs, error) {
+	// For Stellar, token args are not used as the destination determines token handling
+	// Return nil to indicate no token args needed
+	// TODO: verify
+	return nil, nil
 }

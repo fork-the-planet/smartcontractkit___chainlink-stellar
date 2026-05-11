@@ -17,6 +17,7 @@ import (
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
+	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
@@ -24,10 +25,10 @@ import (
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
-	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	"github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
@@ -84,6 +85,30 @@ func (f *ImplFactory) DefaultFeeAggregator(env *deployment.Environment, chainSel
 // primitives in devenv (e.g. Canton) return false.
 func (f *ImplFactory) SupportsFunding() bool {
 	return true
+}
+
+// DefaultTransmitterKeyName returns the keystore key name used for
+// transaction transmission on Stellar chains. This is the Ed25519 key
+// that the Stellar accessor uses to sign Soroban transactions.
+func (f *ImplFactory) DefaultTransmitterKeyName() string {
+	return common.StellarTransmitterKeyName
+}
+
+// DeriveAddressesFromKeys extracts Stellar protocol addresses from bootstrap keys.
+// It looks up the DefaultTransmitterKeyName in keys.Keys and returns the
+// raw Ed25519 public key as a protocol.UnknownAddress (32 bytes).
+// Returns nil if the key is not found.
+func (f *ImplFactory) DeriveAddressesFromKeys(keys ccvservices.BootstrapKeys) []protocol.UnknownAddress {
+	keyResp, ok := keys.Keys[f.DefaultTransmitterKeyName()]
+	if !ok {
+		return nil
+	}
+	// Ed25519 public keys for Stellar are 32 bytes and can be used directly
+	// as the account ID (FundAddresses handles strkey encoding)
+	if len(keyResp.KeyInfo.PublicKey) == 0 {
+		return nil
+	}
+	return []protocol.UnknownAddress{protocol.UnknownAddress(keyResp.KeyInfo.PublicKey)}
 }
 
 // SupportsBootstrapExecutor reports whether executors for this family
@@ -220,7 +245,6 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			rmnRemoteContractID, convErr := scval.HexToContractStrkey(rmnRemoteRef.Address)
 			if convErr == nil {
 				chain.rmnRemoteContractID = rmnRemoteContractID
-				chain.rmnRemoteClient = rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteContractID)
 			}
 		}
 
