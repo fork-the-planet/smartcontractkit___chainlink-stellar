@@ -209,15 +209,14 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 		require.NoError(t, err)
 		l.Info().Str("stellarReceiver", hex.EncodeToString(stellarReceiver)).Msg("Using Stellar receiver address")
 
-		// Curse the EVM source chain from the Stellar chain
+		// Curse the EVM source chain from the Stellar chain using fastcurse changeset
 		l.Info().Uint64("chainSelector", evmDetails.ChainSelector).Msg("Cursing EVM source chain")
-		err = stellarChain.Curse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.CurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM source chain cursed successfully")
 
 		t.Cleanup(func() {
 			l.Info().Msg("🔓 Cleaning up: uncursing EVM source chain")
-			_ = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+			helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		})
 
 		// Record the expected sequence number before sending
@@ -290,8 +289,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 
 		// Now uncurse the EVM source chain to allow execution
 		l.Info().Msg("🔓 Uncursing EVM source chain to allow execution")
-		err = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM source chain uncursed successfully")
 
 		// The first message (seqNo) was stuck in the executor's retry heap while

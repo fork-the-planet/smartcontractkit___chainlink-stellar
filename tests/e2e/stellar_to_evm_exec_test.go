@@ -2,7 +2,6 @@ package e2e_tests
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"testing"
 	"time"
@@ -92,13 +91,12 @@ func TestStellarToEVMExecution(t *testing.T) {
 
 		// Curse the EVM destination chain and ensure it gets uncursed even if test fails
 		l.Info().Uint64("chainSelector", evmDetails.ChainSelector).Msg("Cursing EVM destination chain")
-		err = stellarChain.Curse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.CurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM destination chain cursed successfully")
 
 		t.Cleanup(func() {
 			l.Info().Msg("🔓 Cleaning up: uncursing EVM destination chain")
-			_ = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+			helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		})
 
 		// Try to send a message from Stellar to the cursed EVM chain
@@ -117,22 +115,13 @@ func TestStellarToEVMExecution(t *testing.T) {
 
 		// Uncurse the EVM destination chain
 		l.Info().Msg("🔓 Uncursing EVM destination chain")
-		err = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM destination chain uncursed successfully")
 
 		// Now sending a message should work
 		sendAndVerifyMessage(t, ctx, l, stellarChain, env, evmDetails, evmReceiver,
 			"hello from stellar after uncurse", "Message verified and aggregated successfully after uncurse")
 	})
-}
-
-// chainSelectorToSubject converts a chain selector to a bytes16 curse subject.
-func chainSelectorToSubject(chainSel uint64) [16]byte {
-	var result [16]byte
-	// Convert the uint64 to bytes and place it in the last 8 bytes of the array
-	binary.BigEndian.PutUint64(result[8:], chainSel)
-	return result
 }
 
 // TestStellarToEVMFeeQuoterDestChainDisabled validates that disabling a

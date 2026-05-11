@@ -13,18 +13,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/changesets"
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/keystore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldfdeployment "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	"github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
-	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
+	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
@@ -32,7 +37,6 @@ import (
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
-	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 )
 
 // Sha256 hash of the network passphrase
@@ -61,7 +65,7 @@ func getFreePortErr() (string, error) {
 	return port, nil
 }
 
-func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *deployment.Deployer, *rpcclient.Client, string) {
+func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *stellardeployment.Deployer, *rpcclient.Client, string) {
 	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
 	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
@@ -122,7 +126,7 @@ func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *de
 		t.Fatalf("Failed to fund deployer account: %v", err)
 	}
 
-	deployer := deployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
+	deployer := stellardeployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
 
 	// Find the project root (where Cargo.toml is)
 	projectRoot := FindProjectRoot(t)
@@ -134,7 +138,7 @@ func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *de
 type SharedTestEnv struct {
 	ProjectRoot       string
 	DeployerKP        *keypair.Full
-	Deployer          *deployment.Deployer
+	Deployer          *stellardeployment.Deployer
 	RPCClient         *rpcclient.Client
 	NetworkPassphrase string
 	FriendbotURL      string             // faucet base URL (no ?addr=), for funding issuers / SAC setup
@@ -212,7 +216,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 		return nil, fmt.Errorf("fund deployer: %w", err)
 	}
 
-	deployer := deployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
+	deployer := stellardeployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
 
 	projectRoot, err := FindProjectRootErr()
 	if err != nil {
@@ -238,7 +242,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 
 type E2ETestEnv struct {
 	DeployerKP         *keypair.Full
-	Deployer           *deployment.Deployer
+	Deployer           *stellardeployment.Deployer
 	RPCClient          *rpcclient.Client
 	NetworkPassphrase  string
 	StellarRoot        string
@@ -251,6 +255,7 @@ type E2ETestEnv struct {
 	AggregatorClients  map[string]*ccv.AggregatorClient
 	IndexerMonitor     *ccv.IndexerMonitor
 	FriendbotURL       string
+	CLDFEnv            *cldfdeployment.Environment
 }
 
 func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configOutputPath string, stellarChainID string, stellarSelector uint64) *E2ETestEnv {
@@ -363,6 +368,10 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 
 	fundStellarExecutorTransmitters(t, ctx, in, friendbotURL, deployer, l)
 
+	cldfEnv, err := lib.CLDFEnvironment()
+	require.NoError(t, err)
+	require.NotNil(t, cldfEnv)
+
 	return &E2ETestEnv{
 		DeployerKP:         deployerKP,
 		Deployer:           deployer,
@@ -377,6 +386,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 		AggregatorClients:  aggregatorClients,
 		IndexerMonitor:     indexerMonitor,
 		FriendbotURL:       friendbotURL,
+		CLDFEnv:            cldfEnv,
 	}
 }
 
@@ -463,4 +473,58 @@ func fetchBootstrapPublicKey(ctx context.Context, bootstrapURL, keyName string) 
 	}
 
 	return nil, fmt.Errorf("bootstrap key %q not found", keyName)
+}
+
+// CurseChain curses a subject chain from the perspective of the given chain using fastcurse changeset.
+// This replaces the deprecated Chain.Curse() method.
+func CurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, subjectChainSelector uint64) {
+	t.Helper()
+
+	// Reset the bundle so it doesn't cache previous curses
+	bundle := operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
+	env.OperationsBundle = bundle
+
+	curseCS := fastcurse.CurseChangeset(fastcurse.GetCurseRegistry(), changesets.GetRegistry())
+	_, err := curseCS.Apply(*env, fastcurse.RMNCurseConfig{
+		CurseActions: []fastcurse.CurseActionInput{
+			{
+				ChainSelector:        chainSelector,
+				SubjectChainSelector: subjectChainSelector,
+				Version:              semver.MustParse("1.6.0"),
+				IsGlobalCurse:        false,
+			},
+		},
+	})
+	require.NoError(t, err, "failed to curse chain %d from chain %d", subjectChainSelector, chainSelector)
+
+	// Wait for the verifier to detect the curse
+	// The verifier is hardcoded to poll every 2 seconds, wait for 3 seconds to be sure
+	time.Sleep(3 * time.Second)
+}
+
+// UncurseChain uncurses a subject chain from the perspective of the given chain using fastcurse changeset.
+// This replaces the deprecated Chain.Uncurse() method.
+func UncurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, subjectChainSelector uint64) {
+	t.Helper()
+
+	// Reset the bundle so it doesn't cache previous uncurses
+	bundle := operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
+	env.OperationsBundle = bundle
+
+	uncurseCS := fastcurse.UncurseChangeset(fastcurse.GetCurseRegistry(), changesets.GetRegistry())
+	_, err := uncurseCS.Apply(*env, fastcurse.RMNCurseConfig{
+		CurseActions: []fastcurse.CurseActionInput{
+			{
+				ChainSelector:        chainSelector,
+				SubjectChainSelector: subjectChainSelector,
+				Version:              semver.MustParse("1.6.0"),
+				IsGlobalCurse:        false,
+			},
+		},
+	})
+	require.NoError(t, err, "failed to uncurse chain %d from chain %d", subjectChainSelector, chainSelector)
+
+	// Wait for the verifier to detect the uncurse
+	// The verifier is hardcoded to poll every 2 seconds, wait for 3 seconds to be sure
+	time.Sleep(3 * time.Second)
 }
