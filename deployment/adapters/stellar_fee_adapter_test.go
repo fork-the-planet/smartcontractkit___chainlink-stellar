@@ -13,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
@@ -33,6 +34,14 @@ func TestStellarFeeAdapter_GetDefaultDestChainConfig(t *testing.T) {
 	require.True(t, cfg.IsEnabled)
 	require.Greater(t, cfg.MaxDataBytes, uint32(0))
 	require.Greater(t, cfg.MaxPerMsgGasLimit, uint32(0))
+}
+
+func testFQRef() datastore.AddressRef {
+	return datastore.AddressRef{
+		Type:    datastore.ContractType(fqopstype.ContractType),
+		Version: semver.MustParse(fqopstype.Deploy.Version()),
+		Address: "CFQADDR",
+	}
 }
 
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
@@ -98,13 +107,16 @@ func TestStellarFeeAggregatorAdapter_SetFeeAggregator_nonNil(t *testing.T) {
 	env := envWithDatastore(newSealedDatastore())
 	seq := a.SetFeeAggregator(env)
 	require.NotNil(t, seq)
+	require.Equal(t, stellarsequences.StellarSetFeeAggregatorSequenceID, seq.ID())
+	require.Equal(t, stellarops.ContractDeploymentVersion.String(), seq.Version())
 }
 
-func TestStellarFeeAggregatorAdapter_GetFeeAggregator_notImplemented(t *testing.T) {
+func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(t *testing.T) {
 	a := &StellarFeeAggregatorAdapter{}
 	env := envWithDatastore(newSealedDatastore())
 	_, err := a.GetFeeAggregator(env, 42)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 }
 
 func TestStellarFeeAggregatorAdapter_Registration(t *testing.T) {
