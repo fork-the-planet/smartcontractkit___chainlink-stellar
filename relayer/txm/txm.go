@@ -63,7 +63,7 @@ func (t *StellarTxm) Start(_ context.Context) error {
 
 func (t *StellarTxm) Close() error {
 	return t.StopOnce("StellarTxm", func() error {
-		t.lggr.Debugw("Stopping")
+		t.lggr.Debug("Stopping")
 		return nil
 	})
 }
