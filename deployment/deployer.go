@@ -228,7 +228,7 @@ func NewDeployerWithSigner(rpcClient *rpcclient.Client, networkPassphrase string
 // is not required.
 func NewDeployerFromChain(ch cldfstellar.Chain, opts ...DeployerOption) (*Deployer, error) {
 	if ch.Signer == nil {
-		return nil, fmt.Errorf("chain signer is nil")
+		return nil, fmt.Errorf("stellar chain Signer is nil")
 	}
 	if kp := ch.Signer.KeypairFull(); kp != nil {
 		return NewDeployer(ch.Client, ch.NetworkPassphrase, kp, opts...), nil

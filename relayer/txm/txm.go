@@ -13,11 +13,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
-	"github.com/smartcontractkit/chainlink-common/pkg/types/core"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
+	"github.com/smartcontractkit/chainlink-common/pkg/types/core"
 	commonutils "github.com/smartcontractkit/chainlink-common/pkg/utils"
-
 
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
@@ -160,7 +159,7 @@ func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error)
 			return "", err
 		}
 	}
-	// Validate caller-supplied addresses up front so an invalid value can't reach downstream 
+	// Validate caller-supplied addresses up front so an invalid value can't reach downstream
 	if _, err := xdr.AddressToAccountId(fromAddr); err != nil {
 		return "", fmt.Errorf("invalid FromAddress %q: %w", fromAddr, err)
 	}

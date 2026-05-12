@@ -18,7 +18,7 @@ func TestNewDeployerFromChain_rejectsNilSigner(t *testing.T) {
 	}
 	_, err := NewDeployerFromChain(ch)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "chain signer is nil")
+	require.Contains(t, err.Error(), "Signer is nil")
 }
 
 func TestNewDeployerFromChain_usesKeypairWhenKeypairFullAvailable(t *testing.T) {

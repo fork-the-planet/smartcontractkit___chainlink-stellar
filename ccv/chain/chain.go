@@ -49,10 +49,9 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
-	stellardeploy "github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellardeploy"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
-	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -353,12 +352,20 @@ func (c *Chain) ConfigureNodes(ctx context.Context, bc *blockchain.Input) (strin
 }
 
 // PreDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
-// // Stellar has no CREATE2-style pre-bootstrap like EVM, so this stage only patches topology and registers deploy context for the adapter.
+// Stellar has no CREATE2-style pre-bootstrap like EVM; this stage only applies topology fixes that must run before the shared DeployChainContracts changeset (adapter path).
 func (c *Chain) PreDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = ctx
 	_ = env
+	stellarsequences.ClearStellarDeployOffchainTopologyForSelector(selector)
+	if topology != nil {
+		offTopo, err := stellarccip.CCVEnvironmentTopologyToOffchain(topology)
+		if err != nil {
+			c.logger.Warn().Err(err).Uint64("selector", selector).Msg("stellar pre-deploy: topology stash skipped (CCV→offchain convert failed)")
+		} else if offTopo != nil {
+			stellarsequences.RegisterStellarDeployOffchainTopologyForSelector(selector, offTopo)
+		}
+	}
 	ensureStellarFeeAggregatorsInTopology(c, topology)
-	stellarsequences.RegisterStellarDeployChainContext(selector, c, topology)
 	return nil, nil
 }
 
@@ -381,18 +388,24 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 }
 
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
-// Deploys the lock-release test pool and SAC token (EVM post-deploy parity), applies FeeQuoter
-// pricing for the test token, and returns a datastore delta with the pool AddressRef.
+// Post-deploy parity with EVM: deploys the lock-release test pool and test SAC ([stellarccip.DeployLockReleaseTestTokenPool]),
+// applies FeeQuoter pricing for the test token ([stellarccip.ApplyFeeQuoterTestTokenConfig]), and returns a datastore delta with the pool AddressRef.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
-	defer stellarsequences.ClearStellarDeployChainContext(selector)
+	stellarsequences.ClearStellarDeployOffchainTopologyForSelector(selector)
 
 	if env == nil {
 		return nil, fmt.Errorf("environment is nil")
 	}
 
+	// DeployChainContracts runs on a CLDF-backed host; post-deploy uses *Chain.
+	// Rehydrate Soroban clients from env.DataStore (same pattern as EVM post-deploy).
+	if env.DataStore != nil {
+		c.hydrateDevenvClientsFromDataStore(env.DataStore, selector)
+	}
+
 	host := &stellarCCIPDeployHost{c: c}
-	if err := stellardeploy.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
+	if err := stellarccip.DeployLockReleaseTestTokenPool(ctx, env.OperationsBundle, host); err != nil {
 		return nil, fmt.Errorf("deploy lock-release test token pool: %w", err)
 	}
 
@@ -460,28 +473,19 @@ func (c *Chain) GetTokenTransferConfigs(
 	return nil, nil
 }
 
-// DeployStellarCCIPContracts runs deployStellarCCIPContracts and returns output for the
+// DeployStellarCCIPContracts runs the sequences-based full Soroban CCIP deploy and returns output for the
 // shared DeployChainContracts changeset merge path.
 // opBundle is the CLDF bundle from the executing sequence (same bundle as nested ExecuteOperation).
+// topology must be non-nil (with NOP data): Stellar full deploy configures committee verifier signature
+// quorum from the converted offchain topology.
 func (c *Chain) DeployStellarCCIPContracts(ctx context.Context, opBundle cldf_ops.Bundle, allSelectors []uint64, selector uint64, topology *ccvdeployment.EnvironmentTopology, existingAddresses []datastore.AddressRef) (seq_core.OnChainOutput, error) {
-	ds, err := c.deployStellarCCIPContracts(opBundle, ctx, allSelectors, selector, topology, existingAddresses)
-	if err != nil {
-		return seq_core.OnChainOutput{}, err
-	}
-	addrs, err := ds.Addresses().Fetch()
-	if err != nil {
-		return seq_core.OnChainOutput{}, err
-	}
-	return seq_core.OnChainOutput{Addresses: addrs}, nil
+	return stellarsequences.RunStellarCCIPFullDeployForCCV(ctx, opBundle, c.StellarDepsForDeploy(), c.CCIPDevenvHost(), allSelectors, selector, topology, existingAddresses)
 }
 
-// StellarDepsForDeploy implements deployment/sequences.StellarDeployRunner for
-// CLDF inner sequences (same role as passing evm.Chain into EVM ops).
+// StellarDepsForDeploy returns CLDF Stellar operation dependencies from this chain's deployer (same role as passing evm.Chain into EVM ops).
 func (c *Chain) StellarDepsForDeploy() stellardeps.StellarDeps {
 	return stellardeps.FromDeployer(c.deployer)
 }
-
-var _ stellarsequences.StellarDeployRunner = (*Chain)(nil)
 
 // DeployLocalNetwork implements cciptestinterfaces.CCIP17Configuration.
 // Deploys a local Stellar network for testing.
@@ -948,54 +952,21 @@ const testTokenAssetCode = "TEST"
 // transfer tests. It creates an issuer, funds it, establishes trustlines, mints
 // an initial supply, and deploys the SAC wrapper.
 func (c *Chain) createTestToken(ctx context.Context, friendbotURL string) (string, error) {
-	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("test-token-issuer-%s", c.networkPassphrase)))
-	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	contractID, issuerKP, err := stellarccip.DeployDevenvSACToken(stellarccip.DevenvSACTokenParams{
+		Ctx:               ctx,
+		RPCClient:         c.rpcClient,
+		MainDeployer:      c.deployer,
+		OwnerKeypair:      c.deployerKeypair,
+		NetworkPassphrase: c.networkPassphrase,
+		FriendbotURL:      friendbotURL,
+		IssuerSeedLabel:   fmt.Sprintf("test-token-issuer-%s", c.networkPassphrase),
+		AssetCode:         testTokenAssetCode,
+		Logger:            &c.logger,
+	})
 	if err != nil {
-		return "", fmt.Errorf("create issuer keypair: %w", err)
+		return "", err
 	}
 	c.testTokenIssuerKeypair = issuerKP
-
-	if friendbotURL != "" {
-		if err := c.fundViaFriendbot(friendbotURL, issuerKP.Address()); err != nil {
-			return "", fmt.Errorf("fund issuer: %w", err)
-		}
-	}
-
-	issuerDeployer := stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, issuerKP)
-	asset := txnbuild.CreditAsset{Code: testTokenAssetCode, Issuer: issuerKP.Address()}
-
-	err = c.deployer.SubmitClassicOperation(ctx, &txnbuild.ChangeTrust{
-		Line:          asset.MustToChangeTrustAsset(),
-		SourceAccount: c.deployerKeypair.Address(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("establish trustline: %w", err)
-	}
-
-	err = issuerDeployer.SubmitClassicOperation(ctx, &txnbuild.Payment{
-		Destination:   c.deployerKeypair.Address(),
-		Amount:        "100000000",
-		Asset:         asset,
-		SourceAccount: issuerKP.Address(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("issue tokens: %w", err)
-	}
-
-	xdrAsset, err := asset.ToXDR()
-	if err != nil {
-		return "", fmt.Errorf("convert asset to XDR: %w", err)
-	}
-	contractID, err := c.deployer.DeploySACToken(ctx, xdrAsset)
-	if err != nil {
-		return "", fmt.Errorf("deploy SAC: %w", err)
-	}
-
-	c.logger.Info().
-		Str("contractID", contractID).
-		Str("issuer", issuerKP.Address()).
-		Msg("Test SAC token deployed")
-
 	return contractID, nil
 }
 
@@ -1005,54 +976,21 @@ const feeTokenAssetCode = "FEE"
 // payments. Similar to createTestToken but with a separate issuer and asset code
 // so the fee token is independent of the transfer-test token.
 func (c *Chain) createFeeToken(ctx context.Context, friendbotURL string) (string, error) {
-	issuerSeed := sha256.Sum256([]byte(fmt.Sprintf("fee-token-issuer-%s", c.networkPassphrase)))
-	issuerKP, err := keypair.FromRawSeed(issuerSeed)
+	contractID, issuerKP, err := stellarccip.DeployDevenvSACToken(stellarccip.DevenvSACTokenParams{
+		Ctx:               ctx,
+		RPCClient:         c.rpcClient,
+		MainDeployer:      c.deployer,
+		OwnerKeypair:      c.deployerKeypair,
+		NetworkPassphrase: c.networkPassphrase,
+		FriendbotURL:      friendbotURL,
+		IssuerSeedLabel:   fmt.Sprintf("fee-token-issuer-%s", c.networkPassphrase),
+		AssetCode:         feeTokenAssetCode,
+		Logger:            &c.logger,
+	})
 	if err != nil {
-		return "", fmt.Errorf("create fee token issuer keypair: %w", err)
+		return "", err
 	}
 	c.feeTokenIssuerKeypair = issuerKP
-
-	if friendbotURL != "" {
-		if err := c.fundViaFriendbot(friendbotURL, issuerKP.Address()); err != nil {
-			return "", fmt.Errorf("fund fee token issuer: %w", err)
-		}
-	}
-
-	issuerDeployer := stellardeployment.NewDeployer(c.rpcClient, c.networkPassphrase, issuerKP)
-	asset := txnbuild.CreditAsset{Code: feeTokenAssetCode, Issuer: issuerKP.Address()}
-
-	err = c.deployer.SubmitClassicOperation(ctx, &txnbuild.ChangeTrust{
-		Line:          asset.MustToChangeTrustAsset(),
-		SourceAccount: c.deployerKeypair.Address(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("establish fee token trustline: %w", err)
-	}
-
-	err = issuerDeployer.SubmitClassicOperation(ctx, &txnbuild.Payment{
-		Destination:   c.deployerKeypair.Address(),
-		Amount:        "100000000",
-		Asset:         asset,
-		SourceAccount: issuerKP.Address(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("issue fee tokens: %w", err)
-	}
-
-	xdrAsset, err := asset.ToXDR()
-	if err != nil {
-		return "", fmt.Errorf("convert fee asset to XDR: %w", err)
-	}
-	contractID, err := c.deployer.DeploySACToken(ctx, xdrAsset)
-	if err != nil {
-		return "", fmt.Errorf("deploy fee token SAC: %w", err)
-	}
-
-	c.logger.Info().
-		Str("contractID", contractID).
-		Str("issuer", issuerKP.Address()).
-		Msg("Fee token SAC deployed")
-
 	return contractID, nil
 }
 
@@ -1080,19 +1018,17 @@ func (c *Chain) FeeQuoterClient() *fqbindings.FeeQuoterClient {
 	return c.feeQuoterClient
 }
 
-// stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the same
-// deterministic mock fee-aggregator contract ID used when initializing Stellar FeeQuoter,
-// CommitteeVerifier, and VVR (mustGenerateMockContractID(..., "fee-aggregator")).
-// Topology FeeAggregator must match that on-chain value so downstream tooling and
-// changesets stay consistent; an EVM-style 0x1 placeholder does not match Soroban state.
+// stellarFeeAggregatorHexForTopology returns the 0x-prefixed hex encoding of the deployer account
+// bytes used as the on-chain fee aggregator in Stellar devenv (same address as [RunStellarCCIPFullDeploy]
+// passes into OnRamp/VVR/CommitteeVerifier). Topology FeeAggregator must match that value so downstream
+// tooling and changesets stay aligned.
 func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	if c.deployerKeypair == nil {
 		return "", fmt.Errorf("deployer keypair not set")
 	}
-	mockStrkey := stellarutil.MustGenerateMockContractID(c.deployerKeypair.Address(), "fee-aggregator")
-	raw, err := strkey.Decode(strkey.VersionByteContract, mockStrkey)
+	raw, err := strkey.Decode(strkey.VersionByteAccountID, c.deployerKeypair.Address())
 	if err != nil {
-		return "", fmt.Errorf("decode mock fee aggregator strkey: %w", err)
+		return "", fmt.Errorf("decode deployer account for fee aggregator hex: %w", err)
 	}
 	return hexutil.Encode(raw), nil
 }
@@ -1183,6 +1119,40 @@ func (c *Chain) ensureLocalContracts(ds datastore.DataStore, selector uint64) er
 	}
 
 	return nil
+}
+
+// hydrateDevenvClientsFromDataStore fills TokenAdminRegistry, FeeQuoter, Router, and RampRegistry
+// clients/IDs from the deployment datastore when they are missing on Chain. After the shared
+// DeployChainContracts changeset, contract state lives in env.DataStore while the CLDF deploy host
+// held the in-memory clients; this aligns Stellar with EVM post-deploy reading env.DataStore.
+func (c *Chain) hydrateDevenvClientsFromDataStore(ds datastore.DataStore, selector uint64) {
+	if c == nil || ds == nil || c.deployer == nil {
+		return
+	}
+	if c.tokenAdminRegistryClient == nil {
+		if id, err := stellarccip.GetTokenAdminRegistryStrkey(ds, selector); err == nil && id != "" {
+			c.tokenAdminRegistryContractID = id
+			c.tokenAdminRegistryClient = tarbindings.NewTokenAdminRegistryClient(c.deployer, id)
+		}
+	}
+	if c.feeQuoterClient == nil {
+		if id, err := stellarccip.GetFeeQuoterStrkey(ds, selector); err == nil && id != "" {
+			c.feeQuoterClient = fqbindings.NewFeeQuoterClient(c.deployer, id)
+		}
+	}
+	if c.routerContractID == "" {
+		if id, err := stellarccip.GetRouterStrkey(ds, selector); err == nil && id != "" {
+			c.routerContractID = id
+			c.routerClient = routerbindings.NewRouterClient(c.deployer, id)
+		}
+	} else if c.routerClient == nil && c.routerContractID != "" {
+		c.routerClient = routerbindings.NewRouterClient(c.deployer, c.routerContractID)
+	}
+	if c.rampRegistryContractID == "" {
+		if id, err := stellarccip.GetRampRegistryStrkey(ds, selector); err == nil && id != "" {
+			c.rampRegistryContractID = id
+		}
+	}
 }
 
 // remotePoolContractTypes lists pool contract types to probe when looking up

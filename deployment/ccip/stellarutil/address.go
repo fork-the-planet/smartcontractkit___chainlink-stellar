@@ -2,7 +2,9 @@ package stellarutil
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stellar/go-stellar-sdk/strkey"
@@ -17,6 +19,40 @@ func GenerateContractAddress(name, networkPassphrase string) []byte {
 	combined := append(networkID[:], []byte(name)...)
 	hash := sha256.Sum256(combined)
 	return hash[:]
+}
+
+// ParseFeeAggregatorAddress normalizes a fee-aggregator address for Stellar OnRamp, VVR, and CommitteeVerifier.
+// It accepts a Stellar strkey (G… account or C… contract) or 0x-prefixed 32-byte hex (raw address bytes).
+// Hex input is encoded as an account strkey (G…); for a contract fee sink pass the C… strkey explicitly.
+func ParseFeeAggregatorAddress(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("empty fee aggregator address")
+	}
+	if len(s) > 0 && s[0] == 'G' {
+		if _, err := strkey.Decode(strkey.VersionByteAccountID, s); err != nil {
+			return "", fmt.Errorf("decode account strkey: %w", err)
+		}
+		return s, nil
+	}
+	if len(s) > 0 && s[0] == 'C' {
+		if _, err := strkey.Decode(strkey.VersionByteContract, s); err != nil {
+			return "", fmt.Errorf("decode contract strkey: %w", err)
+		}
+		return s, nil
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(s, "0x"))
+	if err != nil {
+		return "", fmt.Errorf("fee aggregator must be G/C strkey or 0x-hex: %w", err)
+	}
+	if len(raw) != 32 {
+		return "", fmt.Errorf("hex fee aggregator must be 32 bytes, got %d", len(raw))
+	}
+	out, err := strkey.Encode(strkey.VersionByteAccountID, raw)
+	if err != nil {
+		return "", fmt.Errorf("encode account strkey: %w", err)
+	}
+	return out, nil
 }
 
 // MustGenerateMockContractID returns a deterministic mock contract strkey (C…) for tests/devenv.

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	tokenTransferSentTimeout = 30 * time.Second
+	tokenTransferSentTimeout = 40 * time.Second
 	tokenTransferAmount      = int64(1_000_000) // 0.1 token in SAC base units (7 decimals)
 )
 

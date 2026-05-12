@@ -5,24 +5,22 @@ import (
 	"testing"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	seq_core "github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
 	ccvadapters "github.com/smartcontractkit/chainlink-ccip/deployment/v2_0_0/adapters"
-	ccvdeployment "github.com/smartcontractkit/chainlink-ccv/deployment"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_stellar "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar"
-	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	cldflogger "github.com/smartcontractkit/chainlink-deployments-framework/pkg/logger"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 	"github.com/stretchr/testify/require"
 
+	"github.com/stellar/go-stellar-sdk/keypair"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-func TestDeployStellarCCIPInnerSequenceID(t *testing.T) {
+func TestStellarDeployChainContractsSequenceID(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "deploy-stellar-ccip-inner", DeployStellarCCIPInner.ID())
+	require.Equal(t, "stellar-deploy-chain-contracts", StellarDeployChainContracts.ID())
 }
 
 func newTestBundle(t *testing.T) cldf_ops.Bundle {
@@ -69,34 +67,6 @@ func (stubInvoker) GetEvents(ctx context.Context, contractID string, startLedger
 	return nil, nil
 }
 
-type stubStellarDeployRunner struct {
-	lastOpBundle cldf_ops.Bundle
-}
-
-func (s *stubStellarDeployRunner) DeployStellarCCIPContracts(
-	ctx context.Context,
-	opBundle cldf_ops.Bundle,
-	allSelectors []uint64,
-	selector uint64,
-	topology *ccvdeployment.EnvironmentTopology,
-	existingAddresses []datastore.AddressRef,
-) (seq_core.OnChainOutput, error) {
-	_ = ctx
-	_ = allSelectors
-	_ = topology
-	_ = existingAddresses
-	_ = selector
-	s.lastOpBundle = opBundle
-	return seq_core.OnChainOutput{}, nil
-}
-
-func (s *stubStellarDeployRunner) StellarDepsForDeploy() stellardeps.StellarDeps {
-	return stellardeps.StellarDeps{
-		Deploy:  stubDeployer{},
-		Invoker: stubInvoker{},
-	}
-}
-
 func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
@@ -108,11 +78,12 @@ func TestStellarDeployChainContracts_RejectsMissingStellarChain(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
+func TestStellarDeployChainContracts_RejectsNilChainSigner(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
-	// Unique selector so parallel tests that register STELLAR_LOCALNET deploy context do not mask this case.
+	// Unique selector so parallel tests do not collide on BlockChains maps.
 	sel := uint64(424242420001)
+	// Stellar chain entry without Signer: NewDeployerFromChain fails before any deploy.
 	st := cldf_stellar.Chain{ChainMetadata: cldf_stellar.ChainMetadata{Selector: sel}}
 	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: st})
 
@@ -120,20 +91,49 @@ func TestStellarDeployChainContracts_RejectsMissingDeployContext(t *testing.T) {
 		ChainSelector: sel,
 	})
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "Signer is nil")
 }
 
-func TestDeployStellarCCIPInner_ForwardsParentOperationsBundle(t *testing.T) {
+func TestRunStellarCCIPFullDeployForCCV_ErrorsWhenTopologyNil(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	ctx := context.Background()
+	_, err := RunStellarCCIPFullDeployForCCV(ctx, b, stellardeps.StellarDeps{}, nil, []uint64{1}, 1, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "EnvironmentTopology is nil")
+}
+
+func TestStellarDeployChainContracts_RejectsMissingStashedTopology(t *testing.T) {
+	t.Parallel()
+	b := newTestBundle(t)
+	sel := uint64(424242420098)
+	kp := keypair.MustRandom()
+	ch := cldf_stellar.Chain{
+		ChainMetadata:     cldf_stellar.ChainMetadata{Selector: sel},
+		Signer:            cldf_stellar.NewStellarKeypairSigner(kp),
+		Client:            nil,
+		NetworkPassphrase: "Standalone Network ; February 2017",
+	}
+	chains := cldf_chain.NewBlockChains(map[uint64]cldf_chain.BlockChain{sel: ch})
+	_, err := cldf_ops.ExecuteSequence(b, StellarDeployChainContracts, chains, ccvadapters.DeployChainContractsInput{
+		ChainSelector: sel,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "topology")
+}
+
+func TestRunStellarCCIPFullDeploy_ErrorsWhenCCIPDevenvHostNil(t *testing.T) {
 	t.Parallel()
 	b := newTestBundle(t)
 	sel := chainsel.STELLAR_LOCALNET.Selector
-	runner := &stubStellarDeployRunner{}
-	RegisterStellarDeployChainContext(sel, runner, nil)
-	t.Cleanup(func() { ClearStellarDeployChainContext(sel) })
-
-	_, err := cldf_ops.ExecuteSequence(b, DeployStellarCCIPInner, runner.StellarDepsForDeploy(), DeployStellarCCIPInnerInput{
+	deps := stellardeps.StellarDeps{
+		Deploy:  stubDeployer{},
+		Invoker: stubInvoker{},
+	}
+	_, err := RunStellarCCIPFullDeploy(b.GetContext(), b, deps, nil, nil, DeployStellarCCIPInnerInput{
 		ChainSelector: sel,
 		AllSelectors:  []uint64{sel, 123},
 	})
-	require.NoError(t, err)
-	require.NotNil(t, runner.lastOpBundle.GetContext, "inner sequence should pass the parent CLDF bundle into DeployStellarCCIPContracts (EVM-style)")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "CCIPDevenvHost")
 }
