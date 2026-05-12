@@ -6,9 +6,11 @@ import (
 	context "context"
 	big "math/big"
 
+	loop "github.com/smartcontractkit/chainlink-common/pkg/loop"
 	types "github.com/smartcontractkit/chainlink-common/pkg/types"
 	chain "github.com/smartcontractkit/chainlink-stellar/relayer/chain"
 	config "github.com/smartcontractkit/chainlink-stellar/relayer/config"
+	txm "github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -434,6 +436,53 @@ func (_c *MockChain_ID_Call) RunAndReturn(run func() string) *MockChain_ID_Call 
 	return _c
 }
 
+// KeyStore provides a mock function with no fields
+func (_m *MockChain) KeyStore() loop.Keystore {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for KeyStore")
+	}
+
+	var r0 loop.Keystore
+	if rf, ok := ret.Get(0).(func() loop.Keystore); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(loop.Keystore)
+		}
+	}
+
+	return r0
+}
+
+// MockChain_KeyStore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'KeyStore'
+type MockChain_KeyStore_Call struct {
+	*mock.Call
+}
+
+// KeyStore is a helper method to define mock.On call
+func (_e *MockChain_Expecter) KeyStore() *MockChain_KeyStore_Call {
+	return &MockChain_KeyStore_Call{Call: _e.mock.On("KeyStore")}
+}
+
+func (_c *MockChain_KeyStore_Call) Run(run func()) *MockChain_KeyStore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockChain_KeyStore_Call) Return(_a0 loop.Keystore) *MockChain_KeyStore_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockChain_KeyStore_Call) RunAndReturn(run func() loop.Keystore) *MockChain_KeyStore_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LatestHead provides a mock function with given fields: ctx
 func (_m *MockChain) LatestHead(ctx context.Context) (types.Head, error) {
 	ret := _m.Called(ctx)
@@ -794,6 +843,53 @@ func (_c *MockChain_Transact_Call) Return(_a0 error) *MockChain_Transact_Call {
 }
 
 func (_c *MockChain_Transact_Call) RunAndReturn(run func(context.Context, string, string, *big.Int, bool) error) *MockChain_Transact_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// TxManager provides a mock function with no fields
+func (_m *MockChain) TxManager() *txm.StellarTxm {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TxManager")
+	}
+
+	var r0 *txm.StellarTxm
+	if rf, ok := ret.Get(0).(func() *txm.StellarTxm); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*txm.StellarTxm)
+		}
+	}
+
+	return r0
+}
+
+// MockChain_TxManager_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TxManager'
+type MockChain_TxManager_Call struct {
+	*mock.Call
+}
+
+// TxManager is a helper method to define mock.On call
+func (_e *MockChain_Expecter) TxManager() *MockChain_TxManager_Call {
+	return &MockChain_TxManager_Call{Call: _e.mock.On("TxManager")}
+}
+
+func (_c *MockChain_TxManager_Call) Run(run func()) *MockChain_TxManager_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockChain_TxManager_Call) Return(_a0 *txm.StellarTxm) *MockChain_TxManager_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockChain_TxManager_Call) RunAndReturn(run func() *txm.StellarTxm) *MockChain_TxManager_Call {
 	_c.Call.Return(run)
 	return _c
 }
