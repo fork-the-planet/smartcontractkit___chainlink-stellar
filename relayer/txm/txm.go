@@ -56,7 +56,7 @@ func (t *StellarTxm) Name() string { return t.lggr.Name() }
 
 func (t *StellarTxm) Start(_ context.Context) error {
 	return t.StartOnce("StellarTxm", func() error {
-		t.lggr.Debugw("Starting")
+		t.lggr.Debug("Starting")
 		return nil
 	})
 }
