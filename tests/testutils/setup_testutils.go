@@ -15,11 +15,13 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
+	chain_selectors "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/fastcurse"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/changesets"
 	"github.com/smartcontractkit/chainlink-ccv/bootstrap"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
 	"github.com/smartcontractkit/chainlink-common/keystore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
@@ -28,15 +30,12 @@ import (
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
-	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stretchr/testify/require"
-
-	chain_selectors "github.com/smartcontractkit/chain-selectors"
-	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 )
 
 // Sha256 hash of the network passphrase
@@ -480,17 +479,21 @@ func fetchBootstrapPublicKey(ctx context.Context, bootstrapURL, keyName string) 
 func CurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, subjectChainSelector uint64) {
 	t.Helper()
 
+	// Derive the correct curse adapter version for the chain family
+	curseRegistry := fastcurse.GetCurseRegistry()
+	version := deriveCurseAdapterVersion(t, env, curseRegistry, chainSelector)
+
 	// Reset the bundle so it doesn't cache previous curses
 	bundle := operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
 	env.OperationsBundle = bundle
 
-	curseCS := fastcurse.CurseChangeset(fastcurse.GetCurseRegistry(), changesets.GetRegistry())
+	curseCS := fastcurse.CurseChangeset(curseRegistry, changesets.GetRegistry())
 	_, err := curseCS.Apply(*env, fastcurse.RMNCurseConfig{
 		CurseActions: []fastcurse.CurseActionInput{
 			{
 				ChainSelector:        chainSelector,
 				SubjectChainSelector: subjectChainSelector,
-				Version:              semver.MustParse("1.6.0"),
+				Version:              version,
 				IsGlobalCurse:        false,
 			},
 		},
@@ -507,17 +510,21 @@ func CurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, su
 func UncurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, subjectChainSelector uint64) {
 	t.Helper()
 
+	// Derive the correct curse adapter version for the chain family
+	curseRegistry := fastcurse.GetCurseRegistry()
+	version := deriveCurseAdapterVersion(t, env, curseRegistry, chainSelector)
+
 	// Reset the bundle so it doesn't cache previous uncurses
 	bundle := operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
 	env.OperationsBundle = bundle
 
-	uncurseCS := fastcurse.UncurseChangeset(fastcurse.GetCurseRegistry(), changesets.GetRegistry())
+	uncurseCS := fastcurse.UncurseChangeset(curseRegistry, changesets.GetRegistry())
 	_, err := uncurseCS.Apply(*env, fastcurse.RMNCurseConfig{
 		CurseActions: []fastcurse.CurseActionInput{
 			{
 				ChainSelector:        chainSelector,
 				SubjectChainSelector: subjectChainSelector,
-				Version:              semver.MustParse("1.6.0"),
+				Version:              version,
 				IsGlobalCurse:        false,
 			},
 		},
@@ -527,4 +534,21 @@ func UncurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, 
 	// Wait for the verifier to detect the uncurse
 	// The verifier is hardcoded to poll every 2 seconds, wait for 3 seconds to be sure
 	time.Sleep(3 * time.Second)
+}
+
+// deriveCurseAdapterVersion gets the appropriate curse adapter version for a chain.
+func deriveCurseAdapterVersion(t *testing.T, env *cldfdeployment.Environment, curseRegistry *fastcurse.CurseRegistry, chainSelector uint64) *semver.Version {
+	family, err := chain_selectors.GetSelectorFamily(chainSelector)
+	require.NoError(t, err, "failed to get chain family for selector %d", chainSelector)
+
+	// Get the curse subject adapter for this chain family
+	subjectAdapter, ok := curseRegistry.GetCurseSubjectAdapter(family)
+	require.True(t, ok, "no curse subject adapter registered for chain family '%s'", family)
+
+	// Derive the version from the adapter
+	// Note: DeriveCurseAdapterVersion expects cldf.Environment by value, not pointer
+	version, err := subjectAdapter.DeriveCurseAdapterVersion(*env, chainSelector)
+	require.NoError(t, err, "failed to derive curse adapter version for chain %d", chainSelector)
+
+	return version
 }
