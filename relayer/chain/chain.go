@@ -101,14 +101,9 @@ func NewChain(cfg *config.TOMLConfig, opts Opts, chainInfo chainsel.StellarChain
 		keyStore:  opts.KeyStore,
 	}
 
-	passphrase, err := txm.NetworkPassphrase(chainInfo.ChainID)
-	if err != nil {
-		return nil, fmt.Errorf("resolve network passphrase: %w", err)
-	}
-
 	t, err := txm.New(lggr, opts.KeyStore, txm.Config{}, func() (txm.RPCClient, error) {
 		return ch.GetClient()
-	}, chainInfo.ChainID, passphrase)
+	}, chainInfo.ChainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create txm: %w", err)
 	}

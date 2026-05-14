@@ -13,39 +13,18 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-type simulationErrorSource int
-
-const (
-	simulationErrorSourceRPC simulationErrorSource = iota
-	simulationErrorSourceResponse
-)
-
-type simulationError struct {
-	source simulationErrorSource
-	err    error
-}
-
-func (e *simulationError) Error() string {
-	switch e.source {
-	case simulationErrorSourceRPC:
-		return fmt.Sprintf("RPC SimulateTransaction failed: %v", e.err)
-	case simulationErrorSourceResponse:
-		return fmt.Sprintf("simulation error: %v", e.err)
-	default:
-		return e.err.Error()
+func (s *StellarTxm) buildPreliminaryTx(tx *StellarTx, nextSubmitSeq int64, maxLedger uint32) (*txnbuild.Transaction, error) {
+	if tx == nil {
+		return nil, errors.New("buildPreliminaryTx: tx is nil")
 	}
-}
-
-func (e *simulationError) Unwrap() error {
-	return e.err
-}
-
-func (s *StellarTxm) buildPreliminaryTx(tx *StellarTx, seq int64, maxLedger uint32) (*txnbuild.Transaction, error) {
-	// seq is the NEXT sequence to submit (TxStore convention).
-	// txnbuild.NewSimpleAccount expects the LAST USED sequence, so pass seq-1;
-	// IncrementSequenceNum:true then produces exactly seq on the wire.
-	lastUsedSeq := max(int64(0), seq-1)
-	sourceAccount := txnbuild.NewSimpleAccount(tx.FromAddress, lastUsedSeq)
+	if s.config.TxTimeoutSecs == nil {
+		return nil, errors.New("buildPreliminaryTx: TxTimeoutSecs is nil")
+	}
+	// nextSubmitSeq is the next sequence number this tx will consume (TxStore convention).
+	// currentSequence is the last-used sequence on ledger (nextSubmitSeq-1), which txnbuild.NewSimpleAccount expects.
+	// IncrementSequenceNum:true then produces exactly nextSubmitSeq on the wire.
+	currentSequence := max(int64(0), nextSubmitSeq-1)
+	sourceAccount := txnbuild.NewSimpleAccount(tx.FromAddress, currentSequence)
 
 	return txnbuild.NewTransaction(txnbuild.TransactionParams{
 		SourceAccount:        &sourceAccount,
@@ -80,16 +59,32 @@ func (s *StellarTxm) simulateTransaction(ctx context.Context, client RPCClient, 
 	})
 	s.metrics.ObserveSimulationDuration(ctx, time.Since(start).Seconds())
 	if err != nil {
-		return protocolrpc.SimulateTransactionResponse{}, &simulationError{source: simulationErrorSourceRPC, err: err}
+		return protocolrpc.SimulateTransactionResponse{}, fmt.Errorf("rpc simulate transaction failed: %w", err)
 	}
 
 	if simResult.Error != "" {
-		return protocolrpc.SimulateTransactionResponse{}, &simulationError{source: simulationErrorSourceResponse, err: errors.New(simResult.Error)}
+		return protocolrpc.SimulateTransactionResponse{}, fmt.Errorf("simulation error: %w", errors.New(simResult.Error))
 	}
 
 	return simResult, nil
 }
 
+// isRetryableSimulationError decides whether to retry Soroban simulation after a
+// failed SimulateTransaction call. It is intentionally heuristic: we only see
+// unstructured error strings from the JSON-RPC client and Soroban (no stable
+// machine-readable code across all failure modes).
+//
+//   - terminalHints: substrings that usually indicate the simulation itself
+//     failed for reasons repeating the same request will not fix (contract
+//     trap, bad auth, bad args, missing contract, etc.). Tuned from Soroban /
+//     Rust contract error text and common Stellar SDK phrasing — not an
+//     exhaustive XDR enum mapping.
+//   - retryableHints: substrings for transport/backpressure (timeouts, rate
+//     limits, connection issues) and for outcomes the broadcast pipeline can
+//     recover from after a fresh ledger read / sequence resync (bad_seq,
+//     stale, ledger wording in RPC errors).
+//
+// Anything that matches neither list is treated as non-retryable (fail closed).
 func isRetryableSimulationError(ctx context.Context, err error) bool {
 	if err == nil || ctx.Err() != nil {
 		return false
@@ -128,23 +123,14 @@ func isRetryableSimulationError(ctx context.Context, err error) bool {
 		"stale",
 		"ledger",
 	}
-
-	var simErr *simulationError
-	if errors.As(err, &simErr) && simErr.source == simulationErrorSourceResponse {
-		for _, hint := range retryableHints {
-			if strings.Contains(msg, hint) {
-				return true
-			}
-		}
-		return false
-	}
-
 	for _, hint := range retryableHints {
 		if strings.Contains(msg, hint) {
 			return true
 		}
 	}
-	return true
+	// Fail closed: unknown errors are not retried so we do not spin on new fatal
+	// RPC or Soroban messages that omit our terminal hints.
+	return false
 }
 
 // assembleTransaction rebuilds tx with simulation results and a caller-supplied inclusionFee.
@@ -152,9 +138,12 @@ func isRetryableSimulationError(ctx context.Context, err error) bool {
 // the resource fee — txnbuild computes the envelope fee as BaseFee*numOps + sorobanData.ResourceFee,
 // so folding resource fee into BaseFee would double-count it.
 func (s *StellarTxm) assembleTransaction(tx *txnbuild.Transaction, sim protocolrpc.SimulateTransactionResponse, inclusionFee int64, maxLedger uint32) (*txnbuild.Transaction, int64, error) {
+	if tx == nil {
+		return nil, 0, errors.New("assembleTransaction: tx is nil")
+	}
 	ops := tx.Operations()
 	if len(ops) == 0 {
-		return nil, 0, fmt.Errorf("transaction has no operations")
+		return nil, 0, errors.New("transaction has no operations")
 	}
 
 	resourceFee := int64(0)
@@ -211,6 +200,9 @@ func (s *StellarTxm) assembleTransaction(tx *txnbuild.Transaction, sim protocolr
 }
 
 func (s *StellarTxm) signTransaction(ctx context.Context, tx *txnbuild.Transaction, fromAddress string) (*txnbuild.Transaction, error) {
+	if tx == nil {
+		return nil, errors.New("signTransaction: tx is nil")
+	}
 	hash, err := tx.Hash(s.networkPassphrase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash transaction: %w", err)
@@ -249,6 +241,14 @@ func (s *StellarTxm) handleSendResult(
 	txStore *TxStore,
 	maxLedger uint32,
 ) (accepted bool, fatalErr bool, retryReason string) {
+	if tx == nil {
+		s.baseLogger.Errorw("handleSendResult: tx is nil")
+		return false, true, ErrorReasonNilTx
+	}
+	if txStore == nil {
+		s.baseLogger.Errorw("handleSendResult: txStore is nil", "txID", tx.ID)
+		return false, true, ErrorReasonNilTxStore
+	}
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, tx.Metadata)
 
 	switch submitResult.Status {
@@ -273,13 +273,14 @@ func (s *StellarTxm) handleSendResult(
 		return false, false, ErrorReasonTryAgainLater
 
 	case stellarcore.TXStatusError:
-		typedCode, resultCode, decoded := parseSubmitErrorResult(submitResult.ErrorResultXDR)
-		ctxLogger.Warnw("tx rejected by network", "resultCode", resultCode, "errorXDR", submitResult.ErrorResultXDR)
+		typedCode, decoded := parseSubmitErrorResult(submitResult.ErrorResultXDR)
+		ctxLogger.Warnw("tx rejected by network", "resultCode", typedCode.String(), "errorXDR", submitResult.ErrorResultXDR)
 
 		if !decoded {
-			return false, true, resultCode
+			return false, true, ErrorReasonSubmitErrorUndecoded
 		}
-		return classifySubmitErrorCode(typedCode, resultCode)
+		fatal, reason := classifySubmitErrorCode(typedCode)
+		return false, fatal, reason
 
 	default:
 		ctxLogger.Errorw("unknown submit status", "status", submitResult.Status)
@@ -287,32 +288,28 @@ func (s *StellarTxm) handleSendResult(
 	}
 }
 
-func (s *StellarTxm) classifyErrorResult(errorResultXDR string) string {
-	_, label, _ := parseSubmitErrorResult(errorResultXDR)
-	return label
-}
-
-func parseSubmitErrorResult(errorResultXDR string) (code xdr.TransactionResultCode, label string, decoded bool) {
+// parseSubmitErrorResult decodes errorResultXDR into a transaction result code.
+// ok is false when errorResultXDR is empty or cannot be unmarshaled as XDR.
+func parseSubmitErrorResult(errorResultXDR string) (code xdr.TransactionResultCode, ok bool) {
 	if errorResultXDR == "" {
-		return 0, "unknown_error", false
+		return 0, false
 	}
 	var txResult xdr.TransactionResult
 	if err := xdr.SafeUnmarshalBase64(errorResultXDR, &txResult); err != nil {
-		return 0, "decode_error", false
+		return 0, false
 	}
-	return txResult.Result.Code, txResult.Result.Code.String(), true
+	return txResult.Result.Code, true
 }
 
-
-func classifySubmitErrorCode(code xdr.TransactionResultCode, label string) (accepted, fatal bool, reason string) {
+func classifySubmitErrorCode(code xdr.TransactionResultCode) (fatal bool, reason string) {
 	switch code {
 	case xdr.TransactionResultCodeTxBadSeq:
-		return false, false, ErrorReasonBadSeq
+		return false, ErrorReasonBadSeq
 	case xdr.TransactionResultCodeTxInsufficientFee:
-		return false, false, ErrorReasonInsufficientFee
+		return false, ErrorReasonInsufficientFee
 	case xdr.TransactionResultCodeTxInternalError:
-		return false, false, ErrorReasonInternalError
+		return false, ErrorReasonInternalError
 	default:
-		return false, true, label
+		return true, code.String()
 	}
 }

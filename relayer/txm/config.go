@@ -51,8 +51,8 @@ var DefaultConfigSet = Config{
 	MaxSimulateAttempts:    ptr(uint(3)),
 	MaxSubmitRetryAttempts: ptr(uint(10)),
 	SubmitRetryDelay:       config.MustNewDuration(3 * time.Second),
-	TxTimeoutSecs:          ptr(int64(300)),  // 5 minutes wall-clock fallback
-	LedgerBoundsOffset:     ptr(uint32(50)),  // ~5 min at 6s/ledger
+	TxTimeoutSecs:          ptr(int64(300)), // 5 minutes wall-clock fallback
+	LedgerBoundsOffset:     ptr(uint32(50)), // ~5 min at 6s/ledger
 	MaxTxRetryAttempts:     ptr(uint64(5)),
 	MaxRestoreAttempts:     ptr(uint(3)),
 

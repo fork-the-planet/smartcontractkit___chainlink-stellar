@@ -1,7 +1,6 @@
 package txm
 
 import (
-	"crypto/ed25519"
 	"math/big"
 	"sync"
 
@@ -15,8 +14,7 @@ type StellarTx struct {
 	ID          string
 	Metadata    *commontypes.TxMeta
 	Timestamp   uint64
-	FromAddress string // G... strkey
-	PublicKey   ed25519.PublicKey
+	FromAddress string // G... strkey: source account and signer for this TXM
 
 	Operations         []txnbuild.Operation
 	LedgerBoundsOffset uint32 // per-tx override (0 = use config default)
@@ -75,8 +73,13 @@ const (
 	ErrorReasonBadAuth           = "bad_auth"
 	ErrorReasonTryAgainLater     = "try_again_later"
 	ErrorReasonClientUnavailable = "client_unavailable"
-	ErrorReasonInsufficientFee = "insufficient_fee"
-	ErrorReasonInternalError = "internal_error"
+	ErrorReasonInsufficientFee   = "insufficient_fee"
+	ErrorReasonInternalError     = "internal_error"
+	ErrorReasonNilTx             = "nil_tx"
+	ErrorReasonNilTxStore        = "nil_tx_store"
+	// ErrorReasonSubmitErrorUndecoded means the node returned TXStatusError but
+	// ErrorResultXDR was empty or not valid transaction-result XDR.
+	ErrorReasonSubmitErrorUndecoded = "submit_error_undecoded"
 )
 
 // Drop reasons classify why a pending transaction was dropped from the broadcast queue.

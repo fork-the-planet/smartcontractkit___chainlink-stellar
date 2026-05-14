@@ -8,25 +8,25 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/protocols/stellarcore"
 )
 
-func TestStellarTxm_classifyErrorResult(t *testing.T) {
+func Test_parseSubmitErrorResult(t *testing.T) {
 	t.Parallel()
-	mock := &mockRPCClient{}
-	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), "test", "")
-	require.NoError(t, err)
 
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "unknown_error", s.classifyErrorResult(""))
+		_, ok := parseSubmitErrorResult("")
+		assert.False(t, ok)
 	})
 
-	t.Run("invalid base64", func(t *testing.T) {
+	t.Run("invalid base64 or XDR", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "decode_error", s.classifyErrorResult("not-valid-xdr-!!!"))
+		_, ok := parseSubmitErrorResult("not-valid-xdr-!!!")
+		assert.False(t, ok)
 	})
 
 	t.Run("tx_bad_seq", func(t *testing.T) {
@@ -37,14 +37,16 @@ func TestStellarTxm_classifyErrorResult(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		assert.Equal(t, xdr.TransactionResultCodeTxBadSeq.String(), s.classifyErrorResult(b64))
+		code, ok := parseSubmitErrorResult(b64)
+		require.True(t, ok)
+		assert.Equal(t, xdr.TransactionResultCodeTxBadSeq, code)
 	})
 }
 
 func TestStellarTxm_handleSendResult(t *testing.T) {
 	t.Parallel()
 	mock := &mockRPCClient{}
-	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), "test", "")
+	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	ctx := context.Background()
 
@@ -74,6 +76,22 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 	require.NoError(t, err)
 
 	tx := &StellarTx{ID: "x", FromAddress: testAddress}
+
+	t.Run("nil tx", func(t *testing.T) {
+		t.Parallel()
+		store := NewTxStore(1)
+		acc, fatal, reason := s.handleSendResult(ctx, nil, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "h"}, 1, store, 9)
+		assert.False(t, acc)
+		assert.True(t, fatal)
+		assert.Equal(t, ErrorReasonNilTx, reason)
+	})
+	t.Run("nil txStore", func(t *testing.T) {
+		t.Parallel()
+		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "h"}, 1, nil, 9)
+		assert.False(t, acc)
+		assert.True(t, fatal)
+		assert.Equal(t, ErrorReasonNilTxStore, reason)
+	})
 
 	t.Run(stellarcore.TXStatusPending, func(t *testing.T) {
 		t.Parallel()
@@ -233,8 +251,7 @@ func TestStellarTxm_classifySubmitErrorCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			accepted, fatal, reason := classifySubmitErrorCode(tt.code, tt.code.String())
-			assert.False(t, accepted, "ERROR responses are never accepted")
+			fatal, reason := classifySubmitErrorCode(tt.code)
 			assert.Equal(t, tt.wantFatal, fatal, "fatal flag for %s", tt.code.String())
 			assert.Equal(t, tt.wantReason, reason, "reason label for %s", tt.code.String())
 		})
@@ -248,7 +265,7 @@ func TestStellarTxm_handleSendResult_UndecodableErrorXDRIsFatal(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockRPCClient{}
-	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), "test", "")
+	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	ctx := context.Background()
 	tx := &StellarTx{ID: "x", FromAddress: testAddress}
@@ -259,7 +276,7 @@ func TestStellarTxm_handleSendResult_UndecodableErrorXDRIsFatal(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusError, ErrorResultXDR: ""}, 1, store, 9)
 		assert.False(t, acc)
 		assert.True(t, fatal)
-		assert.Equal(t, "unknown_error", reason)
+		assert.Equal(t, ErrorReasonSubmitErrorUndecoded, reason)
 	})
 
 	t.Run("undecodable ErrorResultXDR is fatal", func(t *testing.T) {
@@ -268,7 +285,7 @@ func TestStellarTxm_handleSendResult_UndecodableErrorXDRIsFatal(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusError, ErrorResultXDR: "not-valid-base64-xdr-!!!"}, 1, store, 9)
 		assert.False(t, acc)
 		assert.True(t, fatal)
-		assert.Equal(t, "decode_error", reason)
+		assert.Equal(t, ErrorReasonSubmitErrorUndecoded, reason)
 	})
 }
 
@@ -281,7 +298,7 @@ func TestStellarTxm_handleSendResult_InsufficientFeeMapsToFeeBumpReason(t *testi
 	t.Parallel()
 
 	mock := &mockRPCClient{}
-	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), "test", "")
+	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	ctx := context.Background()
 	tx := &StellarTx{ID: "x", FromAddress: testAddress}

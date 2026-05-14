@@ -47,6 +47,13 @@ type StellarTxm struct {
 	metrics    *stellarTxmMetrics
 	feeStrat   FeeStrategy
 
+	// transactions + transactionsLock guard both the tx ID → *StellarTx map and
+	// many per-tx field updates (status, hash, fee, XDR, attempt). That makes
+	// this mutex a universal coarse lock for the TXM.
+	//
+	// TODO: improve concurrency — e.g. reserve transactionsLock for map
+	// membership/prune only, and use per-StellarTx synchronization (or batched
+	// updates) for mutable fields so GetStatus / confirm / enqueue contend less.
 	transactions              map[string]*StellarTx
 	transactionsLock          sync.RWMutex
 	transactionsLastPruneTime uint64
@@ -64,15 +71,20 @@ type StellarTxm struct {
 // New creates a StellarTxm. The getClient callback should be obtained from
 // chain.Chain.GetClient to enable multi-node rotation; in normal wiring the
 // chain package constructs the TXM and passes its own GetClient method.
+// The network passphrase is resolved from chainID via NetworkPassphrase.
 func New(
 	lgr logger.Logger,
 	keystore core.Keystore,
 	cfg Config,
 	getClient func() (RPCClient, error),
 	chainID string,
-	networkPassphrase string,
 ) (*StellarTxm, error) {
 	cfg.Resolve()
+
+	passphrase, err := NetworkPassphrase(chainID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve network passphrase: %w", err)
+	}
 
 	metrics, err := newStellarTxmMetrics(chainID)
 	if err != nil {
@@ -94,7 +106,7 @@ func New(
 		accountStore:      NewAccountStore(),
 		stop:              make(chan struct{}),
 		getClient:         getClient,
-		networkPassphrase: networkPassphrase,
+		networkPassphrase: passphrase,
 	}, nil
 }
 
@@ -135,16 +147,10 @@ func (s *StellarTxm) Close() error {
 // Enqueue submits a Soroban transaction request for asynchronous processing.
 // Returns the transaction ID (auto-generated if TxRequest.ID is empty).
 func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error) {
+	callerSuppliedID := req.ID != ""
 	txID := req.ID
 	if txID == "" {
 		txID = uuid.New().String()
-	} else {
-		s.transactionsLock.RLock()
-		_, exists := s.transactions[txID]
-		s.transactionsLock.RUnlock()
-		if exists {
-			return "", errors.New("transaction already exists")
-		}
 	}
 
 	if len(req.Operations) != 1 {
@@ -175,7 +181,7 @@ func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error)
 		Done:               make(chan struct{}),
 	}
 
-	return s.enqueueTransaction(ctx, tx)
+	return s.enqueueTransaction(ctx, tx, callerSuppliedID)
 }
 
 // EnqueueAndWait submits a transaction and blocks until it reaches a terminal
@@ -226,10 +232,13 @@ func (s *StellarTxm) txResultLocked(tx *StellarTx) *TxResult {
 }
 
 // enqueueTransaction handles pruning, stores the tx, and pushes its ID to broadcastChan.
+// rejectDuplicateCallerID must be true when the caller supplied TxRequest.ID: the insert is
+// skipped and an error returned if that ID is already present (after prune), which closes the
+// race between concurrent Enqueues with the same id.
 // On backpressure it drops the oldest queued tx (not the new one): the oldest has
 // the stalest simulation data and the nearest LedgerBounds expiry, so the newer tx's
 // intent takes priority.
-func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx) (string, error) {
+func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx, rejectDuplicateCallerID bool) (string, error) {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, nil)
 
 	s.transactionsLock.Lock()
@@ -248,6 +257,12 @@ func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx) (str
 			delete(s.transactions, id)
 		}
 		s.transactionsLastPruneTime = now
+	}
+	if rejectDuplicateCallerID {
+		if _, exists := s.transactions[tx.ID]; exists {
+			s.transactionsLock.Unlock()
+			return "", errors.New("transaction already exists")
+		}
 	}
 	s.transactions[tx.ID] = tx
 	s.transactionsLock.Unlock()
@@ -521,7 +536,10 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 
 	currentAttempt := s.getTransactionAttempt(tx)
 	if currentAttempt > 0 {
-		_ = s.resyncSequence(ctx, client, tx)
+		if err := s.resyncSequence(ctx, client, tx); err != nil {
+			ctxLogger.Warnw("best-effort sequence resync before rebroadcast failed, continuing with local tx store",
+				"error", err, "attempt", currentAttempt)
+		}
 	}
 
 	// Seed inclusion fee from live network data
@@ -658,7 +676,10 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 
 		if retryReason == ErrorReasonBadSeq {
 			ctxLogger.Warnw("tx rejected with bad_seq, resyncing and retrying", "attempt", submitAttempt)
-			_ = s.resyncSequence(ctx, client, tx)
+			if err := s.resyncSequence(ctx, client, tx); err != nil {
+				ctxLogger.Warnw("sequence resync after bad_seq failed, retry may repeat bad_seq",
+					"error", err, "submitAttempt", submitAttempt)
+			}
 			seq = txStore.GetNextSequence()
 			submitAttempt++
 			continue
@@ -726,7 +747,7 @@ func (s *StellarTxm) prepareAndSimulateWithRetry(
 		latestLedger, err := client.GetLatestLedger(ctx)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to get latest ledger: %w", err)
-			if !s.shouldRetrySimulation(ctx, lastErr, attempt, maxAttempts) {
+			if attempt+1 >= maxAttempts {
 				return nil, protocolrpc.SimulateTransactionResponse{}, 0, lastErr
 			}
 			ctxLogger.Warnw("latest ledger fetch failed before simulation, retrying", "attempt", attempt, "error", err)
@@ -837,6 +858,10 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 				case protocolrpc.TransactionStatusSuccess:
 					if confirmErr := txStore.Confirm(utx.Sequence, hash, false); confirmErr != nil {
 						ctxLogger.Errorw("failed to confirm tx in TxStore", "hash", hash, "error", confirmErr)
+						// Leave utx in the unconfirmed set; next tick will retry Confirm after
+						// GetTransaction SUCCESS. Do not finalize StellarTx or bump success metrics
+						// while TxStore is inconsistent.
+						continue
 					}
 
 					// Replace estimated fee with the actual fee charged by the network.
@@ -858,13 +883,13 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					ctxLogger.Infow("confirmed tx: successful", "hash", hash)
 					s.metrics.IncrementSuccessTxs(ctx)
 					s.updateTransactionStatus(utx.Tx, commontypes.Finalized)
-					s.metrics.IncrementFinalizedTxs(ctx)
 					s.closeDone(utx.Tx)
 					continue
 
 				case protocolrpc.TransactionStatusFailed:
 					if confirmErr := txStore.Confirm(utx.Sequence, hash, false); confirmErr != nil {
 						ctxLogger.Errorw("failed to confirm failed tx in TxStore", "hash", hash, "error", confirmErr)
+						continue
 					}
 					s.updateTransactionResultXDR(utx.Tx, resp.ResultXDR)
 					classification := classifyFailedTransactionResult(resp.ResultXDR)

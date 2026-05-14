@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -161,7 +162,7 @@ func TestStellarTxm_SimulateDefaultsFromAddress(t *testing.T) {
 		getLatestLedgerResp: protocolrpc.GetLatestLedgerResponse{Sequence: 9},
 		simulateResp:        protocolrpc.SimulateTransactionResponse{MinResourceFee: 5},
 	}
-	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), "c", "Test SDF Network ; September 2015")
+	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
 	res, err := txm.Simulate(context.Background(), TxRequest{

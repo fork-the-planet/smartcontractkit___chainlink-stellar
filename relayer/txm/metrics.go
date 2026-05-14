@@ -24,11 +24,6 @@ var (
 		Help: "Number of transactions confirmed with GetTransaction SUCCESS",
 	}, []string{"chainID"})
 
-	promStellarTxmFinalizedTxs = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_tx_finalized",
-		Help: "Number of transactions reaching Finalized status",
-	}, []string{"chainID"})
-
 	promStellarTxmPendingTxs = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "stellar_txm_tx_pending",
 		Help: "Current in-flight unconfirmed transactions",
@@ -92,7 +87,6 @@ type stellarTxmMetrics struct {
 	// Shared metrics (all chain TXMs have these)
 	broadcastedTxs metric.Int64Counter
 	successTxs     metric.Int64Counter
-	finalizedTxs   metric.Int64Counter
 	pendingTxs     metric.Int64Gauge
 	errorTxs       metric.Int64Counter
 	retryTxs       metric.Int64Counter
@@ -118,11 +112,6 @@ func newStellarTxmMetrics(chainID string) (*stellarTxmMetrics, error) {
 	successTxs, err := m.Int64Counter("stellar_txm_tx_success")
 	if err != nil {
 		return nil, fmt.Errorf("failed to register success txs counter: %w", err)
-	}
-
-	finalizedTxs, err := m.Int64Counter("stellar_txm_tx_finalized")
-	if err != nil {
-		return nil, fmt.Errorf("failed to register finalized txs counter: %w", err)
 	}
 
 	pendingTxs, err := m.Int64Gauge("stellar_txm_tx_pending")
@@ -181,7 +170,6 @@ func newStellarTxmMetrics(chainID string) (*stellarTxmMetrics, error) {
 
 		broadcastedTxs: broadcastedTxs,
 		successTxs:     successTxs,
-		finalizedTxs:   finalizedTxs,
 		pendingTxs:     pendingTxs,
 		errorTxs:       errorTxs,
 		retryTxs:       retryTxs,
@@ -210,11 +198,6 @@ func (m *stellarTxmMetrics) IncrementBroadcastedTxs(ctx context.Context) {
 func (m *stellarTxmMetrics) IncrementSuccessTxs(ctx context.Context) {
 	promStellarTxmSuccessTxs.WithLabelValues(m.chainID).Add(1)
 	m.successTxs.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
-}
-
-func (m *stellarTxmMetrics) IncrementFinalizedTxs(ctx context.Context) {
-	promStellarTxmFinalizedTxs.WithLabelValues(m.chainID).Add(1)
-	m.finalizedTxs.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
 }
 
 func (m *stellarTxmMetrics) SetPendingTxs(ctx context.Context, count int) {
