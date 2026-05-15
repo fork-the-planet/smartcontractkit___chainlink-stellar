@@ -1,0 +1,116 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (defaults to git SHA or tag)'
+        required: false
+        default: ''
+      push_latest:
+        description: 'Also push as latest'
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: build-push-ecr-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-push:
+    name: Build and Push ${{ matrix.image_name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: committee-verifier
+            dockerfile: Dockerfile.verifier
+            image_name: stellarcommittee-verifier
+          - name: executor
+            dockerfile: Dockerfile.executor
+            image_name: stellarexecutor
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Option 1: AWS SSO with OIDC (recommended for production)
+      # This works if your SSO setup allows GitHub Actions to assume a role via OIDC
+      - name: Configure AWS Credentials (OIDC)
+        if: env.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
+      # Option 2: AWS SSO with Access Keys (for local dev SSO workflows)
+      # Use this if you export AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN from SSO
+      - name: Configure AWS Credentials (Access Keys)
+        if: env.AWS_ACCESS_KEY_ID != '' && env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+        with:
+          registry-type: private
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "image_tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "image_tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build, tag, and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_NAME: ${{ matrix.image_name }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          echo "Building $IMAGE_NAME:$IMAGE_TAG..."
+          docker build -f $DOCKERFILE -t $IMAGE_NAME:rc .
+
+          echo "Tagging for ECR..."
+          docker tag $IMAGE_NAME:rc $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+          if [ "${{ inputs.push_latest || github.ref == 'refs/heads/main' }}" = "true" ]; then
+            docker tag $IMAGE_NAME:rc $ECR_REGISTRY/$IMAGE_NAME:latest
+          fi
+
+          echo "Pushing to ECR..."
+          docker push $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+          if [ "${{ inputs.push_latest || github.ref == 'refs/heads/main' }}" = "true" ]; then
+            docker push $ECR_REGISTRY/$IMAGE_NAME:latest
+          fi
+
+          echo ""
+          echo "Successfully pushed $IMAGE_NAME:"
+          echo "  - $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+          if [ "${{ inputs.push_latest || github.ref == 'refs/heads/main' }}" = "true" ]; then
+            echo "  - $ECR_REGISTRY/$IMAGE_NAME:latest"
+          fi
