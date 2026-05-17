@@ -1,7 +1,6 @@
 package txm
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -48,7 +47,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 	mock := &mockRPCClient{}
 	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	badSeqXDR, err := xdr.MarshalBase64(xdr.TransactionResult{
 		Result: xdr.TransactionResultResult{
@@ -267,7 +266,7 @@ func TestStellarTxm_handleSendResult_UndecodableErrorXDRIsFatal(t *testing.T) {
 	mock := &mockRPCClient{}
 	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := t.Context()
 	tx := &StellarTx{ID: "x", FromAddress: testAddress}
 
 	t.Run("empty ErrorResultXDR is fatal", func(t *testing.T) {
@@ -300,7 +299,7 @@ func TestStellarTxm_handleSendResult_InsufficientFeeMapsToFeeBumpReason(t *testi
 	mock := &mockRPCClient{}
 	s, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := t.Context()
 	tx := &StellarTx{ID: "x", FromAddress: testAddress}
 
 	insuffFeeXDR, err := xdr.MarshalBase64(xdr.TransactionResult{

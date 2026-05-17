@@ -79,8 +79,7 @@ func (s *StellarTxm) handleRestore(
 		case stellarcore.TXStatusPending, stellarcore.TXStatusDuplicate:
 			ctxLogger.Debugw("restore transaction accepted", "attempt", attempt, "seq", seq, "hash", submitResult.Hash)
 
-			timeout := time.Duration(*s.config.TxTimeoutSecs) * time.Second
-			resp, err := s.pollRestoreTransaction(ctx, client, submitResult.Hash, timeout)
+			resp, err := s.pollRestoreTransaction(ctx, client, submitResult.Hash)
 			if err != nil {
 				lastErr = fmt.Errorf("restore transaction polling failed: %w", err)
 				ctxLogger.Warnw("restore poll failed, retrying", "attempt", attempt, "hash", submitResult.Hash, "error", err)
@@ -137,10 +136,11 @@ func (s *StellarTxm) sleepBeforeRestoreRetry(ctx context.Context) bool {
 	}
 }
 
-// pollRestoreTransaction polls GetTransaction until SUCCESS, FAILED, or the
-// timeout expires. Inlined here because the bare RPCClient interface — unlike
-// the SDK's *rpcclient.Client — doesn't expose a PollTransaction helper.
-func (s *StellarTxm) pollRestoreTransaction(ctx context.Context, client RPCClient, hash string, timeout time.Duration) (protocolrpc.GetTransactionResponse, error) {
+// pollRestoreTransaction polls GetTransaction until SUCCESS, FAILED, or
+// TxTimeoutSecs elapses. Inlined here because the bare RPCClient interface —
+// unlike the SDK's *rpcclient.Client — doesn't expose a PollTransaction helper.
+func (s *StellarTxm) pollRestoreTransaction(ctx context.Context, client RPCClient, hash string) (protocolrpc.GetTransactionResponse, error) {
+	timeout := time.Duration(*s.config.TxTimeoutSecs) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

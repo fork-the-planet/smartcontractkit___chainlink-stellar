@@ -76,7 +76,8 @@ func NewInvokerAdapter(
 }
 
 // InvokeContract submits a Soroban contract invocation through the TXM and
-// returns the Soroban return value from the confirmed transaction metadata.
+// blocks until the transaction reaches a terminal state (or ctx is cancelled),
+// then returns the Soroban return value from the confirmed transaction metadata.
 func (a *InvokerAdapter) InvokeContract(ctx context.Context, contractID string, functionName string, args []xdr.ScVal) (*xdr.ScVal, error) {
 	op, err := buildInvokeContractOperation(contractID, functionName, args, a.fromAddress)
 	if err != nil {

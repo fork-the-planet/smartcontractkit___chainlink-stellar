@@ -57,8 +57,9 @@ func (f *FeeStrategy) InclusionFee(attempt uint64) int64 {
 }
 
 // SeedInclusionFee returns the starting inclusion fee for a transaction broadcast.
-// It picks max(geometric baseline for `attempt`, network percentile from getFeeStats)
-// and caps the result at MaxInclusionFee.
+// It picks max(geometric baseline for `attempt`, network percentile stroops from
+// GetFeeStats — typically P50 for the first attempt and P90 for rebroadcasts,
+// refreshed via feeTracker) and caps the result at MaxInclusionFee.
 
 func (f *FeeStrategy) SeedInclusionFee(attempt uint64, networkPercentile uint64) (fee int64, clampedToMax bool) {
 	fee = f.InclusionFee(attempt)

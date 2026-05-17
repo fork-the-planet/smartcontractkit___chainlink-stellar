@@ -58,11 +58,13 @@ type StellarTxm struct {
 	transactionsLock          sync.RWMutex
 	transactionsLastPruneTime uint64
 
-	broadcastChan chan string
+	broadcastChan chan *StellarTx
 	accountStore  *AccountStore
 	starter       commonutils.StartStopOnce
 	done          sync.WaitGroup
 	stop          chan struct{}
+
+	feeTracker *feeTracker
 
 	getClient         func() (RPCClient, error)
 	networkPassphrase string
@@ -99,10 +101,12 @@ func New(
 		metrics:    metrics,
 		feeStrat:   NewFeeStrategyFromConfig(cfg),
 
+		feeTracker: newFeeTracker(cfg.FeeStatsPollInterval.Duration()),
+
 		transactions:              make(map[string]*StellarTx),
 		transactionsLastPruneTime: getTimestampSecs(),
 
-		broadcastChan:     make(chan string, *cfg.BroadcastChanSize),
+		broadcastChan:     make(chan *StellarTx, *cfg.BroadcastChanSize),
 		accountStore:      NewAccountStore(),
 		stop:              make(chan struct{}),
 		getClient:         getClient,
@@ -146,8 +150,9 @@ func (s *StellarTxm) Close() error {
 
 // Enqueue submits a Soroban transaction request for asynchronous processing.
 // Returns the transaction ID (auto-generated if TxRequest.ID is empty).
+// If TxRequest.ID is already in flight or tracked, returns that same id with a nil error
+// and does not enqueue again (idempotent, aligned with EVM TxMgr idempotency key behavior).
 func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error) {
-	callerSuppliedID := req.ID != ""
 	txID := req.ID
 	if txID == "" {
 		txID = uuid.New().String()
@@ -181,7 +186,7 @@ func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error)
 		Done:               make(chan struct{}),
 	}
 
-	return s.enqueueTransaction(ctx, tx, callerSuppliedID)
+	return s.enqueueTransaction(ctx, tx)
 }
 
 // EnqueueAndWait submits a transaction and blocks until it reaches a terminal
@@ -231,14 +236,13 @@ func (s *StellarTxm) txResultLocked(tx *StellarTx) *TxResult {
 	return result
 }
 
-// enqueueTransaction handles pruning, stores the tx, and pushes its ID to broadcastChan.
-// rejectDuplicateCallerID must be true when the caller supplied TxRequest.ID: the insert is
-// skipped and an error returned if that ID is already present (after prune), which closes the
-// race between concurrent Enqueues with the same id.
+// enqueueTransaction handles pruning, stores the tx, and pushes it to broadcastChan.
+// If tx.ID is already present (after prune), returns that id with a nil error and does not
+// enqueue again (idempotent, matching EVM TxMgr CreateTransaction with IdempotencyKey).
 // On backpressure it drops the oldest queued tx (not the new one): the oldest has
 // the stalest simulation data and the nearest LedgerBounds expiry, so the newer tx's
 // intent takes priority.
-func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx, rejectDuplicateCallerID bool) (string, error) {
+func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx) (string, error) {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, nil)
 
 	s.transactionsLock.Lock()
@@ -258,18 +262,18 @@ func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx, reje
 		}
 		s.transactionsLastPruneTime = now
 	}
-	if rejectDuplicateCallerID {
-		if _, exists := s.transactions[tx.ID]; exists {
-			s.transactionsLock.Unlock()
-			return "", errors.New("transaction already exists")
-		}
+	if _, exists := s.transactions[tx.ID]; exists {
+		s.transactionsLock.Unlock()
+		ctxLogger.Debugw("enqueue idempotent: tx id already present, not re-enqueueing", "txID", tx.ID)
+		s.closeDone(tx)
+		return tx.ID, nil
 	}
 	s.transactions[tx.ID] = tx
 	s.transactionsLock.Unlock()
 
 	// Fast path: channel has space.
 	select {
-	case s.broadcastChan <- tx.ID:
+	case s.broadcastChan <- tx:
 		ctxLogger.Debugw("tx enqueued", "fromAddr", tx.FromAddress, "txID", tx.ID)
 		return tx.ID, nil
 	default:
@@ -277,20 +281,24 @@ func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx, reje
 
 	// Slow path: channel full. Drain the oldest queued tx (FIFO head) and
 	// mark it dropped, then send the new one into the freed slot.
-	var droppedID string
+	var droppedTx *StellarTx
 	select {
-	case droppedID = <-s.broadcastChan:
+	case droppedTx = <-s.broadcastChan:
 	default:
 		// Channel became non-full between the fast-path check and now
 		// (broadcastLoop drained it). Proceed directly to the send retry.
 	}
-	if droppedID != "" {
-		s.dropOldestForBackpressure(ctx, droppedID)
+	if droppedTx != nil {
+		s.dropOldestForBackpressure(ctx, droppedTx)
 	}
 
 	select {
-	case s.broadcastChan <- tx.ID:
-		ctxLogger.Debugw("tx enqueued after evicting oldest", "droppedID", droppedID, "txID", tx.ID)
+	case s.broadcastChan <- tx:
+		droppedID := ""
+		if droppedTx != nil {
+			droppedID = droppedTx.ID
+		}
+		ctxLogger.Debugw("tx enqueued after evicting oldest", "droppedTxID", droppedID, "txID", tx.ID)
 		return tx.ID, nil
 	default:
 		// Concurrent enqueues refilled the slot. Fall back to dropping the new tx.
@@ -305,25 +313,30 @@ func (s *StellarTxm) enqueueTransaction(ctx context.Context, tx *StellarTx, reje
 
 // dropOldestForBackpressure marks a tx (just drained from broadcastChan) as Failed,
 // unblocks any EnqueueAndWait waiter, and emits the drop metric.
-func (s *StellarTxm) dropOldestForBackpressure(ctx context.Context, txID string) {
+// dropped must be the same *StellarTx still registered in s.transactions[dropped.ID];
+// if the map entry was replaced or removed, this is a no-op.
+func (s *StellarTxm) dropOldestForBackpressure(ctx context.Context, dropped *StellarTx) {
+	if dropped == nil {
+		return
+	}
 	s.transactionsLock.Lock()
-	tx, ok := s.transactions[txID]
-	if ok {
-		tx.Status = commontypes.Failed
-		tx.ResultCode = DropReasonChannelFullOldestEvicted
+	ok := false
+	if cur, exists := s.transactions[dropped.ID]; exists && cur == dropped {
+		dropped.ResultCode = DropReasonChannelFullOldestEvicted
+		ok = true
 	}
 	s.transactionsLock.Unlock()
 	if !ok {
 		return
 	}
 
-	s.closeDone(tx)
+	s.updateTransactionStatus(dropped, commontypes.Failed)
 	s.metrics.IncrementDroppedTxs(ctx, DropReasonChannelFullOldestEvicted)
 
-	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, tx.Metadata)
+	ctxLogger := GetContextedTxLogger(s.baseLogger, dropped.ID, dropped.Metadata)
 	ctxLogger.Warnw("oldest queued tx evicted due to channel backpressure",
-		"droppedTxID", tx.ID,
-		"ageSecs", uint64(time.Now().Unix())-tx.Timestamp)
+		"droppedTxID", dropped.ID,
+		"ageSecs", uint64(time.Now().Unix())-dropped.Timestamp)
 }
 
 // --- Status queries ---
@@ -377,7 +390,7 @@ func (s *StellarTxm) GetTransactionFee(transactionID string) (*big.Int, error) {
 	return tx.Fee, nil
 }
 
-// InflightCount returns (broadcastChan length, total unconfirmed across all accounts).
+// InflightCount returns (queued broadcast work items, total unconfirmed across all accounts).
 func (s *StellarTxm) InflightCount() (int, int) {
 	return len(s.broadcastChan), s.accountStore.GetTotalInflightCount()
 }
@@ -386,8 +399,27 @@ func (s *StellarTxm) InflightCount() (int, int) {
 
 func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.TransactionStatus) {
 	s.transactionsLock.Lock()
-	defer s.transactionsLock.Unlock()
 	tx.Status = status
+	terminal := status == commontypes.Failed || status == commontypes.Finalized
+	s.transactionsLock.Unlock()
+	if terminal {
+		s.closeDone(tx)
+	}
+}
+
+// markTxFailed sets Failed (and closes Done via updateTransactionStatus) and records
+// an error metric. Use when no TxStore sequence was reserved for this attempt.
+func (s *StellarTxm) markTxFailed(ctx context.Context, tx *StellarTx, metricReason string) {
+	s.updateTransactionStatus(tx, commontypes.Failed)
+	s.metrics.IncrementErrorTxs(ctx, metricReason)
+}
+
+// releaseSeqAndFailTx releases a reserved sequence, marks the tx Failed, and records
+// an error metric. Used when simulate/send aborts after GetNextSequence.
+func (s *StellarTxm) releaseSeqAndFailTx(ctx context.Context, txStore *TxStore, seq int64, tx *StellarTx, metricReason string) {
+	txStore.Release(seq)
+	s.updateTransactionStatus(tx, commontypes.Failed)
+	s.metrics.IncrementErrorTxs(ctx, metricReason)
 }
 
 func (s *StellarTxm) updateTransactionHash(tx *StellarTx, hash string) {
@@ -433,6 +465,7 @@ func (s *StellarTxm) getTransactionAttempt(tx *StellarTx) uint64 {
 }
 
 // closeDone closes the transaction's Done channel to unblock EnqueueAndWait callers.
+// Terminal statuses set via updateTransactionStatus also invoke closeDone.
 func (s *StellarTxm) closeDone(tx *StellarTx) {
 	tx.doneOnce.Do(func() {
 		close(tx.Done)
@@ -450,29 +483,23 @@ func (s *StellarTxm) broadcastLoop() {
 	s.baseLogger.Debugw("broadcastLoop: started")
 	for {
 		select {
-		case initialID := <-s.broadcastChan:
-			broadcastIDs := []string{initialID}
+		case initialTx := <-s.broadcastChan:
+			if initialTx == nil {
+				continue
+			}
+			broadcastTxs := []*StellarTx{initialTx}
 		DrainChannel:
 			for {
 				select {
-				case nextID := <-s.broadcastChan:
-					broadcastIDs = append(broadcastIDs, nextID)
+				case nextTx := <-s.broadcastChan:
+					if nextTx == nil {
+						continue
+					}
+					broadcastTxs = append(broadcastTxs, nextTx)
 				default:
 					break DrainChannel
 				}
 			}
-
-			s.transactionsLock.RLock()
-			broadcastTxs := make([]*StellarTx, 0, len(broadcastIDs))
-			for _, txID := range broadcastIDs {
-				tx, ok := s.transactions[txID]
-				if !ok {
-					s.baseLogger.Errorw("failed to find tx", "txID", txID)
-					continue
-				}
-				broadcastTxs = append(broadcastTxs, tx)
-			}
-			s.transactionsLock.RUnlock()
 
 			sort.Slice(broadcastTxs, func(i, j int) bool {
 				return broadcastTxs[i].Timestamp < broadcastTxs[j].Timestamp
@@ -491,7 +518,7 @@ func (s *StellarTxm) broadcastLoop() {
 // simulateAssembleSignAndSend runs the full Stellar broadcast pipeline for a
 // single transaction: simulate → (restore archived entries) → assemble →
 // sign → send, with retry on transient failures and inclusion-fee bumping
-// seeded from getFeeStats.
+// seeded from feeTracker GetFeeStats Soroban percentiles.
 func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *StellarTx) {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, tx.Metadata)
 	client, err := s.getClient()
@@ -506,9 +533,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			}
 		}
 		if !s.maybeRetry(ctx, &UnconfirmedTx{Tx: tx}, RetryReasonClientUnavailable) {
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonClientUnavailable)
+			s.markTxFailed(ctx, tx, ErrorReasonClientUnavailable)
 		}
 		return
 	}
@@ -518,17 +543,13 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		seqNum, err := s.getSequenceNumber(ctx, client, tx.FromAddress)
 		if err != nil {
 			ctxLogger.Errorw("failed to get sequence number", "fromAddress", tx.FromAddress, "error", err)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonSequenceNumber)
+			s.markTxFailed(ctx, tx, ErrorReasonSequenceNumber)
 			return
 		}
 		newStore, err := s.accountStore.CreateTxStore(tx.FromAddress, seqNum+1)
 		if err != nil {
 			ctxLogger.Errorw("failed to create tx store", "fromAddress", tx.FromAddress, "error", err)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonStoreCreate)
+			s.markTxFailed(ctx, tx, ErrorReasonStoreCreate)
 			return
 		}
 		txStore = newStore
@@ -542,14 +563,15 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		}
 	}
 
-	// Seed inclusion fee from live network data
+	// Seed inclusion fee from live network data (P50 first broadcast, P90 rebroadcasts),
+	// via feeTracker to cap GetFeeStats RPC rate.
 	// SeedInclusionFee caps the result at MaxInclusionFee
 	var networkPercentile uint64
-	if feeStats, fsErr := client.GetFeeStats(ctx); fsErr == nil {
+	if p50, p90, fsOk, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsOk {
 		if currentAttempt > 0 {
-			networkPercentile = feeStats.SorobanInclusionFee.P99
+			networkPercentile = p90
 		} else {
-			networkPercentile = feeStats.SorobanInclusionFee.P50
+			networkPercentile = p50
 		}
 	} else {
 		ctxLogger.Warnw("getFeeStats failed, using geometric baseline", "error", fsErr)
@@ -570,28 +592,19 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		prelimTx, simResult, maxLedger, err := s.prepareAndSimulateWithRetry(ctx, client, tx, seq)
 		if err != nil {
 			ctxLogger.Errorw("simulation failed", "error", err)
-			txStore.Release(seq)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonSimulation)
+			s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonSimulation)
 			return
 		}
 
 		if simResult.RestorePreamble != nil {
 			if restoreHandled {
 				ctxLogger.Errorw("restore still required after RestoreFootprint transaction")
-				txStore.Release(seq)
-				s.updateTransactionStatus(tx, commontypes.Failed)
-				s.closeDone(tx)
-				s.metrics.IncrementErrorTxs(ctx, ErrorReasonRestoreFailed)
+				s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonRestoreFailed)
 				return
 			}
 			if err := s.handleRestore(ctx, client, tx, *simResult.RestorePreamble, seq); err != nil {
 				ctxLogger.Errorw("failed to restore archived ledger entries", "error", err)
-				txStore.Release(seq)
-				s.updateTransactionStatus(tx, commontypes.Failed)
-				s.closeDone(tx)
-				s.metrics.IncrementErrorTxs(ctx, ErrorReasonRestoreFailed)
+				s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonRestoreFailed)
 				return
 			}
 			restoreHandled = true
@@ -604,10 +617,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		assembledTx, totalFee, err := s.assembleTransaction(prelimTx, simResult, inclusionFee, maxLedger)
 		if err != nil {
 			ctxLogger.Errorw("failed to assemble transaction", "error", err)
-			txStore.Release(seq)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonAssembly)
+			s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonAssembly)
 			return
 		}
 
@@ -622,20 +632,14 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		signedTx, err := s.signTransaction(ctx, assembledTx, tx.FromAddress)
 		if err != nil {
 			ctxLogger.Errorw("failed to sign transaction", "error", err)
-			txStore.Release(seq)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonSigning)
+			s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonSigning)
 			return
 		}
 
 		signedXDR, err := signedTx.Base64()
 		if err != nil {
 			ctxLogger.Errorw("failed to encode signed transaction", "error", err)
-			txStore.Release(seq)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, ErrorReasonAssembly)
+			s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonAssembly)
 			return
 		}
 
@@ -667,10 +671,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 
 		if fatalErr {
 			ctxLogger.Errorw("fatal error during broadcast", "reason", retryReason)
-			txStore.Release(seq)
-			s.updateTransactionStatus(tx, commontypes.Failed)
-			s.closeDone(tx)
-			s.metrics.IncrementErrorTxs(ctx, retryReason)
+			s.releaseSeqAndFailTx(ctx, txStore, seq, tx, retryReason)
 			return
 		}
 
@@ -686,12 +687,11 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		}
 
 		if retryReason == ErrorReasonTryAgainLater || retryReason == ErrorReasonInsufficientFee {
-			// Bump inclusion fee: apply multiplier then take max with live P90.
-			// This mirrors Aptos using PrioritizedGasEstimate on retry — we jump
-			// to the current clearing price instead of climbing blindly.
+			// Bump inclusion fee: apply multiplier then take max with live P90
+			// (shared feeTracker).
 			bumped := int64(math.Ceil(float64(inclusionFee) * s.feeStrat.BumpMultiplier))
-			if feeStats, fsErr := client.GetFeeStats(ctx); fsErr == nil {
-				if networkFee := int64(feeStats.SorobanInclusionFee.P90); networkFee > bumped {
+			if _, p90, fsOk, _ := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsOk {
+				if networkFee := int64(p90); networkFee > bumped {
 					bumped = networkFee
 				}
 			}
@@ -723,10 +723,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 	}
 
 	ctxLogger.Errorw("exhausted all submit attempts")
-	txStore.Release(seq)
-	s.updateTransactionStatus(tx, commontypes.Failed)
-	s.closeDone(tx)
-	s.metrics.IncrementErrorTxs(ctx, ErrorReasonMaxRetries)
+	s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonMaxRetries)
 }
 
 func (s *StellarTxm) prepareAndSimulateWithRetry(
@@ -858,9 +855,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 				case protocolrpc.TransactionStatusSuccess:
 					if confirmErr := txStore.Confirm(utx.Sequence, hash, false); confirmErr != nil {
 						ctxLogger.Errorw("failed to confirm tx in TxStore", "hash", hash, "error", confirmErr)
-						// Leave utx in the unconfirmed set; next tick will retry Confirm after
-						// GetTransaction SUCCESS. Do not finalize StellarTx or bump success metrics
-						// while TxStore is inconsistent.
 						continue
 					}
 
@@ -883,7 +877,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					ctxLogger.Infow("confirmed tx: successful", "hash", hash)
 					s.metrics.IncrementSuccessTxs(ctx)
 					s.updateTransactionStatus(utx.Tx, commontypes.Finalized)
-					s.closeDone(utx.Tx)
 					continue
 
 				case protocolrpc.TransactionStatusFailed:
@@ -900,13 +893,11 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 
 					if !classification.retryable {
 						s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-						s.closeDone(utx.Tx)
 						continue
 					}
 					s.incrementTransactionAttempt(utx.Tx)
 					if !s.maybeRetry(ctx, utx, RetryReasonResourceExhaustion) {
 						s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-						s.closeDone(utx.Tx)
 					}
 					continue
 				}
@@ -943,7 +934,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 			if confirmErr := txStore.Confirm(utx.Sequence, hash, true); confirmErr != nil {
 				ctxLogger.Errorw("couldn't confirm expired tx", "error", confirmErr)
 				s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-				s.closeDone(utx.Tx)
 				s.metrics.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
 				continue
 			}
@@ -952,7 +942,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 			s.incrementTransactionAttempt(utx.Tx)
 			if !s.maybeRetry(ctx, utx, RetryReasonTimedOut) {
 				s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-				s.closeDone(utx.Tx)
 			}
 		}
 	}
@@ -988,7 +977,7 @@ func (s *StellarTxm) maybeRetry(ctx context.Context, utx *UnconfirmedTx, reason 
 	}
 
 	select {
-	case s.broadcastChan <- utx.Tx.ID:
+	case s.broadcastChan <- utx.Tx:
 		ctxLogger.Debugw("retrying tx", "attempt", currentAttempt, "hash", utx.Hash, "retryReason", reason)
 		s.metrics.IncrementRetryTxs(ctx, reason.String())
 		return true

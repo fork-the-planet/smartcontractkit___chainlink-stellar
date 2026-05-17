@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -266,7 +265,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = txm.Enqueue(context.Background(), TxRequest{
+		id2, err := txm.Enqueue(context.Background(), TxRequest{
 			ID: id,
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
@@ -281,8 +280,8 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 				},
 			}},
 		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "already exists")
+		require.NoError(t, err)
+		assert.Equal(t, id, id2, "duplicate enqueue should return same id (idempotent)")
 	})
 
 	t.Run("duplicate ID concurrent", func(t *testing.T) {
@@ -306,33 +305,35 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 
 		var wg sync.WaitGroup
 		var mu sync.Mutex
-		var results []error
+		var results []struct {
+			id  string
+			err error
+		}
 		wg.Add(nWorkers)
 		for i := 0; i < nWorkers; i++ {
 			go func() {
 				defer wg.Done()
-				_, err := txm.Enqueue(context.Background(), req)
+				gotID, err := txm.Enqueue(context.Background(), req)
 				mu.Lock()
-				results = append(results, err)
+				results = append(results, struct {
+					id  string
+					err error
+				}{gotID, err})
 				mu.Unlock()
 			}()
 		}
 		wg.Wait()
 
-		var okCount, dupCount int
-		for _, err := range results {
-			switch {
-			case err == nil:
-				okCount++
-			case strings.Contains(err.Error(), "already exists"):
-				dupCount++
-			default:
-				require.Failf(t, "unexpected enqueue error", "%v", err)
-			}
+		for _, r := range results {
+			require.NoError(t, r.err)
+			assert.Equal(t, id, r.id)
 		}
 
-		require.Equal(t, 1, okCount, "exactly one Enqueue should win the id")
-		require.Equal(t, nWorkers-1, dupCount, "other concurrent Enqueues must see duplicate")
+		txm.transactionsLock.RLock()
+		got, has := txm.transactions[id]
+		txm.transactionsLock.RUnlock()
+		require.True(t, has)
+		assert.Equal(t, id, got.ID)
 		st, err := txm.GetStatus(id)
 		require.NoError(t, err)
 		assert.Equal(t, commontypes.Pending, st)
@@ -1154,7 +1155,7 @@ func TestStellarTxm_Simulate_success(t *testing.T) {
 // --- maybeRetry: broadcast channel full ---
 
 // blockingAfterFirstSimulateRPC runs the first Simulate in "started, then block until
-// unblock is closed" mode so the broadcast loop can be stuck mid-tx while the channel holds another ID.
+// unblock is closed" mode so the broadcast loop can be stuck mid-tx while the channel holds another tx.
 type blockingAfterFirstSimulateRPC struct {
 	*mockRPCClient
 	started chan struct{} // closed when the first sim call has entered
@@ -1202,7 +1203,7 @@ func TestStellarTxm_maybeRetry_ReturnsFalseWhenBroadcastChannelIsFull(t *testing
 	require.NoError(t, err)
 	// Wait until the first tx is inside Simulate (broadcast loop is blocked there).
 	<-bmock.started
-	// Buffer size 1: the second id sits in the channel while the first tx is still in sim.
+	// Buffer size 1: the second tx sits in the channel while the first tx is still in sim.
 	_, err = txm.Enqueue(context.Background(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{op}})
 	require.NoError(t, err)
 

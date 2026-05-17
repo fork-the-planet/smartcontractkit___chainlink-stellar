@@ -22,6 +22,10 @@ type Config struct {
 	FeeBumpMultiplier *float64 `toml:"FeeBumpMultiplier"`
 	ResourceFeeBuffer *int64   `toml:"ResourceFeeBuffer"`
 	RestoreFeeBuffer  *int64   `toml:"RestoreFeeBuffer"`
+	// FeeStatsPollInterval controls how often GetFeeStats is called to refresh
+	// Soroban inclusion fee P50/P90 in the feeTracker; back-to-back broadcasts reuse values.
+	// Zero disables reuse (every inclusion-fee decision calls GetFeeStats).
+	FeeStatsPollInterval *config.Duration `toml:"FeeStatsPollInterval"`
 
 	// Retry & timeout
 	MaxSimulateAttempts    *uint            `toml:"MaxSimulateAttempts"`
@@ -42,11 +46,12 @@ var DefaultConfigSet = Config{
 	BroadcastChanSize:   ptr(uint(100)),
 	ConfirmPollInterval: config.MustNewDuration(3 * time.Second),
 
-	BaseInclusionFee:  ptr(int64(100)),     // 100 stroops = MinBaseFee
-	MaxInclusionFee:   ptr(int64(100_000)), // 0.01 XLM cap
-	FeeBumpMultiplier: ptr(1.5),
-	ResourceFeeBuffer: ptr(int64(15_000)), // ~15% buffer over MinResourceFee for typical txs
-	RestoreFeeBuffer:  ptr(int64(10_000)),
+	BaseInclusionFee:     ptr(int64(100)),     // 100 stroops = MinBaseFee
+	MaxInclusionFee:      ptr(int64(100_000)), // 0.01 XLM cap
+	FeeBumpMultiplier:    ptr(1.5),
+	ResourceFeeBuffer:    ptr(int64(15_000)), // ~15% buffer over MinResourceFee for typical txs
+	RestoreFeeBuffer:     ptr(int64(10_000)),
+	FeeStatsPollInterval: config.MustNewDuration(5 * time.Second),
 
 	MaxSimulateAttempts:    ptr(uint(3)),
 	MaxSubmitRetryAttempts: ptr(uint(10)),
@@ -84,6 +89,10 @@ func (c *Config) Resolve() {
 	}
 	if c.RestoreFeeBuffer == nil {
 		c.RestoreFeeBuffer = ptr(*DefaultConfigSet.RestoreFeeBuffer)
+	}
+	if c.FeeStatsPollInterval == nil {
+		v := *DefaultConfigSet.FeeStatsPollInterval
+		c.FeeStatsPollInterval = &v
 	}
 	if c.MaxSimulateAttempts == nil {
 		c.MaxSimulateAttempts = ptr(*DefaultConfigSet.MaxSimulateAttempts)

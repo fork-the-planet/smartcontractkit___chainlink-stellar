@@ -20,9 +20,7 @@ func TestResolve_AllDefaults(t *testing.T) {
 	assert.Equal(t, DefaultConfigSet.SubmitRetryDelay, cfg.SubmitRetryDelay)
 	assert.Equal(t, DefaultConfigSet.MaxTxRetryAttempts, cfg.MaxTxRetryAttempts)
 	assert.Equal(t, DefaultConfigSet.PruneInterval, cfg.PruneInterval)
-	assert.Equal(t, DefaultConfigSet.PruneTxExpiration, cfg.PruneTxExpiration)
-
-	// Stellar-specific fee fields
+	assert.Equal(t, DefaultConfigSet.FeeStatsPollInterval, cfg.FeeStatsPollInterval)
 	assert.Equal(t, DefaultConfigSet.BaseInclusionFee, cfg.BaseInclusionFee)
 	assert.Equal(t, DefaultConfigSet.MaxInclusionFee, cfg.MaxInclusionFee)
 	assert.Equal(t, DefaultConfigSet.FeeBumpMultiplier, cfg.FeeBumpMultiplier)
