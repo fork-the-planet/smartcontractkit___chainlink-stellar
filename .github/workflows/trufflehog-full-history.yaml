@@ -4,6 +4,7 @@ name: TruffleHog (full history)
 # Trigger manually or on a schedule; use workflow_dispatch for ad-hoc runs.
 
 on:
+  pull_request:
   workflow_dispatch:
   schedule:
     # Weekly: Monday 16:30 UTC (4:30 PM UTC)
