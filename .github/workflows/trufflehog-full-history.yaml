@@ -2,7 +2,6 @@ name: TruffleHog (full history)
 
 # Scans the entire repository with full git history for leaked credentials.
 # workflow_dispatch + schedule only — PR delta scans: trufflehog-pr.yaml.
-# Mirrors local: trufflehog git file://$(pwd) --only-verified --fail (action supplies --fail).
 
 on:
   workflow_dispatch:
@@ -31,4 +30,4 @@ jobs:
         uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab # v3.95.3
         with:
           version: "3.95.3"
-          extra_args: --only-verified
+          extra_args: --only-verified --log-level=2
