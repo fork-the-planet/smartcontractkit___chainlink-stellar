@@ -99,7 +99,7 @@ All tests share a single Stellar quickstart Docker container via `GetSharedTestE
 | `router_test.go` | Router + full execute path (OffRamp -> Router -> Receiver) |
 | `committee_verifier_test.go` | CommitteeVerifier (config, allowlist, fees, forwarding) |
 | `onramp_test.go` | OnRamp (init, dest chain config, dynamic config) |
-| `rmn_remote_test.go` | RMN Remote (init, config, curse/uncurse) |
+| `rmn_remote_test.go` | RMN Remote (init, curse/uncurse) |
 | `versioned_verifier_resolver_test.go` | VVR (init, impl updates, fee aggregator) |
 
 Shared helpers:

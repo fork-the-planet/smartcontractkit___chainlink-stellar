@@ -153,7 +153,7 @@ fn setup_with_version_tag(
     // Initialize RMN Remote and Proxy (required for require_not_cursed / is_cursed)
     let rmn_remote_id = env.register(RmnRemoteContract, ());
     let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64, &soroban_sdk::Vec::new(&env));
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy = env.register(RmnProxyContract, ());
     let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy);
@@ -222,7 +222,7 @@ fn test_initialize_rejects_zero_version_tag() {
 
     let rmn_remote_id = env.register(RmnRemoteContract, ());
     let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64, &soroban_sdk::Vec::new(&env));
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy = env.register(RmnProxyContract, ());
     let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy);
@@ -884,7 +884,7 @@ fn test_withdraw_fee_tokens_reverts_without_fee_aggregator() {
 
     let rmn_remote_id = env.register(RmnRemoteContract, ());
     let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64, &soroban_sdk::Vec::new(&env));
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy = env.register(RmnProxyContract, ());
     let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy);

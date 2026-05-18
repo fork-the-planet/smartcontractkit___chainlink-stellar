@@ -44,7 +44,7 @@ func deployOffRampDependencies(
 	t.Logf("RMN Remote deployed at: %s", rmnRemoteID)
 
 	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteID)
-	if err := rmnRemoteClient.Initialize(ctx, deployerAddr, localChainSelector, nil); err != nil {
+	if err := rmnRemoteClient.Initialize(ctx, deployerAddr, nil); err != nil {
 		t.Fatalf("Failed to initialize RMN Remote: %v", err)
 	}
 

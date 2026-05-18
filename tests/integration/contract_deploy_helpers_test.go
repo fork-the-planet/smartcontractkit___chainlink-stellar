@@ -124,7 +124,7 @@ func deployFullStack(
 	s.OfframpClient = offrampbindings.NewOffRampClient(deployer, s.OfframpID)
 
 	// 1. RMN Remote
-	if err := s.RmnRemoteClient.Initialize(ctx, deployerAddr, destChainSelector, nil); err != nil {
+	if err := s.RmnRemoteClient.Initialize(ctx, deployerAddr, nil); err != nil {
 		t.Fatalf("RMN Remote Initialize: %v", err)
 	}
 

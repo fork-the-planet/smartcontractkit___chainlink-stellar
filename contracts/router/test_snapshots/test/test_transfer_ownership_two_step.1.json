@@ -87,22 +87,6 @@
                   "storage": [
                     {
                       "key": {
-                        "symbol": "CFGCNT"
-                      },
-                      "val": {
-                        "u32": 0
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "CHAINSEL"
-                      },
-                      "val": {
-                        "u64": "1"
-                      }
-                    },
-                    {
-                      "key": {
                         "symbol": "CRSADM"
                       },
                       "val": {
@@ -131,14 +115,6 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "SIGNERS"
-                      },
-                      "val": {
-                        "map": []
                       }
                     }
                   ]

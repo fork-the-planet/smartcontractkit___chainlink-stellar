@@ -3,7 +3,6 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{vec, Address, BytesN, Env, Vec};
 
-use crate::types::{Config, Signer};
 use crate::{RmnRemoteContract, RmnRemoteContractClient};
 
 const GLOBAL_CURSE_SUBJECT: [u8; 16] = [
@@ -16,31 +15,15 @@ fn setup_contract(env: &Env) -> (RmnRemoteContractClient, Address) {
     let owner = Address::generate(env);
 
     env.mock_all_auths();
-    client.initialize(&owner, &12345u64, &Vec::new(env));
+    client.initialize(&owner, &Vec::new(env));
 
     (client, owner)
-}
-
-fn make_config(env: &Env, num_signers: u32, f_sign: u64) -> Config {
-    let mut signers: Vec<Signer> = Vec::new(env);
-    for i in 0..num_signers {
-        signers.push_back(Signer {
-            onchain_pub_key: BytesN::from_array(env, &[i as u8 + 1; 32]),
-            node_index: i as u64,
-        });
-    }
-    Config {
-        rmn_home_config_digest: BytesN::from_array(env, &[0xAA; 32]),
-        signers,
-        f_sign,
-    }
 }
 
 #[test]
 fn test_initialize() {
     let env = Env::default();
     let (client, _owner) = setup_contract(&env);
-    assert_eq!(client.get_local_chain_selector(), 12345u64);
     assert!(!client.is_cursed());
     assert_eq!(
         client.type_and_version(),
@@ -54,92 +37,7 @@ fn test_double_initialize_fails() {
     let env = Env::default();
     let (client, _owner) = setup_contract(&env);
     let owner2 = Address::generate(&env);
-    client.initialize(&owner2, &99999u64, &Vec::new(&env));
-}
-
-#[test]
-fn test_set_config() {
-    let env = Env::default();
-    let (client, _owner) = setup_contract(&env);
-
-    let config = make_config(&env, 3, 1);
-    client.set_config(&config);
-
-    let (version, stored_config) = client.get_versioned_config();
-    assert_eq!(version, 1u32);
-    assert_eq!(stored_config.f_sign, 1);
-    assert_eq!(stored_config.signers.len(), 3);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #73)")]
-fn test_set_config_zero_digest_fails() {
-    let env = Env::default();
-    let (client, _owner) = setup_contract(&env);
-
-    let config = Config {
-        rmn_home_config_digest: BytesN::from_array(&env, &[0u8; 32]),
-        signers: vec![
-            &env,
-            Signer {
-                onchain_pub_key: BytesN::from_array(&env, &[1u8; 32]),
-                node_index: 0,
-            },
-        ],
-        f_sign: 0,
-    };
-    client.set_config(&config);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #68)")]
-fn test_set_config_not_enough_signers_fails() {
-    let env = Env::default();
-    let (client, _owner) = setup_contract(&env);
-    let config = make_config(&env, 2, 1);
-    client.set_config(&config);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #67)")]
-fn test_set_config_out_of_order_signers_fails() {
-    let env = Env::default();
-    let (client, _owner) = setup_contract(&env);
-
-    let config = Config {
-        rmn_home_config_digest: BytesN::from_array(&env, &[0xAA; 32]),
-        signers: vec![
-            &env,
-            Signer {
-                onchain_pub_key: BytesN::from_array(&env, &[1u8; 32]),
-                node_index: 5,
-            },
-            Signer {
-                onchain_pub_key: BytesN::from_array(&env, &[2u8; 32]),
-                node_index: 3,
-            },
-            Signer {
-                onchain_pub_key: BytesN::from_array(&env, &[3u8; 32]),
-                node_index: 7,
-            },
-        ],
-        f_sign: 1,
-    };
-    client.set_config(&config);
-}
-
-#[test]
-fn test_config_version_increments() {
-    let env = Env::default();
-    let (client, _owner) = setup_contract(&env);
-
-    client.set_config(&make_config(&env, 3, 1));
-    let (v1, _) = client.get_versioned_config();
-    assert_eq!(v1, 1);
-
-    client.set_config(&make_config(&env, 5, 2));
-    let (v2, _) = client.get_versioned_config();
-    assert_eq!(v2, 2);
+    client.initialize(&owner2, &Vec::new(&env));
 }
 
 #[test]
@@ -220,7 +118,7 @@ fn test_curse_unauthorized_caller() {
     let client = RmnRemoteContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     env.mock_all_auths();
-    client.initialize(&owner, &12345u64, &Vec::new(&env));
+    client.initialize(&owner, &Vec::new(&env));
     env.mock_auths(&[]);
 
     let intruder = Address::generate(&env);
@@ -237,7 +135,7 @@ fn test_curse_by_curse_admin() {
     let curse_admin = Address::generate(&env);
 
     env.mock_all_auths();
-    client.initialize(&owner, &12345u64, &vec![&env, curse_admin.clone()]);
+    client.initialize(&owner, &vec![&env, curse_admin.clone()]);
 
     let subject = BytesN::from_array(&env, &[0x08; 16]);
     client.curse(&curse_admin, &vec![&env, subject.clone()]);
