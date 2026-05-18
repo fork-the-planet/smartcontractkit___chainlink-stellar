@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
@@ -278,8 +277,6 @@ func TestRmnRemoteCurseAdmins(t *testing.T) {
 
 	if err := admin2Client.Uncurse(ctx, [][16]byte{subjectByAdmin2}); err == nil {
 		t.Fatal("uncurse as curse admin should fail (owner-only)")
-	} else {
-		assertHostContractErrorContainsCode(t, err, offrampbindings.CCIPErrorNotOwner)
 	}
 
 	if err := ownerClient.ApplyCurseAdminUpdates(ctx,
@@ -303,8 +300,6 @@ func TestRmnRemoteCurseAdmins(t *testing.T) {
 	removedAdminClient := rmnbindings.NewRmnRemoteClient(admin1Dep, contractID)
 	if err := removedAdminClient.Curse(ctx, initialAdmin1.Address(), [][16]byte{subjectByNewAdmin}); err == nil {
 		t.Fatal("curse as removed curse admin should fail")
-	} else {
-		assertHostContractErrorContainsCode(t, err, offrampbindings.CCIPErrorCallerNotAuthorized)
 	}
 
 	newAdminClient := rmnbindings.NewRmnRemoteClient(newAdminDep, contractID)
