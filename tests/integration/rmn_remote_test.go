@@ -5,11 +5,15 @@ package integration
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
+	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	rmnbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
+	"github.com/stellar/go-stellar-sdk/keypair"
 )
 
 var globalCurseSubject = [16]byte{
@@ -215,4 +219,127 @@ func TestRmnRemote(t *testing.T) {
 	})
 
 	t.Log("RmnRemote integration test passed!")
+}
+
+// TestRmnRemoteCurseAdmins exercises owner vs curse-admin authorization for curse,
+// uncurse, and apply_curse_admin_updates on a fresh RMN Remote deployment.
+func TestRmnRemoteCurseAdmins(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	projectRoot, deployerKP, ownerDep, rpcClient, passphrase, friendbotURL := GetSharedTestEnv(ctx, t)
+
+	initialAdmin1 := keypair.MustRandom()
+	initialAdmin2 := keypair.MustRandom()
+	newAdmin := keypair.MustRandom()
+	for _, kp := range []*keypair.Full{initialAdmin1, initialAdmin2, newAdmin} {
+		if err := helpers.FundViaFriendbot(friendbotURL, kp.Address()); err != nil {
+			t.Fatalf("Friendbot fund %s: %v", kp.Address(), err)
+		}
+	}
+	admin1Dep := deployment.NewDeployer(rpcClient, passphrase, initialAdmin1)
+	admin2Dep := deployment.NewDeployer(rpcClient, passphrase, initialAdmin2)
+	newAdminDep := deployment.NewDeployer(rpcClient, passphrase, newAdmin)
+
+	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-remote-curse-admins")
+	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
+	contractID, err := ownerDep.DeployContract(ctx, wasmPath, salt)
+	if err != nil {
+		t.Fatalf("deploy RmnRemote: %v", err)
+	}
+
+	ownerClient := rmnbindings.NewRmnRemoteClient(ownerDep, contractID)
+	if err := ownerClient.Initialize(ctx, deployerKP.Address(), []string{
+		initialAdmin1.Address(),
+		initialAdmin2.Address(),
+	}); err != nil {
+		t.Fatalf("initialize with curse admins: %v", err)
+	}
+
+	admins, err := ownerClient.GetCurseAdmins(ctx)
+	if err != nil {
+		t.Fatalf("GetCurseAdmins after init: %v", err)
+	}
+	if !curseAdminsEqual(admins, initialAdmin1.Address(), initialAdmin2.Address()) {
+		t.Fatalf("unexpected curse admins after init: %v", admins)
+	}
+
+	subjectByAdmin2 := [16]byte{0xA1}
+	subjectByNewAdmin := [16]byte{0xA2}
+
+	admin2Client := rmnbindings.NewRmnRemoteClient(admin2Dep, contractID)
+	if err := admin2Client.Curse(ctx, initialAdmin2.Address(), [][16]byte{subjectByAdmin2}); err != nil {
+		t.Fatalf("curse as initial curse admin (not owner): %v", err)
+	}
+	cursed, err := ownerClient.IsCursedBySubject(ctx, subjectByAdmin2)
+	if err != nil || !cursed {
+		t.Fatalf("subject should be cursed after admin curse: cursed=%v err=%v", cursed, err)
+	}
+
+	if err := admin2Client.Uncurse(ctx, [][16]byte{subjectByAdmin2}); err == nil {
+		t.Fatal("uncurse as curse admin should fail (owner-only)")
+	} else {
+		assertHostContractErrorContainsCode(t, err, offrampbindings.CCIPErrorNotOwner)
+	}
+
+	if err := ownerClient.ApplyCurseAdminUpdates(ctx,
+		[]string{newAdmin.Address()},
+		[]string{initialAdmin1.Address()},
+	); err != nil {
+		t.Fatalf("apply_curse_admin_updates: %v", err)
+	}
+
+	admins, err = ownerClient.GetCurseAdmins(ctx)
+	if err != nil {
+		t.Fatalf("GetCurseAdmins after update: %v", err)
+	}
+	if !curseAdminsEqual(admins, initialAdmin2.Address(), newAdmin.Address()) {
+		t.Fatalf("unexpected curse admins after update: %v", admins)
+	}
+	if slices.Contains(admins, initialAdmin1.Address()) {
+		t.Fatalf("removed curse admin still listed: %v", admins)
+	}
+
+	removedAdminClient := rmnbindings.NewRmnRemoteClient(admin1Dep, contractID)
+	if err := removedAdminClient.Curse(ctx, initialAdmin1.Address(), [][16]byte{subjectByNewAdmin}); err == nil {
+		t.Fatal("curse as removed curse admin should fail")
+	} else {
+		assertHostContractErrorContainsCode(t, err, offrampbindings.CCIPErrorCallerNotAuthorized)
+	}
+
+	newAdminClient := rmnbindings.NewRmnRemoteClient(newAdminDep, contractID)
+	if err := newAdminClient.Curse(ctx, newAdmin.Address(), [][16]byte{subjectByNewAdmin}); err != nil {
+		t.Fatalf("curse as new curse admin: %v", err)
+	}
+	cursed, err = ownerClient.IsCursedBySubject(ctx, subjectByNewAdmin)
+	if err != nil || !cursed {
+		t.Fatalf("subject should be cursed after new admin curse: cursed=%v err=%v", cursed, err)
+	}
+
+	if err := ownerClient.Uncurse(ctx, [][16]byte{subjectByAdmin2, subjectByNewAdmin}); err != nil {
+		t.Fatalf("uncurse as owner: %v", err)
+	}
+	for _, subject := range [][16]byte{subjectByAdmin2, subjectByNewAdmin} {
+		cursed, err := ownerClient.IsCursedBySubject(ctx, subject)
+		if err != nil {
+			t.Fatalf("IsCursedBySubject after owner uncurse: %v", err)
+		}
+		if cursed {
+			t.Fatalf("subject %x should be uncursed", subject)
+		}
+	}
+
+	t.Log("RmnRemote curse admin integration test passed!")
+}
+
+func curseAdminsEqual(admins []string, want ...string) bool {
+	if len(admins) != len(want) {
+		return false
+	}
+	for _, addr := range want {
+		if !slices.Contains(admins, addr) {
+			return false
+		}
+	}
+	return true
 }
