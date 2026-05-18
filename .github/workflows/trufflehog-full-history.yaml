@@ -1,0 +1,35 @@
+name: TruffleHog (full history)
+
+# Scans the entire repository with full git history for leaked credentials.
+# Trigger manually or on a schedule; use workflow_dispatch for ad-hoc runs.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly: Monday 16:30 UTC (4:30 PM UTC)
+    - cron: "30 16 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: TruffleHog OSS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab # v3.95.3
+        with:
+          # Keep Docker CLI aligned with the pinned action release.
+          version: "3.95.3"
+          # Add e.g. --only-verified to reduce false positives (skips unverified matches).
+          extra_args: ""
