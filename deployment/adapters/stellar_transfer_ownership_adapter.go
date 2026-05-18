@@ -3,7 +3,6 @@ package adapters
 import (
 	"fmt"
 
-	"github.com/Masterminds/semver/v3"
 	cldfchain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
@@ -88,7 +87,7 @@ func (a *StellarTransferOwnershipAdapter) wrapOwnershipSequence(
 ) *cldfops.Sequence[deploy.TransferOwnershipPerChainInput, seqcore.OnChainOutput, cldfchain.BlockChains] {
 	return cldfops.NewSequence(
 		inner.ID(),
-		semver.MustParse("1.0.0"),
+		stellarsequences.SequenceVersion,
 		inner.Description(),
 		func(b cldfops.Bundle, chains cldfchain.BlockChains, in deploy.TransferOwnershipPerChainInput) (seqcore.OnChainOutput, error) {
 			gov, ok := a.governanceAddr[in.ChainSelector]

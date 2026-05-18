@@ -52,7 +52,7 @@ func init() {
 	})
 
 	tokenscore.GetTokenAdapterRegistry().RegisterTokenAdapter(
-		chainsel.FamilyStellar, semver.MustParse("1.0.0"), &StellarTokenAdapter{},
+		chainsel.FamilyStellar, v2, &StellarTokenAdapter{},
 	)
 
 	fees.GetRegistry().RegisterFeeAdapter(chainsel.FamilyStellar, v2, &StellarFeeAdapter{})

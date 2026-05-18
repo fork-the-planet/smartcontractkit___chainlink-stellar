@@ -12,7 +12,7 @@ Stellar bindings are hand-written Soroban clients under `bindings/contracts/…`
 ## Conventions
 
 - **Operation IDs:** `kebab-case`, namespaced by contract and action (e.g. `offramp:deploy`, `offramp:apply-source-chain-cfg-updates`).
-- **Semver:** Each `operations.NewOperation` gets a `*semver.Version`. Shared baseline for this repo: `operations.ContractDeploymentVersion` (`1.0.0`) until per-contract release lines exist.
+- **Semver:** Each `operations.NewOperation` gets a `*semver.Version`. Shared baseline for this repo: `operations.ContractDeploymentVersion` (`2.0.0`) until per-contract release lines exist.
 - **ContractType (datastore alignment):** Use PascalCase strings consistent with CCIP lane tooling, e.g. `OffRamp`, `OnRamp`, `Router`, `FeeQuoter`, `RmnRemote`, `RmnProxy`, `RampRegistry`, `TokenAdminRegistry`, `CommitteeVerifier`, `VersionedVerifierResolver`, `LockReleasePool`, `BurnMintPool`, `SiloedLockReleasePool`, `TokenLockBox`, `MCMS`, `Timelock`, `CCIPReceiver` (example receiver).
 - **WASM paths:** Built artifacts live at `target/wasm32v1-none/release/<crate>.wasm` relative to the repo root; `<crate>` follows Cargo’s underscore rules (hyphens in `[package].name` become underscores).
 

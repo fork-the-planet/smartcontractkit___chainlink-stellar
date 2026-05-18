@@ -48,8 +48,8 @@ func TestCCIPAdapterRegistrations_stellar(t *testing.T) {
 	_, ok = changesets.GetRegistry().GetMCMSReader(chainsel.FamilyStellar)
 	require.True(t, ok, "MCMSReader")
 
-	_, ok = tokens.GetTokenAdapterRegistry().GetTokenAdapter(chainsel.FamilyStellar, semver.MustParse("1.0.0"))
-	require.True(t, ok, "TokenAdapter 1.0.0")
+	_, ok = tokens.GetTokenAdapterRegistry().GetTokenAdapter(chainsel.FamilyStellar, semver.MustParse("2.0.0"))
+	require.True(t, ok, "TokenAdapter 2.0.0")
 }
 
 func TestCCVDeploymentAdapterRegistry_stellar(t *testing.T) {
