@@ -210,7 +210,11 @@ fn setup_initialized_offramp_for_execute() -> (Env, OffRampContractClient<'stati
     let owner = Address::generate(&env);
 
     let rmn_remote_id = env.register(RmnRemoteContract, ());
-    RmnRemoteContractClient::new(&env, &rmn_remote_id).initialize(&owner, &1u64);
+    RmnRemoteContractClient::new(&env, &rmn_remote_id).initialize(
+        &owner,
+        &1u64,
+        &soroban_sdk::Vec::new(&env),
+    );
 
     let rmn_proxy_id = env.register(RmnProxyContract, ());
     RmnProxyContractClient::new(&env, &rmn_proxy_id).initialize(&owner, &rmn_remote_id);

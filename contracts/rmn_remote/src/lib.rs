@@ -5,7 +5,7 @@ pub mod types;
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, Symbol, Vec};
 
-use common_authorization::Ownable;
+use common_authorization::{AuthorizedCallerAddedEvent, AuthorizedCallerRemovedEvent, Ownable};
 use common_error::CCIPError;
 use common_guard::initializable::Initializable;
 
@@ -24,6 +24,7 @@ const CONFIG_CNT: Symbol = symbol_short!("CFGCNT");
 const SIGNERS: Symbol = symbol_short!("SIGNERS");
 const CURSED: Symbol = symbol_short!("CURSED");
 const CHAIN_SEL: Symbol = symbol_short!("CHAINSEL");
+const CURSE_ADMINS: Symbol = symbol_short!("CRSADM");
 
 // ============================================================
 // Constants
@@ -41,8 +42,8 @@ const GLOBAL_CURSE_SUBJECT: [u8; 16] = [
 
 /// RMN Remote contract for Stellar/Soroban.
 ///
-/// Port of the EVM `RMNRemote.sol` contract. Provides:
-///   - **Cursing**: owner can curse/uncurse subjects to emergency-halt message flows
+/// Port of the EVM `RMNRemote.sol` contract (curse surface aligned with `RMN.sol`). Provides:
+///   - **Cursing**: owner or curse admins may curse; only owner may uncurse or manage curse admins
 ///   - **Configuration**: manages the set of trusted RMN signers and threshold
 #[contract]
 pub struct RmnRemoteContract;
@@ -58,6 +59,52 @@ impl Ownable for RmnRemoteContract {
     const PENDING_OWNER: Symbol = PENDING_OWNER;
 }
 
+impl RmnRemoteContract {
+    fn load_curse_admins(env: &Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&CURSE_ADMINS)
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    fn store_curse_admins(env: &Env, admins: &Vec<Address>) {
+        env.storage().instance().set(&CURSE_ADMINS, admins);
+    }
+
+    fn is_curse_admin(env: &Env, addr: &Address) -> bool {
+        let admins = Self::load_curse_admins(env);
+        for admin in admins.iter() {
+            if admin == *addr {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Owner may curse without being listed as a curse admin (EVM: skip auth when `msg.sender == owner()`).
+    /// Curse admins must be on the allowlist and authorize this invocation.
+    fn require_can_curse(env: &Env, caller: &Address) -> Result<(), CCIPError> {
+        if <Self as Ownable>::is_owner(env, caller) {
+            caller.require_auth();
+            return Ok(());
+        }
+        if Self::is_curse_admin(env, caller) {
+            caller.require_auth();
+            return Ok(());
+        }
+        Err(CCIPError::CallerNotAuthorized)
+    }
+
+    fn contains_address(list: &Vec<Address>, addr: &Address) -> bool {
+        for entry in list.iter() {
+            if entry == *addr {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 #[contractimpl]
 impl RmnRemoteContract {
     // ========================================
@@ -67,12 +114,14 @@ impl RmnRemoteContract {
     /// Initialize the RMN Remote contract.
     ///
     /// # Arguments
-    /// * `owner` - The owner address (can set config and curse/uncurse)
+    /// * `owner` - The owner address (config, uncurse, curse-admin updates)
     /// * `local_chain_selector` - The chain selector of the chain this contract is deployed on
+    /// * `curse_admins` - Initial curse admins (may be empty); mirrors EVM `RMN` constructor `curseAdmins`
     pub fn initialize(
         env: Env,
         owner: Address,
         local_chain_selector: u64,
+        curse_admins: Vec<Address>,
     ) -> Result<(), CCIPError> {
         <Self as Initializable>::require_not_initialized(&env)?;
 
@@ -92,11 +141,71 @@ impl RmnRemoteContract {
         let signers: Map<BytesN<32>, bool> = Map::new(&env);
         env.storage().instance().set(&SIGNERS, &signers);
 
+        let mut stored_admins: Vec<Address> = Vec::new(&env);
+        for admin in curse_admins.iter() {
+            if !Self::contains_address(&stored_admins, &admin) {
+                stored_admins.push_back(admin.clone());
+            }
+        }
+        Self::store_curse_admins(&env, &stored_admins);
+
         Ok(())
     }
 
     pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "RmnRemote 1.0.0")
+        soroban_sdk::String::from_str(&_env, "RMN 2.0.0")
+    }
+
+    // ========================================
+    // Curse admin management (owner only)
+    // ========================================
+
+    /// Add and/or remove curse admins. Only callable by owner.
+    ///
+    /// Mirrors EVM `AuthorizedCallers.applyAuthorizedCallerUpdates` on `RMN`.
+    pub fn apply_curse_admin_updates(
+        env: Env,
+        added_admins: Vec<Address>,
+        removed_admins: Vec<Address>,
+    ) -> Result<(), CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        <Self as Ownable>::require_owner(&env)?;
+
+        let mut admins = Self::load_curse_admins(&env);
+
+        for to_remove in removed_admins.iter() {
+            let mut next: Vec<Address> = Vec::new(&env);
+            for admin in admins.iter() {
+                if admin == to_remove {
+                    AuthorizedCallerRemovedEvent {
+                        caller: admin.clone(),
+                    }
+                    .publish(&env);
+                } else {
+                    next.push_back(admin);
+                }
+            }
+            admins = next;
+        }
+
+        for to_add in added_admins.iter() {
+            if !Self::contains_address(&admins, &to_add) {
+                admins.push_back(to_add.clone());
+                AuthorizedCallerAddedEvent {
+                    caller: to_add.clone(),
+                }
+                .publish(&env);
+            }
+        }
+
+        Self::store_curse_admins(&env, &admins);
+        Ok(())
+    }
+
+    /// Returns addresses allowed to call `curse` (excluding the owner, who may always curse).
+    pub fn get_curse_admins(env: Env) -> Result<Vec<Address>, CCIPError> {
+        <Self as Initializable>::require_initialized(&env)?;
+        Ok(Self::load_curse_admins(&env))
     }
 
     // ========================================
@@ -194,12 +303,14 @@ impl RmnRemoteContract {
     // Cursing
     // ========================================
 
-    /// Curse one or more subjects. Only callable by owner.
+    /// Curse one or more subjects. Callable by owner or a curse admin.
     ///
-    /// Reverts if any subject is already cursed.
-    pub fn curse(env: Env, subjects: Vec<BytesN<16>>) -> Result<(), CCIPError> {
+    /// `caller` must be the invoker (owner or curse admin) and must authorize this call.
+    /// Already-cursed subjects and duplicates in `subjects` are silently skipped (EVM `RMN.curse`).
+    /// Emits `Cursed` only for newly cursed subjects; no-op if none are new.
+    pub fn curse(env: Env, caller: Address, subjects: Vec<BytesN<16>>) -> Result<(), CCIPError> {
         <Self as Initializable>::require_initialized(&env)?;
-        <Self as Ownable>::require_owner(&env)?;
+        Self::require_can_curse(&env, &caller)?;
 
         let mut cursed: Map<BytesN<16>, bool> = env
             .storage()
@@ -207,17 +318,24 @@ impl RmnRemoteContract {
             .get(&CURSED)
             .ok_or(CCIPError::NotInitialized)?;
 
-        subjects.iter().try_for_each(|subject| {
+        let mut newly_cursed: Vec<BytesN<16>> = Vec::new(&env);
+        for subject in subjects.iter() {
             if cursed.get(subject.clone()).unwrap_or(false) {
-                return Err(CCIPError::AlreadyCursed);
+                continue;
             }
-            cursed.set(subject, true);
-            Ok(())
-        })?;
+            cursed.set(subject.clone(), true);
+            newly_cursed.push_back(subject);
+        }
+
+        if newly_cursed.is_empty() {
+            return Ok(());
+        }
 
         env.storage().instance().set(&CURSED, &cursed);
-
-        CursedEvent { subjects }.publish(&env);
+        CursedEvent {
+            subjects: newly_cursed,
+        }
+        .publish(&env);
 
         Ok(())
     }

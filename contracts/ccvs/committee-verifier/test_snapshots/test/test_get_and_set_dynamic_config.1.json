@@ -245,6 +245,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "CRSADM"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "CURSED"
                       },
                       "val": {

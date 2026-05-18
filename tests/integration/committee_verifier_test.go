@@ -280,7 +280,7 @@ func initialize(ctx context.Context, t *testing.T, deployer *deployment.Deployer
 	// Initialize RMN Remote first (RMN Proxy delegates is_cursed to it)
 	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteContractID)
 	localChainSelector := uint64(12345)
-	err := rmnRemoteClient.Initialize(ctx, deployerKP.Address(), localChainSelector)
+	err := rmnRemoteClient.Initialize(ctx, deployerKP.Address(), localChainSelector, nil)
 	if err != nil {
 		t.Fatalf("Failed to initialize RMN Remote: %v", err)
 		return err

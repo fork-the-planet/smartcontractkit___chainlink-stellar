@@ -17,6 +17,9 @@
               "function_name": "curse",
               "args": [
                 {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
                   "vec": [
                     {
                       "bytes": "01000000000000000000000000000001"
@@ -72,6 +75,14 @@
                       },
                       "val": {
                         "u64": "12345"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "CRSADM"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {

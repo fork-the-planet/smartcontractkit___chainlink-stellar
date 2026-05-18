@@ -625,7 +625,7 @@ func (c *Chain) Curse(ctx context.Context, subjects [][16]byte) error {
 	if c.rmnRemoteClient == nil {
 		return fmt.Errorf("RMN Remote client not initialized")
 	}
-	err := c.rmnRemoteClient.Curse(ctx, subjects)
+	err := c.rmnRemoteClient.Curse(ctx, c.deployer.SignerAddress(), subjects)
 	if err != nil {
 		return fmt.Errorf("failed to curse RMN Remote: %w", err)
 	}

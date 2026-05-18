@@ -3,6 +3,7 @@
 pub trait RmnRemoteInterface {
     fn curse(
         env: soroban_sdk::Env,
+        caller: soroban_sdk::Address,
         subjects: soroban_sdk::Vec<soroban_sdk::BytesN<16>>,
     ) -> Result<(), CCIPError>;
     fn owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
@@ -17,6 +18,7 @@ pub trait RmnRemoteInterface {
         env: soroban_sdk::Env,
         owner: soroban_sdk::Address,
         local_chain_selector: u64,
+        curse_admins: soroban_sdk::Vec<soroban_sdk::Address>,
     ) -> Result<(), CCIPError>;
     fn set_config(env: soroban_sdk::Env, new_config: Config) -> Result<(), CCIPError>;
     fn require_owner(env: soroban_sdk::Env) -> Result<soroban_sdk::Address, CCIPError>;
@@ -25,6 +27,9 @@ pub trait RmnRemoteInterface {
         new_owner: soroban_sdk::Address,
     ) -> Result<(), CCIPError>;
     fn accept_ownership(env: soroban_sdk::Env) -> Result<(), CCIPError>;
+    fn get_curse_admins(
+        env: soroban_sdk::Env,
+    ) -> Result<soroban_sdk::Vec<soroban_sdk::Address>, CCIPError>;
     fn type_and_version(env: soroban_sdk::Env) -> soroban_sdk::String;
     fn get_pending_owner(env: soroban_sdk::Env) -> Option<soroban_sdk::Address>;
     fn transfer_ownership(
@@ -37,6 +42,11 @@ pub trait RmnRemoteInterface {
     fn get_versioned_config(env: soroban_sdk::Env) -> Result<(u32, Config), CCIPError>;
     fn is_cursed_by_subject(env: soroban_sdk::Env, subject: soroban_sdk::BytesN<16>) -> bool;
     fn get_local_chain_selector(env: soroban_sdk::Env) -> Result<u64, CCIPError>;
+    fn apply_curse_admin_updates(
+        env: soroban_sdk::Env,
+        added_admins: soroban_sdk::Vec<soroban_sdk::Address>,
+        removed_admins: soroban_sdk::Vec<soroban_sdk::Address>,
+    ) -> Result<(), CCIPError>;
     fn cancel_ownership_transfer(env: soroban_sdk::Env) -> Result<(), CCIPError>;
 }
 #[soroban_sdk::contracttype(export = false)]

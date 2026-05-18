@@ -7,7 +7,6 @@
   "auth": [
     [],
     [],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -17,6 +16,9 @@
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
               "function_name": "curse",
               "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
                 {
                   "vec": [
                     {
@@ -31,7 +33,6 @@
         }
       ]
     ],
-    [],
     [],
     []
   ],
@@ -74,6 +75,14 @@
                       },
                       "val": {
                         "u64": "12345"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "CRSADM"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {

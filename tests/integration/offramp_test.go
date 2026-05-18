@@ -44,7 +44,7 @@ func deployOffRampDependencies(
 	t.Logf("RMN Remote deployed at: %s", rmnRemoteID)
 
 	rmnRemoteClient := rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteID)
-	if err := rmnRemoteClient.Initialize(ctx, deployerAddr, localChainSelector); err != nil {
+	if err := rmnRemoteClient.Initialize(ctx, deployerAddr, localChainSelector, nil); err != nil {
 		t.Fatalf("Failed to initialize RMN Remote: %v", err)
 	}
 
@@ -370,7 +370,7 @@ func TestOffRampExecute(t *testing.T) {
 		var globalCurseSubject [16]byte
 		copy(globalCurseSubject[:], []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01})
 
-		err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{globalCurseSubject})
+		err := stack.RmnRemoteClient.Curse(ctx, deployerKP.Address(), [][16]byte{globalCurseSubject})
 		if err != nil {
 			t.Fatalf("Failed to curse: %v", err)
 		}

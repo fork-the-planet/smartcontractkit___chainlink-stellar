@@ -32,8 +32,9 @@ func (c *RmnRemoteClient) ContractID() string {
 }
 
 // Curse calls the curse function on the contract.
-func (c *RmnRemoteClient) Curse(ctx context.Context, subjects [][16]byte) error {
+func (c *RmnRemoteClient) Curse(ctx context.Context, caller string, subjects [][16]byte) error {
 	args := []xdr.ScVal{
+		scval.AddressToScVal(caller),
 		scval.Bytes16SliceToScVal(subjects),
 	}
 
@@ -139,10 +140,11 @@ func (c *RmnRemoteClient) InitOwner(ctx context.Context, owner string) error {
 }
 
 // Initialize calls the initialize function on the contract.
-func (c *RmnRemoteClient) Initialize(ctx context.Context, owner string, localChainSelector uint64) error {
+func (c *RmnRemoteClient) Initialize(ctx context.Context, owner string, localChainSelector uint64, curseAdmins []string) error {
 	args := []xdr.ScVal{
 		scval.AddressToScVal(owner),
 		scval.Uint64ToScVal(localChainSelector),
+		scval.AddressSliceToScVal(curseAdmins),
 	}
 
 	result, err := c.invoker.InvokeContract(ctx, c.contractID, "initialize", args)
@@ -215,6 +217,34 @@ func (c *RmnRemoteClient) AcceptOwnership(ctx context.Context) error {
 
 	_ = result // void return
 	return nil
+}
+
+// GetCurseAdmins calls the get_curse_admins function on the contract.
+func (c *RmnRemoteClient) GetCurseAdmins(ctx context.Context) ([]string, error) {
+	args := []xdr.ScVal{}
+
+	result, err := c.invoker.SimulateContract(ctx, c.contractID, "get_curse_admins", args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call get_curse_admins: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("no return value from get_curse_admins")
+	}
+
+	vec, ok := result.GetVec()
+	if !ok || vec == nil {
+		return nil, fmt.Errorf("expected vec return type")
+	}
+	out := make([]string, len(*vec))
+	for i, item := range *vec {
+		v, err := scval.AddressFromScVal(item)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
 }
 
 // TypeAndVersion calls the type_and_version function on the contract.
@@ -371,6 +401,22 @@ func (c *RmnRemoteClient) GetLocalChainSelector(ctx context.Context) (uint64, er
 		return 0, err
 	}
 	return v, nil
+}
+
+// ApplyCurseAdminUpdates calls the apply_curse_admin_updates function on the contract.
+func (c *RmnRemoteClient) ApplyCurseAdminUpdates(ctx context.Context, addedAdmins []string, removedAdmins []string) error {
+	args := []xdr.ScVal{
+		scval.AddressSliceToScVal(addedAdmins),
+		scval.AddressSliceToScVal(removedAdmins),
+	}
+
+	result, err := c.invoker.InvokeContract(ctx, c.contractID, "apply_curse_admin_updates", args)
+	if err != nil {
+		return fmt.Errorf("failed to call apply_curse_admin_updates: %w", err)
+	}
+
+	_ = result // void return
+	return nil
 }
 
 // CancelOwnershipTransfer calls the cancel_ownership_transfer function on the contract.

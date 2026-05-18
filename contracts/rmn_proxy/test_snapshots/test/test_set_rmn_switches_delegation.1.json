@@ -22,6 +22,9 @@
               "function_name": "curse",
               "args": [
                 {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
                   "vec": [
                     {
                       "bytes": "01000000000000000000000000000001"
@@ -180,6 +183,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "CRSADM"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "CURSED"
                       },
                       "val": {
@@ -305,6 +316,14 @@
                       },
                       "val": {
                         "u64": "2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "CRSADM"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {

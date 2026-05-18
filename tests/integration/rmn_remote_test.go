@@ -38,7 +38,7 @@ func TestRmnRemote(t *testing.T) {
 	localChainSelector := uint64(12345)
 
 	t.Run("initialize", func(t *testing.T) {
-		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector)
+		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector, nil)
 		if err != nil {
 			t.Fatalf("Failed to initialize RmnRemote: %v", err)
 		}
@@ -46,7 +46,7 @@ func TestRmnRemote(t *testing.T) {
 	})
 
 	t.Run("double initialize fails", func(t *testing.T) {
-		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector)
+		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector, nil)
 		if err == nil {
 			t.Fatal("Expected error on double initialize, got nil")
 		}
@@ -166,7 +166,7 @@ func TestRmnRemote(t *testing.T) {
 		laneSubject := [16]byte{0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
 			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02}
 
-		err := client.Curse(ctx, [][16]byte{laneSubject})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{laneSubject})
 		if err != nil {
 			t.Fatalf("Failed to curse subject: %v", err)
 		}
@@ -184,15 +184,22 @@ func TestRmnRemote(t *testing.T) {
 		t.Logf("Subject cursed and verified: %x", subjects[0])
 	})
 
-	t.Run("curse already cursed subject fails", func(t *testing.T) {
+	t.Run("curse already cursed subject silent skip", func(t *testing.T) {
 		laneSubject := [16]byte{0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
 			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02}
 
-		err := client.Curse(ctx, [][16]byte{laneSubject})
-		if err == nil {
-			t.Fatal("Expected error when cursing already cursed subject, got nil")
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{laneSubject})
+		if err != nil {
+			t.Fatalf("Re-curse should succeed (silent skip): %v", err)
 		}
-		t.Logf("Double curse correctly rejected: %v", err)
+		subjects, err := client.GetCursedSubjects(ctx)
+		if err != nil {
+			t.Fatalf("Failed to get cursed subjects: %v", err)
+		}
+		if len(subjects) != 1 {
+			t.Fatalf("Expected 1 cursed subject after re-curse, got %d", len(subjects))
+		}
+		t.Log("Re-curse on already-cursed subject is a no-op (EVM-aligned)")
 	})
 
 	t.Run("uncurse a subject", func(t *testing.T) {
@@ -230,7 +237,7 @@ func TestRmnRemote(t *testing.T) {
 		s2 := [16]byte{0x20}
 		s3 := [16]byte{0x30}
 
-		err := client.Curse(ctx, [][16]byte{s1, s2, s3})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{s1, s2, s3})
 		if err != nil {
 			t.Fatalf("Failed to curse multiple subjects: %v", err)
 		}
@@ -267,7 +274,7 @@ func TestRmnRemote(t *testing.T) {
 	})
 
 	t.Run("global curse subject", func(t *testing.T) {
-		err := client.Curse(ctx, [][16]byte{globalCurseSubject})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{globalCurseSubject})
 		if err != nil {
 			t.Fatalf("Failed to curse global subject: %v", err)
 		}
