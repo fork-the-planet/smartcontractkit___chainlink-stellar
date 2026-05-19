@@ -63,7 +63,7 @@ var StellarUncurse = cldfops.NewSequence(
 			return seqcore.OnChainOutput{}, err
 		}
 		deps := stellardeps.FromDeployer(dep)
-		_, err = cldfops.ExecuteOperation(b, rmnremoteops.Uncurse, deps, rmnremoteops.CurseInput{
+		_, err = cldfops.ExecuteOperation(b, rmnremoteops.Uncurse, deps, rmnremoteops.UncurseInput{
 			ContractID: in.RMNContractID,
 			Subjects:   in.Subjects,
 		})

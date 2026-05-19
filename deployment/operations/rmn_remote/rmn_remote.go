@@ -73,10 +73,16 @@ var AcceptOwnership = cldfops.NewOperation(
 	},
 )
 
-// CurseInput holds the contract ID, caller, and subjects to curse/uncurse.
+// CurseInput holds the contract ID, curse-admin caller, and subjects to curse.
 type CurseInput struct {
 	ContractID string     `json:"contract_id"`
 	Caller     string     `json:"caller"`
+	Subjects   [][16]byte `json:"subjects"`
+}
+
+// UncurseInput holds the contract ID and subjects to uncurse (owner-only on chain).
+type UncurseInput struct {
+	ContractID string     `json:"contract_id"`
 	Subjects   [][16]byte `json:"subjects"`
 }
 
@@ -99,7 +105,7 @@ var Uncurse = cldfops.NewOperation(
 	"rmn-remote:uncurse",
 	stellarops.ContractDeploymentVersion,
 	"Uncurses subjects on Stellar RMN Remote",
-	func(b cldfops.Bundle, d stellardeps.StellarDeps, in CurseInput) (stellarops.Void, error) {
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in UncurseInput) (stellarops.Void, error) {
 		c := rmnremotebindings.NewRmnRemoteClient(d.Invoker, in.ContractID)
 		if err := c.Uncurse(b.GetContext(), in.Subjects); err != nil {
 			return stellarops.Void{}, err
