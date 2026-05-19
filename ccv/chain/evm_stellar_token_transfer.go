@@ -114,12 +114,12 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 	stellarPool, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
-		datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
+		datastore.ContractType(stellarccip.SiloedLockReleaseTokenPoolContractType),
 		semver.MustParse("1.0.0"),
 		stellarccip.DevenvTestTokenPoolQualifier,
 	)
 	if err != nil {
-		return fmt.Errorf("lookup Stellar lock-release pool: %w", err)
+		return fmt.Errorf("lookup Stellar siloed lock-release pool: %w", err)
 	}
 	stellarToken, err := stellarccip.LookupAddressRef(
 		env.DataStore,

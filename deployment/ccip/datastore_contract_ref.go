@@ -161,8 +161,28 @@ func CCIPReceiverDatastoreRef() DatastoreSorobanContractRef {
 }
 
 func LockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return LegacyLockReleasePoolDevenvDatastoreRef()
+}
+
+func LegacyLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(LockReleaseTokenPoolContractType),
+		Version:   semver.MustParse("1.0.0"),
+		Qualifier: DevenvLegacyLockReleasePoolQualifier,
+	}
+}
+
+func SiloedLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType(SiloedLockReleaseTokenPoolContractType),
+		Version:   semver.MustParse("1.0.0"),
+		Qualifier: DevenvTestTokenPoolQualifier,
+	}
+}
+
+func TokenLockBoxDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType("TokenLockBox"),
 		Version:   semver.MustParse("1.0.0"),
 		Qualifier: DevenvTestTokenPoolQualifier,
 	}

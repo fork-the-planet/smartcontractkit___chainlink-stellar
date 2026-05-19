@@ -2,6 +2,7 @@ package ccvchain
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -56,6 +57,25 @@ func (h *stellarCCIPDeployHost) TokenAdminRegistryClient() *tarbindings.TokenAdm
 func (h *stellarCCIPDeployHost) SetTokenPool(contractID string, client *tokenpoolbindings.TokenPoolClient) {
 	h.c.tokenPoolContractID = contractID
 	h.c.tokenPoolClient = client
+}
+
+func (h *stellarCCIPDeployHost) SetLegacyLockReleasePool(contractID string) {
+	h.c.legacyLockReleasePoolID = contractID
+}
+
+func (h *stellarCCIPDeployHost) SetTokenLockBox(contractID string) {
+	h.c.tokenLockBoxContractID = contractID
+}
+
+func (h *stellarCCIPDeployHost) LatestLedgerSequence(ctx context.Context) (uint32, error) {
+	if h.c.rpcClient == nil {
+		return 0, fmt.Errorf("rpc client is nil")
+	}
+	ledger, err := h.c.rpcClient.GetLatestLedger(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return ledger.Sequence, nil
 }
 
 func (h *stellarCCIPDeployHost) SetTestToken(contractID string) { h.c.testTokenContractID = contractID }
