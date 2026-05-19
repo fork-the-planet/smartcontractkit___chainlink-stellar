@@ -87,7 +87,7 @@ func (a *StellarTransferOwnershipAdapter) wrapOwnershipSequence(
 ) *cldfops.Sequence[deploy.TransferOwnershipPerChainInput, seqcore.OnChainOutput, cldfchain.BlockChains] {
 	return cldfops.NewSequence(
 		inner.ID(),
-		stellarsequences.SequenceVersion,
+		deploy.MCMSVersion,
 		inner.Description(),
 		func(b cldfops.Bundle, chains cldfchain.BlockChains, in deploy.TransferOwnershipPerChainInput) (seqcore.OnChainOutput, error) {
 			gov, ok := a.governanceAddr[in.ChainSelector]
