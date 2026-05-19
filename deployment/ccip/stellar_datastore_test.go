@@ -3,10 +3,10 @@ package ccip
 import (
 	"testing"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
 func TestMergeExistingAddressRefs(t *testing.T) {
@@ -15,10 +15,10 @@ func TestMergeExistingAddressRefs(t *testing.T) {
 		Address:       "0x01",
 		ChainSelector: 42,
 		Type:          datastore.ContractType("Foo"),
-		Version:       semver.MustParse("1.0.0"),
+		Version:       stellarops.ContractDeploymentVersion,
 	}
 	require.NoError(t, MergeExistingAddressRefs(ds, []datastore.AddressRef{ref}))
-	got, err := ds.Addresses().Get(datastore.NewAddressRefKey(42, datastore.ContractType("Foo"), semver.MustParse("1.0.0"), ""))
+	got, err := ds.Addresses().Get(datastore.NewAddressRefKey(42, datastore.ContractType("Foo"), stellarops.ContractDeploymentVersion, ""))
 	require.NoError(t, err)
 	require.Equal(t, ref.Address, got.Address)
 }
