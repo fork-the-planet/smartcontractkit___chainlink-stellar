@@ -12,20 +12,28 @@ import (
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	slrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/siloed_lock_release_pool"
+	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
+	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
+	"github.com/stellar/go-stellar-sdk/keypair"
 )
 
-// TestSiloedPoolMigration exercises upgrading from siloed pool v1 to v2 while reusing the same
-// token lock box (no liquidity migration). Each subtest uses an isolated fullStack + salt prefix
-// on the shared integration Stellar network so other integration tests are unaffected.
-func TestSiloedPoolMigration(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL := GetSharedTestEnv(ctx, t)
+// testTokenPoolSiloedMigration exercises upgrading from siloed pool v1 to v2 while reusing the same
+// token lock box (no liquidity migration). Invoked as a TestTokenPool subtest. Each case uses an
+// isolated fullStack + salt prefix on the shared integration Stellar network.
+func testTokenPoolSiloedMigration(
+	t *testing.T,
+	ctx context.Context,
+	projectRoot string,
+	deployerKP *keypair.Full,
+	deployer *deployment.Deployer,
+	rpcClient *rpcclient.Client,
+	networkPassphrase, friendbotURL string,
+) {
+	t.Helper()
 	deployerAddr := deployerKP.Address()
 
-	t.Run("outbound_ccip_send_after_migration", func(t *testing.T) {
+	t.Run("siloed migration outbound ccip_send", func(t *testing.T) {
 		const localChain = uint64(31111)
 		const remoteDestChain = uint64(32222)
 		const saltPrefix = "siloed-migration-outbound"
@@ -137,7 +145,7 @@ func TestSiloedPoolMigration(t *testing.T) {
 		_ = wire // wired OnRamp for ccip_send path
 	})
 
-	t.Run("inbound_offramp_execute_after_migration", func(t *testing.T) {
+	t.Run("siloed migration inbound offramp execute", func(t *testing.T) {
 		const localChain = uint64(41111)
 		const saltPrefix = "siloed-migration-inbound"
 		const releaseAmount = int64(500_000)
