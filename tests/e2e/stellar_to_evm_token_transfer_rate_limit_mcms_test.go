@@ -110,6 +110,17 @@ func TestStellarToEVMTokenTransferRateLimitViaMCMS(t *testing.T) {
 	var gov *helpers.MCMSGovernanceStack
 	var timelockPredecessor [32]byte
 
+	t.Cleanup(func() {
+		var saltTransfer [32]byte
+		saltTransfer[31] = 3
+		helpers.CleanupMCMSTestPool(
+			t, context.Background(), env, gov,
+			poolContractID, poolRaw, evmDetails.ChainSelector,
+			env.DeployerKP.Address(),
+			timelockPredecessor, saltTransfer,
+		)
+	})
+
 	t.Run("phase1_baseline_transfer_succeeds", func(t *testing.T) {
 		balBefore, err := stellarChain.GetTokenBalance(ctx, senderAddr, protocol.UnknownAddress(tokenRaw))
 		require.NoError(t, err)

@@ -76,3 +76,53 @@ var AcceptOwnership = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// SetRateLimitConfigInput configures outbound/inbound token bucket rate limits for a remote chain.
+type SetRateLimitConfigInput struct {
+	ContractID          string                      `json:"contract_id"`
+	RemoteChainSelector uint64                      `json:"remote_chain_selector"`
+	OutboundConfig      lrpbindings.RateLimitConfig `json:"outbound_config"`
+	InboundConfig       lrpbindings.RateLimitConfig `json:"inbound_config"`
+	FastFinality        bool                        `json:"fast_finality"`
+}
+
+// SetRateLimitConfig calls lock-release pool `set_rate_limit_config`.
+var SetRateLimitConfig = cldfops.NewOperation(
+	"lock-release-pool:set-rate-limit-config",
+	stellarops.ContractDeploymentVersion,
+	"Sets outbound and inbound rate limit configs for a remote chain on the lock-release pool",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in SetRateLimitConfigInput) (stellarops.Void, error) {
+		c := lrpbindings.NewLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.SetRateLimitConfig(b.GetContext(), in.RemoteChainSelector, in.OutboundConfig, in.InboundConfig, in.FastFinality); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// GetCurrentRateLimiterStateInput reads the active bucket state for a remote chain.
+type GetCurrentRateLimiterStateInput struct {
+	ContractID          string `json:"contract_id"`
+	RemoteChainSelector uint64 `json:"remote_chain_selector"`
+	FastFinality        bool   `json:"fast_finality"`
+}
+
+// GetCurrentRateLimiterStateOutput is the on-chain rate limiter bucket state.
+type GetCurrentRateLimiterStateOutput struct {
+	State *lrpbindings.RateLimiterState `json:"state"`
+}
+
+// GetCurrentRateLimiterState calls lock-release pool `get_current_rate_limiter_state` (simulation).
+var GetCurrentRateLimiterState = cldfops.NewOperation(
+	"lock-release-pool:get-current-rate-limiter-state",
+	stellarops.ContractDeploymentVersion,
+	"Reads the current outbound/inbound rate limiter bucket state for a remote chain",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in GetCurrentRateLimiterStateInput) (GetCurrentRateLimiterStateOutput, error) {
+		c := lrpbindings.NewLockReleasePoolClient(d.Invoker, in.ContractID)
+		state, err := c.GetCurrentRateLimiterState(b.GetContext(), in.RemoteChainSelector, in.FastFinality)
+		if err != nil {
+			return GetCurrentRateLimiterStateOutput{}, err
+		}
+		return GetCurrentRateLimiterStateOutput{State: state}, nil
+	},
+)
