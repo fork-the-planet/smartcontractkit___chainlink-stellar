@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	cldfops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
@@ -209,4 +210,150 @@ func DeployMCMSAndTimelock(
 		SignerPK:       pk,
 		MinDelaySec:    minDelay,
 	}
+}
+
+// EncodeTimelockInvokePayload builds timelock Call.data for a Soroban contract function invocation.
+func EncodeTimelockInvokePayload(functionName string, argScVals []xdr.ScVal) ([]byte, error) {
+	return mcmsutil.EncodeSorobanMCMSInvokePayload(functionName, argScVals)
+}
+
+// WaitTimelockOperationReady polls until the scheduled timelock batch is executable.
+func WaitTimelockOperationReady(
+	ctx context.Context,
+	t *testing.T,
+	tlClient *timelockbindings.TimelockClient,
+	calls timelockbindings.Calls,
+	predecessor, salt [32]byte,
+) {
+	t.Helper()
+
+	opID, err := tlClient.HashOperationBatch(ctx, calls, predecessor, salt)
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		ready, err := tlClient.IsOperationReady(ctx, opID)
+		require.NoError(t, err)
+		if ready {
+			return
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+
+	ready, err := tlClient.IsOperationReady(ctx, opID)
+	require.NoError(t, err)
+	require.True(t, ready, "timelock operation never became ready")
+}
+
+// MCMSTimelockScheduleAndExecute drives schedule_batch → wait → execute_batch through MCMS
+// SetRoot + Execute (two-leaf Merkle tree, EIP-191 signing). Uses the current MCMS op count
+// as the schedule nonce; execute uses nonce+1.
+func MCMSTimelockScheduleAndExecute(
+	t *testing.T,
+	ctx context.Context,
+	env *E2ETestEnv,
+	gov *MCMSGovernanceStack,
+	calls timelockbindings.Calls,
+	predecessor, salt [32]byte,
+) {
+	t.Helper()
+
+	preOpCount, err := gov.MCMSClient.GetOpCount(ctx)
+	require.NoError(t, err)
+
+	scheduleData, err := SorobanScheduleBatch(gov.MCMSID, calls, predecessor, salt, gov.MinDelaySec)
+	require.NoError(t, err)
+
+	validUntil, err := MCMSValidUntilSeconds(ctx, env.RPCClient)
+	require.NoError(t, err)
+
+	opSchedule := mcmsbindings.StellarOp{
+		ChainId:  gov.ChainNetID,
+		Multisig: gov.MCMSRaw,
+		Nonce:    preOpCount,
+		To:       gov.TimelockRaw,
+		Value:    [32]byte{},
+		Data:     scheduleData,
+	}
+	metaSchedule := mcmsbindings.StellarRootMetadata{
+		ChainId:              gov.ChainNetID,
+		Multisig:             gov.MCMSRaw,
+		PreOpCount:           preOpCount,
+		PostOpCount:          preOpCount + 1,
+		OverridePreviousRoot: false,
+	}
+
+	metaLeaf, err := HashRootMetadata(metaSchedule)
+	require.NoError(t, err)
+	opLeaf, err := HashStellarOp(opSchedule)
+	require.NoError(t, err)
+	leaves := [2][32]byte{metaLeaf, opLeaf}
+	root := MerkleRootTwoLeaves(leaves[0], leaves[1])
+
+	proofMeta := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves, 0)}
+	sigs, err := SignaturesForSetRoot(gov.SignerPK, root, validUntil)
+	require.NoError(t, err)
+	require.NoError(t, gov.MCMSClient.SetRoot(ctx, root, validUntil, metaSchedule, proofMeta, sigs))
+
+	proofOp := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves, 1)}
+	require.NoError(t, gov.MCMSClient.Execute(ctx, opSchedule, proofOp))
+
+	pending, err := gov.TimelockClient.IsOperationPending(ctx, mustHashOperationBatch(t, ctx, gov.TimelockClient, calls, predecessor, salt))
+	require.NoError(t, err)
+	require.True(t, pending, "expected scheduled operation to be pending")
+
+	WaitTimelockOperationReady(ctx, t, gov.TimelockClient, calls, predecessor, salt)
+
+	execData, err := SorobanExecuteBatch(gov.MCMSID, calls, predecessor, salt)
+	require.NoError(t, err)
+
+	execNonce := preOpCount + 1
+	opExec := mcmsbindings.StellarOp{
+		ChainId:  gov.ChainNetID,
+		Multisig: gov.MCMSRaw,
+		Nonce:    execNonce,
+		To:       gov.TimelockRaw,
+		Value:    [32]byte{},
+		Data:     execData,
+	}
+	metaExec := mcmsbindings.StellarRootMetadata{
+		ChainId:              gov.ChainNetID,
+		Multisig:             gov.MCMSRaw,
+		PreOpCount:           execNonce,
+		PostOpCount:          execNonce + 1,
+		OverridePreviousRoot: false,
+	}
+
+	metaLeafExec, err := HashRootMetadata(metaExec)
+	require.NoError(t, err)
+	opLeafExec, err := HashStellarOp(opExec)
+	require.NoError(t, err)
+	leavesExec := [2][32]byte{metaLeafExec, opLeafExec}
+	rootExec := MerkleRootTwoLeaves(leavesExec[0], leavesExec[1])
+
+	proofMetaExec := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leavesExec, 0)}
+	sigsExec, err := SignaturesForSetRoot(gov.SignerPK, rootExec, validUntil)
+	require.NoError(t, err)
+	require.NoError(t, gov.MCMSClient.SetRoot(ctx, rootExec, validUntil, metaExec, proofMetaExec, sigsExec))
+
+	proofOpExec := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leavesExec, 1)}
+	require.NoError(t, gov.MCMSClient.Execute(ctx, opExec, proofOpExec))
+
+	opID := mustHashOperationBatch(t, ctx, gov.TimelockClient, calls, predecessor, salt)
+	done, err := gov.TimelockClient.IsOperationDone(ctx, opID)
+	require.NoError(t, err)
+	require.True(t, done, "expected timelock operation to be done after execute_batch")
+}
+
+func mustHashOperationBatch(
+	t *testing.T,
+	ctx context.Context,
+	tlClient *timelockbindings.TimelockClient,
+	calls timelockbindings.Calls,
+	predecessor, salt [32]byte,
+) [32]byte {
+	t.Helper()
+	opID, err := tlClient.HashOperationBatch(ctx, calls, predecessor, salt)
+	require.NoError(t, err)
+	return opID
 }
