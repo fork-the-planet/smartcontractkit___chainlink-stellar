@@ -96,7 +96,7 @@ impl RmnRemoteContract {
     }
 
     pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "RmnRemote 1.0.0")
+        soroban_sdk::String::from_str(&_env, "RmnRemote 2.0.0")
     }
 
     // ========================================

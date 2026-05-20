@@ -17,7 +17,6 @@ import (
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -42,19 +41,6 @@ func encodeApplyOnrampUpdatesSingle(destChainSelector uint64, onramp string) ([]
 		"apply_onramp_updates",
 		scval.StructSliceToScVal([]rampbindings.OnRampUpdate{u}),
 	)
-}
-
-func contractIDToBytes32(contractID string) ([32]byte, error) {
-	var out [32]byte
-	raw, err := strkey.Decode(strkey.VersionByteContract, contractID)
-	if err != nil {
-		return out, err
-	}
-	if len(raw) != 32 {
-		return out, fmt.Errorf("contract id raw length %d, want 32", len(raw))
-	}
-	copy(out[:], raw)
-	return out, nil
 }
 
 func randSalt(t *testing.T) [32]byte {
@@ -173,7 +159,7 @@ func TestGovernanceTimelockRampRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode accept_ownership payload: %v", err)
 	}
-	registryRaw, err := contractIDToBytes32(registryID)
+	registryRaw, err := helpers.ContractIDToBytes32(registryID)
 	if err != nil {
 		t.Fatalf("registry id bytes: %v", err)
 	}

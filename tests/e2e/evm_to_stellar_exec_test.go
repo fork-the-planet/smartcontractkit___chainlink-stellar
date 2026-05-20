@@ -16,6 +16,7 @@ import (
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/chainreg"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
@@ -209,15 +210,14 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 		require.NoError(t, err)
 		l.Info().Str("stellarReceiver", hex.EncodeToString(stellarReceiver)).Msg("Using Stellar receiver address")
 
-		// Curse the EVM source chain from the Stellar chain
+		// Curse the EVM source chain from the Stellar chain using fastcurse changeset
 		l.Info().Uint64("chainSelector", evmDetails.ChainSelector).Msg("Cursing EVM source chain")
-		err = stellarChain.Curse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.CurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM source chain cursed successfully")
 
 		t.Cleanup(func() {
 			l.Info().Msg("🔓 Cleaning up: uncursing EVM source chain")
-			_ = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
+			helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		})
 
 		// Record the expected sequence number before sending
@@ -290,8 +290,7 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 
 		// Now uncurse the EVM source chain to allow execution
 		l.Info().Msg("🔓 Uncursing EVM source chain to allow execution")
-		err = stellarChain.Uncurse(ctx, [][16]byte{chainSelectorToSubject(evmDetails.ChainSelector)})
-		require.NoError(t, err)
+		helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
 		l.Info().Msg("✅ EVM source chain uncursed successfully")
 
 		// The first message (seqNo) was stuck in the executor's retry heap while
@@ -555,10 +554,7 @@ func runEVMToStellarV3Scenario(
 	fields cciptestinterfaces.MessageFields,
 	opts cciptestinterfaces.MessageOptions,
 ) error {
-	serializer, ok := cciptestinterfaces.GetExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{
-		Family:  chain_selectors.FamilyStellar,
-		Version: messageV3Version,
-	})
+	serializer, ok := chainreg.GetRegistry().GetExtraArgsSerializer(chain_selectors.FamilyStellar, messageV3Version)
 	if !ok {
 		return fmt.Errorf("no extra args serializer registered for (Stellar, V3) — did ccv/chain.RegisterStellarComponents run?")
 	}

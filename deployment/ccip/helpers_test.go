@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ func TestLockReleasePoolAddressRefDataStore(t *testing.T) {
 		ref := addrs[0]
 		assert.Equal(t, uint64(4242), ref.ChainSelector)
 		assert.Equal(t, datastore.ContractType(LockReleaseTokenPoolContractType), ref.Type)
-		assert.Equal(t, semver.MustParse("1.0.0"), ref.Version)
+		assert.Equal(t, stellarops.ContractDeploymentVersion, ref.Version)
 		assert.Equal(t, DevenvLegacyLockReleasePoolQualifier, ref.Qualifier)
 		assert.NotEmpty(t, ref.Address)
 	})

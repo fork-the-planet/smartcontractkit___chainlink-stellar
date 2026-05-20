@@ -172,11 +172,11 @@ type accessor struct {
 	// concurrently with reader / transmitter accessors in pathological cases.
 	mu sync.Mutex
 
-	sourceReader        chainaccess.SourceReader
-	sourceReaderErr     error
-	destinationReader   chainaccess.DestinationReader
-	destReaderErr       error
-	contractTransmitter chainaccess.ContractTransmitter
+	sourceReader           chainaccess.SourceReader
+	sourceReaderErr        error
+	destinationReader      chainaccess.DestinationReader
+	destReaderErr          error
+	contractTransmitter    chainaccess.ContractTransmitter
 	contractTransmitterErr error
 }
 
@@ -298,6 +298,12 @@ func (a *accessor) ContractTransmitter() (chainaccess.ContractTransmitter, error
 		return nil, errKeystoreNotInjected
 	}
 	return a.contractTransmitter, nil
+}
+
+// Close implements chainaccess.Accessor. The Stellar accessor is stateless
+// (no background services), so this is a no-op that returns nil.
+func (a *accessor) Close() error {
+	return nil
 }
 
 // buildSourceReaderWithSigner constructs a SourceReader using a keystore-backed

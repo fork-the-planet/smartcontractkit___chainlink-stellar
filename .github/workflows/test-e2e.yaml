@@ -46,6 +46,7 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Generate bindings
         run: make generate-bindings
@@ -88,6 +89,8 @@ jobs:
         run: make up
 
       - name: Run E2E tests
+        env:
+          GOPATH: ${{ github.workspace }}/.go
         run: go test -v -timeout 20m ./tests/e2e/...
 
       - name: Dump container logs

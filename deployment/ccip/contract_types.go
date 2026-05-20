@@ -2,11 +2,12 @@ package ccip
 
 // Datastore contract type strings for Stellar CCIP deployments.
 const (
-	CcipReceiverContractType              = "CcipReceiverExample"
-	TokenAdminRegistryContractType        = "token_admin_registry"
-	LockReleaseTokenPoolContractType      = "lock_release_token_pool"
+	CcipReceiverContractType               = "CcipReceiverExample"
+	TokenAdminRegistryContractType         = "token_admin_registry"
+	LockReleaseTokenPoolContractType       = "lock_release_token_pool"
 	SiloedLockReleaseTokenPoolContractType = "siloed_lock_release_token_pool"
-	TestTokenContractType                 = "sac_token"
+	TokenLockBoxContractType               = "token_lock_box"
+	TestTokenContractType                  = "sac_token"
 
 	// DevenvTestTokenPoolQualifier is the datastore qualifier for the siloed test pool used in E2E transfers.
 	DevenvTestTokenPoolQualifier = "TEST"

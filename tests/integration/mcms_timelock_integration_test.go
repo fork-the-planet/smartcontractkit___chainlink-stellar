@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,71 +13,9 @@ import (
 
 	mcmsbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/mcms"
 	timelockbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/timelock"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
-	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
-	"github.com/stellar/go-stellar-sdk/xdr"
+	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
 )
-
-func sorobanScheduleBatch(
-	caller string,
-	calls timelockbindings.Calls,
-	predecessor, salt [32]byte,
-	delay uint64,
-) ([]byte, error) {
-	callsVal, err := calls.ToScVal()
-	if err != nil {
-		return nil, err
-	}
-	val := scval.VecToScVal([]xdr.ScVal{
-		scval.SymbolToScVal("schedule_batch"),
-		scval.AddressToScVal(caller),
-		callsVal,
-		scval.Bytes32ToScVal(predecessor),
-		scval.Bytes32ToScVal(salt),
-		scval.Uint64ToScVal(delay),
-	})
-	return val.MarshalBinary()
-}
-
-func sorobanExecuteBatch(
-	caller string,
-	calls timelockbindings.Calls,
-	predecessor, salt [32]byte,
-) ([]byte, error) {
-	callsVal, err := calls.ToScVal()
-	if err != nil {
-		return nil, err
-	}
-	val := scval.VecToScVal([]xdr.ScVal{
-		scval.SymbolToScVal("execute_batch"),
-		scval.AddressToScVal(caller),
-		callsVal,
-		scval.Bytes32ToScVal(predecessor),
-		scval.Bytes32ToScVal(salt),
-	})
-	return val.MarshalBinary()
-}
-
-// mcmsValidUntilSeconds returns a deadline for MCMS set_root: must be >= host ledger timestamp
-// and ≤ now + 90d (contracts/mcms MAX_ROOT_VALIDITY_SECS).
-func mcmsValidUntilSeconds(ctx context.Context, rpc *rpcclient.Client) (uint32, error) {
-	latest, err := rpc.GetLatestLedger(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("GetLatestLedger: %w", err)
-	}
-	now := latest.LedgerCloseTime
-	if now < 0 {
-		return 0, fmt.Errorf("unexpected negative ledger close time: %d", now)
-	}
-	const marginSec int64 = 90 * 24 * 3600 // must stay ≤ MCMS MAX_ROOT_VALIDITY_SECS (contracts/mcms)
-	sum := now + marginSec
-	maxU32 := int64(^uint32(0))
-	if sum > maxU32 {
-		return ^uint32(0), nil
-	}
-	return uint32(sum), nil
-}
 
 // TestMcmsMerkleTimelockScheduleAndExecute wires MCMS SetRoot + Execute into timelock schedule_batch
 // and execute_batch after min delay (Go Merkle + EIP-191).
@@ -93,13 +30,13 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 
 	projectRoot, deployerKP, deployer, rpcClient, _, _ := GetSharedTestEnv(ctx, t)
 
-	pk, err := crypto.HexToECDSA(anvil0SKHex)
+	pk, err := crypto.HexToECDSA(helpers.Anvil0SKHex)
 	if err != nil {
 		t.Fatalf("HexToECDSA: %v", err)
 	}
-	paddedSigner := PaddedEthAddress(&pk.PublicKey)
+	paddedSigner := helpers.PaddedEthAddress(&pk.PublicKey)
 
-	chainNetID, err := chainNetworkIDFromHex(chainsel.STELLAR_LOCALNET.ChainID)
+	chainNetID, err := helpers.ChainNetworkIDFromHex(chainsel.STELLAR_LOCALNET.ChainID)
 	if err != nil {
 		t.Fatalf("chain network id: %v", err)
 	}
@@ -150,11 +87,11 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("Timelock Initialize: %v", err)
 	}
 
-	mcmsRaw, err := contractIDToBytes32(mcmsID)
+	mcmsRaw, err := helpers.ContractIDToBytes32(mcmsID)
 	if err != nil {
 		t.Fatalf("mcms id bytes: %v", err)
 	}
-	tlRaw, err := contractIDToBytes32(tlID)
+	tlRaw, err := helpers.ContractIDToBytes32(tlID)
 	if err != nil {
 		t.Fatalf("timelock id bytes: %v", err)
 	}
@@ -165,12 +102,12 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 
 	emptyCalls := timelockbindings.Calls{Inner: []timelockbindings.Call{}}
 
-	scheduleData, err := sorobanScheduleBatch(mcmsID, emptyCalls, predecessor, saltSched, minDelaySec)
+	scheduleData, err := helpers.SorobanScheduleBatch(mcmsID, emptyCalls, predecessor, saltSched, minDelaySec)
 	if err != nil {
 		t.Fatalf("encode schedule_batch: %v", err)
 	}
 
-	validUntil, err := mcmsValidUntilSeconds(ctx, rpcClient)
+	validUntil, err := helpers.MCMSValidUntilSeconds(ctx, rpcClient)
 	if err != nil {
 		t.Fatalf("mcms valid_until: %v", err)
 	}
@@ -191,19 +128,19 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		OverridePreviousRoot: false,
 	}
 
-	metaLeaf1, err := HashRootMetadata(meta1)
+	metaLeaf1, err := helpers.HashRootMetadata(meta1)
 	if err != nil {
 		t.Fatalf("hash meta1: %v", err)
 	}
-	opLeaf1, err := HashStellarOp(opSchedule)
+	opLeaf1, err := helpers.HashStellarOp(opSchedule)
 	if err != nil {
 		t.Fatalf("hash op schedule: %v", err)
 	}
 	leaves1 := [2][32]byte{metaLeaf1, opLeaf1}
-	root1 := MerkleRootTwoLeaves(leaves1[0], leaves1[1])
+	root1 := helpers.MerkleRootTwoLeaves(leaves1[0], leaves1[1])
 
-	proofMeta1 := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves1, 0)}
-	sigs1, err := SignaturesForSetRoot(pk, root1, validUntil)
+	proofMeta1 := mcmsbindings.MerkleProof{Inner: helpers.MerkleProofTwoLeaves(leaves1, 0)}
+	sigs1, err := helpers.SignaturesForSetRoot(pk, root1, validUntil)
 	if err != nil {
 		t.Fatalf("sign set_root 1: %v", err)
 	}
@@ -211,7 +148,7 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("SetRoot 1: %v", err)
 	}
 
-	proofOp1 := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves1, 1)}
+	proofOp1 := mcmsbindings.MerkleProof{Inner: helpers.MerkleProofTwoLeaves(leaves1, 1)}
 	if err := mcmsClient.Execute(ctx, opSchedule, proofOp1); err != nil {
 		t.Fatalf("Execute schedule_batch: %v", err)
 	}
@@ -241,7 +178,7 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("scheduled op never became ready: ready=%v err=%v", okReady, err)
 	}
 
-	execData, err := sorobanExecuteBatch(mcmsID, emptyCalls, predecessor, saltSched)
+	execData, err := helpers.SorobanExecuteBatch(mcmsID, emptyCalls, predecessor, saltSched)
 	if err != nil {
 		t.Fatalf("encode execute_batch: %v", err)
 	}
@@ -262,19 +199,19 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		OverridePreviousRoot: false,
 	}
 
-	metaLeaf2, err := HashRootMetadata(meta2)
+	metaLeaf2, err := helpers.HashRootMetadata(meta2)
 	if err != nil {
 		t.Fatalf("hash meta2: %v", err)
 	}
-	opLeaf2, err := HashStellarOp(opExec)
+	opLeaf2, err := helpers.HashStellarOp(opExec)
 	if err != nil {
 		t.Fatalf("hash op exec: %v", err)
 	}
 	leaves2 := [2][32]byte{metaLeaf2, opLeaf2}
-	root2 := MerkleRootTwoLeaves(leaves2[0], leaves2[1])
+	root2 := helpers.MerkleRootTwoLeaves(leaves2[0], leaves2[1])
 
-	proofMeta2 := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves2, 0)}
-	sigs2, err := SignaturesForSetRoot(pk, root2, validUntil)
+	proofMeta2 := mcmsbindings.MerkleProof{Inner: helpers.MerkleProofTwoLeaves(leaves2, 0)}
+	sigs2, err := helpers.SignaturesForSetRoot(pk, root2, validUntil)
 	if err != nil {
 		t.Fatalf("sign set_root 2: %v", err)
 	}
@@ -282,7 +219,7 @@ func TestMcmsMerkleTimelockScheduleAndExecute(t *testing.T) {
 		t.Fatalf("SetRoot 2: %v", err)
 	}
 
-	proofOp2 := mcmsbindings.MerkleProof{Inner: MerkleProofTwoLeaves(leaves2, 1)}
+	proofOp2 := mcmsbindings.MerkleProof{Inner: helpers.MerkleProofTwoLeaves(leaves2, 1)}
 	if err := mcmsClient.Execute(ctx, opExec, proofOp2); err != nil {
 		t.Fatalf("Execute execute_batch: %v", err)
 	}

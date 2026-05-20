@@ -18,13 +18,8 @@ import (
 	"sync"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/chainreg"
 	devenvccipevm "github.com/smartcontractkit/chainlink-ccv/build/devenv/evm"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/chainconfig"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/committeeverifier"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/services/executor"
 
 	modifier "github.com/smartcontractkit/chainlink-stellar/ccv/chain/modifier"
 
@@ -39,20 +34,18 @@ var registerOnce sync.Once
 // It does not replace deployment/adapters init; see package doc.
 func RegisterStellarDevenvComponents() {
 	registerOnce.Do(func() {
-		chainconfig.RegisterChainConfigLoader(chainsel.FamilyStellar, StellarChainConfigLoader)
-		committeeverifier.RegisterModifier(chainsel.FamilyStellar, modifier.StellarVerifierModifier)
-		executor.RegisterModifier(chainsel.FamilyStellar, modifier.StellarExecutorModifier)
-		ccv.RegisterImplFactory(chainsel.FamilyStellar, NewImplFactory())
-		registry.RegisterCLDFProviderFactory(chainsel.FamilyStellar, NewCLDFProviderFactory())
-
-		// Register every CCIP message version we expect EVM-as-source to send to
-		// a Stellar destination. The EVM OnRamp serialises EVM ABI extra args
-		// regardless of destination family; chainlink-ccv's evm package now
-		// keys serializers by (family, version) so we mirror its FamilyEVM
-		// registrations for FamilyStellar destinations.
-		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 3}, devenvccipevm.SerializeMessageV3ExtraArgs)
-		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 2}, devenvccipevm.BuildEVMExtraArgsV2)
-		cciptestinterfaces.RegisterExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{Family: chainsel.FamilyStellar, Version: 1}, devenvccipevm.BuildEVMExtraArgsV1)
+		chainreg.Register(chainsel.FamilyStellar, chainreg.Registration{
+			ImplFactory:       NewImplFactory(),
+			CLDFProvider:      NewCLDFProviderFactory(),
+			ChainConfigLoader: StellarChainConfigLoader,
+			VerifierModifier:  modifier.StellarVerifierModifier,
+			ExecutorModifier:  modifier.StellarExecutorModifier,
+			ExtraArgsSerializers: map[uint8]chainreg.ExtraArgsSerializer{
+				1: devenvccipevm.BuildEVMExtraArgsV1,
+				2: devenvccipevm.BuildEVMExtraArgsV2,
+				3: devenvccipevm.SerializeMessageV3ExtraArgs,
+			},
+		})
 	})
 }
 
