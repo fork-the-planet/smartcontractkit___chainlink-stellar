@@ -24,7 +24,47 @@ type StellarCCVDeploymentAggregatorConfigAdapter struct{}
 
 var _ ccvdeploymentadapters.AggregatorConfigAdapter = (*StellarCCVDeploymentAggregatorConfigAdapter)(nil)
 
-func (a *StellarCCVDeploymentAggregatorConfigAdapter) ResolveVerifierAddress(
+func (a *StellarCCVDeploymentAggregatorConfigAdapter) ResolveSourceVerifierAddress(
+	ds datastore.DataStore,
+	chainSelector uint64,
+	qualifier string,
+) (string, error) {
+	return a.resolveVerifierAddress(ds, chainSelector, qualifier)
+}
+
+func (a *StellarCCVDeploymentAggregatorConfigAdapter) ResolveDestinationVerifierAddress(
+	ds datastore.DataStore,
+	chainSelector uint64,
+	qualifier string,
+) (string, error) {
+	return a.resolveVerifierAddress(ds, chainSelector, qualifier)
+}
+
+func (a *StellarCCVDeploymentAggregatorConfigAdapter) GetDeployedChains(ds datastore.DataStore, qualifier string) []uint64 {
+	if ds == nil {
+		return nil
+	}
+	refs := ds.Addresses().Filter(
+		datastore.AddressRefByQualifier(qualifier),
+		datastore.AddressRefByType(stellarccip.CommitteeVerifierDatastoreRef().Type),
+	)
+	seen := make(map[uint64]struct{}, len(refs))
+	chains := make([]uint64, 0, len(refs))
+	for _, ref := range refs {
+		if _, exists := seen[ref.ChainSelector]; exists {
+			continue
+		}
+		family, err := chainsel.GetSelectorFamily(ref.ChainSelector)
+		if err != nil || family != chainsel.FamilyStellar {
+			continue
+		}
+		seen[ref.ChainSelector] = struct{}{}
+		chains = append(chains, ref.ChainSelector)
+	}
+	return chains
+}
+
+func (a *StellarCCVDeploymentAggregatorConfigAdapter) resolveVerifierAddress(
 	ds datastore.DataStore,
 	chainSelector uint64,
 	qualifier string,

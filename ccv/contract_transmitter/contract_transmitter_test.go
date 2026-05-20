@@ -8,7 +8,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
@@ -243,8 +242,6 @@ func buildV27Blob(versionTag [4]byte, sigs [][64]byte) []byte {
 
 func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 	versionTag := stellarutil.DefaultCommitteeVerifierVersionTag()
-	n := crypto.S256().Params().N
-	halfN := new(big.Int).Rsh(n, 1)
 
 	t.Run("recovery_id=0: low-S signature unchanged", func(t *testing.T) {
 		// Construct a synthetic v=27-normalized R||S where S <= n/2 (recovery_id=0)
@@ -253,7 +250,7 @@ func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 
 		// Pick S = 42, which is trivially <= n/2
 		sOriginal := new(big.Int).SetInt64(42)
-		require.True(t, sOriginal.Cmp(halfN) <= 0, "test precondition: S must be <= n/2")
+		require.True(t, sOriginal.Cmp(secp256k1HalfN) <= 0, "test precondition: S must be <= n/2")
 
 		var s32 [32]byte
 		sBytes := sOriginal.Bytes()
@@ -280,8 +277,8 @@ func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 
 		// Choose S_original < n/2, then S_v27_norm = n - S_original (which will be > n/2)
 		sOriginal := new(big.Int).SetInt64(12345678)
-		sNormalized := new(big.Int).Sub(n, sOriginal)
-		require.True(t, sNormalized.Cmp(halfN) > 0, "test precondition: S_norm must be > n/2")
+		sNormalized := new(big.Int).Sub(secp256k1N, sOriginal)
+		require.True(t, sNormalized.Cmp(secp256k1HalfN) > 0, "test precondition: S_norm must be > n/2")
 
 		var s32 [32]byte
 		sBytes := sNormalized.Bytes()
@@ -309,7 +306,7 @@ func TestConvertVerifierBlobToEIP2098(t *testing.T) {
 
 	t.Run("multiple signatures in one blob", func(t *testing.T) {
 		sOriginal := new(big.Int).SetInt64(99999)
-		sNorm := new(big.Int).Sub(n, sOriginal) // high-S
+		sNorm := new(big.Int).Sub(secp256k1N, sOriginal) // high-S
 		var sig1, sig2 [64]byte
 		sig1[31] = 0x01
 		sNormBytes := sNorm.Bytes()

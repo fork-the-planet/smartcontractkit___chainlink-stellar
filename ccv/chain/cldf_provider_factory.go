@@ -10,15 +10,15 @@ import (
 	"github.com/rs/zerolog/log"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/chainlink-ccv/build/devenv/registry"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/chainreg"
 	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
 	cldf_stellar_provider "github.com/smartcontractkit/chainlink-deployments-framework/chain/stellar/provider"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 )
 
-// NewCLDFProviderFactory returns a registry.CLDFProviderFactory that creates an
+// NewCLDFProviderFactory returns a chainreg.CLDFProviderFactory that creates an
 // initialized Stellar CLDF BlockChain provider from a blockchain.Input.
-func NewCLDFProviderFactory() registry.CLDFProviderFactory {
+func NewCLDFProviderFactory() chainreg.CLDFProviderFactory {
 	return func(ctx context.Context, b *blockchain.Input) (cldf_chain.BlockChain, uint64, error) {
 		details, err := chainsel.GetChainDetailsByChainIDAndFamily(b.Out.ChainID, chainsel.FamilyStellar)
 		if err != nil {
