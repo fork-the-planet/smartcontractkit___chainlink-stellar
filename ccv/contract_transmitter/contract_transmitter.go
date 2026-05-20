@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/rs/zerolog"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -22,8 +22,10 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
-var secp256k1N = crypto.S256().Params().N
-var secp256k1HalfN = new(big.Int).Rsh(secp256k1N, 1)
+var (
+	secp256k1N     = new(big.Int).Set(secp256k1.Params().N)
+	secp256k1HalfN = new(big.Int).Rsh(new(big.Int).Set(secp256k1N), 1)
+)
 
 // DefaultGasLimitOverride is passed to every offramp execute call.
 // Zero means "use the gas limit from the message itself".

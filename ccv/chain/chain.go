@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -47,6 +46,7 @@ import (
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
+	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
@@ -382,7 +382,7 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 		return ccipChangesets.DeployChainContractsPerChainCfg{}, fmt.Errorf("decode stellar deployer: %w", err)
 	}
 	return ccipChangesets.DeployChainContractsPerChainCfg{
-		DeployerContract: hexutil.Encode(raw),
+		DeployerContract: stellarcommon.HexEncode(raw),
 		DeployerKeyOwned: true,
 	}, nil
 }
@@ -1030,7 +1030,7 @@ func stellarFeeAggregatorHexForTopology(c *Chain) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode deployer account for fee aggregator hex: %w", err)
 	}
-	return hexutil.Encode(raw), nil
+	return stellarcommon.HexEncode(raw), nil
 }
 
 func ensureStellarFeeAggregatorsInTopology(c *Chain, topology *ccvdeployment.EnvironmentTopology) {
