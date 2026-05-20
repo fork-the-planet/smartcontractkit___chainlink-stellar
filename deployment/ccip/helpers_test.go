@@ -78,7 +78,7 @@ func TestDevenvTokenPoolsAddressRefDataStore(t *testing.T) {
 		assert.Equal(t, uint64(4242), ref.ChainSelector)
 		switch ref.Type {
 		case datastore.ContractType(SiloedLockReleaseTokenPoolContractType),
-			datastore.ContractType("TokenLockBox"),
+			datastore.ContractType(TokenLockBoxContractType),
 			datastore.ContractType(TestTokenContractType):
 			assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
 		case datastore.ContractType(LockReleaseTokenPoolContractType):
@@ -87,7 +87,7 @@ func TestDevenvTokenPoolsAddressRefDataStore(t *testing.T) {
 	}
 	assert.True(t, found[datastore.ContractType(SiloedLockReleaseTokenPoolContractType)])
 	assert.True(t, found[datastore.ContractType(LockReleaseTokenPoolContractType)])
-	assert.True(t, found[datastore.ContractType("TokenLockBox")])
+	assert.True(t, found[datastore.ContractType(TokenLockBoxContractType)])
 	assert.True(t, found[datastore.ContractType(TestTokenContractType)])
 }
 

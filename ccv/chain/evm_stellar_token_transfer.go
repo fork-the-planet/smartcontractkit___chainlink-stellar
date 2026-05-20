@@ -111,7 +111,7 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 		return fmt.Errorf("fetch datastore addresses: %w", err)
 	}
 
-	poolRef := stellarccip.SiloedLockReleasePoolDevenvDatastoreRef()
+	poolRef := stellarccip.LockReleasePoolDevenvDatastoreRef()
 	stellarPool, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
