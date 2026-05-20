@@ -68,7 +68,7 @@ func SetupTestEnv(ctx context.Context, t *testing.T) (string, *keypair.Full, *st
 	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
 	// Deploy local Stellar network using devenv
-	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
+	chain := ccvchain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port := getFreePort(t)
 	containerName := fmt.Sprintf("blockchain-stellar-%s", t.Name())
@@ -150,7 +150,7 @@ func SetupTestEnvShared(ctx context.Context, containerName string) (*SharedTestE
 	chainID := chain_selectors.STELLAR_LOCALNET.ChainID
 	stellarSelector := chain_selectors.STELLAR_LOCALNET.Selector
 
-	chain := chain.New(zerolog.New(os.Stdout), stellarSelector)
+	chain := ccvchain.New(zerolog.New(os.Stdout), stellarSelector)
 
 	port, err := getFreePortErr()
 	if err != nil {
@@ -499,9 +499,13 @@ func CurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, su
 	})
 	require.NoError(t, err, "failed to curse chain %d from chain %d", subjectChainSelector, chainSelector)
 
-	// Wait for the verifier to detect the curse
-	// The verifier is hardcoded to poll every 2 seconds, wait for 3 seconds to be sure
-	time.Sleep(3 * time.Second)
+	adapter, ok := curseRegistry.GetCurseAdapter(chain_selectors.FamilyStellar, version)
+	require.True(t, ok, "no curse adapter registered for chain family '%s'", chain_selectors.FamilyStellar)
+
+	require.Eventually(t, func() bool {
+		isCursed, err := adapter.IsSubjectCursedOnChain(*env, chainSelector, fastcurse.GenericSelectorToSubject(subjectChainSelector))
+		return err == nil && isCursed
+	}, 5*time.Second, 1*time.Second, "chain %d should be cursed on chain %d", subjectChainSelector, chainSelector)
 }
 
 // UncurseChain uncurses a subject chain from the perspective of the given chain using fastcurse changeset.
@@ -530,9 +534,13 @@ func UncurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, 
 	})
 	require.NoError(t, err, "failed to uncurse chain %d from chain %d", subjectChainSelector, chainSelector)
 
-	// Wait for the verifier to detect the uncurse
-	// The verifier is hardcoded to poll every 2 seconds, wait for 3 seconds to be sure
-	time.Sleep(3 * time.Second)
+	adapter, ok := curseRegistry.GetCurseAdapter(chain_selectors.FamilyStellar, version)
+	require.True(t, ok, "no curse adapter registered for chain family '%s'", chain_selectors.FamilyStellar)
+
+	require.Eventually(t, func() bool {
+		isCursed, err := adapter.IsSubjectCursedOnChain(*env, chainSelector, fastcurse.GenericSelectorToSubject(subjectChainSelector))
+		return err == nil && !isCursed
+	}, 5*time.Second, 1*time.Second, "chain %d should be uncursed on chain %d", subjectChainSelector, chainSelector)
 }
 
 // deriveCurseAdapterVersion gets the appropriate curse adapter version for a chain.
