@@ -13,8 +13,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        REF="refs/pull/1096/head"
-        EXPECTED_SHA="d61f360548dcd13aab8d7f9cb40d495530586658"
+        REF="refs/pull/1119/head"
+        EXPECTED_SHA="48cc1c7b509900a1b99f4a913e2119cdef2c73de"
         DEST="${GITHUB_WORKSPACE}/../chainlink-ccv"
         git clone --depth 1 https://github.com/smartcontractkit/chainlink-ccv.git "${DEST}" \
           && git -C "${DEST}" fetch --depth 1 origin "${REF}" \
