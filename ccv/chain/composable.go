@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stellar/go-stellar-sdk/strkey"
 
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
@@ -121,7 +120,7 @@ func (c *Chain) SendChainMessage(ctx context.Context, destChain uint64, msg ccip
 		return cciptestinterfaces.MessageSentEvent{}, nil, fmt.Errorf("ccip_send: %w", err)
 	}
 	c.logger.Info().
-		Str("messageID", hexutil.Encode(messageID[:])).
+		Str("messageID", common.HexEncode(messageID[:])).
 		Msg("CCIP message sent from Stellar via Router (SendChainMessage)")
 
 	// Soroban deployer does not currently plumb transaction hash through CcipSend; composable
