@@ -202,7 +202,7 @@ func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deploym
 			}
 		}
 
-		poolRef, err := env.DataStore.Addresses().Get(stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
+		poolRef, err := env.DataStore.Addresses().Get(stellarccip.SiloedLockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && poolRef.Address != "" {
 			poolContractID, convErr := scval.HexToContractStrkey(poolRef.Address)
 			if convErr == nil {
