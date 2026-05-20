@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/Masterminds/semver/v3"
+	chainsel "github.com/smartcontractkit/chain-selectors"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/deploy"
 	tokens "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/changesets"
@@ -48,8 +48,8 @@ func TestCCIPAdapterRegistrations_stellar(t *testing.T) {
 	_, ok = changesets.GetRegistry().GetMCMSReader(chainsel.FamilyStellar)
 	require.True(t, ok, "MCMSReader")
 
-	_, ok = tokens.GetTokenAdapterRegistry().GetTokenAdapter(chainsel.FamilyStellar, semver.MustParse("1.0.0"))
-	require.True(t, ok, "TokenAdapter 1.0.0")
+	_, ok = tokens.GetTokenAdapterRegistry().GetTokenAdapter(chainsel.FamilyStellar, v2)
+	require.True(t, ok, "TokenAdapter 2.0.0")
 }
 
 func TestCCVDeploymentAdapterRegistry_stellar(t *testing.T) {
@@ -90,8 +90,14 @@ func TestStellarTransferOwnershipAdapter_smoke(t *testing.T) {
 	t.Parallel()
 	var _ deploy.TransferOwnershipAdapter = (*StellarTransferOwnershipAdapter)(nil)
 	a := &StellarTransferOwnershipAdapter{}
-	require.NotNil(t, a.SequenceTransferOwnershipViaMCMS())
-	require.NotNil(t, a.SequenceAcceptOwnership())
+	seqTransfer := a.SequenceTransferOwnershipViaMCMS()
+	require.NotNil(t, seqTransfer)
+	require.Equal(t, stellarsequences.StellarTransferOwnershipViaMCMS.ID(), seqTransfer.ID())
+	require.Equal(t, deploy.MCMSVersion.String(), seqTransfer.Version())
+	seqAccept := a.SequenceAcceptOwnership()
+	require.NotNil(t, seqAccept)
+	require.Equal(t, stellarsequences.StellarAcceptOwnership.ID(), seqAccept.ID())
+	require.Equal(t, deploy.MCMSVersion.String(), seqAccept.Version())
 }
 
 func TestStellarVerifierConfigAdapter_smoke(t *testing.T) {

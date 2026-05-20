@@ -36,14 +36,6 @@ func TestStellarFeeAdapter_GetDefaultDestChainConfig(t *testing.T) {
 	require.Greater(t, cfg.MaxPerMsgGasLimit, uint32(0))
 }
 
-func testFQRef() datastore.AddressRef {
-	return datastore.AddressRef{
-		Type:    datastore.ContractType(fqopstype.ContractType),
-		Version: semver.MustParse(fqopstype.Deploy.Version()),
-		Address: "CFQADDR",
-	}
-}
-
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
@@ -93,7 +85,7 @@ func TestStellarFeeAdapter_Registration(t *testing.T) {
 	reg := fees.GetRegistry()
 	_, ok := reg.GetFeeAdapter("stellar", stellarops.ContractDeploymentVersion)
 	if !ok {
-		_, ok = reg.GetFeeAdapter("stellar", semver.MustParse("2.0.0"))
+		_, ok = reg.GetFeeAdapter("stellar", stellarops.ContractDeploymentVersion)
 	}
 	require.True(t, ok, "StellarFeeAdapter should be registered from init()")
 }
@@ -121,6 +113,6 @@ func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(
 
 func TestStellarFeeAggregatorAdapter_Registration(t *testing.T) {
 	reg := fees.GetFeeAggregatorRegistry()
-	_, ok := reg.GetFeeAggregatorAdapter("stellar", semver.MustParse("2.0.0"))
+	_, ok := reg.GetFeeAggregatorAdapter("stellar", stellarops.ContractDeploymentVersion)
 	require.True(t, ok, "StellarFeeAggregatorAdapter should be registered from init()")
 }

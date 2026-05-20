@@ -71,7 +71,7 @@ impl ExampleCcipReceiver {
     }
 
     pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "ExampleCcipReceiver 1.0.0")
+        soroban_sdk::String::from_str(&_env, "ExampleCcipReceiver 2.0.0")
     }
 
     pub fn get_router(env: Env) -> Result<Address, CCIPError> {

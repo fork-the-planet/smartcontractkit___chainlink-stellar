@@ -68,7 +68,7 @@ impl RampRegistryContract {
     }
 
     pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "RampRegistry 1.0.0")
+        soroban_sdk::String::from_str(&_env, "RampRegistry 2.0.0")
     }
 
     /// Returns the onramp registered for the given destination chain.

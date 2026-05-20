@@ -124,6 +124,62 @@ func (_c *MockRPCClient_GetEvents_Call) RunAndReturn(run func(context.Context, p
 	return _c
 }
 
+// GetFeeStats provides a mock function with given fields: ctx
+func (_m *MockRPCClient) GetFeeStats(ctx context.Context) (protocol.GetFeeStatsResponse, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFeeStats")
+	}
+
+	var r0 protocol.GetFeeStatsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (protocol.GetFeeStatsResponse, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) protocol.GetFeeStatsResponse); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(protocol.GetFeeStatsResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRPCClient_GetFeeStats_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFeeStats'
+type MockRPCClient_GetFeeStats_Call struct {
+	*mock.Call
+}
+
+// GetFeeStats is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockRPCClient_Expecter) GetFeeStats(ctx interface{}) *MockRPCClient_GetFeeStats_Call {
+	return &MockRPCClient_GetFeeStats_Call{Call: _e.mock.On("GetFeeStats", ctx)}
+}
+
+func (_c *MockRPCClient_GetFeeStats_Call) Run(run func(ctx context.Context)) *MockRPCClient_GetFeeStats_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockRPCClient_GetFeeStats_Call) Return(_a0 protocol.GetFeeStatsResponse, _a1 error) *MockRPCClient_GetFeeStats_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRPCClient_GetFeeStats_Call) RunAndReturn(run func(context.Context) (protocol.GetFeeStatsResponse, error)) *MockRPCClient_GetFeeStats_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLatestLedger provides a mock function with given fields: ctx
 func (_m *MockRPCClient) GetLatestLedger(ctx context.Context) (protocol.GetLatestLedgerResponse, error) {
 	ret := _m.Called(ctx)
