@@ -16,6 +16,15 @@ import (
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
+// testFQRef returns a dummy AddressRef for FeeQuoter lookup tests.
+// The actual lookup uses the type/version from the adapter, not this ref's address.
+func testFQRef() datastore.AddressRef {
+	return datastore.AddressRef{
+		Type:    datastore.ContractType(fqopstype.ContractType),
+		Version: semver.MustParse(fqopstype.Deploy.Version()),
+	}
+}
+
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
 	var _ fees.FeeAdapter = (*StellarFeeAdapter)(nil)
 }

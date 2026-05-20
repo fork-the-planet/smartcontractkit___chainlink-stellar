@@ -16,6 +16,7 @@ import (
 	offrampoperations "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/offramp"
 	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/chainreg"
 	devenvcommon "github.com/smartcontractkit/chainlink-ccv/build/devenv/common"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/tests/e2e"
 	"github.com/smartcontractkit/chainlink-ccv/protocol"
@@ -553,10 +554,7 @@ func runEVMToStellarV3Scenario(
 	fields cciptestinterfaces.MessageFields,
 	opts cciptestinterfaces.MessageOptions,
 ) error {
-	serializer, ok := cciptestinterfaces.GetExtraArgsSerializer(cciptestinterfaces.ExtraArgsSerializerEntry{
-		Family:  chain_selectors.FamilyStellar,
-		Version: messageV3Version,
-	})
+	serializer, ok := chainreg.GetRegistry().GetExtraArgsSerializer(chain_selectors.FamilyStellar, messageV3Version)
 	if !ok {
 		return fmt.Errorf("no extra args serializer registered for (Stellar, V3) — did ccv/chain.RegisterStellarComponents run?")
 	}

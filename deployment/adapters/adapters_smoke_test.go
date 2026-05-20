@@ -195,7 +195,9 @@ func TestStellarCCVDeploymentAdapters_smoke(t *testing.T) {
 	var _ ccvdeploymentadapters.TokenVerifierConfigAdapter = (*StellarCCVDeploymentTokenVerifierConfigAdapter)(nil)
 
 	ds := datastore.NewMemoryDataStore().Seal()
-	_, err := (&StellarCCVDeploymentAggregatorConfigAdapter{}).ResolveVerifierAddress(ds, 1, "q")
+	_, err := (&StellarCCVDeploymentAggregatorConfigAdapter{}).ResolveSourceVerifierAddress(ds, 1, "q")
+	require.Error(t, err)
+	_, err = (&StellarCCVDeploymentAggregatorConfigAdapter{}).ResolveDestinationVerifierAddress(ds, 1, "q")
 	require.Error(t, err)
 
 	require.Empty(t, (&StellarCCVDeploymentExecutorConfigAdapter{}).GetDeployedChains(ds, "q"))

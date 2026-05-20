@@ -269,7 +269,7 @@ func NewE2ETestEnv(t *testing.T, ctx context.Context, l *zerolog.Logger, configO
 	require.NotNil(t, in)
 
 	// Load both EVM and Stellar chains; the ImplFactory handles Stellar chain construction.
-	lib, err := ccv.NewLib(l, configOutputPath, chain_selectors.FamilyEVM, chain_selectors.FamilyStellar)
+	lib, err := ccv.NewLibFromCCVEnv(l, configOutputPath, chain_selectors.FamilyEVM, chain_selectors.FamilyStellar)
 	require.NoError(t, err)
 	chains, err := lib.ChainsMap(ctx)
 	require.NoError(t, err)
