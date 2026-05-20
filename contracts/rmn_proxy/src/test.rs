@@ -18,7 +18,7 @@ fn setup_env() -> (Env, Address, Address, Address) {
     // Deploy and initialize RMN Remote so proxy can delegate is_cursed() to it
     let rmn_remote_id = env.register(RmnRemoteContract, ());
     let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let contract_id = env.register(RmnProxyContract, ());
 
@@ -84,7 +84,7 @@ fn test_is_cursed_returns_true_when_global_cursed() {
 
     // Curse the global subject on RMN Remote
     let global = BytesN::from_array(&env, &GLOBAL_CURSE_SUBJECT);
-    rmn_remote_client.curse(&vec![&env, global]);
+    rmn_remote_client.curse(&owner, &vec![&env, global]);
 
     // Proxy should now report cursed
     assert!(client.is_cursed());
@@ -99,7 +99,7 @@ fn test_is_cursed_returns_false_after_uncurse() {
     client.initialize(&owner, &rmn);
 
     let global = BytesN::from_array(&env, &GLOBAL_CURSE_SUBJECT);
-    rmn_remote_client.curse(&vec![&env, global.clone()]);
+    rmn_remote_client.curse(&owner, &vec![&env, global.clone()]);
     assert!(client.is_cursed());
 
     rmn_remote_client.uncurse(&vec![&env, global]);
@@ -114,7 +114,7 @@ fn test_set_rmn_switches_delegation() {
     // Deploy a second RMN Remote
     let rmn2_id = env.register(RmnRemoteContract, ());
     let rmn2_client = RmnRemoteContractClient::new(&env, &rmn2_id);
-    rmn2_client.initialize(&owner, &2u64);
+    rmn2_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     client.initialize(&owner, &rmn1);
     assert!(!client.is_cursed());
@@ -122,7 +122,7 @@ fn test_set_rmn_switches_delegation() {
     // Curse the first remote
     let rmn1_client = RmnRemoteContractClient::new(&env, &rmn1);
     let global = BytesN::from_array(&env, &GLOBAL_CURSE_SUBJECT);
-    rmn1_client.curse(&vec![&env, global]);
+    rmn1_client.curse(&owner, &vec![&env, global]);
     assert!(client.is_cursed());
 
     // Switch proxy to second (uncursed) remote

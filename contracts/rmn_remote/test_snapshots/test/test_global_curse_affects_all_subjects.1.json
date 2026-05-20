@@ -17,6 +17,9 @@
               "function_name": "curse",
               "args": [
                 {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
                   "vec": [
                     {
                       "bytes": "01000000000000000000000000000001"
@@ -60,18 +63,10 @@
                   "storage": [
                     {
                       "key": {
-                        "symbol": "CFGCNT"
+                        "symbol": "CRSADM"
                       },
                       "val": {
-                        "u32": 0
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "CHAINSEL"
-                      },
-                      "val": {
-                        "u64": "12345"
+                        "vec": []
                       }
                     },
                     {
@@ -105,14 +100,6 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "SIGNERS"
-                      },
-                      "val": {
-                        "map": []
                       }
                     }
                   ]

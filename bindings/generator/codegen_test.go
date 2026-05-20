@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+// TestGenerateTypes_eventsOnlyNoImports ensures contracts whose types.go only
+// contains event structs (no #[contracttype] structs/enums in the interface)
+// do not import fmt/scval/xdr.
+func TestGenerateTypes_eventsOnlyNoImports(t *testing.T) {
+	c := &Contract{Events: []Event{
+		{
+			Name:   "CursedEvent",
+			Topics: []string{"rmn_Cursed"},
+			Fields: []Field{{Name: "subjects", Type: "soroban_sdk::Vec<soroban_sdk::BytesN<16>>"}},
+		},
+	}}
+	out := GenerateTypes("rmn_remote", c)
+	mustNotContain(t, out, "import (")
+	mustContain(t, out, "type CursedEvent struct")
+}
+
 // TestGenerateEnum_UnitOnly is a regression guard: pre-existing unit-only
 // enums (CCIPError, MessageDirection, ...) must keep emitting the legacy
 // `type X uint32` newtype shape so existing call sites continue to compile.

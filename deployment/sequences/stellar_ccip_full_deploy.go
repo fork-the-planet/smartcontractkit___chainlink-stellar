@@ -171,9 +171,9 @@ func RunStellarCCIPFullDeploy(
 		return seq_core.OnChainOutput{}, err
 	}
 	if _, err := execStellarCCIPOp(b, deps, rmnremoteops.Initialize, rmnremoteops.InitializeInput{
-		ContractID:    rmnRemoteContractID,
-		Owner:         h.DeployerKeypair().Address(),
-		ChainSelector: selector,
+		ContractID:  rmnRemoteContractID,
+		Owner:       h.DeployerKeypair().Address(),
+		CurseAdmins: nil,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("initialize RMN Remote: %w", err)
 	}

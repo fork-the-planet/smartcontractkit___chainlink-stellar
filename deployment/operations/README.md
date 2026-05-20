@@ -39,7 +39,7 @@ Handlers use the signature `func(b operations.Bundle, deps DEP, input IN) (OUT, 
 | `onramp` | `OnRamp` | `onramp.wasm` | Lane source: init, dest chain allowlists, fee/family config, sends |
 | `router` | `Router` | `router.wasm` | OffRamp routing, RMN config, ownership |
 | `fee_quoter` | `FeeQuoter` | `fee_quoter.wasm` | Token price / fee config mutators |
-| `rmn_remote` | `RmnRemote` | `rmn_remote.wasm` | RMN curse / config updates |
+| `rmn_remote` | `RmnRemote` | `rmn_remote.wasm` | RMN curse updates |
 | `rmn_proxy` | `RmnProxy` | `rmn_proxy.wasm` | Proxy admin / routing to remote |
 | `ramp_registry` | `RampRegistry` | `ccip_ramp_registry.wasm` | Ramp registration and lookups |
 | `token_admin_registry` | `TokenAdminRegistry` | `token_admin_registry.wasm` | Token admin / pool registry updates |

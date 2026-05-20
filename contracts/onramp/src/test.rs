@@ -876,7 +876,7 @@ fn test_ccip_send_emits_token_pool_receipt_before_executor_and_network_fee() {
 
     let rmn_remote_id = env.register(RmnRemoteContract, ());
     let rmn_remote_client = RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy_id = env.register(RmnProxyContract, ());
     let rmn_proxy_client = RmnProxyContractClient::new(&env, &rmn_proxy_id);

@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 2,
+    "address": 3,
     "nonce": 0,
     "mux_id": 0
   },
@@ -36,18 +36,10 @@
                   "storage": [
                     {
                       "key": {
-                        "symbol": "CFGCNT"
+                        "symbol": "CRSADM"
                       },
                       "val": {
-                        "u32": 0
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "CHAINSEL"
-                      },
-                      "val": {
-                        "u64": "12345"
+                        "vec": []
                       }
                     },
                     {
@@ -72,14 +64,6 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "SIGNERS"
-                      },
-                      "val": {
-                        "map": []
                       }
                     }
                   ]

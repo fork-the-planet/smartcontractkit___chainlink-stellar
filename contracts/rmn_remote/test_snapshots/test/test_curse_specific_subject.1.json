@@ -7,7 +7,6 @@
   "auth": [
     [],
     [],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -17,6 +16,9 @@
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
               "function_name": "curse",
               "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
                 {
                   "vec": [
                     {
@@ -31,7 +33,6 @@
         }
       ]
     ],
-    [],
     [],
     []
   ],
@@ -62,18 +63,10 @@
                   "storage": [
                     {
                       "key": {
-                        "symbol": "CFGCNT"
+                        "symbol": "CRSADM"
                       },
                       "val": {
-                        "u32": 0
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "CHAINSEL"
-                      },
-                      "val": {
-                        "u64": "12345"
+                        "vec": []
                       }
                     },
                     {
@@ -107,14 +100,6 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "SIGNERS"
-                      },
-                      "val": {
-                        "map": []
                       }
                     }
                   ]

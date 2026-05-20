@@ -451,7 +451,7 @@ func TestTokenPool(t *testing.T) {
 			verifierBlob := stack.signVerifierBlob(t, msgID)
 
 			subject := rmnSubjectForRouterDestChain(remoteSourceChain)
-			if err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{subject}); err != nil {
+			if err := stack.RmnRemoteClient.Curse(ctx, deployerAddr, [][16]byte{subject}); err != nil {
 				t.Fatalf("RmnRemote Curse(source chain subject): %v", err)
 			}
 			t.Cleanup(func() {
