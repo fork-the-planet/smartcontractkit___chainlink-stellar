@@ -4,27 +4,22 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	ccv "github.com/smartcontractkit/chainlink-ccv/build/devenv"
 	"github.com/smartcontractkit/chainlink-ccv/build/devenv/cciptestinterfaces"
+	"github.com/smartcontractkit/chainlink-ccv/build/devenv/chainreg"
 	ccvservices "github.com/smartcontractkit/chainlink-ccv/build/devenv/services"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
-	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 
 	fqbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
-	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
@@ -32,7 +27,7 @@ import (
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 )
 
-var _ ccv.ImplFactory = &ImplFactory{}
+var _ chainreg.ImplFactory = &ImplFactory{}
 
 // ImplFactory creates Stellar CCIP17 chain implementations.
 // It implements [registry.ImplFactory] and is registered with the global factory
@@ -69,7 +64,7 @@ func (f *ImplFactory) DefaultSignerKey(keys ccvservices.BootstrapKeys) string {
 	return keys.ECDSAAddress
 }
 
-// DefaultFeeAggregator implements [ccv.ImplFactory].
+// DefaultFeeAggregator implements [chainreg.ImplFactory].
 // Returns the CLDF Stellar deployer account address when topology omits fee_aggregator for this chain.
 func (f *ImplFactory) DefaultFeeAggregator(env *deployment.Environment, chainSelector uint64) string {
 	stellarChains := env.BlockChains.StellarChains()
@@ -86,14 +81,8 @@ func (f *ImplFactory) SupportsFunding() bool {
 	return true
 }
 
-// SupportsBootstrapExecutor reports whether executors for this family
-// use the bootstrap.Run lifecycle (JD-managed with DB). Families that
-// use standalone executors (legacy mode, no bootstrap) return false.
-func (f *ImplFactory) SupportsBootstrapExecutor() bool {
-	return true
-}
 
-// NewEmpty implements [registry.ImplFactory].
+// NewEmpty implements [chainreg.ImplFactory].
 // Returns a bare Chain used by NewEnvironment() to call DeployLocalNetwork and
 // the shared DeployChainContracts path (Pre/GetDeployChainContractsCfg/Post).
 func (f *ImplFactory) NewEmpty() cciptestinterfaces.CCIP17Configuration {
@@ -103,41 +92,32 @@ func (f *ImplFactory) NewEmpty() cciptestinterfaces.CCIP17Configuration {
 	)
 }
 
-// New implements [registry.ImplFactory].
+// New implements [chainreg.ImplFactory].
 // Returns a fully initialised Chain for test interactions against an already-deployed
 // network. It reconstructs all necessary state (RPC client, deployer keypair, OnRamp
-// client) from the blockchain.Input output and the deployment datastore.
-func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger, env *deployment.Environment, bc *blockchain.Input) (cciptestinterfaces.CCIP17, error) {
-	details, err := chainsel.GetChainDetailsByChainIDAndFamily(bc.ChainID, chainsel.FamilyStellar)
-	if err != nil {
-		return nil, fmt.Errorf("get chain details for Stellar chain %s: %w", bc.ChainID, err)
+// client) from the CLDF environment chain entry and the deployment datastore.
+func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deployment.Environment, chainSelector uint64) (cciptestinterfaces.CCIP17, error) {
+	stellarChains := env.BlockChains.StellarChains()
+	cldfChain, ok := stellarChains[chainSelector]
+	if !ok {
+		return nil, fmt.Errorf("stellar chain %d not found in CLDF environment", chainSelector)
 	}
 
-	if bc.Out == nil {
-		return nil, fmt.Errorf("blockchain output is nil for chain %s", bc.ChainID)
-	}
-	if len(bc.Out.Nodes) == 0 {
-		return nil, fmt.Errorf("no nodes in blockchain output for Stellar chain %s", bc.ChainID)
-	}
-	if bc.Out.NetworkSpecificData == nil || bc.Out.NetworkSpecificData.StellarNetwork == nil {
-		return nil, fmt.Errorf("missing Stellar network info in blockchain output for chain %s", bc.ChainID)
-	}
-
-	sorobanRPCURL := bc.Out.Nodes[0].ExternalHTTPUrl
-	networkPassphrase := bc.Out.NetworkSpecificData.StellarNetwork.NetworkPassphrase
+	networkPassphrase := cldfChain.NetworkPassphrase
 
 	// Derive the same deployer keypair used during DeployLocalNetwork.
 	deployerSeed := sha256.Sum256([]byte(fmt.Sprintf("deployer-%s", networkPassphrase)))
 	deployerKP, err := keypair.FromRawSeed(deployerSeed)
 	if err != nil {
-		return nil, fmt.Errorf("derive deployer keypair for Stellar chain %s: %w", bc.ChainID, err)
+		return nil, fmt.Errorf("derive deployer keypair for Stellar chain %d: %w", chainSelector, err)
 	}
 
-	rpcClient := rpcclient.NewClient(sorobanRPCURL, &http.Client{Timeout: 60 * time.Second})
+	// Use the CLDF chain's RPC client directly.
+	rpcClient := cldfChain.Client
 	deployer := stellardeployment.NewDeployer(rpcClient, networkPassphrase, deployerKP)
 
 	chain := &Chain{
-		chainSelector:     details.ChainSelector,
+		chainSelector:     chainSelector,
 		logger:            lggr,
 		rpcClient:         rpcClient,
 		networkPassphrase: networkPassphrase,
@@ -147,7 +127,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 
 	// Look up deployed contract addresses from the datastore and wire up clients.
 	if env.DataStore != nil {
-		onrampRef, err := env.DataStore.Addresses().Get(stellarccip.OnRampDatastoreRef().AddressRefKey(details.ChainSelector))
+		onrampRef, err := env.DataStore.Addresses().Get(stellarccip.OnRampDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && onrampRef.Address != "" {
 			onrampContractID, convErr := scval.HexToContractStrkey(onrampRef.Address)
 			if convErr == nil {
@@ -156,7 +136,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		offrampRef, err := env.DataStore.Addresses().Get(stellarccip.OffRampDatastoreRef().AddressRefKey(details.ChainSelector))
+		offrampRef, err := env.DataStore.Addresses().Get(stellarccip.OffRampDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && offrampRef.Address != "" {
 			offrampContractID, convErr := scval.HexToContractStrkey(offrampRef.Address)
 			if convErr == nil {
@@ -165,7 +145,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		routerRef, err := env.DataStore.Addresses().Get(stellarccip.RouterDatastoreRef().AddressRefKey(details.ChainSelector))
+		routerRef, err := env.DataStore.Addresses().Get(stellarccip.RouterDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && routerRef.Address != "" {
 			routerContractID, convErr := scval.HexToContractStrkey(routerRef.Address)
 			if convErr == nil {
@@ -174,7 +154,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		fqRef, err := env.DataStore.Addresses().Get(stellarccip.FeeQuoterDatastoreRef().AddressRefKey(details.ChainSelector))
+		fqRef, err := env.DataStore.Addresses().Get(stellarccip.FeeQuoterDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && fqRef.Address != "" {
 			fqContractID, convErr := scval.HexToContractStrkey(fqRef.Address)
 			if convErr == nil {
@@ -182,7 +162,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		vvrRef, err := env.DataStore.Addresses().Get(stellarccip.VVRDatastoreRef().AddressRefKey(details.ChainSelector))
+		vvrRef, err := env.DataStore.Addresses().Get(stellarccip.VVRDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && vvrRef.Address != "" {
 			vvrContractID, convErr := scval.HexToContractStrkey(vvrRef.Address)
 			if convErr == nil {
@@ -190,7 +170,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		cvRef, err := env.DataStore.Addresses().Get(stellarccip.CommitteeVerifierDatastoreRef().AddressRefKey(details.ChainSelector))
+		cvRef, err := env.DataStore.Addresses().Get(stellarccip.CommitteeVerifierDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && cvRef.Address != "" {
 			cvContractID, convErr := scval.HexToContractStrkey(cvRef.Address)
 			if convErr == nil {
@@ -198,7 +178,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		receiverRef, err := env.DataStore.Addresses().Get(stellarccip.CCIPReceiverDatastoreRef().AddressRefKey(details.ChainSelector))
+		receiverRef, err := env.DataStore.Addresses().Get(stellarccip.CCIPReceiverDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && receiverRef.Address != "" {
 			receiverContractID, convErr := scval.HexToContractStrkey(receiverRef.Address)
 			if convErr == nil {
@@ -206,7 +186,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		rmnProxyRef, err := env.DataStore.Addresses().Get(stellarccip.RMNProxyDatastoreRef().AddressRefKey(details.ChainSelector))
+		rmnProxyRef, err := env.DataStore.Addresses().Get(stellarccip.RMNProxyDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && rmnProxyRef.Address != "" {
 			rmnProxyContractID, convErr := scval.HexToContractStrkey(rmnProxyRef.Address)
 			if convErr == nil {
@@ -215,16 +195,15 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 			}
 		}
 
-		rmnRemoteRef, err := env.DataStore.Addresses().Get(stellarccip.RMNRemoteDatastoreRef().AddressRefKey(details.ChainSelector))
+		rmnRemoteRef, err := env.DataStore.Addresses().Get(stellarccip.RMNRemoteDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && rmnRemoteRef.Address != "" {
 			rmnRemoteContractID, convErr := scval.HexToContractStrkey(rmnRemoteRef.Address)
 			if convErr == nil {
 				chain.rmnRemoteContractID = rmnRemoteContractID
-				chain.rmnRemoteClient = rmnremotebindings.NewRmnRemoteClient(deployer, rmnRemoteContractID)
 			}
 		}
 
-		poolRef, err := env.DataStore.Addresses().Get(stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(details.ChainSelector))
+		poolRef, err := env.DataStore.Addresses().Get(stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && poolRef.Address != "" {
 			poolContractID, convErr := scval.HexToContractStrkey(poolRef.Address)
 			if convErr == nil {
@@ -234,7 +213,7 @@ func (f *ImplFactory) New(ctx context.Context, cfg *ccv.Cfg, lggr zerolog.Logger
 		}
 
 		// TokenAdminRegistry and RampRegistry are not loaded above; fill from DS using shared lookups.
-		chain.hydrateDevenvClientsFromDataStore(env.DataStore, details.ChainSelector)
+		chain.hydrateDevenvClientsFromDataStore(env.DataStore, chainSelector)
 	}
 
 	// Re-derive the deterministic test SAC token address so that token transfer

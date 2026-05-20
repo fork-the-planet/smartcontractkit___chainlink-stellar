@@ -25,7 +25,7 @@ var _ fees.FeeAdapter = (*StellarFeeAdapter)(nil)
 // StellarFeeAdapter implements fees.FeeAdapter for the Stellar FeeQuoter.
 type StellarFeeAdapter struct{}
 
-func (a *StellarFeeAdapter) GetFeeContractRef(e cldf.Environment, src uint64, _ uint64) (datastore.AddressRef, error) {
+func (a *StellarFeeAdapter) GetFeeContractRef(e cldf.Environment, onRamp datastore.AddressRef, src uint64, dst uint64) (datastore.AddressRef, error) {
 	toRef := func(ref datastore.AddressRef) (datastore.AddressRef, error) { return ref, nil }
 	return datastore_utils.FindAndFormatRef(e.DataStore, datastore.AddressRef{
 		Type:    datastore.ContractType(fqopstype.ContractType),
@@ -33,17 +33,13 @@ func (a *StellarFeeAdapter) GetFeeContractRef(e cldf.Environment, src uint64, _ 
 	}, src, toRef)
 }
 
-func (a *StellarFeeAdapter) SetTokenTransferFee(e cldf.Environment) *cldf_ops.Sequence[fees.SetTokenTransferFeeSequenceInput, seqcore.OnChainOutput, cldf_chain.BlockChains] {
+func (a *StellarFeeAdapter) SetTokenTransferFee(e cldf.Environment, fq datastore.AddressRef) *cldf_ops.Sequence[fees.SetTokenTransferFeeSequenceInput, seqcore.OnChainOutput, cldf_chain.BlockChains] {
 	return cldf_ops.NewSequence(
 		stellarsequences.StellarSetTokenTransferFee.ID(),
 		stellarops.ContractDeploymentVersion,
 		stellarsequences.StellarSetTokenTransferFee.Description(),
 		func(b cldf_ops.Bundle, chains cldf_chain.BlockChains, in fees.SetTokenTransferFeeSequenceInput) (seqcore.OnChainOutput, error) {
-			fqRef, err := a.GetFeeContractRef(e, in.Selector, 0)
-			if err != nil {
-				return seqcore.OnChainOutput{}, fmt.Errorf("resolve FeeQuoter for chain %d: %w", in.Selector, err)
-			}
-			fqStrkey, err := scval.HexToContractStrkey(fqRef.Address)
+			fqStrkey, err := scval.HexToContractStrkey(fq.Address)
 			if err != nil {
 				return seqcore.OnChainOutput{}, fmt.Errorf("fee quoter datastore address to strkey for chain %d: %w", in.Selector, err)
 			}
@@ -59,7 +55,7 @@ func (a *StellarFeeAdapter) SetTokenTransferFee(e cldf.Environment) *cldf_ops.Se
 	)
 }
 
-func (a *StellarFeeAdapter) GetOnchainTokenTransferFeeConfig(_ cldf.Environment, _ uint64, _ uint64, _ string) (fees.TokenTransferFeeArgs, error) {
+func (a *StellarFeeAdapter) GetOnchainTokenTransferFeeConfig(_ cldf.Environment, fq datastore.AddressRef, _ uint64, _ uint64, _ string) (fees.TokenTransferFeeArgs, error) {
 	return fees.TokenTransferFeeArgs{}, fmt.Errorf("stellar GetOnchainTokenTransferFeeConfig: not yet implemented (requires live chain query)")
 }
 
@@ -74,17 +70,27 @@ func (a *StellarFeeAdapter) GetDefaultTokenTransferFeeConfig(_, _ uint64) fees.T
 	}
 }
 
-func (a *StellarFeeAdapter) ApplyDestChainConfigUpdates(e cldf.Environment) *cldf_ops.Sequence[fees.ApplyDestChainConfigSequenceInput, seqcore.OnChainOutput, cldf_chain.BlockChains] {
+// Validate validates the FeeQuoter address reference for Stellar.
+// Stellar contract IDs should be 32 bytes when decoded from hex.
+func (a *StellarFeeAdapter) Validate(_ cldf.Environment, feeRef datastore.AddressRef) error {
+	if feeRef.Address == "" {
+		return fmt.Errorf("fee quoter address is empty")
+	}
+	// Try to convert to strkey to validate format
+	_, err := scval.HexToContractStrkey(feeRef.Address)
+	if err != nil {
+		return fmt.Errorf("invalid fee quoter address %q: %w", feeRef.Address, err)
+	}
+	return nil
+}
+
+func (a *StellarFeeAdapter) ApplyDestChainConfigUpdates(e cldf.Environment, feeRef datastore.AddressRef) *cldf_ops.Sequence[fees.ApplyDestChainConfigSequenceInput, seqcore.OnChainOutput, cldf_chain.BlockChains] {
 	return cldf_ops.NewSequence(
 		stellarsequences.StellarApplyDestChainConfig.ID(),
 		stellarops.ContractDeploymentVersion,
 		stellarsequences.StellarApplyDestChainConfig.Description(),
 		func(b cldf_ops.Bundle, chains cldf_chain.BlockChains, in fees.ApplyDestChainConfigSequenceInput) (seqcore.OnChainOutput, error) {
-			fqRef, err := a.GetFeeContractRef(e, in.Selector, 0)
-			if err != nil {
-				return seqcore.OnChainOutput{}, fmt.Errorf("resolve FeeQuoter for chain %d: %w", in.Selector, err)
-			}
-			fqStrkey, err := scval.HexToContractStrkey(fqRef.Address)
+			fqStrkey, err := scval.HexToContractStrkey(feeRef.Address)
 			if err != nil {
 				return seqcore.OnChainOutput{}, fmt.Errorf("fee quoter datastore address to strkey for chain %d: %w", in.Selector, err)
 			}
@@ -100,7 +106,7 @@ func (a *StellarFeeAdapter) ApplyDestChainConfigUpdates(e cldf.Environment) *cld
 	)
 }
 
-func (a *StellarFeeAdapter) GetOnchainDestChainConfig(_ cldf.Environment, _ uint64, _ uint64) (lanes.FeeQuoterDestChainConfig, error) {
+func (a *StellarFeeAdapter) GetOnchainDestChainConfig(_ cldf.Environment, fq datastore.AddressRef, _ uint64, _ uint64) (lanes.FeeQuoterDestChainConfig, error) {
 	return lanes.FeeQuoterDestChainConfig{}, fmt.Errorf("stellar GetOnchainDestChainConfig: not yet implemented (requires live chain query)")
 }
 

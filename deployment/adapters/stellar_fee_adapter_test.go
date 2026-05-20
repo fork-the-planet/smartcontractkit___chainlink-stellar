@@ -16,6 +16,15 @@ import (
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
+// testFQRef returns a dummy AddressRef for FeeQuoter lookup tests.
+// The actual lookup uses the type/version from the adapter, not this ref's address.
+func testFQRef() datastore.AddressRef {
+	return datastore.AddressRef{
+		Type:    datastore.ContractType(fqopstype.ContractType),
+		Version: semver.MustParse(fqopstype.Deploy.Version()),
+	}
+}
+
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
 	var _ fees.FeeAdapter = (*StellarFeeAdapter)(nil)
 }
@@ -39,7 +48,7 @@ func TestStellarFeeAdapter_GetDefaultDestChainConfig(t *testing.T) {
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	_, err := a.GetFeeContractRef(env, 42, 0)
+	_, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.Error(t, err)
 }
 
@@ -58,7 +67,7 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 	}
 	require.NoError(t, ds.Addresses().Upsert(ref))
 	env := envWithDatastore(ds.Seal())
-	got, err := a.GetFeeContractRef(env, 42, 0)
+	got, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.NoError(t, err)
 	require.Equal(t, hexAddr, got.Address)
 
@@ -70,14 +79,14 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 func TestStellarFeeAdapter_SetTokenTransferFee_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.SetTokenTransferFee(env)
+	seq := a.SetTokenTransferFee(env, testFQRef())
 	require.NotNil(t, seq)
 }
 
 func TestStellarFeeAdapter_ApplyDestChainConfigUpdates_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.ApplyDestChainConfigUpdates(env)
+	seq := a.ApplyDestChainConfigUpdates(env, testFQRef())
 	require.NotNil(t, seq)
 }
 

@@ -41,7 +41,6 @@ import (
 	offrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/offramp"
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
-	rmnremotebindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
@@ -49,9 +48,9 @@ import (
 	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
-	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
 	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/simple_node_set"
 )
@@ -72,6 +71,7 @@ func ptrU8(v uint8) *uint8 { return &v }
 
 // generateAccountAddress generates a Stellar account address (G...) from a seed.
 // This uses the Stellar SDK's keypair package to create a proper strkey-encoded address.
+// TODO: move to a test helper since it's not used outside of tests.
 func generateAccountAddress(seed string) (string, error) {
 	// Create deterministic seed from input
 	hash := sha256.Sum256([]byte(seed))
@@ -113,7 +113,6 @@ type Chain struct {
 	rmnProxyContractID     string
 	rmnProxyClient         *rmnproxybindings.RmnProxyClient
 	rmnRemoteContractID    string
-	rmnRemoteClient        *rmnremotebindings.RmnRemoteClient
 
 	tokenAdminRegistryContractID string
 	tokenAdminRegistryClient     *tarbindings.TokenAdminRegistryClient
@@ -619,22 +618,6 @@ func (c *Chain) FundNodes(ctx context.Context, cls []*simple_node_set.Input, bc 
 	return nil
 }
 
-// Curse implements cciptestinterfaces.CCIP17.
-// Curses a list of chains on this chain's RMN.
-func (c *Chain) Curse(ctx context.Context, subjects [][16]byte) error {
-	if c.rmnRemoteClient == nil {
-		return fmt.Errorf("RMN Remote client not initialized")
-	}
-	err := c.rmnRemoteClient.Curse(ctx, subjects)
-	if err != nil {
-		return fmt.Errorf("failed to curse RMN Remote: %w", err)
-	}
-	c.logger.Debug().
-		Int("numSubjects", len(subjects)).
-		Msg("Cursed RMN Remote")
-	return nil
-}
-
 // ExposeMetrics implements cciptestinterfaces.CCIP17.
 // Exposes Prometheus metrics for monitoring.
 func (c *Chain) ExposeMetrics(ctx context.Context, source, dest uint64) ([]string, *prometheus.Registry, error) {
@@ -927,22 +910,6 @@ func (c *Chain) SendMessage(ctx context.Context, dest uint64, fields cciptestint
 
 	event, _, err := c.SendChainMessage(ctx, dest, msg, nil)
 	return event, err
-}
-
-// Uncurse implements cciptestinterfaces.CCIP17.
-// Uncurses a list of chains on this chain's RMN.
-func (c *Chain) Uncurse(ctx context.Context, subjects [][16]byte) error {
-	if c.rmnRemoteClient == nil {
-		return fmt.Errorf("RMN Remote client not initialized")
-	}
-	err := c.rmnRemoteClient.Uncurse(ctx, subjects)
-	if err != nil {
-		return fmt.Errorf("failed to uncurse RMN Remote: %w", err)
-	}
-	c.logger.Debug().
-		Int("numSubjects", len(subjects)).
-		Msg("Uncursed RMN Remote")
-	return nil
 }
 
 // testTokenAssetCode is the classic Stellar asset code used by the test SAC token.
