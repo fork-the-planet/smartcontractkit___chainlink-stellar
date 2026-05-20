@@ -28,7 +28,6 @@ import (
 	cldfdeployment "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	"github.com/smartcontractkit/chainlink-deployments-framework/operations"
 	ccvchain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
-	chain "github.com/smartcontractkit/chainlink-stellar/ccv/chain"
 	stellarcommon "github.com/smartcontractkit/chainlink-stellar/ccv/common"
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -483,12 +482,12 @@ func CurseChain(t *testing.T, env *cldfdeployment.Environment, chainSelector, su
 	curseRegistry := fastcurse.GetCurseRegistry()
 	version := deriveCurseAdapterVersion(t, env, curseRegistry, chainSelector)
 
-	// Reset the bundle so it doesn't cache previous curses
-	bundle := operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
-	env.OperationsBundle = bundle
+	// Use a shallow copy so this helper does not mutate the caller's shared environment.
+	envCopy := *env
+	envCopy.OperationsBundle = operations.NewBundle(env.GetContext, env.Logger, operations.NewMemoryReporter())
 
 	curseCS := fastcurse.CurseChangeset(curseRegistry, changesets.GetRegistry())
-	_, err := curseCS.Apply(*env, fastcurse.RMNCurseConfig{
+	_, err := curseCS.Apply(envCopy, fastcurse.RMNCurseConfig{
 		CurseActions: []fastcurse.CurseActionInput{
 			{
 				ChainSelector:        chainSelector,

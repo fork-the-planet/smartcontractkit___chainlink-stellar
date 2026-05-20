@@ -217,7 +217,9 @@ func TestEVMToStellarExecutionCursedSource(t *testing.T) {
 
 		t.Cleanup(func() {
 			l.Info().Msg("🔓 Cleaning up: uncursing EVM source chain")
-			helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
+			t.Run("cleanup_uncurse_evm_source_chain", func(t *testing.T) {
+				helpers.UncurseChain(t, env.CLDFEnv, stellarDetails.ChainSelector, evmDetails.ChainSelector)
+			})
 		})
 
 		// Record the expected sequence number before sending
