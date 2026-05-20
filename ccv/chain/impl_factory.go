@@ -81,7 +81,6 @@ func (f *ImplFactory) SupportsFunding() bool {
 	return true
 }
 
-
 // NewEmpty implements [chainreg.ImplFactory].
 // Returns a bare Chain used by NewEnvironment() to call DeployLocalNetwork and
 // the shared DeployChainContracts path (Pre/GetDeployChainContractsCfg/Post).
@@ -203,12 +202,26 @@ func (f *ImplFactory) New(ctx context.Context, lggr zerolog.Logger, env *deploym
 			}
 		}
 
-		poolRef, err := env.DataStore.Addresses().Get(stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
+		poolRef, err := env.DataStore.Addresses().Get(stellarccip.SiloedLockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
 		if err == nil && poolRef.Address != "" {
 			poolContractID, convErr := scval.HexToContractStrkey(poolRef.Address)
 			if convErr == nil {
 				chain.tokenPoolContractID = poolContractID
 				chain.tokenPoolClient = tokenpoolbindings.NewTokenPoolClient(deployer, poolContractID)
+			}
+		}
+
+		legacyPoolRef, err := env.DataStore.Addresses().Get(stellarccip.LegacyLockReleasePoolDevenvDatastoreRef().AddressRefKey(chainSelector))
+		if err == nil && legacyPoolRef.Address != "" {
+			if legacyPoolID, convErr := scval.HexToContractStrkey(legacyPoolRef.Address); convErr == nil {
+				chain.legacyLockReleasePoolID = legacyPoolID
+			}
+		}
+
+		lockBoxRef, err := env.DataStore.Addresses().Get(stellarccip.TokenLockBoxDevenvDatastoreRef().AddressRefKey(chainSelector))
+		if err == nil && lockBoxRef.Address != "" {
+			if lockBoxID, convErr := scval.HexToContractStrkey(lockBoxRef.Address); convErr == nil {
+				chain.tokenLockBoxContractID = lockBoxID
 			}
 		}
 

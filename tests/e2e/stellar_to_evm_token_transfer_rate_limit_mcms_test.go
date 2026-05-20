@@ -82,7 +82,7 @@ func TestStellarToEVMTokenTransferRateLimitViaMCMS(t *testing.T) {
 	require.NoError(t, err)
 
 	poolRef, err := env.DataStore.Addresses().Get(
-		stellarccip.LockReleasePoolDevenvDatastoreRef().AddressRefKey(stellarDetails.ChainSelector),
+		stellarccip.SiloedLockReleasePoolDevenvDatastoreRef().AddressRefKey(stellarDetails.ChainSelector),
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, poolRef.Address)

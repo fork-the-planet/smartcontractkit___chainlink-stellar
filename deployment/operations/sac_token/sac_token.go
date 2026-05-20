@@ -34,3 +34,32 @@ var Transfer = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// ApproveInput is the input for a Soroban Asset Contract (SAC) `approve` call.
+type ApproveInput struct {
+	ContractID        string `json:"contract_id"`
+	From              string `json:"from"`
+	Spender           string `json:"spender"`
+	Amount            int64  `json:"amount"`
+	ExpirationLedger  uint32 `json:"expiration_ledger"`
+}
+
+// Approve calls `approve` on a SAC token contract.
+var Approve = cldfops.NewOperation(
+	"sac-token:approve",
+	stellarops.ContractDeploymentVersion,
+	"Approves a SAC token spender up to expiration_ledger",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApproveInput) (stellarops.Void, error) {
+		args := []xdr.ScVal{
+			scval.AddressToScVal(in.From),
+			scval.AddressToScVal(in.Spender),
+			scval.I128ToScVal(in.Amount),
+			scval.Uint32ToScVal(in.ExpirationLedger),
+		}
+		_, err := d.Invoker.InvokeContract(b.GetContext(), in.ContractID, "approve", args)
+		if err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

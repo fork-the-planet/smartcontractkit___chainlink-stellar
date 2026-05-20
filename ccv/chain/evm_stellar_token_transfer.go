@@ -11,10 +11,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	evmcontract "github.com/smartcontractkit/chainlink-deployments-framework/chain/evm/operations/contract"
 	evmtar "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_5_0/operations/token_admin_registry"
 	evmregister "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_5_0/sequences"
 	evmtokenpool "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/token_pool"
+	evmcontract "github.com/smartcontractkit/chainlink-deployments-framework/chain/evm/operations/contract"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
@@ -120,7 +120,7 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 		poolRef.Qualifier,
 	)
 	if err != nil {
-		return fmt.Errorf("lookup Stellar lock-release pool: %w", err)
+		return fmt.Errorf("lookup Stellar siloed lock-release pool: %w", err)
 	}
 	tokenRef := stellarccip.DevenvTestTokenDatastoreRef()
 	stellarToken, err := stellarccip.LookupAddressRef(

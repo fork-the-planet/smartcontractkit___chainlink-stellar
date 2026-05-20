@@ -37,9 +37,11 @@ type CLDFStellarCCIPDevenvHost struct {
 	feeQuoterClient        *fqbindings.FeeQuoterClient
 	tarContractID          string
 	tarClient              *tarbindings.TokenAdminRegistryClient
-	tokenPoolContractID    string
-	tokenPoolClient        *tokenpoolbindings.TokenPoolClient
-	testTokenContractID    string
+	tokenPoolContractID        string
+	tokenPoolClient            *tokenpoolbindings.TokenPoolClient
+	legacyLockReleasePoolID    string
+	tokenLockBoxContractID     string
+	testTokenContractID      string
 	offRampContractID      string
 	offRampClient          *offrampbindings.OffRampClient
 	routerContractID       string
@@ -104,6 +106,25 @@ func (h *CLDFStellarCCIPDevenvHost) TokenAdminRegistryClient() *tarbindings.Toke
 func (h *CLDFStellarCCIPDevenvHost) SetTokenPool(contractID string, client *tokenpoolbindings.TokenPoolClient) {
 	h.tokenPoolContractID = contractID
 	h.tokenPoolClient = client
+}
+
+func (h *CLDFStellarCCIPDevenvHost) SetLegacyLockReleasePool(contractID string) {
+	h.legacyLockReleasePoolID = contractID
+}
+
+func (h *CLDFStellarCCIPDevenvHost) SetTokenLockBox(contractID string) {
+	h.tokenLockBoxContractID = contractID
+}
+
+func (h *CLDFStellarCCIPDevenvHost) LatestLedgerSequence(ctx context.Context) (uint32, error) {
+	if h.ch.Client == nil {
+		return 0, fmt.Errorf("stellar rpc client is nil")
+	}
+	ledger, err := h.ch.Client.GetLatestLedger(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return ledger.Sequence, nil
 }
 
 func (h *CLDFStellarCCIPDevenvHost) SetTestToken(contractID string) {

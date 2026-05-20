@@ -161,8 +161,28 @@ func CCIPReceiverDatastoreRef() DatastoreSorobanContractRef {
 }
 
 func LockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return LegacyLockReleasePoolDevenvDatastoreRef()
+}
+
+func LegacyLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(LockReleaseTokenPoolContractType),
+		Version:   stellarops.ContractDeploymentVersion,
+		Qualifier: DevenvLegacyLockReleasePoolQualifier,
+	}
+}
+
+func SiloedLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType(SiloedLockReleaseTokenPoolContractType),
+		Version:   stellarops.ContractDeploymentVersion,
+		Qualifier: DevenvTestTokenPoolQualifier,
+	}
+}
+
+func TokenLockBoxDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType(TokenLockBoxContractType),
 		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: DevenvTestTokenPoolQualifier,
 	}

@@ -72,3 +72,86 @@ var AcceptOwnership = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// AddAllowedCallersInput adds pool addresses to the lock box allowlist (owner-only).
+type AddAllowedCallersInput struct {
+	ContractID string   `json:"contract_id"`
+	Callers    []string `json:"callers"`
+}
+
+// AddAllowedCallers calls token lock box `add_allowed_callers`.
+var AddAllowedCallers = cldfops.NewOperation(
+	"token-lock-box:add-allowed-callers",
+	stellarops.ContractDeploymentVersion,
+	"Adds allowed caller addresses that may deposit or withdraw from the lock box",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in AddAllowedCallersInput) (stellarops.Void, error) {
+		c := tlbbindings.NewTokenLockBoxClient(d.Invoker, in.ContractID)
+		if err := c.AddAllowedCallers(b.GetContext(), in.Callers); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// RemoveAllowedCallersInput removes pool addresses from the lock box allowlist (owner-only).
+type RemoveAllowedCallersInput struct {
+	ContractID string   `json:"contract_id"`
+	Callers    []string `json:"callers"`
+}
+
+// RemoveAllowedCallers calls token lock box `remove_allowed_callers`.
+var RemoveAllowedCallers = cldfops.NewOperation(
+	"token-lock-box:remove-allowed-callers",
+	stellarops.ContractDeploymentVersion,
+	"Removes allowed caller addresses from the lock box allowlist",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in RemoveAllowedCallersInput) (stellarops.Void, error) {
+		c := tlbbindings.NewTokenLockBoxClient(d.Invoker, in.ContractID)
+		if err := c.RemoveAllowedCallers(b.GetContext(), in.Callers); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// DepositInput pulls tokens from caller into the lock box (allowed caller only).
+type DepositInput struct {
+	ContractID string `json:"contract_id"`
+	Caller     string `json:"caller"`
+	Amount     int64  `json:"amount"`
+}
+
+// Deposit calls token lock box `deposit`.
+var Deposit = cldfops.NewOperation(
+	"token-lock-box:deposit",
+	stellarops.ContractDeploymentVersion,
+	"Deposits tokens from an allowed caller into the lock box",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in DepositInput) (stellarops.Void, error) {
+		c := tlbbindings.NewTokenLockBoxClient(d.Invoker, in.ContractID)
+		if err := c.Deposit(b.GetContext(), in.Caller, in.Amount); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// WithdrawInput sends tokens from the lock box to a recipient (allowed caller only).
+type WithdrawInput struct {
+	ContractID string `json:"contract_id"`
+	Caller     string `json:"caller"`
+	Amount     int64  `json:"amount"`
+	Recipient  string `json:"recipient"`
+}
+
+// Withdraw calls token lock box `withdraw`.
+var Withdraw = cldfops.NewOperation(
+	"token-lock-box:withdraw",
+	stellarops.ContractDeploymentVersion,
+	"Withdraws tokens from the lock box to a recipient on behalf of an allowed caller",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in WithdrawInput) (stellarops.Void, error) {
+		c := tlbbindings.NewTokenLockBoxClient(d.Invoker, in.ContractID)
+		if err := c.Withdraw(b.GetContext(), in.Caller, in.Amount, in.Recipient); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

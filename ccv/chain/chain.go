@@ -42,6 +42,7 @@ import (
 	onrampbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/onramp"
 	rmnproxybindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_proxy"
 	routerbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/router"
+	slrbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/siloed_lock_release_pool"
 	tarbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_admin_registry"
 	tokenpoolbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/token_pool"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
@@ -49,6 +50,7 @@ import (
 	stellardeployment "github.com/smartcontractkit/chainlink-stellar/deployment"
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	lrpoolops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/siloed_lock_release_pool"
 	stellardeps "github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 	"github.com/smartcontractkit/chainlink-testing-framework/framework/components/blockchain"
@@ -118,6 +120,8 @@ type Chain struct {
 	tokenAdminRegistryClient     *tarbindings.TokenAdminRegistryClient
 	tokenPoolContractID          string
 	tokenPoolClient              *tokenpoolbindings.TokenPoolClient
+	legacyLockReleasePoolID      string
+	tokenLockBoxContractID       string
 	testTokenContractID          string
 	testTokenIssuerKeypair       *keypair.Full
 	feeTokenContractID           string
@@ -313,6 +317,12 @@ func (c *Chain) PostConnect(env *deployment.Environment, selector uint64, remote
 			return fmt.Errorf("apply pool chain updates in post-connect: %w", err)
 		}
 
+		if c.tokenLockBoxContractID != "" {
+			if err := c.configureSiloedPoolLockBoxes(env.OperationsBundle, remoteSelectors); err != nil {
+				return fmt.Errorf("configure siloed pool lock boxes: %w", err)
+			}
+		}
+
 		if err := c.configureEVMToStellarTokenTransfers(env, selector, remoteSelectors); err != nil {
 			return fmt.Errorf("configure EVM-to-Stellar token transfers: %w", err)
 		}
@@ -387,8 +397,9 @@ func (c *Chain) GetDeployChainContractsCfg(env *deployment.Environment, selector
 }
 
 // PostDeployContractsForSelector implements cciptestinterfaces.OnChainConfigurable.
-// Post-deploy parity with EVM: deploys the lock-release test pool and test SAC ([stellarccip.DeployLockReleaseTestTokenPool]),
-// applies FeeQuoter pricing for the test token ([stellarccip.ApplyFeeQuoterTestTokenConfig]), and returns a datastore delta with the pool AddressRef.
+// Post-deploy parity with EVM: deploys legacy + siloed lock-release test pools (with token lock box),
+// applies FeeQuoter pricing for the test token ([stellarccip.ApplyFeeQuoterTestTokenConfig]), and returns
+// a datastore delta with siloed pool, legacy pool, lock box, and test token AddressRefs.
 func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deployment.Environment, selector uint64, topology *ccvdeployment.EnvironmentTopology) (datastore.DataStore, error) {
 	_ = topology
 	stellarsequences.ClearStellarDeployOffchainTopologyForSelector(selector)
@@ -419,7 +430,13 @@ func (c *Chain) PostDeployContractsForSelector(ctx context.Context, env *deploym
 	if c.tokenPoolContractID == "" {
 		return nil, nil
 	}
-	ds, err := stellarccip.LockReleasePoolAddressRefDataStore(selector, c.tokenPoolContractID, c.testTokenContractID)
+	ds, err := stellarccip.DevenvTokenPoolsAddressRefDataStore(
+		selector,
+		c.tokenPoolContractID,
+		c.legacyLockReleasePoolID,
+		c.tokenLockBoxContractID,
+		c.testTokenContractID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1218,6 +1235,32 @@ func resolveRemotePoolAndToken(ds datastore.DataStore, remoteSelector uint64) (p
 	}
 
 	return poolBytes, tokenBytes, nil
+}
+
+func (c *Chain) configureSiloedPoolLockBoxes(bundle cldf_ops.Bundle, remoteSelectors []uint64) error {
+	if c.deployer == nil || c.tokenPoolContractID == "" || c.tokenLockBoxContractID == "" {
+		return fmt.Errorf("siloed pool lock box wiring incomplete")
+	}
+	configs := make([]slrbindings.LockBoxEntry, 0, len(remoteSelectors))
+	for _, rs := range remoteSelectors {
+		configs = append(configs, slrbindings.LockBoxEntry{
+			RemoteChainSelector: rs,
+			LockBox:             c.tokenLockBoxContractID,
+		})
+	}
+	deps := stellardeps.FromDeployer(c.deployer)
+	if _, err := cldf_ops.ExecuteOperation(bundle, lrpoolops.ConfigureLockBoxes, deps, lrpoolops.ConfigureLockBoxesInput{
+		ContractID: c.tokenPoolContractID,
+		Configs:    configs,
+	}); err != nil {
+		return err
+	}
+	c.logger.Info().
+		Str("pool", c.tokenPoolContractID).
+		Str("lockBox", c.tokenLockBoxContractID).
+		Int("remoteChains", len(configs)).
+		Msg("Configured siloed pool lock boxes for remote chains")
+	return nil
 }
 
 func (c *Chain) buildPoolChainUpdates(ds datastore.DataStore, remoteSelectors []uint64) ([]tokenpoolbindings.ChainUpdate, error) {

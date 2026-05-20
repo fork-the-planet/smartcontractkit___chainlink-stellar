@@ -95,23 +95,80 @@ func RecordCCIPReceiver(ds *datastore.MemoryDataStore, chainSelector uint64, con
 	return CCIPReceiverDatastoreRef().UpsertDeployedStrKey(ds, chainSelector, contractStrkey)
 }
 
-// RecordLockReleasePool records the lock-release pool in the datastore.
+// RecordLockReleasePool records the legacy lock-release pool in the datastore.
 func RecordLockReleasePool(ds *datastore.MemoryDataStore, chainSelector uint64, contractStrkey string) error {
-	return LockReleasePoolDevenvDatastoreRef().UpsertDeployedStrKey(ds, chainSelector, contractStrkey)
+	return LegacyLockReleasePoolDevenvDatastoreRef().UpsertDeployedStrKey(ds, chainSelector, contractStrkey)
+}
+
+// RecordSiloedLockReleasePool records the siloed lock-release pool in the datastore.
+func RecordSiloedLockReleasePool(ds *datastore.MemoryDataStore, chainSelector uint64, contractStrkey string) error {
+	return SiloedLockReleasePoolDevenvDatastoreRef().UpsertDeployedStrKey(ds, chainSelector, contractStrkey)
+}
+
+// RecordTokenLockBox records the token lock box in the datastore.
+func RecordTokenLockBox(ds *datastore.MemoryDataStore, chainSelector uint64, contractStrkey string) error {
+	return TokenLockBoxDevenvDatastoreRef().UpsertDeployedStrKey(ds, chainSelector, contractStrkey)
 }
 
 // LockReleasePoolAddressRefDataStore returns a sealed datastore containing the
-// lock-release pool AddressRef and, when tokenContractID is non-empty, the
-// test token AddressRef for devenv (qualifier DevenvTestTokenPoolQualifier).
+// legacy lock-release pool AddressRef and, when tokenContractID is non-empty, the
+// test token AddressRef for devenv (qualifier DevenvLegacyLockReleasePoolQualifier).
 func LockReleasePoolAddressRefDataStore(chainSelector uint64, poolContractID, tokenContractID string) (datastore.DataStore, error) {
 	ds := datastore.NewMemoryDataStore()
 	poolHex, err := stellarutil.StrkeyToHex(poolContractID)
 	if err != nil {
 		return nil, fmt.Errorf("convert pool address: %w", err)
 	}
-	poolRef := LockReleasePoolDevenvDatastoreRef()
+	poolRef := LegacyLockReleasePoolDevenvDatastoreRef()
 	if err := ds.AddressRefStore.Add(poolRef.FullAddressRef(chainSelector, poolHex)); err != nil {
 		return nil, fmt.Errorf("add pool address ref: %w", err)
+	}
+	if tokenContractID != "" {
+		tokenHex, err := stellarutil.StrkeyToHex(tokenContractID)
+		if err != nil {
+			return nil, fmt.Errorf("convert token address: %w", err)
+		}
+		tokenRef := DevenvTestTokenDatastoreRef()
+		if err := ds.AddressRefStore.Add(tokenRef.FullAddressRef(chainSelector, tokenHex)); err != nil {
+			return nil, fmt.Errorf("add token address ref: %w", err)
+		}
+	}
+	return ds.Seal(), nil
+}
+
+// DevenvTokenPoolsAddressRefDataStore returns a sealed datastore with siloed pool (E2E),
+// legacy lock-release pool, token lock box, and optional test token refs for devenv.
+func DevenvTokenPoolsAddressRefDataStore(
+	chainSelector uint64,
+	siloedPoolContractID,
+	legacyPoolContractID,
+	lockBoxContractID,
+	tokenContractID string,
+) (datastore.DataStore, error) {
+	ds := datastore.NewMemoryDataStore()
+
+	addRef := func(ref DatastoreSorobanContractRef, contractID string) error {
+		if contractID == "" {
+			return nil
+		}
+		hexAddr, err := stellarutil.StrkeyToHex(contractID)
+		if err != nil {
+			return fmt.Errorf("convert %s address: %w", ref.Type, err)
+		}
+		if err := ds.AddressRefStore.Add(ref.FullAddressRef(chainSelector, hexAddr)); err != nil {
+			return fmt.Errorf("add %s address ref: %w", ref.Type, err)
+		}
+		return nil
+	}
+
+	if err := addRef(SiloedLockReleasePoolDevenvDatastoreRef(), siloedPoolContractID); err != nil {
+		return nil, err
+	}
+	if err := addRef(LegacyLockReleasePoolDevenvDatastoreRef(), legacyPoolContractID); err != nil {
+		return nil, err
+	}
+	if err := addRef(TokenLockBoxDevenvDatastoreRef(), lockBoxContractID); err != nil {
+		return nil, err
 	}
 	if tokenContractID != "" {
 		tokenHex, err := stellarutil.StrkeyToHex(tokenContractID)

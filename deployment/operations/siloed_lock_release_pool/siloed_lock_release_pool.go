@@ -75,3 +75,44 @@ var AcceptOwnership = cldfops.NewOperation(
 		return stellarops.Void{}, nil
 	},
 )
+
+// ApplyChainUpdatesInput adds or removes remote chain configs on the siloed lock-release pool.
+type ApplyChainUpdatesInput struct {
+	ContractID string                   `json:"contract_id"`
+	Adds       []slrbindings.ChainUpdate `json:"adds"`
+	Removes    []uint64                 `json:"removes"`
+}
+
+// ApplyChainUpdates calls siloed lock-release pool `apply_chain_updates`.
+var ApplyChainUpdates = cldfops.NewOperation(
+	"siloed-lock-release-pool:apply-chain-updates",
+	stellarops.ContractDeploymentVersion,
+	"Adds or removes remote chain configs on the siloed lock-release pool",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ApplyChainUpdatesInput) (stellarops.Void, error) {
+		c := slrbindings.NewSiloedLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.ApplyChainUpdates(b.GetContext(), in.Adds, in.Removes); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)
+
+// ConfigureLockBoxesInput maps remote chain selectors to token lock box addresses.
+type ConfigureLockBoxesInput struct {
+	ContractID string                     `json:"contract_id"`
+	Configs    []slrbindings.LockBoxEntry `json:"configs"`
+}
+
+// ConfigureLockBoxes calls siloed lock-release pool `configure_lock_boxes`.
+var ConfigureLockBoxes = cldfops.NewOperation(
+	"siloed-lock-release-pool:configure-lock-boxes",
+	stellarops.ContractDeploymentVersion,
+	"Maps remote chain selectors to token lock box addresses on the siloed pool",
+	func(b cldfops.Bundle, d stellardeps.StellarDeps, in ConfigureLockBoxesInput) (stellarops.Void, error) {
+		c := slrbindings.NewSiloedLockReleasePoolClient(d.Invoker, in.ContractID)
+		if err := c.ConfigureLockBoxes(b.GetContext(), in.Configs); err != nil {
+			return stellarops.Void{}, err
+		}
+		return stellarops.Void{}, nil
+	},
+)

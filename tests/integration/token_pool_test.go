@@ -536,6 +536,10 @@ func TestTokenPool(t *testing.T) {
 			t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
 		})
 	})
+
+	t.Run("siloed pool migration", func(t *testing.T) {
+		testTokenPoolSiloedMigration(t, ctx, projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL)
+	})
 }
 
 func onrampReceiptsToReceiptWithBlobs(t *testing.T, receipts []onrampbindings.Receipt, verifierBlobs [][]byte) []protocol.ReceiptWithBlob {
