@@ -758,17 +758,16 @@ func (s *StellarTxm) prepareAndSimulateWithRetry(
 		if tx.LedgerBoundsOffset > 0 {
 			offset = tx.LedgerBoundsOffset
 		}
-		maxLedger := latestLedger.Sequence + offset
-		tx.MaxLedger = maxLedger
+		tx.MaxLedger = latestLedger.Sequence + offset
 
-		prelimTx, err := s.buildPreliminaryTx(tx, seq, maxLedger)
+		prelimTx, err := s.buildPreliminaryTx(tx, seq, tx.MaxLedger)
 		if err != nil {
 			return nil, protocolrpc.SimulateTransactionResponse{}, 0, fmt.Errorf("failed to build preliminary tx: %w", err)
 		}
 
 		simResult, err := s.simulateTransaction(ctx, client, prelimTx)
 		if err == nil {
-			return prelimTx, simResult, maxLedger, nil
+			return prelimTx, simResult, tx.MaxLedger, nil
 		}
 
 		lastErr = err
