@@ -123,7 +123,7 @@ func RMNProxyDatastoreRef() DatastoreSorobanContractRef {
 func TokenAdminRegistryDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(TokenAdminRegistryContractType),
-		Version:   semver.MustParse("1.0.0"),
+		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: "",
 	}
 }
@@ -155,15 +155,35 @@ func RampRegistryDatastoreRef() DatastoreSorobanContractRef {
 func CCIPReceiverDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(CcipReceiverContractType),
-		Version:   semver.MustParse("1.0.0"),
+		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: "",
 	}
 }
 
 func LockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return LegacyLockReleasePoolDevenvDatastoreRef()
+}
+
+func LegacyLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(LockReleaseTokenPoolContractType),
-		Version:   semver.MustParse("1.0.0"),
+		Version:   stellarops.ContractDeploymentVersion,
+		Qualifier: DevenvLegacyLockReleasePoolQualifier,
+	}
+}
+
+func SiloedLockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType(SiloedLockReleaseTokenPoolContractType),
+		Version:   stellarops.ContractDeploymentVersion,
+		Qualifier: DevenvTestTokenPoolQualifier,
+	}
+}
+
+func TokenLockBoxDevenvDatastoreRef() DatastoreSorobanContractRef {
+	return DatastoreSorobanContractRef{
+		Type:      datastore.ContractType(TokenLockBoxContractType),
+		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: DevenvTestTokenPoolQualifier,
 	}
 }
@@ -171,7 +191,7 @@ func LockReleasePoolDevenvDatastoreRef() DatastoreSorobanContractRef {
 func DevenvTestTokenDatastoreRef() DatastoreSorobanContractRef {
 	return DatastoreSorobanContractRef{
 		Type:      datastore.ContractType(TestTokenContractType),
-		Version:   semver.MustParse("1.0.0"),
+		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: DevenvTestTokenPoolQualifier,
 	}
 }

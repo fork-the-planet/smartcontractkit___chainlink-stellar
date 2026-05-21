@@ -11,10 +11,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	chainsel "github.com/smartcontractkit/chain-selectors"
-	evmcontract "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/utils/operations/contract"
 	evmtar "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_5_0/operations/token_admin_registry"
 	evmregister "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_5_0/sequences"
 	evmtokenpool "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v2_0_0/operations/token_pool"
+	evmcontract "github.com/smartcontractkit/chainlink-deployments-framework/chain/evm/operations/contract"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
@@ -111,22 +111,24 @@ func (c *Chain) configureEVMToStellarTokenTransfers(env *deployment.Environment,
 		return fmt.Errorf("fetch datastore addresses: %w", err)
 	}
 
+	poolRef := stellarccip.LockReleasePoolDevenvDatastoreRef()
 	stellarPool, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
-		datastore.ContractType(stellarccip.LockReleaseTokenPoolContractType),
-		semver.MustParse("1.0.0"),
-		stellarccip.DevenvTestTokenPoolQualifier,
+		poolRef.Type,
+		poolRef.Version,
+		poolRef.Qualifier,
 	)
 	if err != nil {
-		return fmt.Errorf("lookup Stellar lock-release pool: %w", err)
+		return fmt.Errorf("lookup Stellar siloed lock-release pool: %w", err)
 	}
+	tokenRef := stellarccip.DevenvTestTokenDatastoreRef()
 	stellarToken, err := stellarccip.LookupAddressRef(
 		env.DataStore,
 		stellarSelector,
-		datastore.ContractType(stellarccip.TestTokenContractType),
-		semver.MustParse("1.0.0"),
-		stellarccip.DevenvTestTokenPoolQualifier,
+		tokenRef.Type,
+		tokenRef.Version,
+		tokenRef.Qualifier,
 	)
 	if err != nil {
 		return fmt.Errorf("lookup Stellar SAC token: %w", err)

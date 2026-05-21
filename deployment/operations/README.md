@@ -12,7 +12,7 @@ Stellar bindings are hand-written Soroban clients under `bindings/contracts/…`
 ## Conventions
 
 - **Operation IDs:** `kebab-case`, namespaced by contract and action (e.g. `offramp:deploy`, `offramp:apply-source-chain-cfg-updates`).
-- **Semver:** Each `operations.NewOperation` gets a `*semver.Version`. Shared baseline for this repo: `operations.ContractDeploymentVersion` (`1.0.0`) until per-contract release lines exist.
+- **Semver:** Each `operations.NewOperation` gets a `*semver.Version`. Shared baseline for this repo: `operations.ContractDeploymentVersion` (`2.0.0`) until per-contract release lines exist.
 - **ContractType (datastore alignment):** Use PascalCase strings consistent with CCIP lane tooling, e.g. `OffRamp`, `OnRamp`, `Router`, `FeeQuoter`, `RmnRemote`, `RmnProxy`, `RampRegistry`, `TokenAdminRegistry`, `CommitteeVerifier`, `VersionedVerifierResolver`, `LockReleasePool`, `BurnMintPool`, `SiloedLockReleasePool`, `TokenLockBox`, `MCMS`, `Timelock`, `CCIPReceiver` (example receiver).
 - **WASM paths:** Built artifacts live at `target/wasm32v1-none/release/<crate>.wasm` relative to the repo root; `<crate>` follows Cargo’s underscore rules (hyphens in `[package].name` become underscores).
 
@@ -39,7 +39,7 @@ Handlers use the signature `func(b operations.Bundle, deps DEP, input IN) (OUT, 
 | `onramp` | `OnRamp` | `onramp.wasm` | Lane source: init, dest chain allowlists, fee/family config, sends |
 | `router` | `Router` | `router.wasm` | OffRamp routing, RMN config, ownership |
 | `fee_quoter` | `FeeQuoter` | `fee_quoter.wasm` | Token price / fee config mutators |
-| `rmn_remote` | `RmnRemote` | `rmn_remote.wasm` | RMN curse / config updates |
+| `rmn_remote` | `RmnRemote` | `rmn_remote.wasm` | RMN curse updates |
 | `rmn_proxy` | `RmnProxy` | `rmn_proxy.wasm` | Proxy admin / routing to remote |
 | `ramp_registry` | `RampRegistry` | `ccip_ramp_registry.wasm` | Ramp registration and lookups |
 | `token_admin_registry` | `TokenAdminRegistry` | `token_admin_registry.wasm` | Token admin / pool registry updates |

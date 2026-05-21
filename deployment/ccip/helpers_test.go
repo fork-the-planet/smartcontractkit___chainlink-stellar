@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
 	"github.com/smartcontractkit/chainlink-stellar/bindings/contracts/fee_quoter"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/ccip/stellarutil"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,8 +28,8 @@ func TestLockReleasePoolAddressRefDataStore(t *testing.T) {
 		ref := addrs[0]
 		assert.Equal(t, uint64(4242), ref.ChainSelector)
 		assert.Equal(t, datastore.ContractType(LockReleaseTokenPoolContractType), ref.Type)
-		assert.Equal(t, semver.MustParse("1.0.0"), ref.Version)
-		assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
+		assert.Equal(t, stellarops.ContractDeploymentVersion, ref.Version)
+		assert.Equal(t, DevenvLegacyLockReleasePoolQualifier, ref.Qualifier)
 		assert.NotEmpty(t, ref.Address)
 	})
 
@@ -45,18 +45,50 @@ func TestLockReleasePoolAddressRefDataStore(t *testing.T) {
 		poolFound, tokenFound := false, false
 		for _, ref := range addrs {
 			assert.Equal(t, uint64(4242), ref.ChainSelector)
-			assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
 			assert.NotEmpty(t, ref.Address)
 			switch ref.Type {
 			case datastore.ContractType(LockReleaseTokenPoolContractType):
 				poolFound = true
+				assert.Equal(t, DevenvLegacyLockReleasePoolQualifier, ref.Qualifier)
 			case datastore.ContractType(TestTokenContractType):
 				tokenFound = true
+				assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
 			}
 		}
 		assert.True(t, poolFound, "pool address ref not found")
 		assert.True(t, tokenFound, "token address ref not found")
 	})
+}
+
+func TestDevenvTokenPoolsAddressRefDataStore(t *testing.T) {
+	siloedID := stellarutil.MustGenerateMockContractID("deployer", "siloed-pool")
+	legacyID := stellarutil.MustGenerateMockContractID("deployer", "legacy-pool")
+	lockBoxID := stellarutil.MustGenerateMockContractID("deployer", "lock-box")
+	tokenID := stellarutil.MustGenerateMockContractID("deployer", "test-token")
+
+	ds, err := DevenvTokenPoolsAddressRefDataStore(4242, siloedID, legacyID, lockBoxID, tokenID)
+	require.NoError(t, err)
+	addrs, err := ds.Addresses().Fetch()
+	require.NoError(t, err)
+	require.Len(t, addrs, 4)
+
+	found := map[datastore.ContractType]bool{}
+	for _, ref := range addrs {
+		found[ref.Type] = true
+		assert.Equal(t, uint64(4242), ref.ChainSelector)
+		switch ref.Type {
+		case datastore.ContractType(SiloedLockReleaseTokenPoolContractType),
+			datastore.ContractType(TokenLockBoxContractType),
+			datastore.ContractType(TestTokenContractType):
+			assert.Equal(t, DevenvTestTokenPoolQualifier, ref.Qualifier)
+		case datastore.ContractType(LockReleaseTokenPoolContractType):
+			assert.Equal(t, DevenvLegacyLockReleasePoolQualifier, ref.Qualifier)
+		}
+	}
+	assert.True(t, found[datastore.ContractType(SiloedLockReleaseTokenPoolContractType)])
+	assert.True(t, found[datastore.ContractType(LockReleaseTokenPoolContractType)])
+	assert.True(t, found[datastore.ContractType(TokenLockBoxContractType)])
+	assert.True(t, found[datastore.ContractType(TestTokenContractType)])
 }
 
 func TestApplyFeeQuoterTestTokenConfig_validation(t *testing.T) {

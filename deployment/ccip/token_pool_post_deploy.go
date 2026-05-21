@@ -13,43 +13,28 @@ import (
 	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 	sacops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/sac_token"
 	"github.com/smartcontractkit/chainlink-stellar/deployment/operations/stellardeps"
+	slrpops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/siloed_lock_release_pool"
+	tlbops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_lock_box"
 	tarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_admin_registry"
 	poolops "github.com/smartcontractkit/chainlink-stellar/deployment/operations/token_pool"
 )
 
 // See [DevenvTestTokenPoolQualifier].
 
-// initialPoolLiquidity is the amount of SAC base units seeded into the
-// lock-release pool so that inbound release_or_mint calls have liquidity.
+// initialPoolLiquidity is the amount of SAC base units seeded into the token lock box
+// so that inbound release_or_mint calls on the siloed pool have liquidity.
 // 100 tokens at 7 decimals = 1_000_000_000 base units.
 const initialPoolLiquidity int64 = 1_000_000_000
 
-// DeployLockReleaseTestTokenPool deploys the lock-release pool and, when Friendbot is
-// available, creates the test SAC token, initializes the pool, and registers token+pool
-// in TokenAdminRegistry. Intended to run from PostDeployContractsForSelector after core CCIP deploy.
-// opBundle must be the parent CLDF operations bundle for the deploy run (e.g. env.OperationsBundle).
+const testTokenPoolDecimals uint32 = 7
+
+// sacApproveLedgerBuffer is added to the current ledger when approving SAC spend for lockbox deposit.
+const sacApproveLedgerBuffer uint32 = 1000
+
+// DeployLockReleaseTestTokenPool deploys legacy lock-release and siloed lock-release (+ lock box)
+// test pools. E2E token transfers use the siloed pool; the legacy pool remains available for
+// lock-release-specific tests. Intended to run from PostDeployContractsForSelector.
 func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle, host CCIPDevenvHost) error {
-	stellarRoot, err := stellarutil.FindStellarRoot()
-	if err != nil {
-		return fmt.Errorf("find stellar root: %w", err)
-	}
-
-	poolWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_lock_release_pool.wasm")
-	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
-		return fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
-	}
-	host.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying LockRelease pool contract (post-deploy)...")
-	poolSalt := stellardeployment.GenerateDeterministicSalt(host.DeployerKeypair().Address(), "lock-release-pool")
-	deps := stellardeps.FromDeployer(host.Deployer())
-	poolRep, err := cldfops.ExecuteOperation(opBundle, poolops.Deploy, deps, stellarops.DeployInput{WasmPath: poolWasmPath, Salt: poolSalt})
-	if err != nil {
-		return fmt.Errorf("failed to deploy LockRelease pool: %w", err)
-	}
-	poolContractID := poolRep.Output.ContractID
-	poolClient := tokenpoolbindings.NewTokenPoolClient(host.Deployer(), poolContractID)
-	host.SetTokenPool(poolContractID, poolClient)
-	host.Logger().Info().Str("contractID", poolContractID).Msg("LockRelease pool deployed")
-
 	tarClient := host.TokenAdminRegistryClient()
 	if tarClient == nil {
 		return fmt.Errorf("token admin registry client is nil before pool token setup")
@@ -60,14 +45,42 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 		return nil
 	}
 
-	tokenContractID, tokenErr := host.CreateTestToken(ctx, host.FriendbotURL())
-	if tokenErr != nil {
-		return fmt.Errorf("failed to create test token: %w", tokenErr)
+	tokenContractID, err := host.CreateTestToken(ctx, host.FriendbotURL())
+	if err != nil {
+		return fmt.Errorf("failed to create test token: %w", err)
 	}
 	host.SetTestToken(tokenContractID)
 
-	// Match typical Stellar SAC / pool configuration (EVM `uint8` token decimals on the pool).
-	const testTokenPoolDecimals uint32 = 7
+	if err := deployLegacyLockReleasePool(ctx, opBundle, host, tokenContractID); err != nil {
+		return err
+	}
+	if err := deploySiloedLockReleaseTestTokenPool(ctx, opBundle, host, tokenContractID, tarClient.ContractID()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deployLegacyLockReleasePool(ctx context.Context, opBundle cldfops.Bundle, host CCIPDevenvHost, tokenContractID string) error {
+	stellarRoot, err := stellarutil.FindStellarRoot()
+	if err != nil {
+		return fmt.Errorf("find stellar root: %w", err)
+	}
+
+	poolWasmPath := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_lock_release_pool.wasm")
+	if _, statErr := os.Stat(poolWasmPath); os.IsNotExist(statErr) {
+		return fmt.Errorf("LockReleasePool WASM not found at %s. Run 'make build'.", poolWasmPath)
+	}
+	host.Logger().Info().Str("wasmPath", poolWasmPath).Msg("Deploying legacy LockRelease pool (post-deploy, not used for E2E transfers)...")
+	poolSalt := stellardeployment.GenerateDeterministicSalt(host.DeployerKeypair().Address(), "lock-release-pool")
+	deps := stellardeps.FromDeployer(host.Deployer())
+	poolRep, err := cldfops.ExecuteOperation(opBundle, poolops.Deploy, deps, stellarops.DeployInput{WasmPath: poolWasmPath, Salt: poolSalt})
+	if err != nil {
+		return fmt.Errorf("failed to deploy legacy LockRelease pool: %w", err)
+	}
+	poolContractID := poolRep.Output.ContractID
+	host.SetLegacyLockReleasePool(poolContractID)
+	host.Logger().Info().Str("contractID", poolContractID).Msg("Legacy LockRelease pool deployed")
+
 	routerContractID := host.RouterContractID()
 	if routerContractID == "" {
 		return fmt.Errorf("router contract ID is empty; token pool initialize requires router (deploy core CCIP first)")
@@ -84,10 +97,9 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 		Router:        routerContractID,
 		RampRegistry:  rampRegistryContractID,
 	}); err != nil {
-		return fmt.Errorf("failed to initialize pool with token: %w", err)
+		return fmt.Errorf("failed to initialize legacy pool with token: %w", err)
 	}
 
-	// Fund the pool with SAC liquidity so inbound release_or_mint calls succeed.
 	deployerAddr := host.DeployerKeypair().Address()
 	if _, err := cldfops.ExecuteOperation(opBundle, sacops.Transfer, deps, sacops.TransferInput{
 		ContractID: tokenContractID,
@@ -95,39 +107,138 @@ func DeployLockReleaseTestTokenPool(ctx context.Context, opBundle cldfops.Bundle
 		To:         poolContractID,
 		Amount:     initialPoolLiquidity,
 	}); err != nil {
-		return fmt.Errorf("fund pool with SAC liquidity: %w", err)
+		return fmt.Errorf("fund legacy pool with SAC liquidity: %w", err)
 	}
 	host.Logger().Info().
 		Str("pool", poolContractID).
 		Int64("amount", initialPoolLiquidity).
-		Msg("Funded lock-release pool with SAC liquidity")
+		Msg("Funded legacy lock-release pool with SAC liquidity")
+	return nil
+}
 
-	tarID := tarClient.ContractID()
+func deploySiloedLockReleaseTestTokenPool(
+	ctx context.Context,
+	opBundle cldfops.Bundle,
+	host CCIPDevenvHost,
+	tokenContractID, tarID string,
+) error {
+	stellarRoot, err := stellarutil.FindStellarRoot()
+	if err != nil {
+		return fmt.Errorf("find stellar root: %w", err)
+	}
+
+	lockBoxWasm := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_token_lock_box.wasm")
+	if _, statErr := os.Stat(lockBoxWasm); os.IsNotExist(statErr) {
+		return fmt.Errorf("TokenLockBox WASM not found at %s. Run 'make build'.", lockBoxWasm)
+	}
+	siloedWasm := filepath.Join(stellarRoot, "target", "wasm32v1-none", "release", "pools_siloed_lock_release_pool.wasm")
+	if _, statErr := os.Stat(siloedWasm); os.IsNotExist(statErr) {
+		return fmt.Errorf("SiloedLockReleasePool WASM not found at %s. Run 'make build'.", siloedWasm)
+	}
+
+	deployerAddr := host.DeployerKeypair().Address()
+	deps := stellardeps.FromDeployer(host.Deployer())
+
+	lockBoxSalt := stellardeployment.GenerateDeterministicSalt(deployerAddr, "token-lock-box")
+	lockBoxRep, err := cldfops.ExecuteOperation(opBundle, tlbops.Deploy, deps, stellarops.DeployInput{WasmPath: lockBoxWasm, Salt: lockBoxSalt})
+	if err != nil {
+		return fmt.Errorf("deploy token lock box: %w", err)
+	}
+	lockBoxID := lockBoxRep.Output.ContractID
+	if _, err := cldfops.ExecuteOperation(opBundle, tlbops.Initialize, deps, tlbops.InitializeInput{
+		ContractID: lockBoxID,
+		Owner:      deployerAddr,
+		Token:      tokenContractID,
+	}); err != nil {
+		return fmt.Errorf("initialize token lock box: %w", err)
+	}
+	host.SetTokenLockBox(lockBoxID)
+	host.Logger().Info().Str("contractID", lockBoxID).Msg("Token lock box deployed")
+
+	siloedSalt := stellardeployment.GenerateDeterministicSalt(deployerAddr, "siloed-lock-release-pool")
+	siloedRep, err := cldfops.ExecuteOperation(opBundle, slrpops.Deploy, deps, stellarops.DeployInput{WasmPath: siloedWasm, Salt: siloedSalt})
+	if err != nil {
+		return fmt.Errorf("deploy siloed lock-release pool: %w", err)
+	}
+	siloedPoolID := siloedRep.Output.ContractID
+
+	routerContractID := host.RouterContractID()
+	rampRegistryContractID := host.RampRegistryContractID()
+	if _, err := cldfops.ExecuteOperation(opBundle, slrpops.Initialize, deps, slrpops.InitializeInput{
+		ContractID:    siloedPoolID,
+		Owner:         deployerAddr,
+		Token:         tokenContractID,
+		TokenDecimals: testTokenPoolDecimals,
+		Router:        routerContractID,
+		RampRegistry:  rampRegistryContractID,
+	}); err != nil {
+		return fmt.Errorf("initialize siloed pool: %w", err)
+	}
+
+	if _, err := cldfops.ExecuteOperation(opBundle, tlbops.AddAllowedCallers, deps, tlbops.AddAllowedCallersInput{
+		ContractID: lockBoxID,
+		Callers:    []string{siloedPoolID, deployerAddr},
+	}); err != nil {
+		return fmt.Errorf("add siloed pool and deployer as lock box callers: %w", err)
+	}
+
+	expirationLedger, err := host.LatestLedgerSequence(ctx)
+	if err != nil {
+		host.Logger().Warn().Err(err).Msg("could not read latest ledger; using far-future SAC approve expiration")
+		expirationLedger = 9_999_999
+	} else {
+		expirationLedger += sacApproveLedgerBuffer
+	}
+	if _, err := cldfops.ExecuteOperation(opBundle, sacops.Approve, deps, sacops.ApproveInput{
+		ContractID:       tokenContractID,
+		From:             deployerAddr,
+		Spender:          lockBoxID,
+		Amount:           initialPoolLiquidity,
+		ExpirationLedger: expirationLedger,
+	}); err != nil {
+		return fmt.Errorf("approve lock box to pull SAC for deposit: %w", err)
+	}
+	if _, err := cldfops.ExecuteOperation(opBundle, tlbops.Deposit, deps, tlbops.DepositInput{
+		ContractID: lockBoxID,
+		Caller:     deployerAddr,
+		Amount:     initialPoolLiquidity,
+	}); err != nil {
+		return fmt.Errorf("deposit SAC liquidity into lock box: %w", err)
+	}
+	host.Logger().Info().
+		Str("lockBox", lockBoxID).
+		Int64("amount", initialPoolLiquidity).
+		Msg("Funded token lock box with SAC liquidity for inbound transfers")
+
+	siloedClient := tokenpoolbindings.NewTokenPoolClient(host.Deployer(), siloedPoolID)
+	host.SetTokenPool(siloedPoolID, siloedClient)
+	host.Logger().Info().Str("contractID", siloedPoolID).Msg("Siloed lock-release pool ready for E2E token transfers")
+
 	if _, err := cldfops.ExecuteOperation(opBundle, tarops.ProposeAdministrator, deps, tarops.ProposeAdministratorInput{
 		ContractID:    tarID,
 		Caller:        deployerAddr,
 		LocalToken:    tokenContractID,
 		Administrator: deployerAddr,
 	}); err != nil {
-		return fmt.Errorf("failed to propose administrator in TokenAdminRegistry: %w", err)
+		return fmt.Errorf("propose administrator in TokenAdminRegistry: %w", err)
 	}
 	if _, err := cldfops.ExecuteOperation(opBundle, tarops.AcceptAdminRole, deps, tarops.AcceptAdminRoleInput{
 		ContractID: tarID,
 		LocalToken: tokenContractID,
 	}); err != nil {
-		return fmt.Errorf("failed to accept admin role in TokenAdminRegistry: %w", err)
+		return fmt.Errorf("accept admin role in TokenAdminRegistry: %w", err)
 	}
-	poolID := poolContractID
+	poolID := siloedPoolID
 	if _, err := cldfops.ExecuteOperation(opBundle, tarops.SetPool, deps, tarops.SetPoolInput{
 		ContractID: tarID,
 		LocalToken: tokenContractID,
 		Pool:       &poolID,
 	}); err != nil {
-		return fmt.Errorf("failed to register pool in TokenAdminRegistry: %w", err)
+		return fmt.Errorf("register siloed pool in TokenAdminRegistry: %w", err)
 	}
 	host.Logger().Info().
 		Str("token", tokenContractID).
-		Str("pool", poolContractID).
-		Msg("Token pool registered in TokenAdminRegistry")
+		Str("pool", siloedPoolID).
+		Msg("Siloed token pool registered in TokenAdminRegistry")
 	return nil
 }

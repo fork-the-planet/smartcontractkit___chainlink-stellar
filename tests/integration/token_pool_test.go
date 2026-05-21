@@ -451,7 +451,7 @@ func TestTokenPool(t *testing.T) {
 			verifierBlob := stack.signVerifierBlob(t, msgID)
 
 			subject := rmnSubjectForRouterDestChain(remoteSourceChain)
-			if err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{subject}); err != nil {
+			if err := stack.RmnRemoteClient.Curse(ctx, deployerAddr, [][16]byte{subject}); err != nil {
 				t.Fatalf("RmnRemote Curse(source chain subject): %v", err)
 			}
 			t.Cleanup(func() {
@@ -535,6 +535,10 @@ func TestTokenPool(t *testing.T) {
 			}
 			t.Logf("inbound release_or_mint: moved %d SAC base units pool -> receiver %s", releaseAmount, stack.ReceiverID)
 		})
+	})
+
+	t.Run("siloed pool migration", func(t *testing.T) {
+		testTokenPoolSiloedMigration(t, ctx, projectRoot, deployerKP, deployer, rpcClient, networkPassphrase, friendbotURL)
 	})
 }
 

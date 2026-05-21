@@ -188,6 +188,28 @@ patch_ccip_receiver_interfaces() {
   ' "$f"
 }
 
+# RMN Remote uses workspace `CCIPError` and may leak router/onramp contracttypes from the dep graph.
+patch_rmn_remote_interfaces() {
+  local f="$1"
+  perl -i -0pe '
+    unless (/^use common_error::CCIPError;/m) {
+      $_ = "//! RMN Remote interface (generated from rmn_remote.wasm; uses common_error::CCIPError).\n\nuse common_error::CCIPError;\n\n$_";
+    }
+
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListEntry \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AllowListUpdate \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct TokenAmount \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct GenericExtraArgsV3 \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct AnyToStellarMessage \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contracttype\(export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct StellarToAnyMessage \{[\s\S]*?\n\}//s;
+
+    s/\n#\[soroban_sdk::contracterror\(export = false\)\]\n#\[derive\(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub enum CCIPError \{[\s\S]*?\n\}//s;
+
+    s/\n#\[soroban_sdk::contractevent\(topics = \["auth_RoleGranted"\], export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct RoleGrantedEvent \{[\s\S]*?\n\}//s;
+    s/\n#\[soroban_sdk::contractevent\(topics = \["auth_RoleRevoked"\], export = false\)\]\n#\[derive\(Debug, Clone, Eq, PartialEq, Ord, PartialOrd\)\]\npub struct RoleRevokedEvent \{[\s\S]*?\n\}//s;
+  ' "$f"
+}
+
 # Ramp registry bindings duplicate workspace `CCIPError` and leak router/onramp contracttypes.
 # Normalize: canonical [`common_error::CCIPError`], drop leaked structs and duplicate auth events.
 patch_ramp_registry_interfaces() {
@@ -256,6 +278,9 @@ for entry in "${CONTRACTS[@]}"; do
   fi
   if [[ "$output_module" == "ramp_registry" ]]; then
     patch_ramp_registry_interfaces "$out_path"
+  fi
+  if [[ "$output_module" == "rmn_remote" ]]; then
+    patch_rmn_remote_interfaces "$out_path"
   fi
 done
 

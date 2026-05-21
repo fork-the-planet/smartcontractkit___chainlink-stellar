@@ -1,7 +1,7 @@
 name: Integration Tests
 
-# Runs all integration tests under tests/integration except token_pool_test.go (TestTokenPool).
-# Token pool tests run in test-integration-token-pool.yaml.
+# Runs all integration tests under tests/integration except TestTokenPool (token_pool_test.go
+# and siloed_pool_migration_test.go). Those run in test-integration-token-pool.yaml.
 
 on:
   merge_group:

@@ -16,6 +16,15 @@ import (
 	stellarsequences "github.com/smartcontractkit/chainlink-stellar/deployment/sequences"
 )
 
+// testFQRef returns a dummy AddressRef for FeeQuoter lookup tests.
+// The actual lookup uses the type/version from the adapter, not this ref's address.
+func testFQRef() datastore.AddressRef {
+	return datastore.AddressRef{
+		Type:    datastore.ContractType(fqopstype.ContractType),
+		Version: semver.MustParse(fqopstype.Deploy.Version()),
+	}
+}
+
 func TestStellarFeeAdapter_InterfaceCompliance(t *testing.T) {
 	var _ fees.FeeAdapter = (*StellarFeeAdapter)(nil)
 }
@@ -36,18 +45,10 @@ func TestStellarFeeAdapter_GetDefaultDestChainConfig(t *testing.T) {
 	require.Greater(t, cfg.MaxPerMsgGasLimit, uint32(0))
 }
 
-func testFQRef() datastore.AddressRef {
-	return datastore.AddressRef{
-		Type:    datastore.ContractType(fqopstype.ContractType),
-		Version: semver.MustParse(fqopstype.Deploy.Version()),
-		Address: "CFQADDR",
-	}
-}
-
 func TestStellarFeeAdapter_GetFeeContractRef_emptyDatastore(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	_, err := a.GetFeeContractRef(env, 42, 0)
+	_, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.Error(t, err)
 }
 
@@ -66,7 +67,7 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 	}
 	require.NoError(t, ds.Addresses().Upsert(ref))
 	env := envWithDatastore(ds.Seal())
-	got, err := a.GetFeeContractRef(env, 42, 0)
+	got, err := a.GetFeeContractRef(env, testFQRef(), 42, 0)
 	require.NoError(t, err)
 	require.Equal(t, hexAddr, got.Address)
 
@@ -78,14 +79,14 @@ func TestStellarFeeAdapter_GetFeeContractRef_found(t *testing.T) {
 func TestStellarFeeAdapter_SetTokenTransferFee_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.SetTokenTransferFee(env)
+	seq := a.SetTokenTransferFee(env, testFQRef())
 	require.NotNil(t, seq)
 }
 
 func TestStellarFeeAdapter_ApplyDestChainConfigUpdates_nonNil(t *testing.T) {
 	a := &StellarFeeAdapter{}
 	env := envWithDatastore(newSealedDatastore())
-	seq := a.ApplyDestChainConfigUpdates(env)
+	seq := a.ApplyDestChainConfigUpdates(env, testFQRef())
 	require.NotNil(t, seq)
 }
 
@@ -93,7 +94,7 @@ func TestStellarFeeAdapter_Registration(t *testing.T) {
 	reg := fees.GetRegistry()
 	_, ok := reg.GetFeeAdapter("stellar", stellarops.ContractDeploymentVersion)
 	if !ok {
-		_, ok = reg.GetFeeAdapter("stellar", semver.MustParse("2.0.0"))
+		_, ok = reg.GetFeeAdapter("stellar", stellarops.ContractDeploymentVersion)
 	}
 	require.True(t, ok, "StellarFeeAdapter should be registered from init()")
 }
@@ -121,6 +122,6 @@ func TestStellarFeeAggregatorAdapter_GetFeeAggregator_requiresChainAndDatastore(
 
 func TestStellarFeeAggregatorAdapter_Registration(t *testing.T) {
 	reg := fees.GetFeeAggregatorRegistry()
-	_, ok := reg.GetFeeAggregatorAdapter("stellar", semver.MustParse("2.0.0"))
+	_, ok := reg.GetFeeAggregatorAdapter("stellar", stellarops.ContractDeploymentVersion)
 	require.True(t, ok, "StellarFeeAggregatorAdapter should be registered from init()")
 }

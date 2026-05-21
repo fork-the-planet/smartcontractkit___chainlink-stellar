@@ -62,7 +62,7 @@ impl TokenAdminRegistryContract {
     }
 
     pub fn type_and_version(_env: Env) -> soroban_sdk::String {
-        soroban_sdk::String::from_str(&_env, "TokenAdminRegistry 1.0.0")
+        soroban_sdk::String::from_str(&_env, "TokenAdminRegistry 2.0.0")
     }
 
     // ========================================

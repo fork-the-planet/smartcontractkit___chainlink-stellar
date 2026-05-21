@@ -5,11 +5,14 @@ package integration
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	rmnbindings "github.com/smartcontractkit/chainlink-stellar/bindings/contracts/rmn_remote"
 	deployment "github.com/smartcontractkit/chainlink-stellar/deployment"
+	helpers "github.com/smartcontractkit/chainlink-stellar/tests/testutils"
+	"github.com/stellar/go-stellar-sdk/keypair"
 )
 
 var globalCurseSubject = [16]byte{
@@ -23,7 +26,6 @@ func TestRmnRemote(t *testing.T) {
 
 	projectRoot, deployerKP, deployer, _, _, _ := GetSharedTestEnv(ctx, t)
 
-	// Deploy the RmnRemote contract
 	t.Log("Deploying RmnRemote contract...")
 	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-remote")
 	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
@@ -35,10 +37,9 @@ func TestRmnRemote(t *testing.T) {
 	t.Logf("RmnRemote deployed at: %s", contractID)
 
 	client := rmnbindings.NewRmnRemoteClient(deployer, contractID)
-	localChainSelector := uint64(12345)
 
 	t.Run("initialize", func(t *testing.T) {
-		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector)
+		err := client.Initialize(ctx, deployerKP.Address(), nil)
 		if err != nil {
 			t.Fatalf("Failed to initialize RmnRemote: %v", err)
 		}
@@ -46,7 +47,7 @@ func TestRmnRemote(t *testing.T) {
 	})
 
 	t.Run("double initialize fails", func(t *testing.T) {
-		err := client.Initialize(ctx, deployerKP.Address(), localChainSelector)
+		err := client.Initialize(ctx, deployerKP.Address(), nil)
 		if err == nil {
 			t.Fatal("Expected error on double initialize, got nil")
 		}
@@ -64,93 +65,6 @@ func TestRmnRemote(t *testing.T) {
 		t.Logf("Owner verified: %s", *owner)
 	})
 
-	t.Run("get local chain selector", func(t *testing.T) {
-		sel, err := client.GetLocalChainSelector(ctx)
-		if err != nil {
-			t.Fatalf("Failed to get local chain selector: %v", err)
-		}
-		if sel != localChainSelector {
-			t.Errorf("Chain selector mismatch: expected %d, got %d", localChainSelector, sel)
-		}
-		t.Logf("Local chain selector verified: %d", sel)
-	})
-
-	// ========================================
-	// Configuration
-	// ========================================
-
-	t.Run("set config", func(t *testing.T) {
-		config := rmnbindings.Config{
-			RmnHomeConfigDigest: [32]byte{0xAA, 0xBB, 0xCC, 0xDD, 0x01, 0x02, 0x03, 0x04,
-				0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
-				0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14,
-				0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C},
-			Signers: []rmnbindings.Signer{
-				{OnchainPubKey: [32]byte{1}, NodeIndex: 0},
-				{OnchainPubKey: [32]byte{2}, NodeIndex: 1},
-				{OnchainPubKey: [32]byte{3}, NodeIndex: 2},
-			},
-			FSign: 1, // f=1, needs 2f+1=3 signers
-		}
-		err := client.SetConfig(ctx, config)
-		if err != nil {
-			t.Fatalf("Failed to set config: %v", err)
-		}
-		t.Log("Config set successfully")
-	})
-
-	t.Run("set config with zero digest fails", func(t *testing.T) {
-		config := rmnbindings.Config{
-			RmnHomeConfigDigest: [32]byte{},
-			Signers: []rmnbindings.Signer{
-				{OnchainPubKey: [32]byte{1}, NodeIndex: 0},
-			},
-			FSign: 0,
-		}
-		err := client.SetConfig(ctx, config)
-		if err == nil {
-			t.Fatal("Expected error for zero digest config, got nil")
-		}
-		t.Logf("Zero digest config correctly rejected: %v", err)
-	})
-
-	t.Run("set config with not enough signers fails", func(t *testing.T) {
-		config := rmnbindings.Config{
-			RmnHomeConfigDigest: [32]byte{0xFF},
-			Signers: []rmnbindings.Signer{
-				{OnchainPubKey: [32]byte{1}, NodeIndex: 0},
-				{OnchainPubKey: [32]byte{2}, NodeIndex: 1},
-			},
-			FSign: 1, // f=1 needs 3 signers, only 2 provided
-		}
-		err := client.SetConfig(ctx, config)
-		if err == nil {
-			t.Fatal("Expected error for insufficient signers, got nil")
-		}
-		t.Logf("Insufficient signers correctly rejected: %v", err)
-	})
-
-	t.Run("set config with out of order signers fails", func(t *testing.T) {
-		config := rmnbindings.Config{
-			RmnHomeConfigDigest: [32]byte{0xFF},
-			Signers: []rmnbindings.Signer{
-				{OnchainPubKey: [32]byte{1}, NodeIndex: 5},
-				{OnchainPubKey: [32]byte{2}, NodeIndex: 3}, // out of order
-				{OnchainPubKey: [32]byte{3}, NodeIndex: 7},
-			},
-			FSign: 1,
-		}
-		err := client.SetConfig(ctx, config)
-		if err == nil {
-			t.Fatal("Expected error for out of order signers, got nil")
-		}
-		t.Logf("Out of order signers correctly rejected: %v", err)
-	})
-
-	// ========================================
-	// Cursing
-	// ========================================
-
 	t.Run("initially not cursed", func(t *testing.T) {
 		subjects, err := client.GetCursedSubjects(ctx)
 		if err != nil {
@@ -166,7 +80,7 @@ func TestRmnRemote(t *testing.T) {
 		laneSubject := [16]byte{0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
 			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02}
 
-		err := client.Curse(ctx, [][16]byte{laneSubject})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{laneSubject})
 		if err != nil {
 			t.Fatalf("Failed to curse subject: %v", err)
 		}
@@ -184,15 +98,22 @@ func TestRmnRemote(t *testing.T) {
 		t.Logf("Subject cursed and verified: %x", subjects[0])
 	})
 
-	t.Run("curse already cursed subject fails", func(t *testing.T) {
+	t.Run("curse already cursed subject silent skip", func(t *testing.T) {
 		laneSubject := [16]byte{0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
 			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02}
 
-		err := client.Curse(ctx, [][16]byte{laneSubject})
-		if err == nil {
-			t.Fatal("Expected error when cursing already cursed subject, got nil")
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{laneSubject})
+		if err != nil {
+			t.Fatalf("Re-curse should succeed (silent skip): %v", err)
 		}
-		t.Logf("Double curse correctly rejected: %v", err)
+		subjects, err := client.GetCursedSubjects(ctx)
+		if err != nil {
+			t.Fatalf("Failed to get cursed subjects: %v", err)
+		}
+		if len(subjects) != 1 {
+			t.Fatalf("Expected 1 cursed subject after re-curse, got %d", len(subjects))
+		}
+		t.Log("Re-curse on already-cursed subject is a no-op (EVM-aligned)")
 	})
 
 	t.Run("uncurse a subject", func(t *testing.T) {
@@ -230,7 +151,7 @@ func TestRmnRemote(t *testing.T) {
 		s2 := [16]byte{0x20}
 		s3 := [16]byte{0x30}
 
-		err := client.Curse(ctx, [][16]byte{s1, s2, s3})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{s1, s2, s3})
 		if err != nil {
 			t.Fatalf("Failed to curse multiple subjects: %v", err)
 		}
@@ -244,7 +165,6 @@ func TestRmnRemote(t *testing.T) {
 		}
 		t.Logf("3 subjects cursed successfully")
 
-		// Uncurse only s2
 		err = client.Uncurse(ctx, [][16]byte{s2})
 		if err != nil {
 			t.Fatalf("Failed to uncurse s2: %v", err)
@@ -259,7 +179,6 @@ func TestRmnRemote(t *testing.T) {
 		}
 		t.Logf("Partial uncurse verified: %d subjects remain cursed", len(subjects))
 
-		// Clean up: uncurse remaining
 		err = client.Uncurse(ctx, [][16]byte{s1, s3})
 		if err != nil {
 			t.Fatalf("Failed to uncurse remaining subjects: %v", err)
@@ -267,12 +186,11 @@ func TestRmnRemote(t *testing.T) {
 	})
 
 	t.Run("global curse subject", func(t *testing.T) {
-		err := client.Curse(ctx, [][16]byte{globalCurseSubject})
+		err := client.Curse(ctx, deployerKP.Address(), [][16]byte{globalCurseSubject})
 		if err != nil {
 			t.Fatalf("Failed to curse global subject: %v", err)
 		}
 
-		// is_cursed should detect the global curse
 		isCursed, err := client.IsCursed(ctx)
 		if err != nil {
 			t.Fatalf("IsCursed failed after global curse: %v", err)
@@ -282,7 +200,6 @@ func TestRmnRemote(t *testing.T) {
 		}
 		t.Log("Global curse applied and IsCursed returned successfully")
 
-		// is_cursed_by_subject for an arbitrary subject should also detect global curse
 		arbitrary := [16]byte{0xFF}
 		isCursedBySubject, err := client.IsCursedBySubject(ctx, arbitrary)
 		if err != nil {
@@ -293,7 +210,6 @@ func TestRmnRemote(t *testing.T) {
 		}
 		t.Log("IsCursedBySubject correctly responds after global curse")
 
-		// Clean up
 		err = client.Uncurse(ctx, [][16]byte{globalCurseSubject})
 		if err != nil {
 			t.Fatalf("Failed to uncurse global subject: %v", err)
@@ -301,24 +217,124 @@ func TestRmnRemote(t *testing.T) {
 		t.Log("Global curse removed")
 	})
 
-	t.Run("config version increments", func(t *testing.T) {
-		config := rmnbindings.Config{
-			RmnHomeConfigDigest: [32]byte{0xDD, 0xEE, 0xFF},
-			Signers: []rmnbindings.Signer{
-				{OnchainPubKey: [32]byte{10}, NodeIndex: 0},
-				{OnchainPubKey: [32]byte{20}, NodeIndex: 1},
-				{OnchainPubKey: [32]byte{30}, NodeIndex: 2},
-				{OnchainPubKey: [32]byte{40}, NodeIndex: 3},
-				{OnchainPubKey: [32]byte{50}, NodeIndex: 4},
-			},
-			FSign: 2, // f=2, needs 2f+1=5 signers
-		}
-		err := client.SetConfig(ctx, config)
-		if err != nil {
-			t.Fatalf("Failed to set second config: %v", err)
-		}
-		t.Log("Second config set successfully (version should be 2)")
-	})
-
 	t.Log("RmnRemote integration test passed!")
+}
+
+// TestRmnRemoteCurseAdmins exercises owner vs curse-admin authorization for curse,
+// uncurse, and apply_curse_admin_updates on a fresh RMN Remote deployment.
+func TestRmnRemoteCurseAdmins(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	projectRoot, deployerKP, ownerDep, rpcClient, passphrase, friendbotURL := GetSharedTestEnv(ctx, t)
+
+	initialAdmin1 := keypair.MustRandom()
+	initialAdmin2 := keypair.MustRandom()
+	newAdmin := keypair.MustRandom()
+	for _, kp := range []*keypair.Full{initialAdmin1, initialAdmin2, newAdmin} {
+		if err := helpers.FundViaFriendbot(friendbotURL, kp.Address()); err != nil {
+			t.Fatalf("Friendbot fund %s: %v", kp.Address(), err)
+		}
+	}
+	admin1Dep := deployment.NewDeployer(rpcClient, passphrase, initialAdmin1)
+	admin2Dep := deployment.NewDeployer(rpcClient, passphrase, initialAdmin2)
+	newAdminDep := deployment.NewDeployer(rpcClient, passphrase, newAdmin)
+
+	salt := deployment.GenerateDeterministicSalt(deployerKP.Address(), "rmn-remote-curse-admins")
+	wasmPath := filepath.Join(projectRoot, "target", "wasm32v1-none", "release", "rmn_remote.wasm")
+	contractID, err := ownerDep.DeployContract(ctx, wasmPath, salt)
+	if err != nil {
+		t.Fatalf("deploy RmnRemote: %v", err)
+	}
+
+	ownerClient := rmnbindings.NewRmnRemoteClient(ownerDep, contractID)
+	if err := ownerClient.Initialize(ctx, deployerKP.Address(), []string{
+		initialAdmin1.Address(),
+		initialAdmin2.Address(),
+	}); err != nil {
+		t.Fatalf("initialize with curse admins: %v", err)
+	}
+
+	admins, err := ownerClient.GetCurseAdmins(ctx)
+	if err != nil {
+		t.Fatalf("GetCurseAdmins after init: %v", err)
+	}
+	if !curseAdminsEqual(admins, initialAdmin1.Address(), initialAdmin2.Address()) {
+		t.Fatalf("unexpected curse admins after init: %v", admins)
+	}
+
+	subjectByAdmin2 := [16]byte{0xA1}
+	subjectByNewAdmin := [16]byte{0xA2}
+
+	admin2Client := rmnbindings.NewRmnRemoteClient(admin2Dep, contractID)
+	if err := admin2Client.Curse(ctx, initialAdmin2.Address(), [][16]byte{subjectByAdmin2}); err != nil {
+		t.Fatalf("curse as initial curse admin (not owner): %v", err)
+	}
+	cursed, err := ownerClient.IsCursedBySubject(ctx, subjectByAdmin2)
+	if err != nil || !cursed {
+		t.Fatalf("subject should be cursed after admin curse: cursed=%v err=%v", cursed, err)
+	}
+
+	if err := admin2Client.Uncurse(ctx, [][16]byte{subjectByAdmin2}); err == nil {
+		t.Fatal("uncurse as curse admin should fail (owner-only)")
+	}
+
+	if err := ownerClient.ApplyCurseAdminUpdates(ctx,
+		[]string{newAdmin.Address()},
+		[]string{initialAdmin1.Address()},
+	); err != nil {
+		t.Fatalf("apply_curse_admin_updates: %v", err)
+	}
+
+	admins, err = ownerClient.GetCurseAdmins(ctx)
+	if err != nil {
+		t.Fatalf("GetCurseAdmins after update: %v", err)
+	}
+	if !curseAdminsEqual(admins, initialAdmin2.Address(), newAdmin.Address()) {
+		t.Fatalf("unexpected curse admins after update: %v", admins)
+	}
+	if slices.Contains(admins, initialAdmin1.Address()) {
+		t.Fatalf("removed curse admin still listed: %v", admins)
+	}
+
+	removedAdminClient := rmnbindings.NewRmnRemoteClient(admin1Dep, contractID)
+	if err := removedAdminClient.Curse(ctx, initialAdmin1.Address(), [][16]byte{subjectByNewAdmin}); err == nil {
+		t.Fatal("curse as removed curse admin should fail")
+	}
+
+	newAdminClient := rmnbindings.NewRmnRemoteClient(newAdminDep, contractID)
+	if err := newAdminClient.Curse(ctx, newAdmin.Address(), [][16]byte{subjectByNewAdmin}); err != nil {
+		t.Fatalf("curse as new curse admin: %v", err)
+	}
+	cursed, err = ownerClient.IsCursedBySubject(ctx, subjectByNewAdmin)
+	if err != nil || !cursed {
+		t.Fatalf("subject should be cursed after new admin curse: cursed=%v err=%v", cursed, err)
+	}
+
+	if err := ownerClient.Uncurse(ctx, [][16]byte{subjectByAdmin2, subjectByNewAdmin}); err != nil {
+		t.Fatalf("uncurse as owner: %v", err)
+	}
+	for _, subject := range [][16]byte{subjectByAdmin2, subjectByNewAdmin} {
+		cursed, err := ownerClient.IsCursedBySubject(ctx, subject)
+		if err != nil {
+			t.Fatalf("IsCursedBySubject after owner uncurse: %v", err)
+		}
+		if cursed {
+			t.Fatalf("subject %x should be uncursed", subject)
+		}
+	}
+
+	t.Log("RmnRemote curse admin integration test passed!")
+}
+
+func curseAdminsEqual(admins []string, want ...string) bool {
+	if len(admins) != len(want) {
+		return false
+	}
+	for _, addr := range want {
+		if !slices.Contains(admins, addr) {
+			return false
+		}
+	}
+	return true
 }

@@ -171,9 +171,9 @@ func RunStellarCCIPFullDeploy(
 		return seq_core.OnChainOutput{}, err
 	}
 	if _, err := execStellarCCIPOp(b, deps, rmnremoteops.Initialize, rmnremoteops.InitializeInput{
-		ContractID:    rmnRemoteContractID,
-		Owner:         h.DeployerKeypair().Address(),
-		ChainSelector: selector,
+		ContractID:  rmnRemoteContractID,
+		Owner:       h.DeployerKeypair().Address(),
+		CurseAdmins: nil,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, fmt.Errorf("initialize RMN Remote: %w", err)
 	}
@@ -702,7 +702,7 @@ func RunStellarCCIPFullDeploy(
 		Address:       receiverHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(stellarccip.CcipReceiverContractType),
-		Version:       semver.MustParse("1.0.0"),
+		Version:       stellarops.ContractDeploymentVersion,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, err
 	}
@@ -754,7 +754,7 @@ func RunStellarCCIPFullDeploy(
 		Address:       tarHex,
 		ChainSelector: selector,
 		Type:          datastore.ContractType(stellarccip.TokenAdminRegistryContractType),
-		Version:       semver.MustParse("1.0.0"),
+		Version:       stellarops.ContractDeploymentVersion,
 	}); err != nil {
 		return seq_core.OnChainOutput{}, err
 	}

@@ -348,7 +348,7 @@ func TestRouterCcipSendUnhappyPaths(t *testing.T) {
 		}
 
 		subject := rmnSubjectForRouterDestChain(remoteDestChain)
-		if err := stack.RmnRemoteClient.Curse(ctx, [][16]byte{subject}); err != nil {
+		if err := stack.RmnRemoteClient.Curse(ctx, deployerAddr, [][16]byte{subject}); err != nil {
 			t.Fatalf("RmnRemote Curse(dest subject): %v", err)
 		}
 		t.Cleanup(func() {

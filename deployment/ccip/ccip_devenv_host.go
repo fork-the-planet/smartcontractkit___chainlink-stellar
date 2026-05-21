@@ -31,6 +31,9 @@ type CCIPDevenvHost interface {
 	SetTokenAdminRegistry(contractID string, client *tarbindings.TokenAdminRegistryClient)
 	TokenAdminRegistryClient() *tarbindings.TokenAdminRegistryClient
 	SetTokenPool(contractID string, client *tokenpoolbindings.TokenPoolClient)
+	SetLegacyLockReleasePool(contractID string)
+	SetTokenLockBox(contractID string)
+	LatestLedgerSequence(ctx context.Context) (uint32, error)
 	SetTestToken(contractID string)
 	TestTokenContractID() string
 	SetOffRamp(contractID string, client *offrampbindings.OffRampClient)

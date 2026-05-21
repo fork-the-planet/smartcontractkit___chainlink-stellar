@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
-
 	tokens "github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
 	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
 	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
@@ -16,6 +14,7 @@ import (
 	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
 
 	stellarccip "github.com/smartcontractkit/chainlink-stellar/deployment/ccip"
+	stellarops "github.com/smartcontractkit/chainlink-stellar/deployment/operations"
 )
 
 var _ tokens.TokenAdapter = (*StellarTokenAdapter)(nil)
@@ -44,7 +43,7 @@ func (a *StellarTokenAdapter) DeriveTokenAddress(e deployment.Environment, chain
 	}
 	tokenRef, err := datastore_utils.FindAndFormatRef(e.DataStore, datastore.AddressRef{
 		Type:      datastore.ContractType(stellarccip.TestTokenContractType),
-		Version:   semver.MustParse("1.0.0"),
+		Version:   stellarops.ContractDeploymentVersion,
 		Qualifier: qualifier,
 	}, chainSelector, datastore_utils.FullRef)
 	if err != nil {
@@ -65,7 +64,7 @@ func (a *StellarTokenAdapter) DeriveTokenPoolCounterpart(_ deployment.Environmen
 
 var stellarConfigureTokenNoOp = cldf_ops.NewSequence(
 	"StellarConfigureTokenForTransfers",
-	semver.MustParse("1.0.0"),
+	stellarops.ContractDeploymentVersion,
 	"No-op: Stellar token pool chain updates are applied during PostConnect",
 	func(_ cldf_ops.Bundle, _ cldf_chain.BlockChains, _ tokens.ConfigureTokenForTransfersInput) (sequences.OnChainOutput, error) {
 		return sequences.OnChainOutput{}, nil

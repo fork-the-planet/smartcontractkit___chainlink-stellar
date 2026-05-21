@@ -159,7 +159,7 @@ fn setup_env() -> (Env, Address, Address, Address, Address) {
     // Deploy and initialize RMN Remote so proxy can delegate is_cursed() to it
     let rmn_remote_id = env.register(rmn_remote::RmnRemoteContract, ());
     let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy_addr = env.register(rmn_proxy::RmnProxyContract, ());
     let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_addr);
@@ -415,7 +415,7 @@ fn test_ccip_send_full_flow() {
     // ---- Deploy RMN Remote and Proxy ----
     let rmn_remote_id = env.register(rmn_remote::RmnRemoteContract, ());
     let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
     let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
@@ -512,7 +512,7 @@ fn test_ccip_send_unsupported_chain() {
 
     let rmn_remote_id = env.register(rmn_remote::RmnRemoteContract, ());
     let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
     let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
@@ -549,7 +549,7 @@ fn test_get_fee_via_onramp() {
 
     let rmn_remote_id = env.register(rmn_remote::RmnRemoteContract, ());
     let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
-    rmn_remote_client.initialize(&owner, &1u64);
+    rmn_remote_client.initialize(&owner, &soroban_sdk::Vec::new(&env));
 
     let rmn_proxy_id = env.register(rmn_proxy::RmnProxyContract, ());
     let rmn_proxy_client = rmn_proxy::RmnProxyContractClient::new(&env, &rmn_proxy_id);
@@ -676,7 +676,7 @@ fn test_route_message_cursed_network() {
 
     let rmn_remote_client = rmn_remote::RmnRemoteContractClient::new(&env, &rmn_remote_id);
     let subject = BytesN::from_array(&env, &ROUTE_MSG_GLOBAL_CURSE_SUBJECT);
-    rmn_remote_client.curse(&vec![&env, subject]);
+    rmn_remote_client.curse(&owner, &vec![&env, subject]);
 
     let message = sample_any_to_stellar_message(&env);
     let result =

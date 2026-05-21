@@ -1,6 +1,4 @@
-//go:build integration
-
-package integration
+package helpers
 
 import (
 	"bytes"
@@ -27,10 +25,11 @@ var (
 	}
 )
 
-// Anvil account #0 secret (must match contracts/mcms/src/test.rs ANVIL_SK_0).
-const anvil0SKHex = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+// Anvil0SKHex is Anvil account #0 secret (must match contracts/mcms/src/test.rs ANVIL_SK_0).
+const Anvil0SKHex = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
-func chainNetworkIDFromHex(chainIDHex string) ([32]byte, error) {
+// ChainNetworkIDFromHex parses a 32-byte Stellar chain network id from hex (e.g. chain-selectors ChainID).
+func ChainNetworkIDFromHex(chainIDHex string) ([32]byte, error) {
 	var out [32]byte
 	s := strings.TrimPrefix(strings.TrimPrefix(chainIDHex, "0x"), "0X")
 	if len(s) != 64 {
