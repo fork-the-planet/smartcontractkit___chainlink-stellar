@@ -34,11 +34,11 @@ jobs:
           - name: committee-verifier
             dockerfile: Dockerfile.verifier
             image_name: ccv-stellar-verifier
-            ecr_repository: ${{ secrets.COMMITTEE_VERIFIER_ECR_REPOSITORY }}
+            ecr_repository_secret_name: COMMITTEE_VERIFIER_ECR_REPOSITORY
           - name: executor
             dockerfile: Dockerfile.executor
             image_name: ccv-stellar-executor
-            ecr_repository: ${{ secrets.EXECUTOR_ECR_REPOSITORY }}
+            ecr_repository_secret_name: EXECUTOR_ECR_REPOSITORY
 
     steps:
       - name: Check out code
@@ -68,4 +68,4 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ secrets.ECR_REGISTRY_ID }}/${{ matrix.ecr_repository }}:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY_ID }}/${{ secrets.${{ secrets[matrix.ecr_repository_secret_name] }} }}:${{ github.sha }}
