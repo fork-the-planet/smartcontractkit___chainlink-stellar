@@ -68,4 +68,4 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ secrets.ECR_REGISTRY_ID }}/${{ secrets.${{ secrets[matrix.ecr_repository_secret_name] }} }}:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY_ID }}/${{ secrets[matrix.ecr_repository_secret_name] }}:${{ github.sha }}
