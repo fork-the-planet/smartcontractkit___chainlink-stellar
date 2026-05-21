@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 jobs:
-  if: github.event.label.name == 'push-to-ecr'
+  if: contains( github.event.pull_request.labels.*.name, 'build-push-ecr')
   build-push:
     name: Build and Push ${{ matrix.image_name }}
     runs-on: ubuntu-latest
