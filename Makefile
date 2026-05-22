@@ -6,7 +6,7 @@ WASM_DIR := target/wasm32v1-none/release
 # lives elsewhere, e.g. `make docker-ccv-dev CCV_REPO=$HOME/code/chainlink-ccv`.
 CCV_REPO ?= ../chainlink-ccv
 
-.PHONY: build test test-e2e check fmt clean generate-interfaces generate-bindings docker-verifier docker-executor docker-ccv-dev restart-verifier restart-executor restart-verifier-executor docker-verifier-rc docker-executor-rc push-verifier push-executor push-all
+.PHONY: build test test-e2e check fmt clean generate-interfaces generate-bindings docker-verifier docker-executor docker-ccv-dev restart-verifier restart-executor restart-verifier-executor
 
 build:
 	stellar contract build
@@ -77,56 +77,6 @@ restart-executor: docker-executor
 # Rebuild both verifier and executor images and restart the devenv to pick up the new images.
 restart-verifier-executor: docker-verifier docker-executor
 	$(MAKE) down && $(MAKE) up
-
-# ECR Registry and Image Configuration
-# Override these variables when pushing to ECR:
-#   make push-verifier ECR_REGISTRY=123456789012.dkr.ecr.us-west-2.amazonaws.com IMAGE_TAG=v1.2.3
-ECR_REGISTRY ?= $(STELLAR_ECR_REGISTRY)
-IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
-
-# Build release candidate images for ECR (tagged with :rc)
-docker-verifier-rc:
-	docker build -f Dockerfile.verifier -t stellarcommittee-verifier:rc .
-
-docker-executor-rc:
-	docker build -f Dockerfile.executor -t stellarexecutor:rc .
-
-# Push committee-verifier image to ECR
-# Requires: ECR_REGISTRY to be set (e.g., 123456789012.dkr.ecr.us-west-2.amazonaws.com)
-# Usage: make push-verifier ECR_REGISTRY=<registry> [IMAGE_TAG=<tag>]
-push-verifier: docker-verifier-rc
-ifndef ECR_REGISTRY
-	$(error ECR_REGISTRY is not set. Usage: make push-verifier ECR_REGISTRY=123456789012.dkr.ecr.us-west-2.amazonaws.com [IMAGE_TAG=v1.0.0])
-endif
-	@echo "Tagging and pushing stellarcommittee-verifier:$(IMAGE_TAG) to $(ECR_REGISTRY)..."
-	docker tag stellarcommittee-verifier:rc $(ECR_REGISTRY)/stellarcommittee-verifier:$(IMAGE_TAG)
-	docker tag stellarcommittee-verifier:rc $(ECR_REGISTRY)/stellarcommittee-verifier:latest
-	docker push $(ECR_REGISTRY)/stellarcommittee-verifier:$(IMAGE_TAG)
-	docker push $(ECR_REGISTRY)/stellarcommittee-verifier:latest
-	@echo "Successfully pushed:"
-	@echo "  - $(ECR_REGISTRY)/stellarcommittee-verifier:$(IMAGE_TAG)"
-	@echo "  - $(ECR_REGISTRY)/stellarcommittee-verifier:latest"
-
-# Push executor image to ECR
-# Requires: ECR_REGISTRY to be set
-# Usage: make push-executor ECR_REGISTRY=<registry> [IMAGE_TAG=<tag>]
-push-executor: docker-executor-rc
-ifndef ECR_REGISTRY
-	$(error ECR_REGISTRY is not set. Usage: make push-executor ECR_REGISTRY=123456789012.dkr.ecr.us-west-2.amazonaws.com [IMAGE_TAG=v1.0.0])
-endif
-	@echo "Tagging and pushing stellarexecutor:$(IMAGE_TAG) to $(ECR_REGISTRY)..."
-	docker tag stellarexecutor:rc $(ECR_REGISTRY)/stellarexecutor:$(IMAGE_TAG)
-	docker tag stellarexecutor:rc $(ECR_REGISTRY)/stellarexecutor:latest
-	docker push $(ECR_REGISTRY)/stellarexecutor:$(IMAGE_TAG)
-	docker push $(ECR_REGISTRY)/stellarexecutor:latest
-	@echo "Successfully pushed:"
-	@echo "  - $(ECR_REGISTRY)/stellarexecutor:$(IMAGE_TAG)"
-	@echo "  - $(ECR_REGISTRY)/stellarexecutor:latest"
-
-# Push both images to ECR
-# Usage: make push-all ECR_REGISTRY=<registry> [IMAGE_TAG=<tag>]
-push-all: push-verifier push-executor
-	@echo "All images pushed successfully to $(ECR_REGISTRY)"
 
 up:
 	CTF_CONFIGS=tests/env/env-stellar-evm.toml go run ./tests/testutils/cmd/devenv up tests/env/env-stellar-evm.toml
