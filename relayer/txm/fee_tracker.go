@@ -31,28 +31,28 @@ func newFeeTracker(pollInterval time.Duration) *feeTracker {
 }
 
 // sorobanInclusionPercentiles returns Soroban inclusion fee P50 and P90 (stroops).
-// ok is false when there is no usable data (no successful fetch yet, and refresh failed).
-// When ok is false, err is the failed GetFeeStats error (if any).
-func (t *feeTracker) sorobanInclusionPercentiles(ctx context.Context, client feeStatsRPC) (p50, p90 uint64, ok bool, err error) {
+// On error it returns (0, 0, err) when there is no usable cached data yet; otherwise
+// it returns the last successful snapshot with err == nil (stale-while-revalidate).
+func (t *feeTracker) sorobanInclusionPercentiles(ctx context.Context, client feeStatsRPC) (p50, p90 uint64, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	now := time.Now()
 	if t.pollInterval > 0 && t.haveData && now.Sub(t.fetchedAt) < t.pollInterval {
-		return t.p50, t.p90, true, nil
+		return t.p50, t.p90, nil
 	}
 
 	resp, fetchErr := client.GetFeeStats(ctx)
 	if fetchErr != nil {
 		if t.haveData {
-			return t.p50, t.p90, true, nil
+			return t.p50, t.p90, nil
 		}
-		return 0, 0, false, fetchErr
+		return 0, 0, fetchErr
 	}
 
 	t.p50 = resp.SorobanInclusionFee.P50
 	t.p90 = resp.SorobanInclusionFee.P90
 	t.fetchedAt = now
 	t.haveData = true
-	return t.p50, t.p90, true, nil
+	return t.p50, t.p90, nil
 }

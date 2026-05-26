@@ -74,6 +74,9 @@ type StellarTxm struct {
 // chain.Chain.GetClient to enable multi-node rotation; in normal wiring the
 // chain package constructs the TXM and passes its own GetClient method.
 // The network passphrase is resolved from chainID via NetworkPassphrase.
+// cfg is normalized with Resolve so pointer fields (e.g. TxTimeoutSecs) are
+// non-nil for the lifetime of the TXM; do not construct StellarTxm manually
+// with an unresolved Config.
 func New(
 	lgr logger.Logger,
 	keystore core.Keystore,
@@ -567,7 +570,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 	// via feeTracker to cap GetFeeStats RPC rate.
 	// SeedInclusionFee caps the result at MaxInclusionFee
 	var networkPercentile uint64
-	if p50, p90, fsOk, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsOk {
+	if p50, p90, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsErr == nil {
 		if currentAttempt > 0 {
 			networkPercentile = p90
 		} else {
@@ -690,7 +693,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			// Bump inclusion fee: apply multiplier then take max with live P90
 			// (shared feeTracker).
 			bumped := int64(math.Ceil(float64(inclusionFee) * s.feeStrat.BumpMultiplier))
-			if _, p90, fsOk, _ := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsOk {
+			if _, p90, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsErr == nil {
 				if networkFee := int64(p90); networkFee > bumped {
 					bumped = networkFee
 				}
@@ -784,7 +787,7 @@ func (s *StellarTxm) prepareAndSimulateWithRetry(
 }
 
 func (s *StellarTxm) shouldRetrySimulation(ctx context.Context, err error, attempt uint, maxAttempts uint) bool {
-	return attempt+1 < maxAttempts && isRetryableSimulationError(ctx, err)
+	return attempt+1 < maxAttempts && s.isRetryableSimulationError(ctx, err)
 }
 
 func (s *StellarTxm) sleepBeforeSimulationRetry(ctx context.Context) bool {

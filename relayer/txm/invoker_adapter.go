@@ -41,9 +41,15 @@ func WithInvokerLedgerBoundsOffset(offset uint32) InvokerAdapterOption {
 	}
 }
 
-// InvokerAdapter bridges generated bindings clients to the TXM. State-changing
-// calls go through EnqueueAndWait; read-only simulations go through Simulate;
-// event reads delegate directly to the shared RPC client.
+// InvokerAdapter implements bindings.Invoker by routing contract work through
+// the Stellar TXM: InvokeContract → EnqueueAndWait (async pipeline, signing,
+// fees, retries), SimulateContract → Simulate, GetEvents → RPC (no sequence).
+//
+// Generated binding clients (e.g. routerbindings.NewRouterClient) take a
+// bindings.Invoker — they do not reference InvokerAdapter directly. This type
+// is one Invoker implementation for relayer/Chainlink-style TXM usage; other
+// stacks may use a different Invoker (e.g. deployment.Deployer in ccv/devenv,
+// which signs and submits via RPC without the TXM).
 type InvokerAdapter struct {
 	txm                InvokerTxManager
 	getClient          func() (RPCClient, error)

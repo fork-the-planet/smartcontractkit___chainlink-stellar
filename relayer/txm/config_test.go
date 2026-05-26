@@ -31,6 +31,9 @@ func TestResolve_AllDefaults(t *testing.T) {
 	assert.Equal(t, DefaultConfigSet.TxTimeoutSecs, cfg.TxTimeoutSecs)
 	assert.Equal(t, DefaultConfigSet.LedgerBoundsOffset, cfg.LedgerBoundsOffset)
 	assert.Equal(t, DefaultConfigSet.MaxRestoreAttempts, cfg.MaxRestoreAttempts)
+
+	assert.Equal(t, builtinSimulationTerminalHints, cfg.SimulationTerminalHints)
+	assert.Equal(t, builtinSimulationRetryableHints, cfg.SimulationRetryableHints)
 }
 
 func TestResolve_PartialOverride(t *testing.T) {
@@ -51,6 +54,21 @@ func TestResolve_PartialOverride(t *testing.T) {
 	assert.Equal(t, DefaultConfigSet.FeeBumpMultiplier, cfg.FeeBumpMultiplier)
 	assert.Equal(t, DefaultConfigSet.MaxSimulateAttempts, cfg.MaxSimulateAttempts)
 	assert.Equal(t, DefaultConfigSet.LedgerBoundsOffset, cfg.LedgerBoundsOffset)
+	assert.Equal(t, builtinSimulationTerminalHints, cfg.SimulationTerminalHints)
+	assert.Equal(t, builtinSimulationRetryableHints, cfg.SimulationRetryableHints)
+}
+
+func TestResolve_CustomSimulationHints(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		SimulationTerminalHints:  []string{"custom-terminal"},
+		SimulationRetryableHints: []string{"custom-retry"},
+	}
+	cfg.Resolve()
+
+	assert.Equal(t, []string{"custom-terminal"}, cfg.SimulationTerminalHints)
+	assert.Equal(t, []string{"custom-retry"}, cfg.SimulationRetryableHints)
 }
 
 func TestResolve_ExplicitZero(t *testing.T) {

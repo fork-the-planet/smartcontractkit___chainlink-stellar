@@ -17,9 +17,7 @@ func (s *StellarTxm) buildPreliminaryTx(tx *StellarTx, nextSubmitSeq int64, maxL
 	if tx == nil {
 		return nil, errors.New("buildPreliminaryTx: tx is nil")
 	}
-	if s.config.TxTimeoutSecs == nil {
-		return nil, errors.New("buildPreliminaryTx: TxTimeoutSecs is nil")
-	}
+	// TxTimeoutSecs is set by txm.New via cfg.Resolve(); no per-call nil check.
 	// nextSubmitSeq is the next sequence number this tx will consume (TxStore convention).
 	// currentSequence is the last-used sequence on ledger (nextSubmitSeq-1), which txnbuild.NewSimpleAccount expects.
 	// IncrementSequenceNum:true then produces exactly nextSubmitSeq on the wire.
@@ -74,56 +72,23 @@ func (s *StellarTxm) simulateTransaction(ctx context.Context, client RPCClient, 
 // unstructured error strings from the JSON-RPC client and Soroban (no stable
 // machine-readable code across all failure modes).
 //
-//   - terminalHints: substrings that usually indicate the simulation itself
-//     failed for reasons repeating the same request will not fix (contract
-//     trap, bad auth, bad args, missing contract, etc.). Tuned from Soroban /
-//     Rust contract error text and common Stellar SDK phrasing — not an
-//     exhaustive XDR enum mapping.
-//   - retryableHints: substrings for transport/backpressure (timeouts, rate
-//     limits, connection issues) and for outcomes the broadcast pipeline can
-//     recover from after a fresh ledger read / sequence resync (bad_seq,
-//     stale, ledger wording in RPC errors).
+// Hint lists come from StellarTxm config (SimulationTerminalHints and
+// SimulationRetryableHints); see Config.Resolve for defaults.
 //
 // Anything that matches neither list is treated as non-retryable (fail closed).
-func isRetryableSimulationError(ctx context.Context, err error) bool {
+func (s *StellarTxm) isRetryableSimulationError(ctx context.Context, err error) bool {
 	if err == nil || ctx.Err() != nil {
 		return false
 	}
 
 	msg := strings.ToLower(err.Error())
-	terminalHints := []string{
-		"error(contract",
-		"contract error",
-		"trapped",
-		"trap",
-		"malformed",
-		"bad auth",
-		"invalid",
-		"unknown function",
-		"no such contract",
-	}
-	for _, hint := range terminalHints {
+	for _, hint := range s.config.SimulationTerminalHints {
 		if strings.Contains(msg, hint) {
 			return false
 		}
 	}
 
-	retryableHints := []string{
-		"timeout",
-		"temporarily unavailable",
-		"try_again_later",
-		"too many requests",
-		"rate limit",
-		"connection refused",
-		"connection reset",
-		"eof",
-		"bad_seq",
-		"tx_bad_seq",
-		"sequence",
-		"stale",
-		"ledger",
-	}
-	for _, hint := range retryableHints {
+	for _, hint := range s.config.SimulationRetryableHints {
 		if strings.Contains(msg, hint) {
 			return true
 		}

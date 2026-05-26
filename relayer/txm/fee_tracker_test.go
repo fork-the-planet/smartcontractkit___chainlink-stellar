@@ -33,17 +33,15 @@ func TestFeeTracker_UsesTTLBetweenCalls(t *testing.T) {
 		},
 	}
 	tr := newFeeTracker(5 * time.Second)
-	ctx := context.Background()
+	ctx := t.Context()
 
-	p50, p90, ok, err := tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok)
+	p50, p90, err := tr.sorobanInclusionPercentiles(ctx, client)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(100), p50)
 	assert.Equal(t, uint64(200), p90)
 	assert.Equal(t, int32(1), client.calls.Load())
 
-	p50, p90, ok, err = tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok)
+	p50, p90, err = tr.sorobanInclusionPercentiles(ctx, client)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(100), p50)
 	assert.Equal(t, uint64(200), p90)
@@ -58,13 +56,11 @@ func TestFeeTracker_ZeroPollIntervalAlwaysFetches(t *testing.T) {
 		},
 	}
 	tr := newFeeTracker(0)
-	ctx := context.Background()
+	ctx := t.Context()
 
-	_, _, ok, err := tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok)
+	_, _, err := tr.sorobanInclusionPercentiles(ctx, client)
 	require.NoError(t, err)
-	_, _, ok, err = tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok)
+	_, _, err = tr.sorobanInclusionPercentiles(ctx, client)
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), client.calls.Load())
 }
@@ -77,10 +73,9 @@ func TestFeeTracker_StaleWhileRevalidate(t *testing.T) {
 		},
 	}
 	tr := newFeeTracker(10 * time.Millisecond)
-	ctx := context.Background()
+	ctx := t.Context()
 
-	_, _, ok, err := tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok)
+	_, _, err := tr.sorobanInclusionPercentiles(ctx, client)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), client.calls.Load())
 
@@ -88,9 +83,8 @@ func TestFeeTracker_StaleWhileRevalidate(t *testing.T) {
 	client.err = assert.AnError
 	client.resp = protocolrpc.GetFeeStatsResponse{}
 
-	p50, p90, ok, err := tr.sorobanInclusionPercentiles(ctx, client)
-	require.True(t, ok, "should serve stale data when refresh fails")
-	require.NoError(t, err)
+	p50, p90, err := tr.sorobanInclusionPercentiles(ctx, client)
+	require.NoError(t, err, "should serve stale data when refresh fails")
 	assert.Equal(t, uint64(10), p50)
 	assert.Equal(t, uint64(20), p90)
 	assert.Equal(t, int32(2), client.calls.Load())
@@ -100,10 +94,9 @@ func TestFeeTracker_FirstFetchErrorNoData(t *testing.T) {
 	t.Parallel()
 	client := &countingFeeStatsClient{err: assert.AnError}
 	tr := newFeeTracker(time.Hour)
-	ctx := context.Background()
+	ctx := t.Context()
 
-	_, _, ok, err := tr.sorobanInclusionPercentiles(ctx, client)
-	assert.False(t, ok)
+	_, _, err := tr.sorobanInclusionPercentiles(ctx, client)
 	assert.Error(t, err)
 	assert.Equal(t, int32(1), client.calls.Load())
 }

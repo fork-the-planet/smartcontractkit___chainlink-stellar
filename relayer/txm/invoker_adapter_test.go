@@ -56,7 +56,7 @@ func TestInvokerAdapter_InvokeContract(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	result, err := adapter.InvokeContract(context.Background(), contractID, "increment", []xdr.ScVal{returnValue})
+	result, err := adapter.InvokeContract(t.Context(), contractID, "increment", []xdr.ScVal{returnValue})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, returnValue, *result)
@@ -80,7 +80,7 @@ func TestInvokerAdapter_InvokeContractReturnsTxFailure(t *testing.T) {
 	adapter, err := NewInvokerAdapter(fake, func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
 	require.NoError(t, err)
 
-	_, err = adapter.InvokeContract(context.Background(), testContractStrkey(t), "execute", nil)
+	_, err = adapter.InvokeContract(t.Context(), testContractStrkey(t), "execute", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tx tx-1 failed")
 }
@@ -105,7 +105,7 @@ func TestInvokerAdapter_SimulateContract(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	result, err := adapter.SimulateContract(context.Background(), contractID, "get_count", nil)
+	result, err := adapter.SimulateContract(t.Context(), contractID, "get_count", nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, returnValue, *result)
@@ -125,7 +125,7 @@ func TestInvokerAdapter_SimulateContractRestoreRequired(t *testing.T) {
 	adapter, err := NewInvokerAdapter(fake, func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
 	require.NoError(t, err)
 
-	_, err = adapter.SimulateContract(context.Background(), testContractStrkey(t), "get_count", nil)
+	_, err = adapter.SimulateContract(t.Context(), testContractStrkey(t), "get_count", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "restore required")
 }
@@ -145,7 +145,7 @@ func TestInvokerAdapter_GetEvents(t *testing.T) {
 	adapter, err := NewInvokerAdapter(&fakeInvokerTxm{}, func() (RPCClient, error) { return newTestClient(mock), nil })
 	require.NoError(t, err)
 
-	events, err := adapter.GetEvents(context.Background(), contractID, 99, []string{"MessageExecuted"})
+	events, err := adapter.GetEvents(t.Context(), contractID, 99, []string{"MessageExecuted"})
 	require.NoError(t, err)
 	assert.Equal(t, expected, events)
 	assert.Equal(t, uint32(99), captured.StartLedger)
@@ -165,7 +165,7 @@ func TestStellarTxm_SimulateDefaultsFromAddress(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	res, err := txm.Simulate(context.Background(), TxRequest{
+	res, err := txm.Simulate(t.Context(), TxRequest{
 		Operations: []txnbuild.Operation{testInvokeNoopOp()},
 	})
 	require.NoError(t, err)

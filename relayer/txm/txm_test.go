@@ -176,7 +176,7 @@ func TestStellarTxm_StartStop(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	err = txm.Start(context.Background())
+	err = txm.Start(t.Context())
 	require.NoError(t, err)
 
 	assert.NoError(t, txm.Ready())
@@ -192,10 +192,10 @@ func TestStellarTxm_DoubleStart(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	err = txm.Start(context.Background())
+	err = txm.Start(t.Context())
 	require.Error(t, err)
 }
 
@@ -208,13 +208,13 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("missing Operations", func(t *testing.T) {
-		_, err := txm.Enqueue(context.Background(), TxRequest{})
+		_, err := txm.Enqueue(t.Context(), TxRequest{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "currently only single-operation transactions are supported")
 	})
 
 	t.Run("too many Operations", func(t *testing.T) {
-		_, err := txm.Enqueue(context.Background(), TxRequest{
+		_, err := txm.Enqueue(t.Context(), TxRequest{
 			Operations: []txnbuild.Operation{
 				&txnbuild.InvokeHostFunction{
 					HostFunction: xdr.HostFunction{
@@ -248,7 +248,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 
 	t.Run("duplicate ID", func(t *testing.T) {
 		id := "dup-test-id"
-		_, err := txm.Enqueue(context.Background(), TxRequest{
+		_, err := txm.Enqueue(t.Context(), TxRequest{
 			ID: id,
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
@@ -265,7 +265,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		id2, err := txm.Enqueue(context.Background(), TxRequest{
+		id2, err := txm.Enqueue(t.Context(), TxRequest{
 			ID: id,
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
@@ -313,7 +313,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 		for i := 0; i < nWorkers; i++ {
 			go func() {
 				defer wg.Done()
-				gotID, err := txm.Enqueue(context.Background(), req)
+				gotID, err := txm.Enqueue(t.Context(), req)
 				mu.Lock()
 				results = append(results, struct {
 					id  string
@@ -344,7 +344,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 	// (where xdr.MustAddress used to crash the goroutine on untrusted input).
 	t.Run("invalid FromAddress rejected at Enqueue", func(t *testing.T) {
 		require.NotPanics(t, func() {
-			_, err := txm.Enqueue(context.Background(), TxRequest{
+			_, err := txm.Enqueue(t.Context(), TxRequest{
 				FromAddress: "not-a-valid-strkey",
 				Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 					HostFunction: xdr.HostFunction{
@@ -368,7 +368,7 @@ func TestStellarTxm_Enqueue_Validation(t *testing.T) {
 		// Contract addresses (C…) must not be accepted as a transaction source —
 		// only ed25519 account ids (G…) are valid sources.
 		require.NotPanics(t, func() {
-			_, err := txm.Enqueue(context.Background(), TxRequest{
+			_, err := txm.Enqueue(t.Context(), TxRequest{
 				FromAddress: "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA",
 				Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 					HostFunction: xdr.HostFunction{
@@ -395,7 +395,7 @@ func TestStellarTxm_Enqueue_AutoID(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{
+	txID, err := txm.Enqueue(t.Context(), TxRequest{
 		Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 			HostFunction: xdr.HostFunction{
 				Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
@@ -437,10 +437,10 @@ func TestStellarTxm_Enqueue_ChannelFull_EvictsOldest(t *testing.T) {
 		},
 	}
 
-	oldID, err := txm.Enqueue(context.Background(), TxRequest{Operations: []txnbuild.Operation{op}})
+	oldID, err := txm.Enqueue(t.Context(), TxRequest{Operations: []txnbuild.Operation{op}})
 	require.NoError(t, err)
 
-	newID, err := txm.Enqueue(context.Background(), TxRequest{Operations: []txnbuild.Operation{op}})
+	newID, err := txm.Enqueue(t.Context(), TxRequest{Operations: []txnbuild.Operation{op}})
 	require.NoError(t, err, "new tx should be accepted after evicting oldest")
 	assert.NotEqual(t, oldID, newID)
 
@@ -485,7 +485,7 @@ func TestStellarTxm_GetStatus(t *testing.T) {
 	})
 
 	t.Run("existing tx", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
 					Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
@@ -524,7 +524,7 @@ func TestStellarTxm_GetTransactionResult(t *testing.T) {
 	})
 
 	t.Run("pending", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			FromAddress: testAddress,
 			Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 		})
@@ -541,7 +541,7 @@ func TestStellarTxm_GetTransactionResult(t *testing.T) {
 	})
 
 	t.Run("finalized", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			FromAddress: testAddress,
 			Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 		})
@@ -569,7 +569,7 @@ func TestStellarTxm_GetTransactionResult(t *testing.T) {
 	})
 
 	t.Run("failed with result code", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			FromAddress: testAddress,
 			Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 		})
@@ -608,7 +608,7 @@ func TestStellarTxm_GetTransactionFee(t *testing.T) {
 	})
 
 	t.Run("not finalized", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
 					Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
@@ -630,7 +630,7 @@ func TestStellarTxm_GetTransactionFee(t *testing.T) {
 	})
 
 	t.Run("finalized with fee", func(t *testing.T) {
-		txID, err := txm.Enqueue(context.Background(), TxRequest{
+		txID, err := txm.Enqueue(t.Context(), TxRequest{
 			Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 				HostFunction: xdr.HostFunction{
 					Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
@@ -732,10 +732,10 @@ func TestStellarTxm_BroadcastLoop_ProcessesTx(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{
+	txID, err := txm.Enqueue(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 			HostFunction: xdr.HostFunction{
@@ -784,10 +784,10 @@ func TestStellarTxm_ConfirmLoop_FinalizesSuccess(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{
+	txID, err := txm.Enqueue(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 			HostFunction: xdr.HostFunction{
@@ -837,10 +837,10 @@ func TestStellarTxm_ConfirmLoop_ExpiredTxRetries(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{
+	txID, err := txm.Enqueue(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 			HostFunction: xdr.HostFunction{
@@ -899,10 +899,10 @@ func TestStellarTxm_EnqueueAndWait(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
 	result, err := txm.EnqueueAndWait(ctx, TxRequest{
@@ -951,10 +951,10 @@ func TestStellarTxm_EnqueueAndWait_ContextCancel(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
 	_, err = txm.EnqueueAndWait(ctx, TxRequest{
@@ -995,7 +995,7 @@ func TestStellarTxm_GetSequenceNumber(t *testing.T) {
 	require.NoError(t, err)
 
 	client := newTestClient(mock)
-	seq, err := txm.getSequenceNumber(context.Background(), client, testAddress)
+	seq, err := txm.getSequenceNumber(t.Context(), client, testAddress)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), seq)
 }
@@ -1013,7 +1013,7 @@ func TestStellarTxm_GetSequenceNumber_AccountNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	client := newTestClient(mock)
-	_, err = txm.getSequenceNumber(context.Background(), client, testAddress)
+	_, err = txm.getSequenceNumber(t.Context(), client, testAddress)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -1024,7 +1024,7 @@ func TestStellarTxm_GetSequenceNumber_EmptyAddress(t *testing.T) {
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	client := newTestClient(mock)
-	_, err = txm.getSequenceNumber(context.Background(), client, "")
+	_, err = txm.getSequenceNumber(t.Context(), client, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "address is required")
 }
@@ -1040,7 +1040,7 @@ func TestStellarTxm_GetSequenceNumber_InvalidAddress(t *testing.T) {
 	client := newTestClient(mock)
 
 	require.NotPanics(t, func() {
-		_, err := txm.getSequenceNumber(context.Background(), client, "not-a-stellar-address")
+		_, err := txm.getSequenceNumber(t.Context(), client, "not-a-stellar-address")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid stellar account address")
 	})
@@ -1075,7 +1075,7 @@ func TestStellarTxm_GetSequenceNumber_NonAccountLedgerEntry(t *testing.T) {
 	client := newTestClient(mock)
 
 	require.NotPanics(t, func() {
-		_, err := txm.getSequenceNumber(context.Background(), client, testAddress)
+		_, err := txm.getSequenceNumber(t.Context(), client, testAddress)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not an account entry")
 	})
@@ -1102,7 +1102,7 @@ func TestStellarTxm_Simulate_validation(t *testing.T) {
 
 	t.Run("no operations", func(t *testing.T) {
 		t.Parallel()
-		_, err := txm.Simulate(context.Background(), TxRequest{FromAddress: testAddress})
+		_, err := txm.Simulate(t.Context(), TxRequest{FromAddress: testAddress})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "at least one operation")
 	})
@@ -1113,7 +1113,7 @@ func TestStellarTxm_Simulate_getClientError(t *testing.T) {
 	bad := func() (RPCClient, error) { return nil, fmt.Errorf("unreachable") }
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, bad, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	_, err = txm.Simulate(context.Background(), TxRequest{
+	_, err = txm.Simulate(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 	})
@@ -1128,7 +1128,7 @@ func TestStellarTxm_Simulate_LatestLedgerError(t *testing.T) {
 	getClient := func() (RPCClient, error) { return c, nil }
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, getClient, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	_, err = txm.Simulate(context.Background(), TxRequest{
+	_, err = txm.Simulate(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 	})
@@ -1144,7 +1144,7 @@ func TestStellarTxm_Simulate_success(t *testing.T) {
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	res, err := txm.Simulate(context.Background(), TxRequest{
+	res, err := txm.Simulate(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations:  []txnbuild.Operation{testInvokeNoopOp()},
 	})
@@ -1194,20 +1194,20 @@ func TestStellarTxm_maybeRetry_ReturnsFalseWhenBroadcastChannelIsFull(t *testing
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, getClient, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer func() { _ = txm.Close() }()
 
 	op := testInvokeNoopOp()
 
-	_, err = txm.Enqueue(context.Background(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{op}})
+	_, err = txm.Enqueue(t.Context(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{op}})
 	require.NoError(t, err)
 	// Wait until the first tx is inside Simulate (broadcast loop is blocked there).
 	<-bmock.started
 	// Buffer size 1: the second tx sits in the channel while the first tx is still in sim.
-	_, err = txm.Enqueue(context.Background(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{op}})
+	_, err = txm.Enqueue(t.Context(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{op}})
 	require.NoError(t, err)
 
-	retried := txm.maybeRetry(context.Background(), &UnconfirmedTx{
+	retried := txm.maybeRetry(t.Context(), &UnconfirmedTx{
 		Tx:   &StellarTx{ID: "retry", Attempt: 0},
 		Hash: "h",
 	}, RetryReasonTimedOut)
@@ -1245,10 +1245,10 @@ func TestStellarTxm_ConfirmLoop_UpdatesFeeAndMetaFromXDR(t *testing.T) {
 	cfg := Config{ConfirmPollInterval: config.MustNewDuration(100 * time.Millisecond)}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{
+	txID, err := txm.Enqueue(t.Context(), TxRequest{
 		FromAddress: testAddress,
 		Operations: []txnbuild.Operation{&txnbuild.InvokeHostFunction{
 			HostFunction: xdr.HostFunction{
@@ -1303,10 +1303,10 @@ func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T
 	cfg := Config{ConfirmPollInterval: config.MustNewDuration(20 * time.Millisecond)}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	require.NoError(t, txm.Start(context.Background()))
+	require.NoError(t, txm.Start(t.Context()))
 	defer txm.Close()
 
-	txID, err := txm.Enqueue(context.Background(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{testInvokeNoopOp()}})
+	txID, err := txm.Enqueue(t.Context(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{testInvokeNoopOp()}})
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		st, err := txm.GetStatus(txID)

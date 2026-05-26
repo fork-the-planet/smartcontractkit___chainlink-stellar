@@ -101,7 +101,7 @@ func NewChain(cfg *config.TOMLConfig, opts Opts, chainInfo chainsel.StellarChain
 		keyStore:  opts.KeyStore,
 	}
 
-	t, err := txm.New(lggr, opts.KeyStore, txm.Config{}, func() (txm.RPCClient, error) {
+	t, err := txm.New(lggr, opts.KeyStore, cfg.TxManager, func() (txm.RPCClient, error) {
 		return ch.GetClient()
 	}, chainInfo.ChainID)
 	if err != nil {

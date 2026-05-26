@@ -8,9 +8,42 @@ import (
 
 func ptr[T any](v T) *T { return &v }
 
+// builtinSimulationTerminalHints and builtinSimulationRetryableHints are the
+// defaults for Config.SimulationTerminalHints / SimulationRetryableHints (see
+// isRetryableSimulationError in broadcast.go).
+var (
+	builtinSimulationTerminalHints = []string{
+		"error(contract",
+		"contract error",
+		"trapped",
+		"trap",
+		"malformed",
+		"bad auth",
+		"invalid",
+		"unknown function",
+		"no such contract",
+	}
+	builtinSimulationRetryableHints = []string{
+		"timeout",
+		"temporarily unavailable",
+		"try_again_later",
+		"too many requests",
+		"rate limit",
+		"connection refused",
+		"connection reset",
+		"eof",
+		"bad_seq",
+		"tx_bad_seq",
+		"sequence",
+		"stale",
+		"ledger",
+	}
+)
+
 // Config defines the Stellar transaction manager configuration.
 // Pointer fields are used for TOML deserialization — nil means "not set by user".
-// After calling Resolve(), all fields are guaranteed non-nil.
+// After calling Resolve(), scalar pointer fields are non-nil; simulation hint
+// slices are non-empty (built-in defaults when unset).
 type Config struct {
 	BroadcastChanSize   *uint            `toml:"BroadcastChanSize"`
 	ConfirmPollInterval *config.Duration `toml:"ConfirmPollInterval"`
@@ -35,6 +68,14 @@ type Config struct {
 	LedgerBoundsOffset     *uint32          `toml:"LedgerBoundsOffset"`
 	MaxTxRetryAttempts     *uint64          `toml:"MaxTxRetryAttempts"`
 	MaxRestoreAttempts     *uint            `toml:"MaxRestoreAttempts"`
+
+	// SimulationTerminalHints are matched case-insensitively as substrings
+	// against failed SimulateTransaction errors; any match means the error is
+	// treated as terminal (do not retry). Empty means use built-in defaults.
+	SimulationTerminalHints []string `toml:"SimulationTerminalHints"`
+	// SimulationRetryableHints: any substring match means retry simulation when
+	// attempts remain. Empty means use built-in defaults.
+	SimulationRetryableHints []string `toml:"SimulationRetryableHints"`
 
 	// Pruning
 	PruneInterval     *config.Duration `toml:"PruneInterval"`
@@ -66,7 +107,8 @@ var DefaultConfigSet = Config{
 }
 
 // Resolve fills nil fields with defaults from DefaultConfigSet.
-// After calling Resolve, all fields are guaranteed non-nil.
+// After calling Resolve, scalar pointer fields are non-nil; simulation hint
+// slices are non-empty when defaults apply.
 func (c *Config) Resolve() {
 	if c.BroadcastChanSize == nil {
 		c.BroadcastChanSize = ptr(*DefaultConfigSet.BroadcastChanSize)
@@ -123,5 +165,11 @@ func (c *Config) Resolve() {
 	if c.PruneTxExpiration == nil {
 		v := *DefaultConfigSet.PruneTxExpiration
 		c.PruneTxExpiration = &v
+	}
+	if len(c.SimulationTerminalHints) == 0 {
+		c.SimulationTerminalHints = append([]string(nil), builtinSimulationTerminalHints...)
+	}
+	if len(c.SimulationRetryableHints) == 0 {
+		c.SimulationRetryableHints = append([]string(nil), builtinSimulationRetryableHints...)
 	}
 }
