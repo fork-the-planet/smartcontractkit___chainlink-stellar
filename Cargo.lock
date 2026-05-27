@@ -966,6 +966,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keystone-forwarder"
+version = "0.0.0"
+dependencies = [
+ "common-authorization",
+ "common-error",
+ "common-guard",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
