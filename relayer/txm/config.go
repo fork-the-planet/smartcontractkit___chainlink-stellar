@@ -71,10 +71,11 @@ type Config struct {
 
 	// SimulationTerminalHints are matched case-insensitively as substrings
 	// against failed SimulateTransaction errors; any match means the error is
-	// treated as terminal (do not retry). Empty means use built-in defaults.
+	// treated as terminal (do not retry). Resolve merges these with built-in
+	// defaults (additive); list only extra hints to add on top of defaults.
 	SimulationTerminalHints []string `toml:"SimulationTerminalHints"`
 	// SimulationRetryableHints: any substring match means retry simulation when
-	// attempts remain. Empty means use built-in defaults.
+	// attempts remain. Resolve merges with built-in defaults (additive).
 	SimulationRetryableHints []string `toml:"SimulationRetryableHints"`
 
 	// Pruning
@@ -166,10 +167,31 @@ func (c *Config) Resolve() {
 		v := *DefaultConfigSet.PruneTxExpiration
 		c.PruneTxExpiration = &v
 	}
-	if len(c.SimulationTerminalHints) == 0 {
-		c.SimulationTerminalHints = append([]string(nil), builtinSimulationTerminalHints...)
+	c.SimulationTerminalHints = mergeSimulationHintLists(builtinSimulationTerminalHints, c.SimulationTerminalHints)
+	c.SimulationRetryableHints = mergeSimulationHintLists(builtinSimulationRetryableHints, c.SimulationRetryableHints)
+}
+
+// mergeSimulationHintLists returns built-in hints followed by any extra hints
+// from config not already present (additive, similar to EVM NodePool.Errors).
+func mergeSimulationHintLists(builtin, extra []string) []string {
+	if len(extra) == 0 {
+		return append([]string(nil), builtin...)
 	}
-	if len(c.SimulationRetryableHints) == 0 {
-		c.SimulationRetryableHints = append([]string(nil), builtinSimulationRetryableHints...)
+	seen := make(map[string]struct{}, len(builtin)+len(extra))
+	out := make([]string, 0, len(builtin)+len(extra))
+	for _, h := range builtin {
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
 	}
+	for _, h := range extra {
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	return out
 }

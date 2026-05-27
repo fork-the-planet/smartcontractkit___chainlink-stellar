@@ -599,8 +599,14 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			return
 		}
 
+		// Soroban simulation may return RestorePreamble when contract state or
+		// footprint entries are archived on the ledger. We must submit a separate
+		// RestoreFootprint transaction (handleRestore), advance sequence, and
+		// re-simulate before we can assemble/sign/send the user's invoke.
 		if simResult.RestorePreamble != nil {
 			if restoreHandled {
+				// Already restored once this broadcast; sim still wants restore — fail
+				// instead of looping restore → simulate forever.
 				ctxLogger.Errorw("restore still required after RestoreFootprint transaction")
 				s.releaseSeqAndFailTx(ctx, txStore, seq, tx, ErrorReasonRestoreFailed)
 				return
@@ -612,7 +618,7 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			}
 			restoreHandled = true
 			seq = txStore.GetNextSequence()
-			continue
+			continue // retry simulate → assemble → send with restored entries
 		}
 
 		tx.MinResourceFee = simResult.MinResourceFee
@@ -689,9 +695,9 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			continue
 		}
 
-		if retryReason == ErrorReasonTryAgainLater || retryReason == ErrorReasonInsufficientFee {
-			// Bump inclusion fee: apply multiplier then take max with live P90
-			// (shared feeTracker).
+		if retryReason == ErrorReasonInsufficientFee {
+			// tx_insufficient_fee from validated submit result — bump inclusion fee
+			// (multiplier + live P90 via feeTracker).
 			bumped := int64(math.Ceil(float64(inclusionFee) * s.feeStrat.BumpMultiplier))
 			if _, p90, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsErr == nil {
 				if networkFee := int64(p90); networkFee > bumped {
@@ -714,7 +720,9 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 			continue
 		}
 
-		// Other retryable errors
+		// Other retryable errors (e.g. try_again_later, tx_internal_error): retry after
+		// backoff without bumping fees. TRY_AGAIN_LATER is transient RPC/mempool
+		// backpressure, not an insufficient-fee signal.
 		ctxLogger.Warnw("tx rejected with retryable error", "reason", retryReason, "attempt", submitAttempt)
 		submitAttempt++
 		select {
@@ -1047,7 +1055,7 @@ func (s *StellarTxm) defaultFromAddress(ctx context.Context) (string, error) {
 
 // --- Sequence helpers ---
 
-// getSequenceNumber fetches the on-chain sequence number for a Stellar account.
+// getSequenceNumber fetches the on-chain sequence number for a Stellar account via RPC.
 // Returns the LAST USED sequence (the caller must add +1 for the next expected).
 func (s *StellarTxm) getSequenceNumber(ctx context.Context, client RPCClient, address string) (int64, error) {
 	if address == "" {

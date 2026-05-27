@@ -33,7 +33,12 @@ func (s *StellarTxm) handleRestore(
 		},
 	}
 
-	sourceAccount := txnbuild.NewSimpleAccount(tx.FromAddress, seq-1)
+	// seq is the next sequence this restore will consume (TxStore / GetNextSequence).
+	// txnbuild.SimpleAccount.Sequence is the last-used on-ledger seq, so pass seq-1
+	// with IncrementSequenceNum:true to emit exactly seq on the wire (same as
+	// buildPreliminaryTx).
+	currentSequence := max(int64(0), seq-1)
+	sourceAccount := txnbuild.NewSimpleAccount(tx.FromAddress, currentSequence)
 	restoreFee := s.feeStrat.CalculateRestoreFee(preamble.MinResourceFee, *s.config.RestoreFeeBuffer)
 	restoreTx, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
 		SourceAccount:        &sourceAccount,

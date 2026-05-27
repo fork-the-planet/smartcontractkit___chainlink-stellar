@@ -58,7 +58,7 @@ func TestResolve_PartialOverride(t *testing.T) {
 	assert.Equal(t, builtinSimulationRetryableHints, cfg.SimulationRetryableHints)
 }
 
-func TestResolve_CustomSimulationHints(t *testing.T) {
+func TestResolve_CustomSimulationHintsAreAdditive(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{
@@ -67,8 +67,25 @@ func TestResolve_CustomSimulationHints(t *testing.T) {
 	}
 	cfg.Resolve()
 
-	assert.Equal(t, []string{"custom-terminal"}, cfg.SimulationTerminalHints)
-	assert.Equal(t, []string{"custom-retry"}, cfg.SimulationRetryableHints)
+	assert.Contains(t, cfg.SimulationTerminalHints, "trapped")
+	assert.Contains(t, cfg.SimulationTerminalHints, "custom-terminal")
+	assert.Equal(t, len(builtinSimulationTerminalHints)+1, len(cfg.SimulationTerminalHints))
+
+	assert.Contains(t, cfg.SimulationRetryableHints, "timeout")
+	assert.Contains(t, cfg.SimulationRetryableHints, "custom-retry")
+	assert.Equal(t, len(builtinSimulationRetryableHints)+1, len(cfg.SimulationRetryableHints))
+}
+
+func TestResolve_SimulationHintsDedupesUserDuplicatesOfBuiltin(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		SimulationTerminalHints: []string{"trapped", "only-new-terminal"},
+	}
+	cfg.Resolve()
+
+	assert.Equal(t, len(builtinSimulationTerminalHints)+1, len(cfg.SimulationTerminalHints))
+	assert.Contains(t, cfg.SimulationTerminalHints, "only-new-terminal")
 }
 
 func TestResolve_ExplicitZero(t *testing.T) {

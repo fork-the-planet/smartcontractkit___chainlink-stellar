@@ -289,10 +289,9 @@ func TestStellarTxm_handleSendResult_UndecodableErrorXDRIsFatal(t *testing.T) {
 }
 
 // Regression: tx_insufficient_fee must surface ErrorReasonInsufficientFee, the
-// distinct reason label that the broadcast loop dispatches through the
-// fee-bump path (alongside TRY_AGAIN_LATER). Mislabelling it as a generic
-// retry would cause a backoff retry without bumping, which would just hit the
-// same minimum-fee rejection again.
+// distinct reason label that the broadcast loop dispatches through the fee-bump
+// path. Mislabelling it as a generic retry would cause a backoff retry without
+// bumping, which would just hit the same minimum-fee rejection again.
 func TestStellarTxm_handleSendResult_InsufficientFeeMapsToFeeBumpReason(t *testing.T) {
 	t.Parallel()
 
