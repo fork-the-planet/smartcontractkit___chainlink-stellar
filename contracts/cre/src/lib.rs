@@ -69,6 +69,18 @@ pub enum Error {
     CannotRemoveSelf = 23,
 }
 
+impl From<CCIPError> for Error {
+    fn from(e: CCIPError) -> Self {
+        match e {
+            CCIPError::AlreadyInitialized => Error::AlreadyInitialized,
+            CCIPError::NotInitialized => Error::Uninitialized,
+            CCIPError::NotOwner => Error::NotOwner,
+            CCIPError::NoPendingOwner => Error::NotProposedOwner,
+            _ => Error::NotOwner,
+        }
+    }
+}
+
 struct ParsedReport {
     workflow_execution_id: BytesN<32>,
     config_id: u64,
@@ -94,13 +106,9 @@ impl Ownable for KeystoneForwarder {
 #[contractimpl]
 impl KeystoneForwarder {
     pub fn initialize(env: Env, owner: Address) -> Result<(), Error> {
-        <Self as Initializable>::require_not_initialized(&env)
-            .unwrap_or_else(|_| panic_with_error!(&env, Error::AlreadyInitialized));
-
-        <Self as Initializable>::init(&env)
-            .unwrap_or_else(|_| panic_with_error!(&env, Error::AlreadyInitialized));
-        <Self as Ownable>::init_owner(&env, &owner)
-            .unwrap_or_else(|_| panic_with_error!(&env, Error::AlreadyInitialized));
+        <Self as Initializable>::require_not_initialized(&env)?;
+        <Self as Initializable>::init(&env)?;
+        <Self as Ownable>::init_owner(&env, &owner)?;
 
         let self_addr = env.current_contract_address();
         let key = DataKey::Forwarder(self_addr.clone());
