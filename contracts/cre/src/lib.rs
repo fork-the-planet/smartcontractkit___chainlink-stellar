@@ -224,7 +224,7 @@ impl KeystoneForwarder {
         }
 
         let parsed = parse_report(&env, &raw_report);
-        let transmission_id = get_transmission_id_impl(
+        let transmission_id = get_transmission_id(
             &env,
             &receiver,
             &parsed.workflow_execution_id,
@@ -348,15 +348,6 @@ impl KeystoneForwarder {
         is_forwarder_impl(&env, &forwarder)
     }
 
-    pub fn get_transmission_id(
-        env: Env,
-        receiver: Address,
-        workflow_execution_id: BytesN<32>,
-        report_id: BytesN<2>,
-    ) -> BytesN<32> {
-        get_transmission_id_impl(&env, &receiver, &workflow_execution_id, &report_id)
-    }
-
     pub fn get_transmitter(
         env: Env,
         receiver: Address,
@@ -366,18 +357,32 @@ impl KeystoneForwarder {
         ensure_initialized(&env);
 
         let transmission_id =
-            get_transmission_id_impl(&env, &receiver, &workflow_execution_id, &report_id);
+            get_transmission_id(&env, &receiver, &workflow_execution_id, &report_id);
         let key = DataKey::Transmission(transmission_id);
 
-        match env.storage().persistent().get::<_, Transmission>(&key) {
-            Some(t) => Some(t.transmitter),
-            None => None,
-        }
+        env.storage()
+            .persistent()
+            .get::<_, Transmission>(&key)
+            .map(|t| t.transmitter)
     }
 
-    pub fn get_config(env: Env, don_id: u32, config_version: u32) -> Config {
+    pub fn get_transmission_state(
+        env: Env,
+        receiver: Address,
+        workflow_execution_id: BytesN<32>,
+        report_id: BytesN<2>,
+    ) -> TransmissionState {
         ensure_initialized(&env);
-        load_config(&env, config_id(don_id, config_version))
+
+        let transmission_id =
+            get_transmission_id(&env, &receiver, &workflow_execution_id, &report_id);
+        let key = DataKey::Transmission(transmission_id);
+
+        env.storage()
+            .persistent()
+            .get::<_, Transmission>(&key)
+            .map(|t| t.state)
+            .unwrap_or(TransmissionState::NotAttempted)
     }
 }
 
@@ -627,7 +632,7 @@ fn receiver_contract_id_bytes(env: &Env, receiver: &Address) -> Bytes {
     }
 }
 
-fn get_transmission_id_impl(
+fn get_transmission_id(
     env: &Env,
     receiver: &Address,
     workflow_execution_id: &BytesN<32>,
