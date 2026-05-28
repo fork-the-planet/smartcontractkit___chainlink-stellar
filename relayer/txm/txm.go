@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"sort"
 	"sync"
@@ -696,16 +695,16 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		}
 
 		if retryReason == ErrorReasonInsufficientFee {
-			// tx_insufficient_fee from validated submit result — bump inclusion fee
-			// (multiplier + live P90 via feeTracker).
-			bumped := int64(math.Ceil(float64(inclusionFee) * s.feeStrat.BumpMultiplier))
+			var networkP90 uint64
 			if _, p90, fsErr := s.feeTracker.sorobanInclusionPercentiles(ctx, client); fsErr == nil {
-				if networkFee := int64(p90); networkFee > bumped {
-					bumped = networkFee
-				}
+				networkP90 = p90
 			}
-			if bumped > s.feeStrat.MaxInclusionFee {
-				bumped = s.feeStrat.MaxInclusionFee
+			bumped, clampedToMax := s.feeStrat.BumpInclusionFee(inclusionFee, networkP90)
+			if clampedToMax {
+				ctxLogger.Warnw("bumped inclusion fee clamped to MaxInclusionFee — possible misbehaving RPC",
+					"networkPercentile", networkP90,
+					"maxInclusionFee", s.feeStrat.MaxInclusionFee,
+				)
 			}
 			ctxLogger.Warnw("tx rejected, bumping inclusion fee and retrying",
 				"reason", retryReason, "attempt", submitAttempt, "prevFee", inclusionFee, "newFee", bumped)

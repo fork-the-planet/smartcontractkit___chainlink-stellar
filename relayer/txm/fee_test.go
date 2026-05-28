@@ -197,3 +197,32 @@ func TestFeeStrategy_SeedInclusionFee(t *testing.T) {
 		assert.True(t, clamped)
 	})
 }
+
+func TestFeeStrategy_BumpInclusionFee(t *testing.T) {
+	t.Parallel()
+
+	fs := FeeStrategy{
+		BaseInclusionFee:  100,
+		MaxInclusionFee:   10_000,
+		BumpMultiplier:    1.5,
+		ResourceFeeBuffer: 0,
+	}
+
+	t.Run("multiplier only", func(t *testing.T) {
+		fee, clamped := fs.BumpInclusionFee(200, 0)
+		assert.Equal(t, int64(300), fee)
+		assert.False(t, clamped)
+	})
+
+	t.Run("network P90 above multiplier bump wins", func(t *testing.T) {
+		fee, clamped := fs.BumpInclusionFee(200, 500)
+		assert.Equal(t, int64(500), fee)
+		assert.False(t, clamped)
+	})
+
+	t.Run("clamped to max", func(t *testing.T) {
+		fee, clamped := fs.BumpInclusionFee(8_000, 0)
+		assert.Equal(t, int64(10_000), fee)
+		assert.True(t, clamped)
+	})
+}

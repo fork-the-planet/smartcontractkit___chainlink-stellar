@@ -99,7 +99,8 @@ func (s *StellarTxm) isRetryableSimulationError(ctx context.Context, err error) 
 }
 
 // assembleTransaction rebuilds tx with simulation results and a caller-supplied inclusionFee.
-// inclusionFee is computed by the caller from the feeTracker's GetFeeStats percentiles + geometric bump; it must NOT include
+// inclusionFee is computed by the caller via FeeStrategy (SeedInclusionFee / BumpInclusionFee
+// with feeTracker percentiles); it must NOT include
 // the resource fee — txnbuild computes the envelope fee as BaseFee*numOps + sorobanData.ResourceFee,
 // so folding resource fee into BaseFee would double-count it.
 func (s *StellarTxm) assembleTransaction(tx *txnbuild.Transaction, sim protocolrpc.SimulateTransactionResponse, inclusionFee int64, maxLedger uint32) (*txnbuild.Transaction, int64, error) {

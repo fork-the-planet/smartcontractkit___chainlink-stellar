@@ -71,3 +71,18 @@ func (f *FeeStrategy) SeedInclusionFee(attempt uint64, networkPercentile uint64)
 	}
 	return fee, false
 }
+
+// BumpInclusionFee returns the next inclusion fee after a submit rejection that
+// requires a higher bid (e.g. tx_insufficient_fee): multiply the current fee,
+// take max with networkPercentile (typically live P90 from GetFeeStats), and
+// clamp to MaxInclusionFee.
+func (f *FeeStrategy) BumpInclusionFee(currentInclusionFee int64, networkPercentile uint64) (fee int64, clampedToMax bool) {
+	bumped := int64(math.Ceil(float64(currentInclusionFee) * f.BumpMultiplier))
+	if networkFee := int64(networkPercentile); networkFee > bumped { //nolint:gosec // same as SeedInclusionFee
+		bumped = networkFee
+	}
+	if bumped > f.MaxInclusionFee {
+		return f.MaxInclusionFee, true
+	}
+	return bumped, false
+}
