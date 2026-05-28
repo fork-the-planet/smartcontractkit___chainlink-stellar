@@ -23,6 +23,13 @@ pub struct Transmission {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct TransmissionInfo {
+    pub state: TransmissionState,
+    pub transmitter: Option<Address>,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct Config {
     pub f: u32,
     pub signers: Vec<BytesN<65>>,

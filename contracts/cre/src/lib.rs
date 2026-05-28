@@ -348,41 +348,33 @@ impl KeystoneForwarder {
         is_forwarder_impl(&env, &forwarder)
     }
 
-    pub fn get_transmitter(
+    pub fn get_transmission_info(
         env: Env,
         receiver: Address,
         workflow_execution_id: BytesN<32>,
         report_id: BytesN<2>,
-    ) -> Option<Address> {
+    ) -> TransmissionInfo {
         ensure_initialized(&env);
 
         let transmission_id =
             get_transmission_id(&env, &receiver, &workflow_execution_id, &report_id);
+
         let key = DataKey::Transmission(transmission_id);
 
-        env.storage()
+        match env
+            .storage()
             .persistent()
             .get::<_, Transmission>(&key)
-            .map(|t| t.transmitter)
-    }
-
-    pub fn get_transmission_state(
-        env: Env,
-        receiver: Address,
-        workflow_execution_id: BytesN<32>,
-        report_id: BytesN<2>,
-    ) -> TransmissionState {
-        ensure_initialized(&env);
-
-        let transmission_id =
-            get_transmission_id(&env, &receiver, &workflow_execution_id, &report_id);
-        let key = DataKey::Transmission(transmission_id);
-
-        env.storage()
-            .persistent()
-            .get::<_, Transmission>(&key)
-            .map(|t| t.state)
-            .unwrap_or(TransmissionState::NotAttempted)
+        {
+            Some(t) => TransmissionInfo {
+                state: t.state,
+                transmitter: Some(t.transmitter),
+            },
+            None => TransmissionInfo {
+                state: TransmissionState::NotAttempted,
+                transmitter: None,
+            },
+        }
     }
 }
 
