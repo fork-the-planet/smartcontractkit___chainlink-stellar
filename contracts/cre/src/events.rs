@@ -15,7 +15,9 @@ pub struct ForwarderRemovedEvent {
 #[contractevent(topics = ["forwarder_ConfigSet"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConfigSetEvent {
+    #[topic]
     pub don_id: u32,
+    #[topic]
     pub config_version: u32,
     pub f: u32,
     pub signers: Vec<BytesN<65>>,
