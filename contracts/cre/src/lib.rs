@@ -61,7 +61,6 @@ pub enum Error {
     AlreadyProcessed = 13,
     NotOwner = 14,
     NotProposedOwner = 15,
-    CannotTransferToSelf = 16,
     Uninitialized = 18,
     UnauthorizedForwarder = 19,
     InvalidReceiver = 20,
@@ -76,7 +75,7 @@ impl From<CCIPError> for Error {
             CCIPError::NotInitialized => Error::Uninitialized,
             CCIPError::NotOwner => Error::NotOwner,
             CCIPError::NoPendingOwner => Error::NotProposedOwner,
-            _ => Error::NotOwner,
+            _ => unreachable!("unexpected CCIPError variant from Ownable/Initializable"),
         }
     }
 }
@@ -127,17 +126,18 @@ impl KeystoneForwarder {
         Ok(())
     }
 
-    pub fn add_forwarder(env: Env, forwarder: Address) {
-        assert_owner(&env);
+    pub fn add_forwarder(env: Env, forwarder: Address) -> Result<(), Error> {
+        assert_owner(&env)?;
 
         let key = DataKey::Forwarder(forwarder.clone());
         env.storage().instance().set(&key, &true);
 
         ForwarderAddedEvent { forwarder }.publish(&env);
+        Ok(())
     }
 
-    pub fn remove_forwarder(env: Env, forwarder: Address) {
-        assert_owner(&env);
+    pub fn remove_forwarder(env: Env, forwarder: Address) -> Result<(), Error> {
+        assert_owner(&env)?;
 
         if forwarder == env.current_contract_address() {
             panic_with_error!(&env, Error::CannotRemoveSelf);
@@ -148,6 +148,7 @@ impl KeystoneForwarder {
             .remove(&DataKey::Forwarder(forwarder.clone()));
 
         ForwarderRemovedEvent { forwarder }.publish(&env);
+        Ok(())
     }
 
     pub fn set_config(
@@ -156,8 +157,8 @@ impl KeystoneForwarder {
         config_version: u32,
         f: u32,
         signers: Vec<BytesN<65>>,
-    ) {
-        assert_owner(&env);
+    ) -> Result<(), Error> {
+        assert_owner(&env)?;
 
         if f == 0 {
             panic_with_error!(&env, Error::FaultToleranceMustBePositive);
@@ -181,10 +182,11 @@ impl KeystoneForwarder {
             signers: cfg.signers,
         }
         .publish(&env);
+        Ok(())
     }
 
-    pub fn clear_config(env: Env, don_id: u32, config_version: u32) {
-        assert_owner(&env);
+    pub fn clear_config(env: Env, don_id: u32, config_version: u32) -> Result<(), Error> {
+        assert_owner(&env)?;
 
         let key = DataKey::Config(config_id(don_id, config_version));
         if !env.storage().instance().has(&key) {
@@ -200,6 +202,7 @@ impl KeystoneForwarder {
             signers: Vec::new(&env),
         }
         .publish(&env);
+        Ok(())
     }
 
     pub fn report(
@@ -387,13 +390,13 @@ fn ensure_initialized(env: &Env) {
         .unwrap_or_else(|_| panic_with_error!(env, Error::Uninitialized));
 }
 
-fn assert_owner(env: &Env) {
+fn assert_owner(env: &Env) -> Result<(), Error> {
     ensure_initialized(env);
-    <KeystoneForwarder as Ownable>::require_owner(env)
-        .unwrap_or_else(|_| panic_with_error!(env, Error::NotOwner));
+    <KeystoneForwarder as Ownable>::require_owner(env)?;
     env.storage()
         .instance()
         .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
+    Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
