@@ -213,6 +213,9 @@ impl KeystoneForwarder {
         report_context: Bytes,
         signatures: Vec<BytesN<65>>,
     ) {
+        transmitter.require_auth();
+        ensure_initialized(&env);
+
         if raw_report.len() < METADATA_LENGTH {
             panic_with_error!(&env, Error::InvalidReport);
         }
@@ -230,10 +233,6 @@ impl KeystoneForwarder {
             &parsed.workflow_execution_id,
             &parsed.report_id,
         );
-
-        // Auth before any storage reads.
-        transmitter.require_auth();
-        ensure_initialized(&env);
 
         match env
             .storage()
@@ -291,6 +290,8 @@ impl KeystoneForwarder {
         validated_report: Bytes,
     ) -> bool {
         ensure_initialized(&env);
+        transmitter.require_auth();
+
         if !is_forwarder_impl(&env, &transmitter) {
                 panic_with_error!(env, Error::UnauthorizedForwarder);
             }
