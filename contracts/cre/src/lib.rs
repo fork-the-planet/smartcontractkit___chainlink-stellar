@@ -267,7 +267,7 @@ impl KeystoneForwarder {
             .instance()
             .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
-        let ok = KeystoneForwarderClient::new(&env, &self_addr).route(
+        let ok = KeystoneForwarderClient::new(&env, &env.current_contract_address()).route(
             &transmission_id,
             &transmitter,
             &receiver,
