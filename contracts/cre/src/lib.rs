@@ -9,7 +9,7 @@ use common_guard::initializable::Initializable;
 use soroban_sdk::{
     address_payload::AddressPayload, contract, contracterror, contractimpl, crypto::Hash,
     panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError,
-    Symbol, Vec,
+    String, Symbol, Vec,
 };
 
 use events::{ConfigSetEvent, ForwarderAddedEvent, ForwarderRemovedEvent, ReportProcessedEvent};
@@ -349,6 +349,13 @@ impl KeystoneForwarder {
     // ========================================
     // Query Functions
     // ========================================
+
+    /// Off-chain identifier for this contract version. Matches the EVM
+    /// `ITypeAndVersion` pattern: off-chain agents can distinguish forwarder
+    /// instances in a multi-version deployment without parsing the wasm.
+    pub fn type_and_version(env: Env) -> String {
+        String::from_str(&env, "KeystoneForwarder 1.0.0")
+    }
 
     pub fn is_forwarder(env: Env, forwarder: Address) -> bool {
         ensure_initialized(&env);
