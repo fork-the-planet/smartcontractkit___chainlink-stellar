@@ -326,10 +326,14 @@ impl KeystoneForwarder {
             );
 
             // try_invoke_contract -> Result<Result<R, E>, InvokeError>:
-            //   Ok(Ok(())) = receiver returned cleanly, everything else is a retryable Failed
+            //   Ok(Ok(()))                — receiver returned cleanly
+            //   Ok(Err(_))                — receiver returned Result::Err  ┐
+            //   Err(Ok(InvokeError::*))   — receiver panicked              ├─ retryable
+            //   Err(Err(_))               — host-level (missing on_report symbol, etc.) → terminal
             match call {
                 Ok(Ok(())) => TransmissionState::Succeeded,
-                _ => TransmissionState::Failed,
+                Ok(Err(_)) | Err(Ok(_)) => TransmissionState::Failed,
+                Err(Err(_)) => TransmissionState::InvalidReceiver,
             }
         };
 
