@@ -13,7 +13,7 @@ use soroban_sdk::{
 };
 
 use events::{ConfigSetEvent, ForwarderAddedEvent, ForwarderRemovedEvent, ReportProcessedEvent};
-use types::{Config, DataKey, Transmission, TransmissionState};
+use types::{Config, DataKey, Transmission, TransmissionInfo, TransmissionState};
 
 // ============================================================
 // Storage Keys
@@ -155,7 +155,7 @@ impl KeystoneForwarder {
         env: Env,
         don_id: u32,
         config_version: u32,
-        f: u32,
+        f: u8,
         signers: Vec<BytesN<65>>,
     ) -> Result<(), Error> {
         assert_owner(&env)?;
@@ -166,7 +166,8 @@ impl KeystoneForwarder {
         if signers.len() > MAX_ORACLES {
             panic_with_error!(&env, Error::ExcessSigners);
         }
-        if signers.len() < min_signers(&env, f) {
+        // BFT bound: need ≥ 3f + 1 signers configured to tolerate f faulty.
+        if signers.len() < (f as u32) * 3 + 1 {
             panic_with_error!(&env, Error::InsufficientSigners);
         }
         ensure_unique_pubkeys(&env, &signers);
@@ -249,7 +250,9 @@ impl KeystoneForwarder {
         }
 
         let cfg = load_config(&env, parsed.config_id);
-        if signatures.len() != required_signatures(&env, cfg.f) {
+        // Reports require exactly f + 1 signatures: minimal quorum that guarantees
+        // at least one honest signer (f faulty can produce at most f matching sigs).
+        if signatures.len() != (cfg.f as u32) + 1 {
             panic_with_error!(&env, Error::InvalidSignatureCount);
         }
 
@@ -413,31 +416,12 @@ fn config_id(don_id: u32, config_version: u32) -> u64 {
     ((don_id as u64) << 32) | config_version as u64
 }
 
-fn min_signers(env: &Env, f: u32) -> u32 {
-    f.checked_mul(3)
-        .and_then(|n| n.checked_add(1))
-        .unwrap_or_else(|| panic_with_error!(env, Error::InvalidConfig))
-}
-
-fn required_signatures(env: &Env, f: u32) -> u32 {
-    f.checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(env, Error::InvalidConfig))
-}
-
 fn load_config(env: &Env, id: u64) -> Config {
     let key = DataKey::Config(id);
-    let cfg = env
-        .storage()
+    env.storage()
         .instance()
         .get::<_, Config>(&key)
-        .unwrap_or_else(|| panic_with_error!(env, Error::InvalidConfig));
-
-    if cfg.f == 0 || cfg.signers.len() > MAX_ORACLES || cfg.signers.len() < min_signers(env, cfg.f)
-    {
-        panic_with_error!(env, Error::InvalidConfig);
-    }
-
-    cfg
+        .unwrap_or_else(|| panic_with_error!(env, Error::InvalidConfig))
 }
 
 fn ensure_unique_pubkeys(env: &Env, signers: &Vec<BytesN<65>>) {

@@ -31,7 +31,7 @@ pub struct TransmissionInfo {
 #[contracttype]
 #[derive(Clone)]
 pub struct Config {
-    pub f: u32,
+    pub f: u8,
     pub signers: Vec<BytesN<65>>,
 }
 

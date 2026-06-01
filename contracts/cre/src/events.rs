@@ -19,7 +19,7 @@ pub struct ConfigSetEvent {
     pub don_id: u32,
     #[topic]
     pub config_version: u32,
-    pub f: u32,
+    pub f: u8,
     pub signers: Vec<BytesN<65>>,
 }
 
