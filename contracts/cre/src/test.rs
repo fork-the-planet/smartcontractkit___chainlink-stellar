@@ -169,11 +169,7 @@ pub(crate) mod mocks {
                 .instance()
                 .set(&soroban_sdk::symbol_short!("REJ"), &reject);
         }
-        pub fn on_report(
-            env: Env,
-            _metadata: Bytes,
-            _payload: Bytes,
-        ) -> Result<(), ReceiverError> {
+        pub fn on_report(env: Env, _metadata: Bytes, _payload: Bytes) -> Result<(), ReceiverError> {
             let reject: bool = env
                 .storage()
                 .instance()
@@ -482,7 +478,10 @@ fn infrastructure_report_builder_default_layout_is_109_bytes_plus_payload() {
     assert_eq!(bytes[0], 1, "version");
     // don_id at offset 37, big-endian.
     let don_be = &bytes[37..41];
-    assert_eq!(u32::from_be_bytes([don_be[0], don_be[1], don_be[2], don_be[3]]), DON_ID);
+    assert_eq!(
+        u32::from_be_bytes([don_be[0], don_be[1], don_be[2], don_be[3]]),
+        DON_ID
+    );
     // config_version at offset 41.
     let cv_be = &bytes[41..45];
     assert_eq!(
@@ -560,7 +559,8 @@ fn test_set_config_first_time_succeeds() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(4);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -569,7 +569,8 @@ fn test_set_config_at_max_oracles_boundary() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(31);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &10u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &10u32, &signers);
 }
 
 #[test]
@@ -580,7 +581,8 @@ fn test_set_config_shrinks_signer_set() {
     let big = fx.signer_set(31);
     fx.client.set_config(&DON_ID, &CONFIG_VERSION, &10u32, &big);
     let small = fx.signer_set(4);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &small);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &small);
 }
 
 #[test]
@@ -589,8 +591,10 @@ fn test_set_config_independent_dons() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(4);
-    fx.client.set_config(&1u32, &CONFIG_VERSION, &1u32, &signers);
-    fx.client.set_config(&2u32, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&1u32, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&2u32, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -616,7 +620,8 @@ fn test_set_config_not_owner_fails() {
     let fx = setup(&env);
     env.set_auths(&[]);
     let signers = fx.signer_set(4);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -626,7 +631,8 @@ fn test_set_config_f_zero_fails() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(4);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &0u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &0u32, &signers);
 }
 
 #[test]
@@ -639,7 +645,8 @@ fn test_set_config_excess_signers_fails() {
     let fx = setup(&env);
     let mut signers = fx.signer_set(31);
     signers.push_back(fx.signer_pubkey(0));
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -649,7 +656,8 @@ fn test_set_config_insufficient_signers_f1_fails() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(3);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -659,7 +667,8 @@ fn test_set_config_insufficient_signers_high_f_fails() {
     let env = Env::default();
     let fx = setup(&env);
     let signers = fx.signer_set(15);
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &5u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &5u32, &signers);
 }
 
 #[test]
@@ -673,7 +682,8 @@ fn test_set_config_duplicate_signer_fails() {
     signers.push_back(fx.signer_pubkey(1));
     signers.push_back(fx.signer_pubkey(2));
     signers.push_back(fx.signer_pubkey(0)); // duplicate of slot 0
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 #[test]
@@ -687,7 +697,8 @@ fn test_set_config_zero_pubkey_fails() {
     signers.push_back(fx.signer_pubkey(1));
     signers.push_back(fx.signer_pubkey(2));
     signers.push_back(soroban_sdk::BytesN::from_array(&env, &[0u8; 65]));
-    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
+    fx.client
+        .set_config(&DON_ID, &CONFIG_VERSION, &1u32, &signers);
 }
 
 // ============================================================================
@@ -769,8 +780,13 @@ fn test_report_after_clear_config_fails() {
     ));
 
     let receiver = env.register(mocks::CooperativeReceiver, ());
-    fx.client
-        .report(&fx.transmitter, &receiver, &raw_report, &report_context, &sigs);
+    fx.client.report(
+        &fx.transmitter,
+        &receiver,
+        &raw_report,
+        &report_context,
+        &sigs,
+    );
 }
 
 // ============================================================================
@@ -1189,7 +1205,8 @@ fn test_report_too_short_panics() {
     let mut sigs = soroban_sdk::Vec::new(&env);
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &[0u8; 65]));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &short, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &short, &ctx, &sigs);
 }
 
 #[test]
@@ -1206,7 +1223,8 @@ fn test_report_wrong_context_length_panics() {
     let mut sigs = soroban_sdk::Vec::new(&env);
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &[0u8; 65]));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &bad_ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &bad_ctx, &sigs);
 }
 
 #[test]
@@ -1222,7 +1240,8 @@ fn test_report_empty_signatures_panics() {
     let ctx = report_context_zeroes(&env);
     let sigs = soroban_sdk::Vec::new(&env);
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1236,7 +1255,8 @@ fn test_report_wrong_don_id_panics() {
     let receiver_addr = env.register(mocks::CooperativeReceiver, ());
     let report = ReportBuilder::default().with_don_id(999);
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1250,7 +1270,8 @@ fn test_report_wrong_config_version_panics() {
     let receiver_addr = env.register(mocks::CooperativeReceiver, ());
     let report = ReportBuilder::default().with_config_version(CONFIG_VERSION + 1);
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1264,7 +1285,8 @@ fn test_report_version_not_one_panics() {
     let receiver_addr = env.register(mocks::CooperativeReceiver, ());
     let report = ReportBuilder::default().with_version(2);
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1277,7 +1299,8 @@ fn test_report_too_few_signatures_panics() {
 
     let receiver_addr = env.register(mocks::CooperativeReceiver, ());
     let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 1);
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1290,7 +1313,8 @@ fn test_report_too_many_signatures_panics() {
 
     let receiver_addr = env.register(mocks::CooperativeReceiver, ());
     let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 3);
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1317,7 +1341,8 @@ fn test_report_garbage_signature_panics() {
     ));
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &[0xFFu8; 65]));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1349,7 +1374,8 @@ fn test_report_signer_not_in_set_panics() {
         &crypto::sign_report(&rogue, &digest),
     ));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1373,7 +1399,8 @@ fn test_report_duplicate_signer_panics() {
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &sig0));
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &sig0));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1402,7 +1429,8 @@ fn test_report_invalid_recovery_id_panics() {
         &crypto::sign_report_with_recid(&fx.signers[1], &digest, 5),
     ));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1432,7 +1460,8 @@ fn test_report_s_scalar_zero_panics() {
     }
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &bad));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1468,7 +1497,8 @@ fn test_report_s_scalar_at_n_panics() {
     bad[32..64].copy_from_slice(&SECP256K1_ORDER);
     sigs.push_back(soroban_sdk::BytesN::from_array(&env, &bad));
 
-    fx.client.report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1738,14 +1768,16 @@ fn test_config_v1_and_v2_coexist() {
         .with_config_version(1)
         .with_report_id([0x00, 0x01]);
     let (raw1, ctx1, sigs1) = build_signed_report(&fx, &r1, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw1, &ctx1, &sigs1);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw1, &ctx1, &sigs1);
 
     // Report against v2.
     let r2 = ReportBuilder::default()
         .with_config_version(2)
         .with_report_id([0x00, 0x02]);
     let (raw2, ctx2, sigs2) = build_signed_report(&fx, &r2, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw2, &ctx2, &sigs2);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw2, &ctx2, &sigs2);
 }
 
 #[test]
@@ -1765,7 +1797,8 @@ fn test_clearing_v1_does_not_break_v2() {
         .with_config_version(2)
         .with_report_id([0x00, 0x02]);
     let (raw2, ctx2, sigs2) = build_signed_report(&fx, &r2, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw2, &ctx2, &sigs2);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw2, &ctx2, &sigs2);
 }
 
 #[test]
@@ -1785,7 +1818,8 @@ fn test_report_against_cleared_v1_fails() {
         .with_config_version(1)
         .with_report_id([0x00, 0x01]);
     let (raw1, ctx1, sigs1) = build_signed_report(&fx, &r1, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw1, &ctx1, &sigs1);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw1, &ctx1, &sigs1);
 }
 
 // ============================================================================
@@ -1829,7 +1863,8 @@ fn test_get_transmission_info_after_succeeded() {
     let receiver = env.register(mocks::CooperativeReceiver, ());
     let report = ReportBuilder::default();
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
 
     let info = fx.client.get_transmission_info(
         &receiver,
@@ -1850,7 +1885,8 @@ fn test_get_transmission_info_after_failed() {
     let receiver = env.register(mocks::RejectingReceiver, ());
     let report = ReportBuilder::default();
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
 
     let info = fx.client.get_transmission_info(
         &receiver,
@@ -1911,7 +1947,8 @@ fn test_bitmap_at_position_zero_works() {
     let receiver = env.register(mocks::CooperativeReceiver, ());
     let report = ReportBuilder::default();
     let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
-    fx.client.report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1945,7 +1982,8 @@ fn test_bitmap_at_max_position() {
         &crypto::sign_report(&fx.signers[30], &digest),
     ));
 
-    fx.client.report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
 }
 
 #[test]
@@ -1973,7 +2011,8 @@ fn test_config_with_f_at_practical_max() {
 
     let receiver = env.register(mocks::CooperativeReceiver, ());
     let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 11);
-    fx.client.report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw, &ctx, &sigs);
 }
 
 // ============================================================================

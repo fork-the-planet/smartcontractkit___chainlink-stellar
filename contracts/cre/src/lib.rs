@@ -349,11 +349,7 @@ impl KeystoneForwarder {
 
         let key = DataKey::Transmission(transmission_id);
 
-        match env
-            .storage()
-            .persistent()
-            .get::<_, Transmission>(&key)
-        {
+        match env.storage().persistent().get::<_, Transmission>(&key) {
             Some(t) => TransmissionInfo {
                 state: t.state,
                 transmitter: Some(t.transmitter),
@@ -629,11 +625,8 @@ fn dispatch_to_receiver(
         TransmissionState::InvalidReceiver
     } else {
         let args = (metadata.clone(), validated_report.clone()).into_val(env);
-        let call = env.try_invoke_contract::<(), InvokeError>(
-            receiver,
-            &symbol_short!("on_report"),
-            args,
-        );
+        let call =
+            env.try_invoke_contract::<(), InvokeError>(receiver, &symbol_short!("on_report"), args);
 
         // try_invoke_contract -> Result<Result<R, E>, InvokeError>:
         //   Ok(Ok(()))                — receiver returned cleanly
