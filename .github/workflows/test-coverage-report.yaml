@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -41,7 +41,7 @@ jobs:
           echo "GOCACHE=$(go env GOPATH)/build" >> $GITHUB_ENV
 
       - name: Cache Go toolchain artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ env.GOBIN }}
@@ -73,7 +73,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Remove previous coverage comments
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         if: github.event_name == 'pull_request'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -96,7 +96,7 @@ jobs:
             }
 
       - name: Display coverage in PR comment
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         if: github.event_name == 'pull_request'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
