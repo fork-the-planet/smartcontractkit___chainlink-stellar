@@ -432,3 +432,312 @@ fn infrastructure_mock_receivers_register_successfully() {
     let _ = env.register(mocks::PanickingReceiver, ());
     let _ = env.register(mocks::WrongSymbolReceiver, ());
 }
+
+// Init tests come first because they cover the most basic state transition;
+// everything else assumes a successfully initialized contract.
+
+#[test]
+fn test_initialize_succeeds() {
+    // fresh deploy, call initialize(owner), owner set, self in registry.
+    let env = Env::default();
+    let fx = setup(&env);
+    assert!(fx.client.is_forwarder(&fx.contract_addr));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_double_initialize_fails() {
+    // second initialize returns Err(Error::AlreadyInitialized) code 1.
+    // Soroban surfaces Result::Err from contract calls as a host abort with
+    // the contracterror discriminant — same shape as panic_with_error!.
+    let env = Env::default();
+    let fx = setup(&env);
+    let owner2 = Address::generate(&env);
+    fx.client.initialize(&owner2);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #16)")]
+fn test_call_setters_before_init_fails() {
+    // add_forwarder before initialize → Uninitialized code 16
+    // (via assert_owner → ensure_initialized).
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_addr = env.register(KeystoneForwarder, ());
+    let client = KeystoneForwarderClient::new(&env, &contract_addr);
+    // Skip initialize().
+    let new_forwarder = Address::generate(&env);
+    client.add_forwarder(&new_forwarder);
+}
+
+// ============================================================================
+// set_config — success paths
+// ============================================================================
+
+#[test]
+fn test_set_config_first_time_succeeds() {
+    // owner sets config with f=1, 4 valid distinct signers.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+fn test_set_config_at_max_oracles_boundary() {
+    // f=10, 31 signers exact lower bound (3·10+1=31).
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(31);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &10u8, &signers);
+}
+
+#[test]
+fn test_set_config_shrinks_signer_set() {
+    // set 31 then 4; second overwrites first.
+    let env = Env::default();
+    let fx = setup(&env);
+    let big = fx.signer_set(31);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &10u8, &big);
+    let small = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &small);
+}
+
+#[test]
+fn test_set_config_independent_dons() {
+    // don=1 then don=2 stored independently.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&1u32, &CONFIG_VERSION, &1u8, &signers);
+    fx.client.set_config(&2u32, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+fn test_set_config_independent_versions() {
+    // same don, v=1 then v=2 stored independently.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &1u32, &1u8, &signers);
+    fx.client.set_config(&DON_ID, &2u32, &1u8, &signers);
+}
+
+// ============================================================================
+// set_config — failure paths
+// ============================================================================
+
+#[test]
+#[should_panic] // host-level auth panic from owner.require_auth() with no matching auth
+fn test_set_config_not_owner_fails() {
+    // stranger calls. setup() mocks all auths; clearing leaves
+    // owner.require_auth() to fail at the host level (not a typed contract error).
+    let env = Env::default();
+    let fx = setup(&env);
+    env.set_auths(&[]);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_set_config_f_zero_fails() {
+    // f=0 → FaultToleranceMustBePositive code 5.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &0u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn test_set_config_excess_signers_fails() {
+    // 32 signers (over MAX_ORACLES=31) → ExcessSigners code 6.
+    // We have only 31 seeds; reuse the first key to make a 32nd entry — the
+    // count check fires before the duplicate check.
+    let env = Env::default();
+    let fx = setup(&env);
+    let mut signers = fx.signer_set(31);
+    signers.push_back(fx.signer_pubkey(0));
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_set_config_insufficient_signers_f1_fails() {
+    // f=1, 3 signers (one below 3·1+1=4) → InsufficientSigners code 7.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(3);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_set_config_insufficient_signers_high_f_fails() {
+    // f=5, 15 signers (one below 3·5+1=16) → InsufficientSigners code 7.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(15);
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &5u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_set_config_duplicate_signer_fails() {
+    // two slots same pubkey → DuplicateSigner code 10.
+    let env = Env::default();
+    let fx = setup(&env);
+    let mut signers = soroban_sdk::Vec::new(&env);
+    signers.push_back(fx.signer_pubkey(0));
+    signers.push_back(fx.signer_pubkey(1));
+    signers.push_back(fx.signer_pubkey(2));
+    signers.push_back(fx.signer_pubkey(0)); // duplicate of slot 0
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #19)")]
+fn test_set_config_zero_pubkey_fails() {
+    // one slot is 65 zero bytes → InvalidSigner code 19.
+    let env = Env::default();
+    let fx = setup(&env);
+    let mut signers = soroban_sdk::Vec::new(&env);
+    signers.push_back(fx.signer_pubkey(0));
+    signers.push_back(fx.signer_pubkey(1));
+    signers.push_back(fx.signer_pubkey(2));
+    signers.push_back(soroban_sdk::BytesN::from_array(&env, &[0u8; 65]));
+    fx.client.set_config(&DON_ID, &CONFIG_VERSION, &1u8, &signers);
+}
+
+// ============================================================================
+// clear_config
+// ============================================================================
+
+#[test]
+fn test_clear_config_succeeds() {
+    // set then clear; no error.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.clear_config(&DON_ID, &CONFIG_VERSION);
+}
+
+#[test]
+fn test_clear_config_other_versions_unaffected() {
+    // clear v1, v2 still in storage and reusable for set.
+    let env = Env::default();
+    let fx = setup(&env);
+    let signers = fx.signer_set(4);
+    fx.client.set_config(&DON_ID, &1u32, &1u8, &signers);
+    fx.client.set_config(&DON_ID, &2u32, &1u8, &signers);
+    fx.client.clear_config(&DON_ID, &1u32);
+    // v2 still functional — re-setting it should still succeed (no clobber).
+    fx.client.set_config(&DON_ID, &2u32, &1u8, &signers);
+}
+
+#[test]
+#[should_panic] // host-level auth panic
+fn test_clear_config_not_owner_fails() {
+    // stranger calls.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    env.set_auths(&[]);
+    fx.client.clear_config(&DON_ID, &CONFIG_VERSION);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_clear_config_nonexistent_fails() {
+    // clear (don, ver) never set → InvalidConfig code 8.
+    // Stellar's clear_config is non-idempotent
+    let env = Env::default();
+    let fx = setup(&env);
+    fx.client.clear_config(&999u32, &999u32);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_report_after_clear_config_fails() {
+    // set, clear, then a report against the cleared config → InvalidConfig code 8.
+    // Note: we trigger the failure via the report() path, which reaches load_config()
+    // and panics on the missing storage key.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.clear_config(&DON_ID, &CONFIG_VERSION);
+
+    // Build a minimal report against the (now-cleared) config and submit.
+    let raw_report = ReportBuilder::default().build(&env);
+    let report_context = report_context_zeroes(&env);
+
+    // Need f+1 = 2 signatures, but the failure fires at config load before
+    // sig validation. Pass any 2 sigs to satisfy the empty-check.
+    let digest = crypto::report_digest(&raw_report.to_alloc_vec(), &report_context.to_alloc_vec());
+    let mut sigs = soroban_sdk::Vec::new(&env);
+    sigs.push_back(soroban_sdk::BytesN::from_array(
+        &env,
+        &crypto::sign_report(&fx.signers[0], &digest),
+    ));
+    sigs.push_back(soroban_sdk::BytesN::from_array(
+        &env,
+        &crypto::sign_report(&fx.signers[1], &digest),
+    ));
+
+    let receiver = env.register(mocks::CooperativeReceiver, ());
+    fx.client
+        .report(&fx.transmitter, &receiver, &raw_report, &report_context, &sigs);
+}
+
+// ============================================================================
+// Ownership
+// ============================================================================
+
+#[test]
+fn test_transfer_ownership_two_step_success() {
+    // owner proposes → new_owner accepts → owner() returns new.
+    // The Ownable trait methods are auto-exported via #[contractimpl(contracttrait)].
+    let env = Env::default();
+    let fx = setup(&env);
+    let new_owner = Address::generate(&env);
+
+    fx.client.transfer_ownership(&new_owner);
+    fx.client.accept_ownership();
+
+    let current = fx.client.owner().expect("owner set");
+    assert_eq!(current, new_owner);
+}
+
+#[test]
+#[should_panic] // host-level auth panic
+fn test_transfer_ownership_not_owner_fails() {
+    // stranger calls transfer_ownership.
+    let env = Env::default();
+    let fx = setup(&env);
+    let target = Address::generate(&env);
+    env.set_auths(&[]);
+    fx.client.transfer_ownership(&target);
+}
+
+#[test]
+#[should_panic] // host-level auth panic from pending.require_auth()
+fn test_accept_ownership_wrong_caller_fails() {
+    // A proposes B; C accepts. Stellar's Ownable does
+    // pending.require_auth() so the wrong caller fails at the host level.
+    let env = Env::default();
+    let fx = setup(&env);
+    let proposed = Address::generate(&env);
+    fx.client.transfer_ownership(&proposed);
+
+    // Now restrict auths so the proposed address can't auth this tx.
+    env.set_auths(&[]);
+    fx.client.accept_ownership();
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #15)")]
+fn test_accept_ownership_no_pending_owner_fails() {
+    // accept_ownership with no pending transfer → NotProposedOwner code 15
+    // (CCIPError::NoPendingOwner mapped via From<CCIPError> for Error).
+    let env = Env::default();
+    let fx = setup(&env);
+    fx.client.accept_ownership();
+}
