@@ -5,7 +5,7 @@ use soroban_sdk::{contracttype, Address, BytesN, Vec};
 // ============================================================
 
 #[contracttype]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum TransmissionState {
     NotAttempted = 0,
@@ -31,7 +31,7 @@ pub struct TransmissionInfo {
 #[contracttype]
 #[derive(Clone)]
 pub struct Config {
-    pub f: u8,
+    pub f: u32,
     pub signers: Vec<BytesN<65>>,
 }
 

@@ -972,6 +972,9 @@ dependencies = [
  "common-authorization",
  "common-error",
  "common-guard",
+ "hex",
+ "k256",
+ "sha3",
  "soroban-sdk",
 ]
 

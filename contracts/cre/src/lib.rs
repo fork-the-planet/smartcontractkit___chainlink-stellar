@@ -155,7 +155,7 @@ impl KeystoneForwarder {
         env: Env,
         don_id: u32,
         config_version: u32,
-        f: u8,
+        f: u32,
         signers: Vec<BytesN<65>>,
     ) -> Result<(), Error> {
         assert_owner(&env)?;
@@ -167,7 +167,7 @@ impl KeystoneForwarder {
             panic_with_error!(&env, Error::ExcessSigners);
         }
         // BFT bound: need ≥ 3f + 1 signers configured to tolerate f faulty.
-        if signers.len() < (f as u32) * 3 + 1 {
+        if signers.len() < f * 3 + 1 {
             panic_with_error!(&env, Error::InsufficientSigners);
         }
         ensure_unique_pubkeys(&env, &signers);
@@ -252,7 +252,7 @@ impl KeystoneForwarder {
         let cfg = load_config(&env, parsed.config_id);
         // Reports require exactly f + 1 signatures: minimal quorum that guarantees
         // at least one honest signer (f faulty can produce at most f matching sigs).
-        if signatures.len() != (cfg.f as u32) + 1 {
+        if signatures.len() != cfg.f + 1 {
             panic_with_error!(&env, Error::InvalidSignatureCount);
         }
 
@@ -267,9 +267,17 @@ impl KeystoneForwarder {
             .instance()
             .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
-        let ok = KeystoneForwarderClient::new(&env, &env.current_contract_address()).route(
-            &transmission_id,
-            &transmitter,
+        // Authorize the transmitter against the forwarder registry. The previous
+        // design relied on a self-call to `route()` for this check, but Soroban
+        // forbids contract re-entry, so we do the check inline and dispatch
+        // directly via the helper.
+        if !is_forwarder_impl(&env, &transmitter) {
+            panic_with_error!(&env, Error::UnauthorizedForwarder);
+        }
+        let ok = dispatch_to_receiver(
+            &env,
+            transmission_id,
+            transmitter,
             &receiver,
             &parsed.metadata,
             &parsed.payload,
@@ -296,54 +304,20 @@ impl KeystoneForwarder {
         transmitter.require_auth();
 
         if !is_forwarder_impl(&env, &transmitter) {
-                panic_with_error!(env, Error::UnauthorizedForwarder);
-            }
+            panic_with_error!(env, Error::UnauthorizedForwarder);
+        }
         env.storage()
             .instance()
             .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
-        let key = DataKey::Transmission(transmission_id);
-
-        match env.storage().persistent().get::<_, Transmission>(&key) {
-            Some(t)
-                if t.state == TransmissionState::Succeeded
-                    || t.state == TransmissionState::InvalidReceiver =>
-            {
-                panic_with_error!(&env, Error::AlreadyProcessed);
-            }
-            _ => {}
-        }
-
-        let state = if !matches!(receiver.executable(), Some(Executable::Wasm(_))) {
-            // Not a Wasm contract — terminal; AlreadyProcessed above blocks retries.
-            TransmissionState::InvalidReceiver
-        } else {
-            let args = (metadata.clone(), validated_report.clone()).into_val(&env);
-            let call = env.try_invoke_contract::<(), InvokeError>(
-                &receiver,
-                &symbol_short!("on_report"),
-                args,
-            );
-
-            // try_invoke_contract -> Result<Result<R, E>, InvokeError>:
-            //   Ok(Ok(()))                — receiver returned cleanly
-            //   Ok(Err(_))                — receiver returned Result::Err  ┐
-            //   Err(Ok(InvokeError::*))   — receiver panicked              ├─ retryable
-            //   Err(Err(_))               — host-level (missing on_report symbol, etc.) → terminal
-            match call {
-                Ok(Ok(())) => TransmissionState::Succeeded,
-                Ok(Err(_)) | Err(Ok(_)) => TransmissionState::Failed,
-                Err(Err(_)) => TransmissionState::InvalidReceiver,
-            }
-        };
-
-        let tx = Transmission { state, transmitter };
-        env.storage().persistent().set(&key, &tx);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
-
-        state == TransmissionState::Succeeded
+        dispatch_to_receiver(
+            &env,
+            transmission_id,
+            transmitter,
+            &receiver,
+            &metadata,
+            &validated_report,
+        )
     }
 
     // ========================================
@@ -624,6 +598,62 @@ fn get_transmission_id(
     let report_id = report_id.to_array();
     data.extend_from_array(&report_id);
     env.crypto().sha256(&data).into()
+}
+
+/// Common dispatch path shared by `report()` and the public `route()` entry.
+/// Soroban forbids contract re-entry, so the two cannot self-call each other;
+/// they both invoke this helper directly. Caller is responsible for the
+/// is_forwarder_impl + auth + ensure_initialized checks before calling.
+fn dispatch_to_receiver(
+    env: &Env,
+    transmission_id: BytesN<32>,
+    transmitter: Address,
+    receiver: &Address,
+    metadata: &Bytes,
+    validated_report: &Bytes,
+) -> bool {
+    let key = DataKey::Transmission(transmission_id);
+
+    match env.storage().persistent().get::<_, Transmission>(&key) {
+        Some(t)
+            if t.state == TransmissionState::Succeeded
+                || t.state == TransmissionState::InvalidReceiver =>
+        {
+            panic_with_error!(env, Error::AlreadyProcessed);
+        }
+        _ => {}
+    }
+
+    let state = if !matches!(receiver.executable(), Some(Executable::Wasm(_))) {
+        // Not a Wasm contract — terminal; AlreadyProcessed above blocks retries.
+        TransmissionState::InvalidReceiver
+    } else {
+        let args = (metadata.clone(), validated_report.clone()).into_val(env);
+        let call = env.try_invoke_contract::<(), InvokeError>(
+            receiver,
+            &symbol_short!("on_report"),
+            args,
+        );
+
+        // try_invoke_contract -> Result<Result<R, E>, InvokeError>:
+        //   Ok(Ok(()))                — receiver returned cleanly
+        //   Ok(Err(_))                — receiver returned Result::Err  ┐
+        //   Err(Ok(InvokeError::*))   — receiver panicked              ├─ retryable
+        //   Err(Err(_))               — host-level (missing on_report symbol, etc.) → terminal
+        match call {
+            Ok(Ok(())) => TransmissionState::Succeeded,
+            Ok(Err(_)) | Err(Ok(_)) => TransmissionState::Failed,
+            Err(Err(_)) => TransmissionState::InvalidReceiver,
+        }
+    };
+
+    let tx = Transmission { state, transmitter };
+    env.storage().persistent().set(&key, &tx);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
+
+    state == TransmissionState::Succeeded
 }
 
 #[cfg(test)]
