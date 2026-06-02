@@ -61,11 +61,11 @@ pub enum Error {
     AlreadyProcessed = 13,
     NotOwner = 14,
     NotProposedOwner = 15,
-    Uninitialized = 18,
-    UnauthorizedForwarder = 19,
-    InvalidReceiver = 20,
-    InvalidSigner = 22,
-    CannotRemoveSelf = 23,
+    Uninitialized = 16,
+    UnauthorizedForwarder = 17,
+    InvalidReceiver = 18,
+    InvalidSigner = 19,
+    CannotRemoveSelf = 20,
 }
 
 impl From<CCIPError> for Error {
@@ -625,3 +625,6 @@ fn get_transmission_id(
     data.extend_from_array(&report_id);
     env.crypto().sha256(&data).into()
 }
+
+#[cfg(test)]
+mod test;
