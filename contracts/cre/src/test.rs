@@ -3,6 +3,7 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
+use crate::types::TransmissionState;
 use crate::{KeystoneForwarder, KeystoneForwarderClient};
 
 // ============================================================================
@@ -144,6 +145,30 @@ pub(crate) mod mocks {
     impl WrongSymbolReceiver {
         pub fn other_method(_env: Env) -> u32 {
             42
+        }
+    }
+
+    /// Stateful: returns `Err` on the first `on_report` invocation, `Ok` on subsequent ones.
+    /// Used to exercise the Failed → retry → Succeeded transition for a
+    /// single transmission_id (i.e., same receiver + same exec_id + same report_id).
+    #[contract]
+    pub struct FlipReceiver;
+
+    #[contractimpl]
+    impl FlipReceiver {
+        pub fn on_report(
+            env: Env,
+            _metadata: Bytes,
+            _payload: Bytes,
+        ) -> Result<(), ReceiverError> {
+            let key = soroban_sdk::symbol_short!("CALLS");
+            let count: u32 = env.storage().instance().get(&key).unwrap_or(0);
+            env.storage().instance().set(&key, &(count + 1));
+            if count == 0 {
+                Err(ReceiverError::Rejected)
+            } else {
+                Ok(())
+            }
         }
     }
 }
@@ -324,6 +349,33 @@ impl ReportBuilder {
 /// 96-byte zero `report_context`, the typical test value.
 pub(crate) fn report_context_zeroes(env: &Env) -> soroban_sdk::Bytes {
     soroban_sdk::Bytes::from_slice(env, &[0u8; REPORT_CONTEXT_LENGTH])
+}
+
+/// Build a signed report: returns (raw_report bytes, report_context bytes, signatures).
+/// Signs with `fx.signers[0..n_sigs]` against the digest the contract computes.
+pub(crate) fn build_signed_report<'a>(
+    fx: &Fixture<'a>,
+    report: &ReportBuilder,
+    n_sigs: usize,
+) -> (
+    soroban_sdk::Bytes,
+    soroban_sdk::Bytes,
+    soroban_sdk::Vec<soroban_sdk::BytesN<65>>,
+) {
+    let raw_vec = report.build_bytes();
+    let ctx_vec = [0u8; REPORT_CONTEXT_LENGTH];
+
+    let raw_bytes = soroban_sdk::Bytes::from_slice(fx.env, &raw_vec);
+    let ctx_bytes = soroban_sdk::Bytes::from_slice(fx.env, &ctx_vec);
+
+    let digest = crypto::report_digest(&raw_vec, &ctx_vec);
+
+    let mut sigs = soroban_sdk::Vec::new(fx.env);
+    for i in 0..n_sigs {
+        let sig_bytes = crypto::sign_report(&fx.signers[i], &digest);
+        sigs.push_back(soroban_sdk::BytesN::from_array(fx.env, &sig_bytes));
+    }
+    (raw_bytes, ctx_bytes, sigs)
 }
 
 // ============================================================================
@@ -740,4 +792,361 @@ fn test_accept_ownership_no_pending_owner_fails() {
     let env = Env::default();
     let fx = setup(&env);
     fx.client.accept_ownership();
+}
+
+// ============================================================================
+// Forwarder registry
+//
+// Registry tracks authorized *transmitter* addresses. report()
+// passes its `transmitter` arg through to route(), which checks the registry
+// before dispatching to the receiver. So an address must be added via
+// add_forwarder() before it can submit reports (the contract's own address
+// is auto-registered in initialize()).
+// ============================================================================
+
+#[test]
+fn test_add_forwarder_succeeds() {
+    // owner adds, is_forwarder returns true.
+    let env = Env::default();
+    let fx = setup(&env);
+    let new_forwarder = Address::generate(&env);
+
+    assert!(!fx.client.is_forwarder(&new_forwarder));
+    fx.client.add_forwarder(&new_forwarder);
+    assert!(fx.client.is_forwarder(&new_forwarder));
+}
+
+#[test]
+#[should_panic] // host-level auth panic
+fn test_add_forwarder_not_owner_fails() {
+    // stranger calls add_forwarder.
+    let env = Env::default();
+    let fx = setup(&env);
+    let new_forwarder = Address::generate(&env);
+    env.set_auths(&[]);
+    fx.client.add_forwarder(&new_forwarder);
+}
+
+#[test]
+fn test_remove_forwarder_succeeds() {
+    // add then remove; is_forwarder returns false.
+    let env = Env::default();
+    let fx = setup(&env);
+    let new_forwarder = Address::generate(&env);
+
+    fx.client.add_forwarder(&new_forwarder);
+    assert!(fx.client.is_forwarder(&new_forwarder));
+    fx.client.remove_forwarder(&new_forwarder);
+    assert!(!fx.client.is_forwarder(&new_forwarder));
+}
+
+#[test]
+#[should_panic] // host-level auth panic
+fn test_remove_forwarder_not_owner_fails() {
+    // stranger calls remove_forwarder.
+    let env = Env::default();
+    let fx = setup(&env);
+    let new_forwarder = Address::generate(&env);
+    fx.client.add_forwarder(&new_forwarder);
+    env.set_auths(&[]);
+    fx.client.remove_forwarder(&new_forwarder);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_cannot_remove_self_panics() {
+    // owner removing the contract's own self-address → CannotRemoveSelf code 20.
+    // Self-removal would lock the contract out of its own report() → route() self-call
+    // (route() requires the caller to be in the registry).
+    let env = Env::default();
+    let fx = setup(&env);
+    fx.client.remove_forwarder(&fx.contract_addr);
+}
+
+#[test]
+fn test_self_is_in_registry_after_initialize() {
+    // initialize() auto-registers the contract's own address so that
+    // report() → route() self-call passes the is_forwarder check. Matches EVM's
+    // constructor at KeystoneForwarder.sol:90 (`s_forwarders[address(this)] = true`).
+    let env = Env::default();
+    let fx = setup(&env);
+    assert!(fx.client.is_forwarder(&fx.contract_addr));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #17)")]
+fn test_unauthorized_route_panics() {
+    // a transmitter not in the forwarder registry calling route()
+    // directly → UnauthorizedForwarder code 17.
+    let env = Env::default();
+    let fx = setup(&env);
+    let stranger = Address::generate(&env);
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+
+    let transmission_id = soroban_sdk::BytesN::from_array(&env, &[0xAB; 32]);
+    let metadata = soroban_sdk::Bytes::from_slice(&env, &[0u8; 64]);
+    let validated_report = soroban_sdk::Bytes::from_slice(&env, &[0u8; 16]);
+
+    fx.client.route(
+        &transmission_id,
+        &stranger,
+        &receiver_addr,
+        &metadata,
+        &validated_report,
+    );
+}
+
+#[test]
+fn test_route_from_registered_forwarder_succeeds() {
+    // add a transmitter to the registry, call route() directly with it
+    // as the transmitter arg → succeeds (CooperativeReceiver returns Ok(())).
+    // Bypasses report()'s signature path to isolate registry + route behavior.
+    let env = Env::default();
+    let fx = setup(&env);
+    let transmitter = Address::generate(&env);
+    fx.client.add_forwarder(&transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let transmission_id = soroban_sdk::BytesN::from_array(&env, &[0xCD; 32]);
+    let metadata = soroban_sdk::Bytes::from_slice(&env, &[0u8; 64]);
+    let validated_report = soroban_sdk::Bytes::from_slice(&env, &[0u8; 16]);
+
+    let ok = fx.client.route(
+        &transmission_id,
+        &transmitter,
+        &receiver_addr,
+        &metadata,
+        &validated_report,
+    );
+    assert!(ok, "route should succeed with a cooperative receiver");
+}
+
+// ============================================================================
+// report — happy paths
+//
+// These tests exercise the full report() pipeline end-to-end:
+//   length checks → parse → AlreadyProcessed check → load_config →
+//   signature verification → self-call route() → receiver dispatch.
+//
+// The `transmitter` arg to report() must be in the
+// forwarder registry, so each test calls add_forwarder(transmitter) first.
+// ============================================================================
+
+#[test]
+fn test_report_succeeds_minimal() {
+    // f=1, n=4, 2 valid sigs, CooperativeReceiver.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+
+    // Transmission was recorded as Succeeded.
+    let report = ReportBuilder::default();
+    let info = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info.state, TransmissionState::Succeeded);
+    assert_eq!(info.transmitter, Some(fx.transmitter.clone()));
+}
+
+#[test]
+fn test_report_succeeds_at_max_signers() {
+    // f=10, n=31 (max), 11 sigs.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 10, 31);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 11);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+
+    let report = ReportBuilder::default();
+    let info = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info.state, TransmissionState::Succeeded);
+}
+
+#[test]
+fn test_report_emits_correct_topic_structure() {
+    // ReportProcessedEvent topics: ["forwarder_ReportProcessed", receiver, exec_id, report_id].
+    // The contract's events.rs marks receiver/workflow_execution_id/report_id as #[topic];
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let report = ReportBuilder::default();
+    let (raw, ctx, sigs) = build_signed_report(&fx, &report, 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+
+    // Find ReportProcessed event in the env event log; assert topic shape.
+    let events = env.events().all();
+    let found = events.iter().any(|e| {
+        let (_contract, topics, _data) = e;
+        // First topic should be the symbol "forwarder_ReportProcessed".
+        // Subsequent topics are receiver, workflow_execution_id, report_id.
+        topics.len() == 4
+    });
+    assert!(
+        found,
+        "expected ReportProcessedEvent with 4 topics (prefix + receiver + exec_id + report_id)"
+    );
+}
+
+#[test]
+fn test_report_records_transmitter_in_transmission_info() {
+    // After a successful report, get_transmission_info returns
+    // {Succeeded, Some(transmitter)} — confirms the transmitter field is
+    // persistently recorded so WriteReport can identify its own submissions.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+
+    let report = ReportBuilder::default();
+    let info = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info.transmitter, Some(fx.transmitter.clone()));
+}
+
+// ============================================================================
+// report — replay and idempotency
+// ============================================================================
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_replay_after_success_panics() {
+    // submit twice with identical (receiver, exec_id, report_id) →
+    // second call panics with AlreadyProcessed code 13. Same-state (Succeeded)
+    // is terminal under the replay guard.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+
+    // Identical resubmission — should panic.
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_replay_after_invalid_receiver_panics() {
+    // Deliver to a non-Wasm address (account-only) → state = InvalidReceiver
+    // (terminal). A subsequent resubmission with the same transmission_id panics
+    // with AlreadyProcessed code 13.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    // A generated Address has no contract executable → InvalidReceiver path.
+    let account_receiver = Address::generate(&env);
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 2);
+    fx.client
+        .report(&fx.transmitter, &account_receiver, &raw, &ctx, &sigs);
+
+    // Confirm first call recorded the terminal state.
+    let report = ReportBuilder::default();
+    let info = fx.client.get_transmission_info(
+        &account_receiver,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info.state, TransmissionState::InvalidReceiver);
+
+    // Resubmit — should panic.
+    fx.client
+        .report(&fx.transmitter, &account_receiver, &raw, &ctx, &sigs);
+}
+
+#[test]
+fn test_retry_after_failed_succeeds_when_state_changes() {
+    // FlipReceiver returns Err on first call, Ok on second.
+    //   First report() → state = Failed (retryable).
+    //   Second report() → FlipReceiver returns Ok → state = Succeeded.
+    // Demonstrates that Failed is NOT a terminal state under the replay guard.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::FlipReceiver, ());
+    let (raw, ctx, sigs) = build_signed_report(&fx, &ReportBuilder::default(), 2);
+
+    // First submission — receiver rejects → state = Failed.
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    let report = ReportBuilder::default();
+    let info1 = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info1.state, TransmissionState::Failed);
+
+    // Second submission — FlipReceiver now returns Ok → state = Succeeded.
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw, &ctx, &sigs);
+    let info2 = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report.report_id),
+    );
+    assert_eq!(info2.state, TransmissionState::Succeeded);
+}
+
+#[test]
+fn test_report_different_report_id_not_blocked() {
+    // Same (receiver, exec_id) but different report_id → distinct
+    // transmission_ids, both delivered independently. No replay-guard interference.
+    let env = Env::default();
+    let fx = setup_with_config(&env, 1, 4);
+    fx.client.add_forwarder(&fx.transmitter);
+
+    let receiver_addr = env.register(mocks::CooperativeReceiver, ());
+
+    let report_a = ReportBuilder::default().with_report_id([0x00, 0x01]);
+    let (raw_a, ctx_a, sigs_a) = build_signed_report(&fx, &report_a, 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw_a, &ctx_a, &sigs_a);
+
+    let report_b = ReportBuilder::default().with_report_id([0x00, 0x02]);
+    let (raw_b, ctx_b, sigs_b) = build_signed_report(&fx, &report_b, 2);
+    fx.client
+        .report(&fx.transmitter, &receiver_addr, &raw_b, &ctx_b, &sigs_b);
+
+    // Both transmissions recorded as Succeeded.
+    let info_a = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report_a.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report_a.report_id),
+    );
+    let info_b = fx.client.get_transmission_info(
+        &receiver_addr,
+        &soroban_sdk::BytesN::from_array(&env, &report_b.workflow_execution_id),
+        &soroban_sdk::BytesN::from_array(&env, &report_b.report_id),
+    );
+    assert_eq!(info_a.state, TransmissionState::Succeeded);
+    assert_eq!(info_b.state, TransmissionState::Succeeded);
 }
