@@ -132,7 +132,7 @@ impl KeystoneForwarder {
         ensure_unique_pubkeys(&env, &signers);
 
         let cfg = Config { f, signers };
-        let key = DataKey::Config(config_id(don_id, config_version));
+        let key = DataKey::Config(ParsedReport::config_id(don_id, config_version));
         env.storage().instance().set(&key, &cfg);
 
         ConfigSetEvent {
@@ -149,7 +149,7 @@ impl KeystoneForwarder {
         <KeystoneForwarder as Initializable>::require_initialized(&env)?;
         <KeystoneForwarder as Ownable>::require_owner(&env)?;
 
-        let key = DataKey::Config(config_id(don_id, config_version));
+        let key = DataKey::Config(ParsedReport::config_id(don_id, config_version));
         if !env.storage().instance().has(&key) {
             panic_with_error!(&env, ForwarderError::InvalidConfig);
         }
@@ -228,9 +228,7 @@ impl KeystoneForwarder {
         // design relied on a self-call to `route()` for this check, but Soroban
         // forbids contract re-entry, so we do the check inline and dispatch
         // directly via the helper.
-        if !is_forwarder_impl(&env, &transmitter) {
-            panic_with_error!(&env, ForwarderError::UnauthorizedForwarder);
-        }
+        require_valid_forwarder(&env, &transmitter)?;
         let dispatch_result = dispatch_to_receiver(
             &env,
             transmission_id,
@@ -261,10 +259,7 @@ impl KeystoneForwarder {
     ) -> Result<bool, ForwarderError> {
         <KeystoneForwarder as Initializable>::require_initialized(&env)?;
         transmitter.require_auth();
-
-        if !is_forwarder_impl(&env, &transmitter) {
-            return Err(ForwarderError::UnauthorizedForwarder);
-        }
+        require_valid_forwarder(&env, &transmitter)?;
 
         dispatch_to_receiver(
             &env,
@@ -286,11 +281,6 @@ impl KeystoneForwarder {
     /// instances in a multi-version deployment without parsing the wasm.
     pub fn type_and_version(env: Env) -> String {
         String::from_str(&env, "KeystoneForwarder 1.0.0")
-    }
-
-    pub fn is_forwarder(env: Env, forwarder: Address) -> Result<bool, ForwarderError> {
-        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
-        Ok(is_forwarder_impl(&env, &forwarder))
     }
 
     pub fn get_transmission_info(
@@ -323,18 +313,17 @@ impl KeystoneForwarder {
 // Forwarder registry helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn is_forwarder_impl(env: &Env, forwarder: &Address) -> bool {
+fn require_valid_forwarder(env: &Env, forwarder: &Address) -> Result<(), ForwarderError> {
     let key = DataKey::Forwarder(forwarder.clone());
-    env.storage().instance().has(&key)
+    if !env.storage().instance().has(&key) {
+        return Err(ForwarderError::UnauthorizedForwarder);
+    }
+    Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-fn config_id(don_id: u32, config_version: u32) -> u64 {
-    ((don_id as u64) << 32) | config_version as u64
-}
 
 fn load_config(env: &Env, id: u64) -> Config {
     let key = DataKey::Config(id);
