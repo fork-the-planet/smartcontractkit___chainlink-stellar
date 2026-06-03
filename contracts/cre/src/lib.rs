@@ -2,12 +2,14 @@
 
 mod events;
 mod types;
+mod error;
 
-use common_authorization::Ownable;
+use error::ForwarderError;
 use common_error::CCIPError;
+use common_authorization::Ownable;
 use common_guard::initializable::Initializable;
 use soroban_sdk::{
-    address_payload::AddressPayload, contract, contracterror, contractimpl, crypto::Hash,
+    address_payload::AddressPayload, contract, contractimpl, crypto::Hash,
     panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError,
     String, Symbol, Vec,
 };
@@ -42,44 +44,6 @@ const SECP256K1_ORDER: [u8; 32] = [
 const BUMP_FOR_60_DAYS: u32 = 1_036_800; // ~60 days
 const BUMP_AFTER_30_DAYS: u32 = 518_400; // ~30 days
 
-#[contracterror]
-#[derive(Copy, Clone, Eq, PartialEq)]
-#[repr(u32)]
-pub enum Error {
-    AlreadyInitialized = 1,
-    InvalidReport = 2,
-    InvalidReportContext = 3,
-    InvalidReportVersion = 4,
-    FaultToleranceMustBePositive = 5,
-    ExcessSigners = 6,
-    InsufficientSigners = 7,
-    InvalidConfig = 8,
-    InvalidSignatureCount = 9,
-    DuplicateSigner = 10,
-    InvalidSignature = 11,
-    InvalidRecoveryId = 12,
-    AlreadyProcessed = 13,
-    NotOwner = 14,
-    NotProposedOwner = 15,
-    Uninitialized = 16,
-    UnauthorizedForwarder = 17,
-    InvalidReceiver = 18,
-    InvalidSigner = 19,
-    CannotRemoveSelf = 20,
-}
-
-impl From<CCIPError> for Error {
-    fn from(e: CCIPError) -> Self {
-        match e {
-            CCIPError::AlreadyInitialized => Error::AlreadyInitialized,
-            CCIPError::NotInitialized => Error::Uninitialized,
-            CCIPError::NotOwner => Error::NotOwner,
-            CCIPError::NoPendingOwner => Error::NotProposedOwner,
-            _ => unreachable!("unexpected CCIPError variant from Ownable/Initializable"),
-        }
-    }
-}
-
 struct ParsedReport {
     workflow_execution_id: BytesN<32>,
     config_id: u64,
@@ -104,7 +68,7 @@ impl Ownable for KeystoneForwarder {
 
 #[contractimpl]
 impl KeystoneForwarder {
-    pub fn initialize(env: Env, owner: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, owner: Address) -> Result<(), ForwarderError> {
         <Self as Initializable>::require_not_initialized(&env)?;
         <Self as Initializable>::init(&env)?;
         <Self as Ownable>::init_owner(&env, &owner)?;
@@ -126,7 +90,7 @@ impl KeystoneForwarder {
         Ok(())
     }
 
-    pub fn add_forwarder(env: Env, forwarder: Address) -> Result<(), Error> {
+    pub fn add_forwarder(env: Env, forwarder: Address) -> Result<(), ForwarderError> {
         assert_owner(&env)?;
 
         let key = DataKey::Forwarder(forwarder.clone());
@@ -136,11 +100,11 @@ impl KeystoneForwarder {
         Ok(())
     }
 
-    pub fn remove_forwarder(env: Env, forwarder: Address) -> Result<(), Error> {
+    pub fn remove_forwarder(env: Env, forwarder: Address) -> Result<(), ForwarderError> {
         assert_owner(&env)?;
 
         if forwarder == env.current_contract_address() {
-            panic_with_error!(&env, Error::CannotRemoveSelf);
+            panic_with_error!(&env, ForwarderError::CannotRemoveSelf);
         }
 
         env.storage()
@@ -157,18 +121,18 @@ impl KeystoneForwarder {
         config_version: u32,
         f: u32,
         signers: Vec<BytesN<65>>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ForwarderError> {
         assert_owner(&env)?;
 
         if f == 0 {
-            panic_with_error!(&env, Error::FaultToleranceMustBePositive);
+            panic_with_error!(&env, ForwarderError::FaultToleranceMustBePositive);
         }
         if signers.len() > MAX_ORACLES {
-            panic_with_error!(&env, Error::ExcessSigners);
+            panic_with_error!(&env, ForwarderError::ExcessSigners);
         }
         // BFT bound: need ≥ 3f + 1 signers configured to tolerate f faulty.
         if signers.len() < f * 3 + 1 {
-            panic_with_error!(&env, Error::InsufficientSigners);
+            panic_with_error!(&env, ForwarderError::InsufficientSigners);
         }
         ensure_unique_pubkeys(&env, &signers);
 
@@ -186,12 +150,12 @@ impl KeystoneForwarder {
         Ok(())
     }
 
-    pub fn clear_config(env: Env, don_id: u32, config_version: u32) -> Result<(), Error> {
+    pub fn clear_config(env: Env, don_id: u32, config_version: u32) -> Result<(), ForwarderError> {
         assert_owner(&env)?;
 
         let key = DataKey::Config(config_id(don_id, config_version));
         if !env.storage().instance().has(&key) {
-            panic_with_error!(&env, Error::InvalidConfig);
+            panic_with_error!(&env, ForwarderError::InvalidConfig);
         }
 
         env.storage().instance().remove(&key);
@@ -213,18 +177,18 @@ impl KeystoneForwarder {
         raw_report: Bytes,
         report_context: Bytes,
         signatures: Vec<BytesN<65>>,
-    ) {
+    ) -> Result<(), ForwarderError> {
         transmitter.require_auth();
-        ensure_initialized(&env);
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
 
         if raw_report.len() < METADATA_LENGTH {
-            panic_with_error!(&env, Error::InvalidReport);
+            panic_with_error!(&env, ForwarderError::InvalidReport);
         }
         if report_context.len() != REPORT_CONTEXT_LENGTH {
-            panic_with_error!(&env, Error::InvalidReportContext);
+            panic_with_error!(&env, ForwarderError::InvalidReportContext);
         }
         if signatures.is_empty() {
-            panic_with_error!(&env, Error::InvalidSignatureCount);
+            panic_with_error!(&env, ForwarderError::InvalidSignatureCount);
         }
 
         let parsed = parse_report(&env, &raw_report);
@@ -244,7 +208,7 @@ impl KeystoneForwarder {
                 if t.state == TransmissionState::Succeeded
                     || t.state == TransmissionState::InvalidReceiver =>
             {
-                panic_with_error!(&env, Error::AlreadyProcessed);
+                panic_with_error!(&env, ForwarderError::AlreadyProcessed);
             }
             _ => {}
         }
@@ -253,7 +217,7 @@ impl KeystoneForwarder {
         // Reports require exactly f + 1 signatures: minimal quorum that guarantees
         // at least one honest signer (f faulty can produce at most f matching sigs).
         if signatures.len() != cfg.f + 1 {
-            panic_with_error!(&env, Error::InvalidSignatureCount);
+            panic_with_error!(&env, ForwarderError::InvalidSignatureCount);
         }
 
         verify_signatures(
@@ -272,24 +236,26 @@ impl KeystoneForwarder {
         // forbids contract re-entry, so we do the check inline and dispatch
         // directly via the helper.
         if !is_forwarder_impl(&env, &transmitter) {
-            panic_with_error!(&env, Error::UnauthorizedForwarder);
+            panic_with_error!(&env, ForwarderError::UnauthorizedForwarder);
         }
-        let ok = dispatch_to_receiver(
+        let dispatch_result = dispatch_to_receiver(
             &env,
             transmission_id,
             transmitter,
             &receiver,
             &parsed.metadata,
             &parsed.payload,
-        );
+        )?;
 
         ReportProcessedEvent {
             receiver,
             workflow_execution_id: parsed.workflow_execution_id,
             report_id: parsed.report_id,
-            success: ok,
+            success: dispatch_result,
         }
         .publish(&env);
+
+        Ok(())
     }
 
     pub fn route(
@@ -299,16 +265,13 @@ impl KeystoneForwarder {
         receiver: Address,
         metadata: Bytes,
         validated_report: Bytes,
-    ) -> bool {
-        ensure_initialized(&env);
+    ) -> Result<bool, ForwarderError> {
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
         transmitter.require_auth();
 
         if !is_forwarder_impl(&env, &transmitter) {
-            panic_with_error!(env, Error::UnauthorizedForwarder);
+            return Err(ForwarderError::UnauthorizedForwarder);
         }
-        env.storage()
-            .instance()
-            .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
         dispatch_to_receiver(
             &env,
@@ -317,7 +280,8 @@ impl KeystoneForwarder {
             &receiver,
             &metadata,
             &validated_report,
-        )
+        )?;
+        Ok(true)
     }
 
     // ========================================
@@ -331,9 +295,9 @@ impl KeystoneForwarder {
         String::from_str(&env, "KeystoneForwarder 1.0.0")
     }
 
-    pub fn is_forwarder(env: Env, forwarder: Address) -> bool {
-        ensure_initialized(&env);
-        is_forwarder_impl(&env, &forwarder)
+    pub fn is_forwarder(env: Env, forwarder: Address) -> Result<bool, ForwarderError> {
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
+        Ok(is_forwarder_impl(&env, &forwarder))
     }
 
     pub fn get_transmission_info(
@@ -341,8 +305,8 @@ impl KeystoneForwarder {
         receiver: Address,
         workflow_execution_id: BytesN<32>,
         report_id: BytesN<2>,
-    ) -> TransmissionInfo {
-        ensure_initialized(&env);
+    ) -> Result<TransmissionInfo, ForwarderError> {
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
 
         let transmission_id =
             get_transmission_id(&env, &receiver, &workflow_execution_id, &report_id);
@@ -350,14 +314,14 @@ impl KeystoneForwarder {
         let key = DataKey::Transmission(transmission_id);
 
         match env.storage().persistent().get::<_, Transmission>(&key) {
-            Some(t) => TransmissionInfo {
+            Some(t) => Ok(TransmissionInfo {
                 state: t.state,
                 transmitter: Some(t.transmitter),
-            },
-            None => TransmissionInfo {
+            }),
+            None => Ok(TransmissionInfo {
                 state: TransmissionState::NotAttempted,
                 transmitter: None,
-            },
+            }),
         }
     }
 }
@@ -366,17 +330,9 @@ impl KeystoneForwarder {
 // Shared guard helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn ensure_initialized(env: &Env) {
-    <KeystoneForwarder as Initializable>::require_initialized(env)
-        .unwrap_or_else(|_| panic_with_error!(env, Error::Uninitialized));
-}
-
-fn assert_owner(env: &Env) -> Result<(), Error> {
-    ensure_initialized(env);
+fn assert_owner(env: &Env) -> Result<(), ForwarderError> {
+    <KeystoneForwarder as Initializable>::require_initialized(env)?;
     <KeystoneForwarder as Ownable>::require_owner(env)?;
-    env.storage()
-        .instance()
-        .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
     Ok(())
 }
 
@@ -402,7 +358,7 @@ fn load_config(env: &Env, id: u64) -> Config {
     env.storage()
         .instance()
         .get::<_, Config>(&key)
-        .unwrap_or_else(|| panic_with_error!(env, Error::InvalidConfig))
+        .unwrap_or_else(|| panic_with_error!(env, ForwarderError::InvalidConfig))
 }
 
 fn ensure_unique_pubkeys(env: &Env, signers: &Vec<BytesN<65>>) {
@@ -412,13 +368,13 @@ fn ensure_unique_pubkeys(env: &Env, signers: &Vec<BytesN<65>>) {
     while i < signers.len() {
         let a = signers.get(i).unwrap();
         if a == zero {
-            panic_with_error!(env, Error::InvalidSigner);
+            panic_with_error!(env, ForwarderError::InvalidSigner);
         }
 
         let mut j = i + 1;
         while j < signers.len() {
             if a == signers.get(j).unwrap() {
-                panic_with_error!(env, Error::DuplicateSigner);
+                panic_with_error!(env, ForwarderError::DuplicateSigner);
             }
             j += 1;
         }
@@ -438,7 +394,7 @@ const REPORT_ID_OFFSET: u32 = 107;
 
 fn parse_report(env: &Env, raw_report: &Bytes) -> ParsedReport {
     if raw_report.get(0).unwrap() != 1 {
-        panic_with_error!(env, Error::InvalidReportVersion);
+        panic_with_error!(env, ForwarderError::InvalidReportVersion);
     }
 
     let don_id = read_u32_be(raw_report, DON_ID_OFFSET);
@@ -482,7 +438,7 @@ fn normalize_recovery_id(env: &Env, v: u8) -> u32 {
     match v {
         0 | 1 => v as u32,
         27 | 28 => (v - 27) as u32,
-        _ => panic_with_error!(env, Error::InvalidRecoveryId),
+        _ => panic_with_error!(env, ForwarderError::InvalidRecoveryId),
     }
 }
 
@@ -513,7 +469,7 @@ fn is_greater_or_equal_32(lhs: &[u8], rhs: &[u8; 32]) -> bool {
 
 fn validate_signature_scalar(env: &Env, scalar: &[u8]) {
     if is_zero_32(scalar) || is_greater_or_equal_32(scalar, &SECP256K1_ORDER) {
-        panic_with_error!(env, Error::InvalidSignature);
+        panic_with_error!(env, ForwarderError::InvalidSignature);
     }
 }
 
@@ -559,11 +515,11 @@ fn verify_signatures(
 
         let pubkey = env.crypto().secp256k1_recover(&digest, &sig64, rec_id);
         let idx = signer_index(signers, &pubkey)
-            .unwrap_or_else(|| panic_with_error!(env, Error::InvalidSigner));
+            .unwrap_or_else(|| panic_with_error!(env, ForwarderError::InvalidSigner));
 
         let bit = 1u64 << idx;
         if seen & bit != 0 {
-            panic_with_error!(env, Error::DuplicateSigner);
+            panic_with_error!(env, ForwarderError::DuplicateSigner);
         }
         seen |= bit;
 
@@ -578,7 +534,7 @@ fn verify_signatures(
 fn receiver_contract_id_bytes(env: &Env, receiver: &Address) -> Bytes {
     match receiver.to_payload() {
         Some(AddressPayload::ContractIdHash(hash)) => Bytes::from(hash),
-        _ => panic_with_error!(env, Error::InvalidReceiver),
+        _ => panic_with_error!(env, ForwarderError::InvalidReceiver),
     }
 }
 
@@ -607,7 +563,7 @@ fn dispatch_to_receiver(
     receiver: &Address,
     metadata: &Bytes,
     validated_report: &Bytes,
-) -> bool {
+) -> Result<bool, ForwarderError> {
     let key = DataKey::Transmission(transmission_id);
 
     match env.storage().persistent().get::<_, Transmission>(&key) {
@@ -615,7 +571,7 @@ fn dispatch_to_receiver(
             if t.state == TransmissionState::Succeeded
                 || t.state == TransmissionState::InvalidReceiver =>
         {
-            panic_with_error!(env, Error::AlreadyProcessed);
+            panic_with_error!(env, ForwarderError::AlreadyProcessed);
         }
         _ => {}
     }
@@ -646,7 +602,7 @@ fn dispatch_to_receiver(
         .persistent()
         .extend_ttl(&key, BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
-    state == TransmissionState::Succeeded
+    Ok(state == TransmissionState::Succeeded)
 }
 
 #[cfg(test)]
