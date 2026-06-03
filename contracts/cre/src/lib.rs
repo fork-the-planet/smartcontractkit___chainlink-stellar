@@ -9,13 +9,13 @@ use common_error::CCIPError;
 use common_authorization::Ownable;
 use common_guard::initializable::Initializable;
 use soroban_sdk::{
-    address_payload::AddressPayload, contract, contractimpl, crypto::Hash,
-    panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError,
-    String, Symbol, Vec,
+    Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError, String, Symbol, TryFromVal, Vec, address_payload::AddressPayload, contract, contractimpl, crypto::Hash, panic_with_error, symbol_short
 };
 
 use events::{ConfigSetEvent, ForwarderAddedEvent, ForwarderRemovedEvent, ReportProcessedEvent};
 use types::{Config, DataKey, Transmission, TransmissionInfo, TransmissionState};
+
+use crate::types::ParsedReport;
 
 // ============================================================
 // Storage Keys
@@ -43,14 +43,6 @@ const SECP256K1_ORDER: [u8; 32] = [
 // TODO adjust
 const BUMP_FOR_60_DAYS: u32 = 1_036_800; // ~60 days
 const BUMP_AFTER_30_DAYS: u32 = 518_400; // ~30 days
-
-struct ParsedReport {
-    workflow_execution_id: BytesN<32>,
-    config_id: u64,
-    report_id: BytesN<2>,
-    metadata: Bytes,
-    payload: Bytes,
-}
 
 #[contract]
 pub struct KeystoneForwarder;
@@ -91,7 +83,8 @@ impl KeystoneForwarder {
     }
 
     pub fn add_forwarder(env: Env, forwarder: Address) -> Result<(), ForwarderError> {
-        assert_owner(&env)?;
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
+        <KeystoneForwarder as Ownable>::require_owner(&env)?;
 
         let key = DataKey::Forwarder(forwarder.clone());
         env.storage().instance().set(&key, &true);
@@ -101,7 +94,8 @@ impl KeystoneForwarder {
     }
 
     pub fn remove_forwarder(env: Env, forwarder: Address) -> Result<(), ForwarderError> {
-        assert_owner(&env)?;
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
+        <KeystoneForwarder as Ownable>::require_owner(&env)?;
 
         if forwarder == env.current_contract_address() {
             panic_with_error!(&env, ForwarderError::CannotRemoveSelf);
@@ -122,7 +116,8 @@ impl KeystoneForwarder {
         f: u32,
         signers: Vec<BytesN<65>>,
     ) -> Result<(), ForwarderError> {
-        assert_owner(&env)?;
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
+        <KeystoneForwarder as Ownable>::require_owner(&env)?;
 
         if f == 0 {
             panic_with_error!(&env, ForwarderError::FaultToleranceMustBePositive);
@@ -151,7 +146,8 @@ impl KeystoneForwarder {
     }
 
     pub fn clear_config(env: Env, don_id: u32, config_version: u32) -> Result<(), ForwarderError> {
-        assert_owner(&env)?;
+        <KeystoneForwarder as Initializable>::require_initialized(&env)?;
+        <KeystoneForwarder as Ownable>::require_owner(&env)?;
 
         let key = DataKey::Config(config_id(don_id, config_version));
         if !env.storage().instance().has(&key) {
@@ -191,7 +187,7 @@ impl KeystoneForwarder {
             panic_with_error!(&env, ForwarderError::InvalidSignatureCount);
         }
 
-        let parsed = parse_report(&env, &raw_report);
+        let parsed = ParsedReport::try_from_val(&env, &raw_report)?;
         let transmission_id = get_transmission_id(
             &env,
             &receiver,
@@ -227,9 +223,6 @@ impl KeystoneForwarder {
             &report_context,
             &signatures,
         );
-        env.storage()
-            .instance()
-            .extend_ttl(BUMP_AFTER_30_DAYS, BUMP_FOR_60_DAYS);
 
         // Authorize the transmitter against the forwarder registry. The previous
         // design relied on a self-call to `route()` for this check, but Soroban
@@ -327,16 +320,6 @@ impl KeystoneForwarder {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared guard helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-fn assert_owner(env: &Env) -> Result<(), ForwarderError> {
-    <KeystoneForwarder as Initializable>::require_initialized(env)?;
-    <KeystoneForwarder as Ownable>::require_owner(env)?;
-    Ok(())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Forwarder registry helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -381,46 +364,6 @@ fn ensure_unique_pubkeys(env: &Env, signers: &Vec<BytesN<65>>) {
 
         i += 1;
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Report parsing
-// ─────────────────────────────────────────────────────────────────────────────
-
-const EXECUTION_ID_OFFSET: u32 = 1;
-const DON_ID_OFFSET: u32 = 37;
-const CONFIG_VERSION_OFFSET: u32 = 41;
-const REPORT_ID_OFFSET: u32 = 107;
-
-fn parse_report(env: &Env, raw_report: &Bytes) -> ParsedReport {
-    if raw_report.get(0).unwrap() != 1 {
-        panic_with_error!(env, ForwarderError::InvalidReportVersion);
-    }
-
-    let don_id = read_u32_be(raw_report, DON_ID_OFFSET);
-    let config_version = read_u32_be(raw_report, CONFIG_VERSION_OFFSET);
-
-    ParsedReport {
-        workflow_execution_id: read_bytesn::<32>(env, raw_report, EXECUTION_ID_OFFSET),
-        config_id: config_id(don_id, config_version),
-        report_id: read_bytesn::<2>(env, raw_report, REPORT_ID_OFFSET),
-        metadata: raw_report.slice(FORWARDER_METADATA_LENGTH..METADATA_LENGTH),
-        payload: raw_report.slice(METADATA_LENGTH..raw_report.len()),
-    }
-}
-
-fn read_bytesn<const N: usize>(env: &Env, bytes: &Bytes, start: u32) -> BytesN<N> {
-    let mut buf = [0u8; N];
-    bytes
-        .slice(start..start + N as u32)
-        .copy_into_slice(&mut buf);
-    BytesN::from_array(env, &buf)
-}
-
-fn read_u32_be(bytes: &Bytes, start: u32) -> u32 {
-    let mut buf = [0u8; 4];
-    bytes.slice(start..start + 4).copy_into_slice(&mut buf);
-    u32::from_be_bytes(buf)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
