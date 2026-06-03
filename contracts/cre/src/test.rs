@@ -864,9 +864,15 @@ fn test_add_forwarder_succeeds() {
     let fx = setup(&env);
     let new_forwarder = Address::generate(&env);
 
-    assert!(require_valid_forwarder(&env, &new_forwarder).is_err());
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &new_forwarder).is_err());
+    });
+
     fx.client.add_forwarder(&new_forwarder);
-    assert!(require_valid_forwarder(&env, &new_forwarder).is_ok());
+    
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &new_forwarder).is_ok());
+    });
 }
 
 #[test]
@@ -888,9 +894,13 @@ fn test_remove_forwarder_succeeds() {
     let new_forwarder = Address::generate(&env);
 
     fx.client.add_forwarder(&new_forwarder);
-    assert!(require_valid_forwarder(&env, &new_forwarder).is_ok());
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &new_forwarder).is_ok());
+    });
     fx.client.remove_forwarder(&new_forwarder);
-    assert!(require_valid_forwarder(&env, &new_forwarder).is_err());
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &new_forwarder).is_err());
+    });
 }
 
 #[test]
@@ -923,7 +933,9 @@ fn test_self_is_in_registry_after_initialize() {
     // constructor at KeystoneForwarder.sol:90 (`s_forwarders[address(this)] = true`).
     let env = Env::default();
     let fx = setup(&env);
-    assert!(require_valid_forwarder(&env, &fx.contract_addr).is_ok());
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &fx.contract_addr).is_ok());
+    });
 }
 
 #[test]
@@ -1923,9 +1935,11 @@ fn test_get_transmission_info_after_invalid_receiver() {
 fn test_is_forwarder_returns_false_for_unknown() {
     // T-VW-06: an address never added to the registry → false.
     let env = Env::default();
-    let _ = setup(&env);
+    let fx = setup(&env);
     let unknown = Address::generate(&env);
-    assert!(require_valid_forwarder(&env, &unknown).is_err());
+    env.as_contract(&fx.contract_addr, || {
+        assert!(require_valid_forwarder(&env, &unknown).is_err());
+    });
 }
 
 // ============================================================================
