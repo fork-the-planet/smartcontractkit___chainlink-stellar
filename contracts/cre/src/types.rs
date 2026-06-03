@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, Bytes, BytesN, Env, TryFromVal, Vec, contracttype};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, TryFromVal, Vec};
 
-use crate::{FORWARDER_METADATA_LENGTH, METADATA_LENGTH, error::ForwarderError};
+use crate::{error::ForwarderError, FORWARDER_METADATA_LENGTH, METADATA_LENGTH};
 
 // ============================================================
 // Types & Structs
@@ -75,10 +75,10 @@ impl TryFromVal<Env, Bytes> for ParsedReport {
         if raw_report.get(0).unwrap() != 1 {
             return Err(ForwarderError::InvalidReportVersion);
         }
-    
+
         let don_id = read_u32_be(raw_report, DON_ID_OFFSET);
         let config_version = read_u32_be(raw_report, CONFIG_VERSION_OFFSET);
-    
+
         let report = ParsedReport {
             workflow_execution_id: read_bytesn::<32>(env, raw_report, EXECUTION_ID_OFFSET),
             config_id: Self::config_id(don_id, config_version),

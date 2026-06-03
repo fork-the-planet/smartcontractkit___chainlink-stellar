@@ -869,7 +869,7 @@ fn test_add_forwarder_succeeds() {
     });
 
     fx.client.add_forwarder(&new_forwarder);
-    
+
     env.as_contract(&fx.contract_addr, || {
         assert!(require_valid_forwarder(&env, &new_forwarder).is_ok());
     });

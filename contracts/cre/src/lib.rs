@@ -1,15 +1,17 @@
 #![no_std]
 
+mod error;
 mod events;
 mod types;
-mod error;
 
-use error::ForwarderError;
-use common_error::CCIPError;
 use common_authorization::Ownable;
+use common_error::CCIPError;
 use common_guard::initializable::Initializable;
+use error::ForwarderError;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError, String, Symbol, TryFromVal, Vec, address_payload::AddressPayload, contract, contractimpl, crypto::Hash, panic_with_error, symbol_short
+    address_payload::AddressPayload, contract, contractimpl, crypto::Hash, panic_with_error,
+    symbol_short, Address, Bytes, BytesN, Env, Executable, IntoVal, InvokeError, String, Symbol,
+    TryFromVal, Vec,
 };
 
 use events::{ConfigSetEvent, ForwarderAddedEvent, ForwarderRemovedEvent, ReportProcessedEvent};
