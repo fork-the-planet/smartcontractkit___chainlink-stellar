@@ -10,6 +10,8 @@ import (
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 
 	clconfig "github.com/smartcontractkit/chainlink-common/pkg/config"
+
+	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
 
 // ChainFamilyName is the canonical chain family identifier for Stellar.
@@ -48,6 +50,10 @@ type TOMLConfig struct {
 
 	// Nodes lists the Soroban RPC endpoints for this chain.
 	Nodes Nodes `toml:"Nodes"`
+
+	// TxManager holds optional Stellar transaction manager settings. Omitted
+	// fields use defaults applied inside txm.New (see txm.DefaultConfigSet).
+	TxManager txm.Config `toml:"TxManager"`
 }
 
 // IsEnabled returns true when the chain is not explicitly disabled.
