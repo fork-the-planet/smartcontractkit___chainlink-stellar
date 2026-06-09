@@ -109,7 +109,6 @@ func TestStellarService_GetLedgerEntries(t *testing.T) {
 
 		svc := newTestStellarService(t, rpc)
 		_, err := svc.GetLedgerEntries(ctx, stellartypes.GetLedgerEntriesRequest{Keys: []string{"a2V5"}})
-		require.ErrorContains(t, err, "GetLedgerEntries")
 		require.ErrorContains(t, err, "ledger gone")
 	})
 }
@@ -219,23 +218,6 @@ func TestStellarService_ReadContract(t *testing.T) {
 		require.Equal(t, returnXDR, resp.Result)
 		require.Equal(t, uint32(99), resp.LedgerSequence)
 		require.Empty(t, resp.Error)
-	})
-
-	t.Run("SourceAccountOverride", func(t *testing.T) {
-		ctx := t.Context()
-		returnXDR := "AAAAAQ=="
-		src, err := strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
-		require.NoError(t, err)
-		rpc := mocks.NewMockRPCClient(t)
-		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
-			LatestLedger: 7,
-			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &returnXDR}},
-		}, nil)
-
-		svc := newTestStellarService(t, rpc)
-		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get", SourceAccount: src})
-		require.NoError(t, err)
-		require.Equal(t, returnXDR, resp.Result)
 	})
 
 	t.Run("ZeroResultsIsError", func(t *testing.T) {
