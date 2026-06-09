@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	protocol "github.com/stellar/go-stellar-sdk/protocols/rpc"
+	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	stellartypes "github.com/smartcontractkit/chainlink-common/pkg/types/chains/stellar"
@@ -142,5 +144,134 @@ func TestStellarService_GetLatestLedger(t *testing.T) {
 		svc := newTestStellarService(t, rpc)
 		_, err := svc.GetLatestLedger(ctx)
 		require.ErrorContains(t, err, "connection refused")
+	})
+}
+
+// testContractID returns a valid C… StrKey contract address (all-zero contract).
+func testContractID(t *testing.T) string {
+	t.Helper()
+	id, err := strkey.Encode(strkey.VersionByteContract, make([]byte, 32))
+	require.NoError(t, err)
+	return id
+}
+
+func TestStellarService_ReadContract(t *testing.T) {
+	t.Parallel()
+
+	// These never reach the RPC client; a mock with no expectations rejects any call.
+	t.Run("EmptyContractID", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{Function: "get"})
+		require.ErrorContains(t, err, "contract id is required")
+	})
+
+	t.Run("EmptyFunction", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{ContractID: testContractID(t)})
+		require.ErrorContains(t, err, "function is required")
+	})
+
+	t.Run("InvalidContractID", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{ContractID: "not-a-contract", Function: "get"})
+		require.ErrorContains(t, err, "failed to decode contract id")
+	})
+
+	t.Run("ArgConversionFailure", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{
+			ContractID: testContractID(t),
+			Function:   "get",
+			// Declares Bool but leaves the pointer nil, so scValToXDR rejects it.
+			Args: []stellartypes.ScVal{{Type: stellartypes.ScValTypeBool}},
+		})
+		require.ErrorContains(t, err, "failed to convert arg 0")
+	})
+
+	t.Run("SimulationError", func(t *testing.T) {
+		ctx := t.Context()
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
+			Error:        "HostError: contract trapped",
+			LatestLedger: 42,
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.NoError(t, err)
+		require.Equal(t, "HostError: contract trapped", resp.Error)
+		require.Equal(t, uint32(42), resp.LedgerSequence)
+		require.Empty(t, resp.Result)
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		ctx := t.Context()
+		returnXDR := "AAAAAwAAAAE=" // arbitrary base64 XDR ScVal
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 99,
+			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &returnXDR}},
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.NoError(t, err)
+		require.Equal(t, returnXDR, resp.Result)
+		require.Equal(t, uint32(99), resp.LedgerSequence)
+		require.Empty(t, resp.Error)
+	})
+
+	t.Run("SourceAccountOverride", func(t *testing.T) {
+		ctx := t.Context()
+		returnXDR := "AAAAAQ=="
+		src, err := strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
+		require.NoError(t, err)
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 7,
+			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &returnXDR}},
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get", SourceAccount: src})
+		require.NoError(t, err)
+		require.Equal(t, returnXDR, resp.Result)
+	})
+
+	t.Run("ZeroResultsIsError", func(t *testing.T) {
+		ctx := t.Context()
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 5,
+			Results:      nil,
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		_, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.ErrorContains(t, err, "unexpected simulation result count")
+	})
+
+	t.Run("EmptyReturnValueIsError", func(t *testing.T) {
+		ctx := t.Context()
+		empty := ""
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 5,
+			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &empty}},
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		_, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.ErrorContains(t, err, "return value XDR was empty")
+	})
+
+	t.Run("RPCError", func(t *testing.T) {
+		ctx := t.Context()
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.Anything).Return(protocol.SimulateTransactionResponse{}, errors.New("rpc down"))
+
+		svc := newTestStellarService(t, rpc)
+		_, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.ErrorContains(t, err, "rpc down")
 	})
 }
