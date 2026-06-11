@@ -22,12 +22,13 @@ const readContractTimeBound = 1 * time.Minute
 type stellarService struct {
 	relaytypes.UnimplementedStellarService
 	chain chain.Chain
+	txMgr stellarTxManager
 }
 
 var _ relaytypes.StellarService = (*stellarService)(nil)
 
 func newStellarService(ch chain.Chain) stellarService {
-	return stellarService{chain: ch}
+	return stellarService{chain: ch, txMgr: ch.TxManager()}
 }
 
 func (s *stellarService) GetLedgerEntries(ctx context.Context, req stellartypes.GetLedgerEntriesRequest) (stellartypes.GetLedgerEntriesResponse, error) {
