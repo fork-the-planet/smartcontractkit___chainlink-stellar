@@ -11,9 +11,9 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
-// scValToXDR converts the generic domain ScVal into a Stellar SDK
+// convertDomainScVal converts the generic domain ScVal into a Stellar SDK
 // xdr.ScVal so it can be passed as a Soroban contract-call argument.
-func scValToXDR(v stellartypes.ScVal) (xdr.ScVal, error) {
+func convertDomainScVal(v stellartypes.ScVal) (xdr.ScVal, error) {
 	switch v.Type {
 	case stellartypes.ScValTypeBool:
 		if v.Bool == nil {
@@ -132,7 +132,7 @@ func scValToXDR(v stellartypes.ScVal) (xdr.ScVal, error) {
 			if e == nil {
 				return xdr.ScVal{}, fmt.Errorf("vec element %d is nil", i)
 			}
-			c, err := scValToXDR(*e)
+			c, err := convertDomainScVal(*e)
 			if err != nil {
 				return xdr.ScVal{}, fmt.Errorf("vec element %d: %w", i, err)
 			}
@@ -151,11 +151,11 @@ func scValToXDR(v stellartypes.ScVal) (xdr.ScVal, error) {
 			if e.Key == nil || e.Val == nil {
 				return xdr.ScVal{}, fmt.Errorf("map entry %d has nil key or val", i)
 			}
-			k, err := scValToXDR(*e.Key)
+			k, err := convertDomainScVal(*e.Key)
 			if err != nil {
 				return xdr.ScVal{}, fmt.Errorf("map entry %d key: %w", i, err)
 			}
-			val, err := scValToXDR(*e.Val)
+			val, err := convertDomainScVal(*e.Val)
 			if err != nil {
 				return xdr.ScVal{}, fmt.Errorf("map entry %d val: %w", i, err)
 			}
@@ -169,7 +169,7 @@ func scValToXDR(v stellartypes.ScVal) (xdr.ScVal, error) {
 		if v.Address == nil {
 			return xdr.ScVal{}, errNilScValField("Address")
 		}
-		addr, err := scAddressToXDR(*v.Address)
+		addr, err := convertDomainAddress(*v.Address)
 		if err != nil {
 			return xdr.ScVal{}, err
 		}
@@ -180,10 +180,10 @@ func scValToXDR(v stellartypes.ScVal) (xdr.ScVal, error) {
 	}
 }
 
-// scAddressToXDR converts a domain ScAddress (account or contract) into an
+// convertDomainAddress converts a domain ScAddress (account or contract) into an
 // xdr.ScAddress. Muxed/claimable-balance/liquidity-pool addresses are not valid
 // Soroban argument addresses and are rejected.
-func scAddressToXDR(a stellartypes.ScAddress) (xdr.ScAddress, error) {
+func convertDomainAddress(a stellartypes.ScAddress) (xdr.ScAddress, error) {
 	switch a.Type {
 	case stellartypes.ScAddressTypeAccountID:
 		if len(a.AccountID) != 32 {
