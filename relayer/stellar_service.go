@@ -10,6 +10,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
+	"github.com/smartcontractkit/chainlink-framework/multinode"
+
 	relaytypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	stellartypes "github.com/smartcontractkit/chainlink-common/pkg/types/chains/stellar"
 
@@ -75,7 +77,7 @@ func (s *stellarService) GetLatestLedger(ctx context.Context) (stellartypes.GetL
 
 	resp, err := rpc.GetLatestLedger(ctx)
 	if err != nil {
-		return stellartypes.GetLatestLedgerResponse{}, err
+		return stellartypes.GetLatestLedgerResponse{}, fmt.Errorf("%w: %w", multinode.ErrNodeError, err)
 	}
 
 	return stellartypes.GetLatestLedgerResponse{
@@ -133,9 +135,14 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 		},
 	}
 
-	srcAddr, err := strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
-	if err != nil {
-		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to build placeholder source account: %w", err)
+	srcAddr := req.SourceAccount
+	if srcAddr == "" {
+		srcAddr, err = strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
+		if err != nil {
+			return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to build placeholder source account: %w", err)
+		}
+	} else if _, err = strkey.Decode(strkey.VersionByteAccountID, srcAddr); err != nil {
+		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to decode source account %q: %w", srcAddr, err)
 	}
 
 	sourceAccount := &txnbuild.SimpleAccount{AccountID: srcAddr, Sequence: 0}
@@ -163,7 +170,7 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 
 	simResult, err := rpc.SimulateTransaction(ctx, protocol.SimulateTransactionRequest{Transaction: txXDR})
 	if err != nil {
-		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to read contract: %w", err)
+		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to read contract: %w: %w", multinode.ErrNodeError, err)
 	}
 	resp := stellartypes.ReadContractResponse{LedgerSequence: simResult.LatestLedger}
 

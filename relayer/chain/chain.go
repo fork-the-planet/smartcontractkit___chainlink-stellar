@@ -14,6 +14,8 @@ import (
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"go.uber.org/multierr"
 
+	"github.com/smartcontractkit/chainlink-framework/multinode"
+
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
 	"github.com/smartcontractkit/chainlink-common/pkg/types"
@@ -155,7 +157,7 @@ func (c *chain) HealthReport() map[string]error {
 
 func (c *chain) GetClient() (RPCClient, error) {
 	if len(c.cfg.Nodes) == 0 || c.cfg.Nodes[0].URL == nil {
-		return nil, errors.New("no nodes configured")
+		return nil, fmt.Errorf("no usable Stellar RPC node configured: %w", multinode.ErrNodeError)
 	}
 
 	// TODO: add multi-node rotation and health-check eviction.
