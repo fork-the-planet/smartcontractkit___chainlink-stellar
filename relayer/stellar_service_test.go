@@ -7,10 +7,13 @@ import (
 
 	protocol "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
+	"github.com/smartcontractkit/chainlink-framework/multinode"
+
 	stellartypes "github.com/smartcontractkit/chainlink-common/pkg/types/chains/stellar"
 
 	"github.com/smartcontractkit/chainlink-stellar/internal/mocks"
@@ -163,6 +166,7 @@ func TestStellarService_GetLatestLedger(t *testing.T) {
 		svc := newTestStellarService(t, rpc)
 		_, err := svc.GetLatestLedger(ctx)
 		require.ErrorContains(t, err, "connection refused")
+		require.ErrorIs(t, err, multinode.ErrNodeError)
 	})
 }
 
@@ -178,22 +182,27 @@ func TestStellarService_ReadContract(t *testing.T) {
 	t.Parallel()
 
 	// These never reach the RPC client; a mock with no expectations rejects any call.
+	// Input-validation failures are returned plainly (not wrapped with ErrNodeError) so the
+	// chain capability defaults them to user errors.
 	t.Run("EmptyContractID", func(t *testing.T) {
 		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
 		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{Function: "get"})
 		require.ErrorContains(t, err, "contract id is required")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
 	})
 
 	t.Run("EmptyFunction", func(t *testing.T) {
 		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
 		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{ContractID: testContractID(t)})
 		require.ErrorContains(t, err, "function is required")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
 	})
 
 	t.Run("InvalidContractID", func(t *testing.T) {
 		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
 		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{ContractID: "not-a-contract", Function: "get"})
 		require.ErrorContains(t, err, "failed to decode contract id")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
 	})
 
 	t.Run("ArgConversionFailure", func(t *testing.T) {
@@ -205,6 +214,7 @@ func TestStellarService_ReadContract(t *testing.T) {
 			Args: []stellartypes.ScVal{{Type: stellartypes.ScValTypeBool}},
 		})
 		require.ErrorContains(t, err, "failed to convert arg 0")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
 	})
 
 	t.Run("SimulationError", func(t *testing.T) {
@@ -275,6 +285,69 @@ func TestStellarService_ReadContract(t *testing.T) {
 		svc := newTestStellarService(t, rpc)
 		_, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
 		require.ErrorContains(t, err, "rpc down")
+		// Transport failures are node-availability errors: they carry ErrNodeError so the
+		// capability classifies them as infra, and the underlying cause is preserved.
+		require.ErrorIs(t, err, multinode.ErrNodeError)
+	})
+
+	t.Run("InvalidSourceAccount", func(t *testing.T) {
+		// Never reaches the RPC client; a mock with no expectations rejects any call.
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+		_, err := svc.ReadContract(t.Context(), stellartypes.ReadContractRequest{
+			ContractID:    testContractID(t),
+			Function:      "get",
+			SourceAccount: "not-an-account",
+		})
+		require.ErrorContains(t, err, "failed to decode source account")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
+	})
+
+	t.Run("CustomSourceAccount", func(t *testing.T) {
+		ctx := t.Context()
+		raw := make([]byte, 32)
+		for i := range raw {
+			raw[i] = 0x11
+		}
+		source, err := strkey.Encode(strkey.VersionByteAccountID, raw)
+		require.NoError(t, err)
+
+		returnXDR := "AAAAAwAAAAE="
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.MatchedBy(func(req protocol.SimulateTransactionRequest) bool {
+			return simulatedTxSource(t, req) == source
+		})).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 99,
+			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &returnXDR}},
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{
+			ContractID:    testContractID(t),
+			Function:      "get",
+			SourceAccount: source,
+		})
+		require.NoError(t, err)
+		require.Equal(t, returnXDR, resp.Result)
+	})
+
+	t.Run("DefaultPlaceholderSourceAccount", func(t *testing.T) {
+		ctx := t.Context()
+		placeholder, err := strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
+		require.NoError(t, err)
+
+		returnXDR := "AAAAAwAAAAE="
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().SimulateTransaction(mock.Anything, mock.MatchedBy(func(req protocol.SimulateTransactionRequest) bool {
+			return simulatedTxSource(t, req) == placeholder
+		})).Return(protocol.SimulateTransactionResponse{
+			LatestLedger: 99,
+			Results:      []protocol.SimulateHostFunctionResult{{ReturnValueXDR: &returnXDR}},
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.ReadContract(ctx, stellartypes.ReadContractRequest{ContractID: testContractID(t), Function: "get"})
+		require.NoError(t, err)
+		require.Equal(t, returnXDR, resp.Result)
 	})
 }
 
@@ -403,4 +476,14 @@ func testStellarAccount(t *testing.T) string {
 	addr, err := strkey.Encode(strkey.VersionByteAccountID, accountID)
 	require.NoError(t, err)
 	return addr
+}
+
+// simulatedTxSource decodes the simulated transaction XDR and returns its source account address.
+func simulatedTxSource(t *testing.T, req protocol.SimulateTransactionRequest) string {
+	t.Helper()
+	gtx, err := txnbuild.TransactionFromXDR(req.Transaction)
+	require.NoError(t, err)
+	tx, ok := gtx.Transaction()
+	require.True(t, ok)
+	return tx.SourceAccount().AccountID
 }
