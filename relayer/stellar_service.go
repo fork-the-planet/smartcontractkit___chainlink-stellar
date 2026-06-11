@@ -133,9 +133,14 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 		},
 	}
 
-	srcAddr, err := strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
-	if err != nil {
-		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to build placeholder source account: %w", err)
+	srcAddr := req.SourceAccount
+	if srcAddr == "" {
+		srcAddr, err = strkey.Encode(strkey.VersionByteAccountID, make([]byte, 32))
+		if err != nil {
+			return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to build placeholder source account: %w", err)
+		}
+	} else if _, err = strkey.Decode(strkey.VersionByteAccountID, srcAddr); err != nil {
+		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to decode source account %q: %w", srcAddr, err)
 	}
 
 	sourceAccount := &txnbuild.SimpleAccount{AccountID: srcAddr, Sequence: 0}
