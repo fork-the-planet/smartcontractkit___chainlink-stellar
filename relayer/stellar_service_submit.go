@@ -26,7 +26,7 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 		return nil, fmt.Errorf("SubmitTransaction: txm is not configured")
 	}
 	if req.ContractID == "" {
-		return nil, fmt.Errorf("SubmitTransaction: contract_id is required")
+		return nil, fmt.Errorf("SubmitTransaction: contractID is required")
 	}
 	if req.Function == "" {
 		return nil, fmt.Errorf("SubmitTransaction: function is required")

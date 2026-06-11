@@ -359,7 +359,7 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 		ctx := t.Context()
 		svc := newTestStellarServiceWithTxm(t, &mockTxManager{})
 		_, err := svc.SubmitTransaction(ctx, stellartypes.SubmitTransactionRequest{Function: "fn"})
-		require.ErrorContains(t, err, "contract_id is required")
+		require.ErrorContains(t, err, "contractID is required")
 	})
 
 	t.Run("MissingFunction", func(t *testing.T) {
