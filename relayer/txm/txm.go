@@ -10,16 +10,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
+	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
+	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
-	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	"github.com/smartcontractkit/chainlink-common/pkg/types/core"
 	commonutils "github.com/smartcontractkit/chainlink-common/pkg/utils"
 
-	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
-	"github.com/stellar/go-stellar-sdk/txnbuild"
-	"github.com/stellar/go-stellar-sdk/xdr"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 // RPCClient is the subset of the Stellar Soroban JSON-RPC client used by the TXM.
@@ -1130,4 +1132,29 @@ func (s *StellarTxm) resyncSequence(ctx context.Context, client RPCClient, tx *S
 		"prevOnchain", prevOnchain, "updatedOnchain", updatedOnchain,
 	)
 	return nil
+}
+
+// BuildInvokeContractOperation creates an InvokeHostFunction operation for a Soroban contract call.
+func BuildInvokeContractOperation(contractID string, functionName string, args []xdr.ScVal, fromAddress string) (*txnbuild.InvokeHostFunction, error) {
+	contractBytes, err := strkey.Decode(strkey.VersionByteContract, contractID)
+	if err != nil {
+		return nil, fmt.Errorf("decode contract ID %q: %w", contractID, err)
+	}
+
+	contractAddr := scval.BuildContractScAddress(contractBytes)
+	if contractAddr == nil {
+		return nil, fmt.Errorf("build contract address %q", contractID)
+	}
+
+	return &txnbuild.InvokeHostFunction{
+		HostFunction: xdr.HostFunction{
+			Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
+			InvokeContract: &xdr.InvokeContractArgs{
+				ContractAddress: *contractAddr,
+				FunctionName:    xdr.ScSymbol(functionName),
+				Args:            args,
+			},
+		},
+		SourceAccount: fromAddress,
+	}, nil
 }
