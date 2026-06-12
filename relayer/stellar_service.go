@@ -17,14 +17,20 @@ import (
 
 	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	"github.com/smartcontractkit/chainlink-stellar/relayer/chain"
+	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
 
 const readContractTimeBound = 1 * time.Minute
 
+// StellarTxManager is the subset of txm.StellarTxm used by SubmitTransaction.
+type StellarTxManager interface {
+	EnqueueAndWait(ctx context.Context, req txm.TxRequest) (*txm.TxResult, error)
+}
+
 type stellarService struct {
 	relaytypes.UnimplementedStellarService
 	chain chain.Chain
-	txMgr stellarTxManager
+	txMgr StellarTxManager
 }
 
 var _ relaytypes.StellarService = (*stellarService)(nil)
@@ -118,13 +124,9 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to build contract address from contractID: %s", req.ContractID)
 	}
 
-	args := make([]xdr.ScVal, len(req.Args))
-	for i, a := range req.Args {
-		xv, convErr := scValToXDR(a)
-		if convErr != nil {
-			return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to convert arg %d (type %d): %w", i, a.Type, convErr)
-		}
-		args[i] = xv
+	args, err := convertDomainScVals(req.Args)
+	if err != nil {
+		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to convert args: %w", err)
 	}
 
 	hostFn := xdr.HostFunction{
@@ -194,4 +196,67 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 
 	resp.Result = *rv
 	return resp, nil
+}
+
+// SubmitTransaction invokes a Soroban contract via the TXM pipeline.
+// It converts the high-level domain request into an InvokeHostFunction operation,
+// enqueues it through the TXM, and maps the terminal status into a response.
+func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes.SubmitTransactionRequest) (*stellartypes.SubmitTransactionResponse, error) {
+	if s.txMgr == nil {
+		return nil, fmt.Errorf("submit transaction: txm is not configured")
+	}
+	if req.ContractID == "" {
+		return nil, fmt.Errorf("submit transaction: contractID is required")
+	}
+	if req.Function == "" {
+		return nil, fmt.Errorf("submit transaction: function is required")
+	}
+
+	xdrArgs, err := convertDomainScVals(req.Args)
+	if err != nil {
+		return nil, fmt.Errorf("submit transaction: convert args: %w", err)
+	}
+
+	op, err := txm.BuildInvokeContractOperation(req.ContractID, req.Function, xdrArgs, req.FromAddress)
+	if err != nil {
+		return nil, fmt.Errorf("submit transaction: build operation: %w", err)
+	}
+
+	result, err := s.txMgr.EnqueueAndWait(ctx, txm.TxRequest{
+		ID:                 req.IdempotencyKey,
+		FromAddress:        req.FromAddress,
+		Operations:         []txnbuild.Operation{op},
+		LedgerBoundsOffset: req.LedgerBoundsOffset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("submit transaction: %w", err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("submit transaction: nil result returned by TXM")
+	}
+
+	reply := &stellartypes.SubmitTransactionResponse{
+		TxHash:           result.Hash,
+		TxIdempotencyKey: result.ID,
+		ResultXDR:        result.ResultXDR,
+		ResultMetaXDR:    result.ResultMetaXDR,
+	}
+
+	switch result.Status {
+	case relaytypes.Finalized:
+		reply.TxStatus = stellartypes.TxSuccess
+	case relaytypes.Failed:
+		reply.TxStatus = stellartypes.TxFailed
+		if result.Error != nil {
+			reply.Error = result.Error.Error()
+		}
+	default:
+		reply.TxStatus = stellartypes.TxFatal
+		if result.Error != nil {
+			return reply, result.Error
+		}
+		return reply, fmt.Errorf("submit transaction: unexpected terminal status %v", result.Status)
+	}
+
+	return reply, nil
 }

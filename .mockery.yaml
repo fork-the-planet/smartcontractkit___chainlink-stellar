@@ -15,3 +15,7 @@ packages:
     interfaces:
       RPCClient:
       Chain:
+
+  github.com/smartcontractkit/chainlink-stellar/relayer:
+    interfaces:
+      StellarTxManager:

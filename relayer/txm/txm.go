@@ -1136,13 +1136,6 @@ func (s *StellarTxm) resyncSequence(ctx context.Context, client RPCClient, tx *S
 
 // BuildInvokeContractOperation creates an InvokeHostFunction operation for a Soroban contract call.
 func BuildInvokeContractOperation(contractID string, functionName string, args []xdr.ScVal, fromAddress string) (*txnbuild.InvokeHostFunction, error) {
-	if contractID == "" {
-		return nil, errors.New("contractID is required")
-	}
-	if functionName == "" {
-		return nil, errors.New("functionName is required")
-	}
-
 	contractBytes, err := strkey.Decode(strkey.VersionByteContract, contractID)
 	if err != nil {
 		return nil, fmt.Errorf("decode contract ID %q: %w", contractID, err)

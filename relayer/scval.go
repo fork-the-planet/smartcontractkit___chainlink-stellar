@@ -180,6 +180,22 @@ func convertDomainScVal(v stellartypes.ScVal) (xdr.ScVal, error) {
 	}
 }
 
+// convertDomainScVals converts a slice of domain ScVals into Stellar SDK xdr.ScVals.
+func convertDomainScVals(vals []stellartypes.ScVal) ([]xdr.ScVal, error) {
+	if len(vals) == 0 {
+		return nil, nil
+	}
+	out := make([]xdr.ScVal, len(vals))
+	for i, v := range vals {
+		x, err := convertDomainScVal(v)
+		if err != nil {
+			return nil, fmt.Errorf("arg[%d]: %w", i, err)
+		}
+		out[i] = x
+	}
+	return out, nil
+}
+
 // convertDomainAddress converts a domain ScAddress (account or contract) into an
 // xdr.ScAddress. Muxed/claimable-balance/liquidity-pool addresses are not valid
 // Soroban argument addresses and are rejected.

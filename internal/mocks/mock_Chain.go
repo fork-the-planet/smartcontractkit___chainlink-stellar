@@ -6,8 +6,8 @@ import (
 	context "context"
 	big "math/big"
 
-	loop "github.com/smartcontractkit/chainlink-common/pkg/loop"
 	types "github.com/smartcontractkit/chainlink-common/pkg/types"
+	core "github.com/smartcontractkit/chainlink-common/pkg/types/core"
 	chain "github.com/smartcontractkit/chainlink-stellar/relayer/chain"
 	config "github.com/smartcontractkit/chainlink-stellar/relayer/config"
 	txm "github.com/smartcontractkit/chainlink-stellar/relayer/txm"
@@ -437,19 +437,19 @@ func (_c *MockChain_ID_Call) RunAndReturn(run func() string) *MockChain_ID_Call 
 }
 
 // KeyStore provides a mock function with no fields
-func (_m *MockChain) KeyStore() loop.Keystore {
+func (_m *MockChain) KeyStore() core.Keystore {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for KeyStore")
 	}
 
-	var r0 loop.Keystore
-	if rf, ok := ret.Get(0).(func() loop.Keystore); ok {
+	var r0 core.Keystore
+	if rf, ok := ret.Get(0).(func() core.Keystore); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(loop.Keystore)
+			r0 = ret.Get(0).(core.Keystore)
 		}
 	}
 
@@ -473,12 +473,12 @@ func (_c *MockChain_KeyStore_Call) Run(run func()) *MockChain_KeyStore_Call {
 	return _c
 }
 
-func (_c *MockChain_KeyStore_Call) Return(_a0 loop.Keystore) *MockChain_KeyStore_Call {
+func (_c *MockChain_KeyStore_Call) Return(_a0 core.Keystore) *MockChain_KeyStore_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockChain_KeyStore_Call) RunAndReturn(run func() loop.Keystore) *MockChain_KeyStore_Call {
+func (_c *MockChain_KeyStore_Call) RunAndReturn(run func() core.Keystore) *MockChain_KeyStore_Call {
 	_c.Call.Return(run)
 	return _c
 }
