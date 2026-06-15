@@ -287,9 +287,9 @@ func (_c *MockChain_GetChainStatus_Call) RunAndReturn(run func(context.Context) 
 	return _c
 }
 
-// GetClient provides a mock function with no fields
-func (_m *MockChain) GetClient() (chain.RPCClient, error) {
-	ret := _m.Called()
+// GetClient provides a mock function with given fields: ctx
+func (_m *MockChain) GetClient(ctx context.Context) (chain.RPCClient, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClient")
@@ -297,19 +297,19 @@ func (_m *MockChain) GetClient() (chain.RPCClient, error) {
 
 	var r0 chain.RPCClient
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (chain.RPCClient, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) (chain.RPCClient, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() chain.RPCClient); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) chain.RPCClient); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(chain.RPCClient)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -323,13 +323,14 @@ type MockChain_GetClient_Call struct {
 }
 
 // GetClient is a helper method to define mock.On call
-func (_e *MockChain_Expecter) GetClient() *MockChain_GetClient_Call {
-	return &MockChain_GetClient_Call{Call: _e.mock.On("GetClient")}
+//   - ctx context.Context
+func (_e *MockChain_Expecter) GetClient(ctx interface{}) *MockChain_GetClient_Call {
+	return &MockChain_GetClient_Call{Call: _e.mock.On("GetClient", ctx)}
 }
 
-func (_c *MockChain_GetClient_Call) Run(run func()) *MockChain_GetClient_Call {
+func (_c *MockChain_GetClient_Call) Run(run func(ctx context.Context)) *MockChain_GetClient_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -339,7 +340,7 @@ func (_c *MockChain_GetClient_Call) Return(_a0 chain.RPCClient, _a1 error) *Mock
 	return _c
 }
 
-func (_c *MockChain_GetClient_Call) RunAndReturn(run func() (chain.RPCClient, error)) *MockChain_GetClient_Call {
+func (_c *MockChain_GetClient_Call) RunAndReturn(run func(context.Context) (chain.RPCClient, error)) *MockChain_GetClient_Call {
 	_c.Call.Return(run)
 	return _c
 }

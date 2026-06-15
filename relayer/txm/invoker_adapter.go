@@ -6,12 +6,13 @@ import (
 	"fmt"
 
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
-	"github.com/smartcontractkit/chainlink-stellar/bindings"
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
+
+	"github.com/smartcontractkit/chainlink-stellar/bindings"
+	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 var _ bindings.Invoker = (*InvokerAdapter)(nil)
@@ -52,7 +53,7 @@ func WithInvokerLedgerBoundsOffset(offset uint32) InvokerAdapterOption {
 // which signs and submits via RPC without the TXM).
 type InvokerAdapter struct {
 	txm                InvokerTxManager
-	getClient          func() (RPCClient, error)
+	getClient          func(context.Context) (RPCClient, error)
 	fromAddress        string
 	ledgerBoundsOffset uint32
 }
@@ -60,7 +61,7 @@ type InvokerAdapter struct {
 // NewInvokerAdapter creates a bindings.Invoker backed by the Stellar TXM.
 func NewInvokerAdapter(
 	txm InvokerTxManager,
-	getClient func() (RPCClient, error),
+	getClient func(context.Context) (RPCClient, error),
 	opts ...InvokerAdapterOption,
 ) (*InvokerAdapter, error) {
 	if txm == nil {
@@ -137,7 +138,7 @@ func (a *InvokerAdapter) SimulateContract(ctx context.Context, contractID string
 // GetEvents reads contract events directly from RPC. TXM is intentionally not
 // involved because event reads do not consume sequence numbers or fees.
 func (a *InvokerAdapter) GetEvents(ctx context.Context, contractID string, startLedger uint32, topics []string) ([]protocolrpc.EventInfo, error) {
-	client, err := a.getClient()
+	client, err := a.getClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get events client: %w", err)
 	}

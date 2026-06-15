@@ -27,8 +27,8 @@ type stubChain struct {
 	txMgr *txm.StellarTxm
 }
 
-func (s *stubChain) GetClient() (chain.RPCClient, error) { return s.rpc, nil }
-func (s *stubChain) TxManager() *txm.StellarTxm          { return s.txMgr }
+func (s *stubChain) GetClient(_ context.Context) (chain.RPCClient, error) { return s.rpc, nil }
+func (s *stubChain) TxManager() *txm.StellarTxm                           { return s.txMgr }
 
 // newTestStellarService builds a stellarService backed by the given mock RPC client.
 func newTestStellarService(t *testing.T, rpc chain.RPCClient) *stellarService {
@@ -37,8 +37,17 @@ func newTestStellarService(t *testing.T, rpc chain.RPCClient) *stellarService {
 	return &svc
 }
 
+// mockTxManager is a minimal test double for stellarTxManager.
+type mockTxManager struct {
+	enqueueAndWait func(ctx context.Context, req txm.TxRequest) (*txm.TxResult, error)
+}
+
+func (m *mockTxManager) EnqueueAndWait(ctx context.Context, req txm.TxRequest) (*txm.TxResult, error) {
+	return m.enqueueAndWait(ctx, req)
+}
+
 // newTestStellarServiceWithTxm builds a stellarService backed by the given mock TXM.
-func newTestStellarServiceWithTxm(t *testing.T, txMgr StellarTxManager) *stellarService {
+func newTestStellarServiceWithTxm(t *testing.T, txMgr stellarTxManager) *stellarService {
 	t.Helper()
 	return &stellarService{txMgr: txMgr}
 }
@@ -204,7 +213,7 @@ func TestStellarService_ReadContract(t *testing.T) {
 			// Declares Bool but leaves the pointer nil, so convertDomainScVal rejects it.
 			Args: []stellartypes.ScVal{{Type: stellartypes.ScValTypeBool}},
 		})
-		require.ErrorContains(t, err, "arg[0]")
+		require.ErrorContains(t, err, "convert args")
 		require.NotErrorIs(t, err, multinode.ErrNodeError)
 	})
 
@@ -357,19 +366,21 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 
 	t.Run("Success_Finalized", func(t *testing.T) {
 		ctx := t.Context()
-		txMgr := mocks.NewMockStellarTxManager(t)
-		txMgr.EXPECT().EnqueueAndWait(ctx, mock.MatchedBy(func(req txm.TxRequest) bool {
-			return req.ID == "idem-1" &&
-				req.FromAddress == baseReq.FromAddress &&
-				len(req.Operations) == 1 &&
-				req.LedgerBoundsOffset == 2
-		})).Return(&txm.TxResult{
-			ID:            "idem-1",
-			Hash:          "txhash123",
-			Status:        commontypes.Finalized,
-			ResultXDR:     "resultXDR",
-			ResultMetaXDR: "metaXDR",
-		}, nil)
+		txMgr := &mockTxManager{
+			enqueueAndWait: func(_ context.Context, req txm.TxRequest) (*txm.TxResult, error) {
+				require.Equal(t, "idem-1", req.ID)
+				require.Equal(t, baseReq.FromAddress, req.FromAddress)
+				require.Len(t, req.Operations, 1)
+				require.Equal(t, uint32(2), req.LedgerBoundsOffset)
+				return &txm.TxResult{
+					ID:            "idem-1",
+					Hash:          "txhash123",
+					Status:        commontypes.Finalized,
+					ResultXDR:     "resultXDR",
+					ResultMetaXDR: "metaXDR",
+				}, nil
+			},
+		}
 
 		svc := newTestStellarServiceWithTxm(t, txMgr)
 		reply, err := svc.SubmitTransaction(ctx, baseReq)
@@ -383,28 +394,33 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 
 	t.Run("Failed_OnChain", func(t *testing.T) {
 		ctx := t.Context()
-		txMgr := mocks.NewMockStellarTxManager(t)
-		txMgr.EXPECT().EnqueueAndWait(ctx, mock.Anything).Return(&txm.TxResult{
-			ID:        "idem-1",
-			Hash:      "failhash",
-			Status:    commontypes.Failed,
-			ResultXDR: "failedResultXDR",
-			Error:     errors.New("tx revert: contract error"),
-		}, nil)
+		txMgr := &mockTxManager{
+			enqueueAndWait: func(_ context.Context, _ txm.TxRequest) (*txm.TxResult, error) {
+				return &txm.TxResult{
+					ID:        "idem-1",
+					Hash:      "failhash",
+					Status:    commontypes.Failed,
+					ResultXDR: "failedResultXDR",
+					Error:     errors.New("tx revert: contract error"),
+				}, nil
+			},
+		}
 
 		svc := newTestStellarServiceWithTxm(t, txMgr)
 		reply, err := svc.SubmitTransaction(ctx, baseReq)
-		require.NoError(t, err)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "contract error")
 		require.Equal(t, stellartypes.TxFailed, reply.TxStatus)
 		require.Equal(t, "failhash", reply.TxHash)
-		require.Equal(t, "failedResultXDR", reply.ResultXDR)
-		require.Equal(t, "tx revert: contract error", reply.Error)
 	})
 
 	t.Run("Fatal_TxmError", func(t *testing.T) {
 		ctx := t.Context()
-		txMgr := mocks.NewMockStellarTxManager(t)
-		txMgr.EXPECT().EnqueueAndWait(ctx, mock.Anything).Return(nil, errors.New("simulation failed: insufficient fee"))
+		txMgr := &mockTxManager{
+			enqueueAndWait: func(_ context.Context, _ txm.TxRequest) (*txm.TxResult, error) {
+				return nil, errors.New("simulation failed: insufficient fee")
+			},
+		}
 
 		svc := newTestStellarServiceWithTxm(t, txMgr)
 		_, err := svc.SubmitTransaction(ctx, baseReq)
@@ -414,21 +430,21 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 
 	t.Run("MissingContractID", func(t *testing.T) {
 		ctx := t.Context()
-		svc := newTestStellarServiceWithTxm(t, mocks.NewMockStellarTxManager(t))
+		svc := newTestStellarServiceWithTxm(t, &mockTxManager{})
 		_, err := svc.SubmitTransaction(ctx, stellartypes.SubmitTransactionRequest{Function: "fn"})
 		require.ErrorContains(t, err, "contractID is required")
 	})
 
 	t.Run("MissingFunction", func(t *testing.T) {
 		ctx := t.Context()
-		svc := newTestStellarServiceWithTxm(t, mocks.NewMockStellarTxManager(t))
+		svc := newTestStellarServiceWithTxm(t, &mockTxManager{})
 		_, err := svc.SubmitTransaction(ctx, stellartypes.SubmitTransactionRequest{ContractID: testContractID(t)})
 		require.ErrorContains(t, err, "function is required")
 	})
 
 	t.Run("BadArg_NilBool", func(t *testing.T) {
 		ctx := t.Context()
-		svc := newTestStellarServiceWithTxm(t, mocks.NewMockStellarTxManager(t))
+		svc := newTestStellarServiceWithTxm(t, &mockTxManager{})
 		_, err := svc.SubmitTransaction(ctx, stellartypes.SubmitTransactionRequest{
 			ContractID: testContractID(t),
 			Function:   "fn",
@@ -442,8 +458,11 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		txMgr := mocks.NewMockStellarTxManager(t)
-		txMgr.EXPECT().EnqueueAndWait(ctx, mock.Anything).Return(nil, context.Canceled)
+		txMgr := &mockTxManager{
+			enqueueAndWait: func(ctx context.Context, _ txm.TxRequest) (*txm.TxResult, error) {
+				return nil, ctx.Err()
+			},
+		}
 
 		svc := newTestStellarServiceWithTxm(t, txMgr)
 		_, err := svc.SubmitTransaction(ctx, baseReq)

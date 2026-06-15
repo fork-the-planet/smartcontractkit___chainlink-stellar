@@ -15,6 +15,7 @@ packages:
     interfaces:
       RPCClient:
       Chain:
+      SorobanClient:
 
   github.com/smartcontractkit/chainlink-stellar/relayer:
     interfaces:
