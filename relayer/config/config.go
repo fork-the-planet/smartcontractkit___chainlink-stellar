@@ -63,7 +63,14 @@ type TOMLConfig struct {
 	// MultiNode configures RPC node selection, health checking, and failover. Omitted fields
 	// are filled by SetDefaults. See chainlink-framework/multinode.
 	MultiNode mncfg.MultiNodeConfig `toml:"MultiNode"`
+
+	// RequestTimeout bounds each individual Soroban RPC call (and the underlying HTTP client
+	// timeout). Defaults to DefaultRequestTimeout when unset.
+	RequestTimeout *clconfig.Duration `toml:"RequestTimeout"`
 }
+
+// DefaultRequestTimeout bounds each individual Soroban RPC call when RequestTimeout is unset.
+const DefaultRequestTimeout = 30 * time.Second
 
 // SetDefaults fills any unset MultiNode field with a Stellar-appropriate default. The
 // framework's config accessors dereference these pointers directly, so every field consumed by
@@ -78,6 +85,7 @@ func (c *TOMLConfig) SetDefaults() {
 	setDefault(&m.SyncThreshold, uint32(5))
 	setDefault(&m.NodeIsSyncingEnabled, false)
 	setDefault(&m.LeaseDuration, *clconfig.MustNewDuration(0))
+	// Poll heads slightly faster than the ~5-7s ledger close so out-of-sync nodes are detected
 	setDefault(&m.NewHeadsPollInterval, *clconfig.MustNewDuration(3 * time.Second))
 	setDefault(&m.FinalizedBlockPollInterval, *clconfig.MustNewDuration(3 * time.Second))
 	setDefault(&m.EnforceRepeatableRead, false)
@@ -92,6 +100,7 @@ func (c *TOMLConfig) SetDefaults() {
 	setDefault(&m.FinalityDepth, uint32(0))
 	setDefault(&m.FinalityTagEnabled, false)
 	setDefault(&m.FinalizedBlockOffset, uint32(0))
+	setDefault(&c.RequestTimeout, *clconfig.MustNewDuration(DefaultRequestTimeout))
 }
 
 func setDefault[T any](p **T, val T) {

@@ -6,8 +6,9 @@ import (
 
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 
-	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 	"github.com/stretchr/testify/require"
+
+	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
 
 func TestNewDecodedTOMLConfig_TxManagerOverrides(t *testing.T) {
@@ -48,14 +49,29 @@ URL = "https://example.invalid"
 		require.NoError(t, err)
 
 		m := &cfg.MultiNode
+
+		require.True(t, m.Enabled())
+		require.Equal(t, uint32(5), m.PollFailureThreshold())
+		require.Equal(t, 10*time.Second, m.PollInterval())
 		require.Equal(t, "HighestHead", m.SelectionMode())
+		require.Equal(t, uint32(5), m.SyncThreshold())
+		require.False(t, m.NodeIsSyncingEnabled())
+		require.Equal(t, time.Duration(0), m.LeaseDuration())
 		require.Equal(t, 3*time.Second, m.NewHeadsPollInterval())
+		require.Equal(t, 3*time.Second, m.FinalizedBlockPollInterval())
+		require.False(t, m.EnforceRepeatableRead())
+		require.Equal(t, 20*time.Second, m.DeathDeclarationDelay())
 		require.True(t, m.VerifyChainID())
+		require.Equal(t, 30*time.Second, m.NodeNoNewHeadsThreshold())
+		require.Equal(t, 30*time.Second, m.NoNewFinalizedHeadsThreshold())
 		// Single-finality model: no finality tag, finalized == latest.
 		require.False(t, m.FinalityTagEnabled())
 		require.Equal(t, uint32(0), m.FinalityDepth())
-		// Read unconditionally by the node lifecycle, so must be non-nil even though unused.
-		require.NotNil(t, cfg.MultiNode.MultiNode.NoNewFinalizedHeadsThreshold)
+		require.Equal(t, uint32(0), m.FinalizedBlockOffset())
+
+		// RequestTimeout default is applied on TOMLConfig itself.
+		require.NotNil(t, cfg.RequestTimeout)
+		require.Equal(t, DefaultRequestTimeout, cfg.RequestTimeout.Duration())
 	})
 
 	t.Run("respects explicit overrides", func(t *testing.T) {

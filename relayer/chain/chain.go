@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
 	chainsel "github.com/smartcontractkit/chain-selectors"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -21,9 +20,6 @@ import (
 	"github.com/smartcontractkit/chainlink-stellar/relayer/config"
 	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
-
-// defaultRequestTimeout bounds each individual Soroban RPC call.
-const defaultRequestTimeout = 30 * time.Second
 
 // RPCClient is the subset of the Stellar Soroban JSON-RPC client used across
 // the Stellar relayer (chain + per-component callers). It mirrors the public
@@ -93,6 +89,11 @@ func NewChain(cfg *config.TOMLConfig, opts Opts, chainInfo chainsel.StellarChain
 
 	lggr := logger.Named(opts.Logger, "StellarChain")
 
+	cfg.SetDefaults()
+	if !cfg.MultiNode.Enabled() {
+		lggr.Warnw("MultiNode.Enabled=false is ignored: the Stellar relayer always uses the multinode pool", "chainID", cfg.ChainID)
+	}
+
 	ch := &chain{
 		chainInfo: chainInfo,
 		cfg:       cfg,
@@ -136,7 +137,7 @@ func newMultiNode(cfg *config.TOMLConfig, lggr logger.Logger) (*multinode.MultiN
 
 	primaries := make([]multinode.Node[multinode.StringID, *MultiNodeClient], 0, len(cfg.Nodes))
 	for i, node := range cfg.Nodes {
-		rpc := NewMultiNodeClient(node.URL.String(), &cfg.MultiNode, defaultRequestTimeout, lggr, rpcMetrics)
+		rpc := NewMultiNodeClient(node.URL.String(), &cfg.MultiNode, cfg.RequestTimeout.Duration(), lggr, rpcMetrics)
 		var order int32
 		if node.Order != nil {
 			order = *node.Order

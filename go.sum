@@ -1166,8 +1166,6 @@ github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.2-0.20260518180919-4
 github.com/smartcontractkit/chainlink-ccv/build/devenv v0.0.2-0.20260518180919-4f70eba1dfd2/go.mod h1:p2lpE7QJQ4/nI6ZGLmfNz0uAeSt2qKsQ2hRLegZ/HvI=
 github.com/smartcontractkit/chainlink-ccv/deployment v0.0.2-0.20260518113836-b4e2fcbb6799 h1:zxkcX0vP0NMeptsGVmgMEI0ZBdYedsoaBfkP331whwc=
 github.com/smartcontractkit/chainlink-ccv/deployment v0.0.2-0.20260518113836-b4e2fcbb6799/go.mod h1:bNMFRxwWdgVFdSsFZRmsUUPoBUncU3RM765K99svIKM=
-github.com/smartcontractkit/chainlink-common v0.11.2-0.20260611145733-de7831b98cee h1:u8ugrPp1ByM1qnbm5GNB0r+yclD61YhP700C9bHaS38=
-github.com/smartcontractkit/chainlink-common v0.11.2-0.20260611145733-de7831b98cee/go.mod h1:BCYSFxZTxZEGbyeodKCmfC1MydCEmIf+O29xrLBLnJI=
 github.com/smartcontractkit/chainlink-common v0.11.2-0.20260612151455-287bc497584e h1:PqEa0dqct7xEphFU/AMF7wuB2F5l+/kU6trYhy7Q8Dk=
 github.com/smartcontractkit/chainlink-common v0.11.2-0.20260612151455-287bc497584e/go.mod h1:BCYSFxZTxZEGbyeodKCmfC1MydCEmIf+O29xrLBLnJI=
 github.com/smartcontractkit/chainlink-common/keystore v1.0.2 h1:AWisx4JT3QV8tcgh6J5NCrex+wAgTYpWyHsyNPSXzsQ=
