@@ -87,13 +87,19 @@ func NewMultiNodeClient(
 	return c
 }
 
-// ---- framework RPCClient methods (not provided by RPCClientBase) ----
+// healthStatusHealthy is the status string the Soroban RPC getHealth method reports for a node that is up and synced.
+const healthStatusHealthy = "healthy"
 
 // Dial validates reachability of the endpoint. The SDK client is HTTP and does not hold a
-// persistent connection, so a successful health probe stands in for a dial handshake.
+// persistent connection, so a successful health probe stands in for a dial handshake. A node
+// that responds but reports a non-healthy status is rejected so it is not added to the pool.
 func (c *MultiNodeClient) Dial(ctx context.Context) error {
-	if _, err := c.GetHealth(ctx); err != nil {
+	resp, err := c.GetHealth(ctx)
+	if err != nil {
 		return fmt.Errorf("stellar rpc dial/health check failed: %w", err)
+	}
+	if resp.Status != healthStatusHealthy {
+		return fmt.Errorf("stellar rpc dial/health check returned non-healthy status %q", resp.Status)
 	}
 	return nil
 }
