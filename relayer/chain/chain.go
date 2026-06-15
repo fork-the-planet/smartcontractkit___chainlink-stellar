@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -238,9 +239,14 @@ func (c *chain) LatestHead(ctx context.Context) (types.Head, error) {
 		return types.Head{}, err
 	}
 
+	hash, err := hex.DecodeString(ledger.Hash)
+	if err != nil {
+		return types.Head{}, fmt.Errorf("failed to decode ledger hash %q: %w", ledger.Hash, err)
+	}
+
 	return types.Head{
 		Height:    strconv.Itoa(int(ledger.Sequence)),
-		Hash:      []byte(ledger.Hash),
+		Hash:      hash,
 		Timestamp: uint64(ledger.LedgerCloseTime),
 	}, nil
 }
