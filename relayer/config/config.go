@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	chain_selectors "github.com/smartcontractkit/chain-selectors"
 
 	clconfig "github.com/smartcontractkit/chainlink-common/pkg/config"
+	mncfg "github.com/smartcontractkit/chainlink-framework/multinode/config"
 
 	"github.com/smartcontractkit/chainlink-stellar/relayer/txm"
 )
@@ -21,6 +23,9 @@ const ChainFamilyName = "stellar"
 type Node struct {
 	Name *string       `toml:"Name"`
 	URL  *clconfig.URL `toml:"URL"`
+	// Order is the node priority used as a tiebreak by the multinode selector (lower wins on
+	// equal head). Defaults to 0 when unset.
+	Order *int32 `toml:"Order"`
 }
 
 // ValidateConfig returns an error for any missing or empty required field.
@@ -54,6 +59,46 @@ type TOMLConfig struct {
 	// TxManager holds optional Stellar transaction manager settings. Omitted
 	// fields use defaults applied inside txm.New (see txm.DefaultConfigSet).
 	TxManager txm.Config `toml:"TxManager"`
+
+	// MultiNode configures RPC node selection, health checking, and failover. Omitted fields
+	// are filled by SetDefaults. See chainlink-framework/multinode.
+	MultiNode mncfg.MultiNodeConfig `toml:"MultiNode"`
+}
+
+// SetDefaults fills any unset MultiNode field with a Stellar-appropriate default. The
+// framework's config accessors dereference these pointers directly, so every field consumed by
+// the node/multinode lifecycle must be non-nil. Tuned to Stellar's ~5-7s ledger close and its
+// single-finality model (a closed ledger is final: no finality tag, no reorgs).
+func (c *TOMLConfig) SetDefaults() {
+	m := &c.MultiNode.MultiNode
+	setDefault(&m.Enabled, true)
+	setDefault(&m.PollFailureThreshold, uint32(5))
+	setDefault(&m.PollInterval, *clconfig.MustNewDuration(10 * time.Second))
+	setDefault(&m.SelectionMode, "HighestHead")
+	setDefault(&m.SyncThreshold, uint32(5))
+	setDefault(&m.NodeIsSyncingEnabled, false)
+	setDefault(&m.LeaseDuration, *clconfig.MustNewDuration(0))
+	setDefault(&m.NewHeadsPollInterval, *clconfig.MustNewDuration(3 * time.Second))
+	setDefault(&m.FinalizedBlockPollInterval, *clconfig.MustNewDuration(3 * time.Second))
+	setDefault(&m.EnforceRepeatableRead, false)
+	setDefault(&m.DeathDeclarationDelay, *clconfig.MustNewDuration(20 * time.Second))
+	setDefault(&m.VerifyChainID, true)
+	setDefault(&m.NodeNoNewHeadsThreshold, *clconfig.MustNewDuration(30 * time.Second))
+	// NoNewFinalizedHeadsThreshold is read unconditionally by the node lifecycle even though
+	// the finalized-head subscription is disabled (FinalityTagEnabled=false); keep it non-nil.
+	setDefault(&m.NoNewFinalizedHeadsThreshold, *clconfig.MustNewDuration(30 * time.Second))
+	// Stellar ledgers are final at close: derive "finalized" as latest (FinalityDepth=0) and
+	// never run the finalized-head subscription (FinalityTagEnabled=false).
+	setDefault(&m.FinalityDepth, uint32(0))
+	setDefault(&m.FinalityTagEnabled, false)
+	setDefault(&m.FinalizedBlockOffset, uint32(0))
+}
+
+func setDefault[T any](p **T, val T) {
+	if *p == nil {
+		v := val
+		*p = &v
+	}
 }
 
 // IsEnabled returns true when the chain is not explicitly disabled.
@@ -103,6 +148,8 @@ func NewDecodedTOMLConfig(rawConfig string) (*TOMLConfig, error) {
 	if !cfg.IsEnabled() {
 		return nil, fmt.Errorf("cannot create chain with ID %s: config is disabled", cfg.ChainID)
 	}
+
+	cfg.SetDefaults()
 
 	if err := cfg.ValidateConfig(); err != nil {
 		return nil, fmt.Errorf("invalid Stellar config: %w", err)
