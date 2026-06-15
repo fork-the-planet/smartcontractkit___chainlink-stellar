@@ -9,6 +9,7 @@ import (
 	"github.com/smartcontractkit/chainlink-common/pkg/loop"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
 	relaytypes "github.com/smartcontractkit/chainlink-common/pkg/types"
+
 	"github.com/smartcontractkit/chainlink-stellar/relayer/chain"
 )
 
@@ -22,7 +23,6 @@ type Relayer struct {
 	chainService chain.Chain
 	lggr         logger.Logger
 	starter      services.StateMachine
-	stopCh       services.StopChan
 
 	stellarService
 }
@@ -33,7 +33,6 @@ func NewRelayer(lggr logger.Logger, chainService chain.Chain) *Relayer {
 	return &Relayer{
 		chainService:   chainService,
 		lggr:           lggr,
-		stopCh:         make(chan struct{}),
 		stellarService: newStellarService(chainService),
 	}
 }
@@ -54,7 +53,6 @@ func (r *Relayer) Start(ctx context.Context) error {
 func (r *Relayer) Close() error {
 	return r.starter.StopOnce("StellarRelayer", func() error {
 		r.lggr.Debugw("Stopping")
-		close(r.stopCh)
 		return services.CloseAll(r.chainService)
 	})
 }

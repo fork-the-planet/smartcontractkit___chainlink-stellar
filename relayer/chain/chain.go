@@ -91,6 +91,10 @@ func NewChain(cfg *config.TOMLConfig, opts Opts, chainInfo chainsel.StellarChain
 	lggr := logger.Named(opts.Logger, "StellarChain")
 
 	cfg.SetDefaults()
+	if err := cfg.ValidateConfig(); err != nil {
+		return nil, fmt.Errorf("invalid Stellar config: %w", err)
+	}
+
 	if !cfg.MultiNode.Enabled() {
 		lggr.Warnw("MultiNode.Enabled=false is ignored: the Stellar relayer always uses the multinode pool", "chainID", cfg.ChainID)
 	}
@@ -167,10 +171,8 @@ func (c *chain) KeyStore() core.Keystore    { return c.keyStore }
 func (c *chain) Start(ctx context.Context) error {
 	return c.StartOnce("StellarChain", func() error {
 		c.lggr.Debugw("Starting")
-		if err := c.multiNode.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start multinode: %w", err)
-		}
-		return c.txm.Start(ctx)
+		var ms services.MultiStart
+		return ms.Start(ctx, c.multiNode, c.txm)
 	})
 }
 
@@ -191,11 +193,12 @@ func (c *chain) Close() error {
 }
 
 func (c *chain) Ready() error {
-	return errors.Join(c.StateMachine.Ready(), c.txm.Ready())
+	return errors.Join(c.StateMachine.Ready(), c.multiNode.Ready(), c.txm.Ready())
 }
 
 func (c *chain) HealthReport() map[string]error {
 	report := map[string]error{c.Name(): c.StateMachine.Healthy()}
+	services.CopyHealth(report, c.multiNode.HealthReport())
 	services.CopyHealth(report, c.txm.HealthReport())
 	return report
 }
