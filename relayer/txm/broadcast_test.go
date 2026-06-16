@@ -294,7 +294,7 @@ func TestStellarTxm_BroadcastPipeline_BadSeqRetry(t *testing.T) {
 		MaxSubmitRetryAttempts: ptr(uint(3)),
 	}
 
-	getClient := func() (RPCClient, error) { return wrapper, nil }
+	getClient := func(context.Context) (RPCClient, error) { return wrapper, nil }
 
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, getClient, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
@@ -638,7 +638,7 @@ func TestStellarTxm_BroadcastPipeline_GetClientFailsThenRetries(t *testing.T) {
 	}
 	c := newTestClient(mock)
 	var getClientCalls atomic.Int32
-	getClient := func() (RPCClient, error) {
+	getClient := func(context.Context) (RPCClient, error) {
 		if getClientCalls.Add(1) == 1 {
 			return nil, fmt.Errorf("no rpc")
 		}
@@ -661,7 +661,7 @@ func TestStellarTxm_BroadcastPipeline_GetClientFailsThenRetries(t *testing.T) {
 
 func TestStellarTxm_BroadcastPipeline_GetClientFailsUntilRetryBudgetExhausted(t *testing.T) {
 	t.Parallel()
-	getClient := func() (RPCClient, error) { return nil, fmt.Errorf("no rpc") }
+	getClient := func(context.Context) (RPCClient, error) { return nil, fmt.Errorf("no rpc") }
 	cfg := Config{
 		MaxTxRetryAttempts: ptr(uint64(2)),
 		SubmitRetryDelay:   config.MustNewDuration(10 * time.Millisecond),

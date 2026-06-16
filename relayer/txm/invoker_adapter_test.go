@@ -50,7 +50,7 @@ func TestInvokerAdapter_InvokeContract(t *testing.T) {
 	}
 	adapter, err := NewInvokerAdapter(
 		fake,
-		func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil },
+		func(context.Context) (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil },
 		WithInvokerFromAddress(testAddress),
 		WithInvokerLedgerBoundsOffset(12),
 	)
@@ -77,7 +77,7 @@ func TestInvokerAdapter_InvokeContractReturnsTxFailure(t *testing.T) {
 			Error:  fmt.Errorf("transaction result: trapped"),
 		},
 	}
-	adapter, err := NewInvokerAdapter(fake, func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
+	adapter, err := NewInvokerAdapter(fake, func(context.Context) (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
 	require.NoError(t, err)
 
 	_, err = adapter.InvokeContract(t.Context(), testContractStrkey(t), "execute", nil)
@@ -100,7 +100,7 @@ func TestInvokerAdapter_SimulateContract(t *testing.T) {
 	}
 	adapter, err := NewInvokerAdapter(
 		fake,
-		func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil },
+		func(context.Context) (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil },
 		WithInvokerFromAddress(testAddress),
 	)
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestInvokerAdapter_SimulateContractRestoreRequired(t *testing.T) {
 			RestorePreamble: &protocolrpc.RestorePreamble{},
 		},
 	}
-	adapter, err := NewInvokerAdapter(fake, func() (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
+	adapter, err := NewInvokerAdapter(fake, func(context.Context) (RPCClient, error) { return newTestClient(&mockRPCClient{}), nil })
 	require.NoError(t, err)
 
 	_, err = adapter.SimulateContract(t.Context(), testContractStrkey(t), "get_count", nil)
@@ -142,7 +142,7 @@ func TestInvokerAdapter_GetEvents(t *testing.T) {
 			return protocolrpc.GetEventsResponse{Events: expected}, nil
 		},
 	}
-	adapter, err := NewInvokerAdapter(&fakeInvokerTxm{}, func() (RPCClient, error) { return newTestClient(mock), nil })
+	adapter, err := NewInvokerAdapter(&fakeInvokerTxm{}, func(context.Context) (RPCClient, error) { return newTestClient(mock), nil })
 	require.NoError(t, err)
 
 	events, err := adapter.GetEvents(t.Context(), contractID, 99, []string{"MessageExecuted"})

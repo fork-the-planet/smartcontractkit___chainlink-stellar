@@ -11,17 +11,14 @@ import (
 
 	"github.com/google/uuid"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
-	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	"github.com/smartcontractkit/chainlink-common/pkg/services"
+	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	"github.com/smartcontractkit/chainlink-common/pkg/types/core"
 	commonutils "github.com/smartcontractkit/chainlink-common/pkg/utils"
-
-	"github.com/smartcontractkit/chainlink-stellar/bindings/scval"
 )
 
 // RPCClient is the subset of the Stellar Soroban JSON-RPC client used by the TXM.
@@ -67,7 +64,7 @@ type StellarTxm struct {
 
 	feeTracker *feeTracker
 
-	getClient         func() (RPCClient, error)
+	getClient         func(context.Context) (RPCClient, error)
 	networkPassphrase string
 }
 
@@ -82,7 +79,7 @@ func New(
 	lgr logger.Logger,
 	keystore core.Keystore,
 	cfg Config,
-	getClient func() (RPCClient, error),
+	getClient func(context.Context) (RPCClient, error),
 	chainID string,
 ) (*StellarTxm, error) {
 	cfg.Resolve()
@@ -525,7 +522,7 @@ func (s *StellarTxm) broadcastLoop() {
 // seeded from feeTracker GetFeeStats Soroban percentiles.
 func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *StellarTx) {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, tx.Metadata)
-	client, err := s.getClient()
+	client, err := s.getClient(ctx)
 	if err != nil {
 		ctxLogger.Errorw("failed to get RPC client", "error", err)
 		s.incrementTransactionAttempt(tx)
@@ -843,7 +840,7 @@ func (s *StellarTxm) confirmLoop() {
 // checkUnconfirmed polls GetTransaction for all unconfirmed txs and moves them
 // to terminal states. On Stellar there are no reorgs: SUCCESS/FAILED is final.
 func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
-	client, err := s.getClient()
+	client, err := s.getClient(ctx)
 	if err != nil {
 		s.baseLogger.Errorw("failed to get client for confirm loop", "error", err)
 		return
@@ -1018,7 +1015,7 @@ func (s *StellarTxm) Simulate(ctx context.Context, req TxRequest) (protocolrpc.S
 		}
 	}
 
-	client, err := s.getClient()
+	client, err := s.getClient(ctx)
 	if err != nil {
 		return protocolrpc.SimulateTransactionResponse{}, fmt.Errorf("Simulate: failed to get client: %w", err)
 	}
@@ -1132,29 +1129,4 @@ func (s *StellarTxm) resyncSequence(ctx context.Context, client RPCClient, tx *S
 		"prevOnchain", prevOnchain, "updatedOnchain", updatedOnchain,
 	)
 	return nil
-}
-
-// BuildInvokeContractOperation creates an InvokeHostFunction operation for a Soroban contract call.
-func BuildInvokeContractOperation(contractID string, functionName string, args []xdr.ScVal, fromAddress string) (*txnbuild.InvokeHostFunction, error) {
-	contractBytes, err := strkey.Decode(strkey.VersionByteContract, contractID)
-	if err != nil {
-		return nil, fmt.Errorf("decode contract ID %q: %w", contractID, err)
-	}
-
-	contractAddr := scval.BuildContractScAddress(contractBytes)
-	if contractAddr == nil {
-		return nil, fmt.Errorf("build contract address %q", contractID)
-	}
-
-	return &txnbuild.InvokeHostFunction{
-		HostFunction: xdr.HostFunction{
-			Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
-			InvokeContract: &xdr.InvokeContractArgs{
-				ContractAddress: *contractAddr,
-				FunctionName:    xdr.ScSymbol(functionName),
-				Args:            args,
-			},
-		},
-		SourceAccount: fromAddress,
-	}, nil
 }
