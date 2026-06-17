@@ -151,8 +151,8 @@ func newTestClient(mock *mockRPCClient) RPCClient {
 	return mock
 }
 
-func newTestGetClient(mock *mockRPCClient) func() (RPCClient, error) {
-	return func() (RPCClient, error) { return mock, nil }
+func newTestGetClient(mock *mockRPCClient) func(context.Context) (RPCClient, error) {
+	return func(context.Context) (RPCClient, error) { return mock, nil }
 }
 
 const testAddress = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7"
@@ -1110,7 +1110,7 @@ func TestStellarTxm_Simulate_validation(t *testing.T) {
 
 func TestStellarTxm_Simulate_getClientError(t *testing.T) {
 	t.Parallel()
-	bad := func() (RPCClient, error) { return nil, fmt.Errorf("unreachable") }
+	bad := func(context.Context) (RPCClient, error) { return nil, fmt.Errorf("unreachable") }
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, bad, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	_, err = txm.Simulate(t.Context(), TxRequest{
@@ -1125,7 +1125,7 @@ func TestStellarTxm_Simulate_LatestLedgerError(t *testing.T) {
 	t.Parallel()
 	inner := &mockRPCClient{getLatestLedgerErr: fmt.Errorf("ledger err")}
 	c := newTestClient(inner)
-	getClient := func() (RPCClient, error) { return c, nil }
+	getClient := func(context.Context) (RPCClient, error) { return c, nil }
 	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, getClient, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
 	_, err = txm.Simulate(t.Context(), TxRequest{
@@ -1187,7 +1187,7 @@ func TestStellarTxm_maybeRetry_ReturnsFalseWhenBroadcastChannelIsFull(t *testing
 		started:       make(chan struct{}),
 		unblock:       make(chan struct{}),
 	}
-	getClient := func() (RPCClient, error) { return bmock, nil }
+	getClient := func(context.Context) (RPCClient, error) { return bmock, nil }
 	cfg := Config{
 		BroadcastChanSize:  ptr(uint(1)),
 		MaxTxRetryAttempts: ptr(uint64(3)),

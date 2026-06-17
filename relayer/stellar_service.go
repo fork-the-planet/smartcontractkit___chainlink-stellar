@@ -40,7 +40,7 @@ func newStellarService(ch chain.Chain) stellarService {
 }
 
 func (s *stellarService) GetLedgerEntries(ctx context.Context, req stellartypes.GetLedgerEntriesRequest) (stellartypes.GetLedgerEntriesResponse, error) {
-	rpc, err := s.chain.GetClient()
+	rpc, err := s.chain.GetClient(ctx)
 	if err != nil {
 		return stellartypes.GetLedgerEntriesResponse{}, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -77,7 +77,7 @@ func (s *stellarService) GetLedgerEntries(ctx context.Context, req stellartypes.
 }
 
 func (s *stellarService) GetLatestLedger(ctx context.Context) (stellartypes.GetLatestLedgerResponse, error) {
-	rpc, err := s.chain.GetClient()
+	rpc, err := s.chain.GetClient(ctx)
 	if err != nil {
 		return stellartypes.GetLatestLedgerResponse{}, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -109,7 +109,7 @@ func (s *stellarService) ReadContract(ctx context.Context, req stellartypes.Read
 		return stellartypes.ReadContractResponse{}, fmt.Errorf("function is required")
 	}
 
-	rpc, err := s.chain.GetClient()
+	rpc, err := s.chain.GetClient(ctx)
 	if err != nil {
 		return stellartypes.ReadContractResponse{}, fmt.Errorf("failed to get chain client: %w", err)
 	}
@@ -252,7 +252,7 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 	case relaytypes.Failed:
 		reply.TxStatus = stellartypes.TxFailed
 		if result.Error != nil {
-			reply.Error = result.Error.Error()
+			return reply, result.Error
 		}
 	default:
 		reply.TxStatus = stellartypes.TxFatal
