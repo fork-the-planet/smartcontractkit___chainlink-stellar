@@ -241,6 +241,10 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 		ResultXDR:        result.ResultXDR,
 		ResultMetaXDR:    result.ResultMetaXDR,
 	}
+	if result.Fee != nil && result.Fee.IsUint64() {
+		fee := result.Fee.Uint64()
+		reply.TransactionFee = &fee
+	}
 
 	switch result.Status {
 	case relaytypes.Finalized:
