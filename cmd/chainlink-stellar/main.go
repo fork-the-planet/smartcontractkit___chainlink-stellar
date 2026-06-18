@@ -54,7 +54,7 @@ type pluginRelayer struct {
 func (p *pluginRelayer) NewRelayer(
 	ctx context.Context,
 	rawConfig string,
-	_ core.Keystore,
+	keystore core.Keystore,
 	_ core.Keystore,
 	_ core.CapabilitiesRegistry,
 ) (loop.Relayer, error) {
@@ -88,7 +88,7 @@ func (p *pluginRelayer) NewRelayer(
 		}
 	}
 
-	chainService, err := chain.NewChain(cfg, chain.Opts{Logger: p.Logger}, stellarChain)
+	chainService, err := chain.NewChain(cfg, chain.Opts{Logger: p.Logger, KeyStore: keystore}, stellarChain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Stellar chain: %w", err)
 	}
