@@ -3,6 +3,7 @@ package relayer
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 
 	protocol "github.com/stellar/go-stellar-sdk/protocols/rpc"
@@ -365,11 +366,13 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 				require.Len(t, req.Operations, 1)
 				require.Equal(t, uint32(2), req.LedgerBoundsOffset)
 				return &txm.TxResult{
-					ID:            "idem-1",
-					Hash:          "txhash123",
-					Status:        commontypes.Finalized,
-					ResultXDR:     "resultXDR",
-					ResultMetaXDR: "metaXDR",
+					ID:              "idem-1",
+					Hash:            "txhash123",
+					Status:          commontypes.Finalized,
+					Fee:             big.NewInt(42_000),
+					LedgerCloseTime: 1_700_000_000,
+					ResultXDR:       "resultXDR",
+					ResultMetaXDR:   "metaXDR",
 				}, nil
 			})
 
@@ -381,6 +384,10 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 		require.Equal(t, "idem-1", reply.TxIdempotencyKey)
 		require.Equal(t, "resultXDR", reply.ResultXDR)
 		require.Equal(t, "metaXDR", reply.ResultMetaXDR)
+		require.NotNil(t, reply.TransactionFee)
+		require.Equal(t, uint64(42_000), *reply.TransactionFee)
+		require.NotNil(t, reply.BlockTimestamp)
+		require.Equal(t, uint64(1_700_000_000_000_000), *reply.BlockTimestamp)
 	})
 
 	t.Run("Failed_OnChain", func(t *testing.T) {
