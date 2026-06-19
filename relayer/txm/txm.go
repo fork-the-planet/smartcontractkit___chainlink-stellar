@@ -224,12 +224,13 @@ func (s *StellarTxm) txResult(tx *StellarTx) *TxResult {
 
 func (s *StellarTxm) txResultLocked(tx *StellarTx) *TxResult {
 	result := &TxResult{
-		ID:            tx.ID,
-		Hash:          tx.TxHash,
-		Status:        tx.Status,
-		Fee:           tx.Fee,
-		ResultXDR:     tx.ResultXDR,
-		ResultMetaXDR: tx.ResultMetaXDR,
+		ID:              tx.ID,
+		Hash:            tx.TxHash,
+		Status:          tx.Status,
+		Fee:             tx.Fee,
+		LedgerCloseTime: tx.LedgerCloseTime,
+		ResultXDR:       tx.ResultXDR,
+		ResultMetaXDR:   tx.ResultMetaXDR,
 	}
 	if tx.ResultCode != "" {
 		result.Error = fmt.Errorf("transaction result: %s", tx.ResultCode)
@@ -433,6 +434,15 @@ func (s *StellarTxm) updateTransactionFee(tx *StellarTx, fee *big.Int) {
 	s.transactionsLock.Lock()
 	defer s.transactionsLock.Unlock()
 	tx.Fee = fee
+}
+
+func (s *StellarTxm) updateTransactionLedgerCloseTime(tx *StellarTx, ledgerCloseTime int64) {
+	if ledgerCloseTime <= 0 {
+		return
+	}
+	s.transactionsLock.Lock()
+	defer s.transactionsLock.Unlock()
+	tx.LedgerCloseTime = ledgerCloseTime
 }
 
 func (s *StellarTxm) updateTransactionResultXDR(tx *StellarTx, resultXDR string) {
@@ -881,6 +891,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					if resp.ResultMetaXDR != "" {
 						s.updateTransactionResultMeta(utx.Tx, resp.ResultMetaXDR)
 					}
+					s.updateTransactionLedgerCloseTime(utx.Tx, resp.LedgerCloseTime)
 
 					ctxLogger.Infow("confirmed tx: successful", "hash", hash)
 					s.metrics.IncrementSuccessTxs(ctx)
@@ -895,6 +906,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					s.updateTransactionResultXDR(utx.Tx, resp.ResultXDR)
 					classification := classifyFailedTransactionResult(resp.ResultXDR)
 					s.updateTransactionResultCode(utx.Tx, classification.resultCode)
+					s.updateTransactionLedgerCloseTime(utx.Tx, resp.LedgerCloseTime)
 
 					ctxLogger.Infow("confirmed tx: failed on-chain", "hash", hash, "resultCode", classification.resultCode, "retryable", classification.retryable)
 					s.metrics.IncrementErrorTxs(ctx, classification.resultCode)

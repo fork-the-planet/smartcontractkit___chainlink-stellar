@@ -1235,6 +1235,7 @@ func TestStellarTxm_ConfirmLoop_UpdatesFeeAndMetaFromXDR(t *testing.T) {
 		getLatestLedgerResp:  protocolrpc.GetLatestLedgerResponse{Sequence: 1000},
 		sendTransactionResp:  protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "test-hash"},
 		getTransactionResp: protocolrpc.GetTransactionResponse{
+			LedgerCloseTime: 1_700_000_000,
 			TransactionDetails: protocolrpc.TransactionDetails{
 				Status:        protocolrpc.TransactionStatusSuccess,
 				ResultXDR:     resultB64,
@@ -1271,6 +1272,7 @@ func TestStellarTxm_ConfirmLoop_UpdatesFeeAndMetaFromXDR(t *testing.T) {
 	txm.transactionsLock.RUnlock()
 	require.NotNil(t, tracked)
 	assert.Equal(t, big.NewInt(40_200), tracked.Fee)
+	assert.Equal(t, int64(1_700_000_000), tracked.LedgerCloseTime)
 	assert.Equal(t, resultB64, tracked.ResultXDR)
 	assert.Equal(t, metaB64, tracked.ResultMetaXDR)
 
@@ -1279,6 +1281,7 @@ func TestStellarTxm_ConfirmLoop_UpdatesFeeAndMetaFromXDR(t *testing.T) {
 	assert.Equal(t, "test-hash", result.Hash)
 	assert.Equal(t, commontypes.Finalized, result.Status)
 	assert.Equal(t, big.NewInt(40_200), result.Fee)
+	assert.Equal(t, int64(1_700_000_000), result.LedgerCloseTime)
 	assert.Equal(t, resultB64, result.ResultXDR)
 	assert.Equal(t, metaB64, result.ResultMetaXDR)
 	assert.NoError(t, result.Error)
@@ -1294,6 +1297,7 @@ func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T
 		sendTransactionResp:  protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "test-hash"},
 		simulateResp:         protocolrpc.SimulateTransactionResponse{MinResourceFee: 10_000},
 		getTransactionResp: protocolrpc.GetTransactionResponse{
+			LedgerCloseTime: 1_700_000_001,
 			TransactionDetails: protocolrpc.TransactionDetails{
 				Status:    protocolrpc.TransactionStatusFailed,
 				ResultXDR: resultB64,
@@ -1318,6 +1322,7 @@ func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T
 	txm.transactionsLock.RUnlock()
 	require.NotNil(t, tracked)
 	assert.Equal(t, uint64(0), tracked.Attempt)
+	assert.Equal(t, int64(1_700_000_001), tracked.LedgerCloseTime)
 	assert.Equal(t, resultB64, tracked.ResultXDR)
 	assert.Equal(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionTrapped.String(), tracked.ResultCode)
 
@@ -1325,6 +1330,7 @@ func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, "test-hash", result.Hash)
 	assert.Equal(t, commontypes.Failed, result.Status)
+	assert.Equal(t, int64(1_700_000_001), result.LedgerCloseTime)
 	assert.Equal(t, resultB64, result.ResultXDR)
 	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), xdr.InvokeHostFunctionResultCodeInvokeHostFunctionTrapped.String())

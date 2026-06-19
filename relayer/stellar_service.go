@@ -245,6 +245,10 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 		fee := result.Fee.Uint64()
 		reply.TransactionFee = &fee
 	}
+	if result.LedgerCloseTime > 0 {
+		ts := uint64(result.LedgerCloseTime) * 1_000_000
+		reply.BlockTimestamp = &ts
+	}
 
 	switch result.Status {
 	case relaytypes.Finalized:
