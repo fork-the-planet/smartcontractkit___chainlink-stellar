@@ -547,6 +547,138 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 	})
 }
 
+func TestStellarService_GetEvents(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success", func(t *testing.T) {
+		ctx := t.Context()
+
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().
+			GetEvents(mock.Anything, mock.Anything).
+			Return(protocol.GetEventsResponse{
+				LatestLedger:          100,
+				OldestLedger:          90,
+				LatestLedgerCloseTime: 111,
+				OldestLedgerCloseTime: 99,
+				Cursor:                "cursor123",
+				Events: []protocol.EventInfo{
+					{
+						ID:              "event-id",
+						ContractID:      testContractID(t),
+						TransactionHash: "txhash",
+						Ledger:          95,
+						OpIndex:         1,
+						TxIndex:         2,
+					},
+				},
+			}, nil)
+
+		svc := newTestStellarService(t, rpc)
+
+		resp, err := svc.GetEvents(ctx, stellartypes.GetEventsRequest{})
+
+		require.NoError(t, err)
+		require.Equal(t, "cursor123", resp.Cursor)
+		require.Equal(t, uint32(100), resp.LatestLedger)
+		require.Equal(t, uint32(90), resp.OldestLedger)
+
+		require.Len(t, resp.Events, 1)
+		require.Equal(t, "event-id", resp.Events[0].ID)
+		require.Equal(t, "txhash", resp.Events[0].TransactionHash)
+		require.Equal(t, uint32(1), resp.Events[0].OperationIndex)
+		require.Equal(t, uint32(2), resp.Events[0].TransactionIndex)
+	})
+
+	t.Run("InvalidLedgerRange", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+
+		_, err := svc.GetEvents(t.Context(), stellartypes.GetEventsRequest{
+			StartLedger: 100,
+			EndLedger:   50,
+		})
+
+		require.ErrorContains(t, err, "invalid ledger range")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
+	})
+
+	t.Run("OpenEndedRange_StartOnly", func(t *testing.T) {
+		ctx := t.Context()
+
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().
+			GetEvents(mock.Anything, mock.Anything).
+			Return(protocol.GetEventsResponse{}, nil)
+
+		svc := newTestStellarService(t, rpc)
+
+		_, err := svc.GetEvents(ctx, stellartypes.GetEventsRequest{
+			StartLedger: 100,
+		})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("OpenEndedRange_EndOnly", func(t *testing.T) {
+		ctx := t.Context()
+
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().
+			GetEvents(mock.Anything, mock.Anything).
+			Return(protocol.GetEventsResponse{}, nil)
+
+		svc := newTestStellarService(t, rpc)
+
+		_, err := svc.GetEvents(ctx, stellartypes.GetEventsRequest{
+			EndLedger: 100,
+		})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("RPCError", func(t *testing.T) {
+		ctx := t.Context()
+
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().
+			GetEvents(mock.Anything, mock.Anything).
+			Return(protocol.GetEventsResponse{}, errors.New("rpc down"))
+
+		svc := newTestStellarService(t, rpc)
+
+		_, err := svc.GetEvents(ctx, stellartypes.GetEventsRequest{})
+
+		require.ErrorContains(t, err, "rpc down")
+		require.ErrorIs(t, err, multinode.ErrNodeError)
+	})
+
+	t.Run("InvalidRequestConversion", func(t *testing.T) {
+		svc := newTestStellarService(t, mocks.NewMockRPCClient(t))
+
+		_, err := svc.GetEvents(t.Context(), stellartypes.GetEventsRequest{
+			Filters: []stellartypes.EventFilter{
+				{
+					Topics: []stellartypes.TopicFilter{
+						{
+							Segments: []stellartypes.TopicSegment{
+								{
+									Value: &stellartypes.ScVal{
+										Type: stellartypes.ScValTypeBool,
+										// nil Bool -> conversion failure
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		require.ErrorContains(t, err, "invalid get events request")
+		require.NotErrorIs(t, err, multinode.ErrNodeError)
+	})
+}
+
 func TestStellarService_SubmitTransaction(t *testing.T) {
 	t.Parallel()
 
