@@ -9,6 +9,7 @@ import (
 	protocol "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -384,7 +385,7 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 					return simulatedTxSource(t, req) == source
 				}),
 			).
-			Return(protocol.SimulateTransactionResponse{}, nil)
+			Return(minimalSimulateSuccess(), nil)
 
 		svc := newTestStellarService(t, rpc)
 
@@ -411,7 +412,7 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 					return simulatedTxSource(t, req) == placeholder
 				}),
 			).
-			Return(protocol.SimulateTransactionResponse{}, nil)
+			Return(minimalSimulateSuccess(), nil)
 
 		svc := newTestStellarService(t, rpc)
 
@@ -453,7 +454,7 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 					return req.AuthMode == protocol.AuthModeRecord
 				}),
 			).
-			Return(protocol.SimulateTransactionResponse{}, nil)
+			Return(minimalSimulateSuccess(), nil)
 
 		svc := newTestStellarService(t, rpc)
 
@@ -476,7 +477,7 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 					return req.AuthMode == protocol.AuthModeEnforce
 				}),
 			).
-			Return(protocol.SimulateTransactionResponse{}, nil)
+			Return(minimalSimulateSuccess(), nil)
 
 		svc := newTestStellarService(t, rpc)
 
@@ -501,7 +502,7 @@ func TestStellarService_SimulateTransaction(t *testing.T) {
 					return req.ResourceConfig.InstructionLeeway == 123
 				}),
 			).
-			Return(protocol.SimulateTransactionResponse{}, nil)
+			Return(minimalSimulateSuccess(), nil)
 
 		svc := newTestStellarService(t, rpc)
 
@@ -587,12 +588,14 @@ func TestStellarService_GetEvents(t *testing.T) {
 				Cursor:                "cursor123",
 				Events: []protocol.EventInfo{
 					{
+						EventType:       protocol.EventTypeContract,
 						ID:              "event-id",
 						ContractID:      testContractID(t),
 						TransactionHash: "txhash",
 						Ledger:          95,
 						OpIndex:         1,
 						TxIndex:         2,
+						ValueXDR:        voidScValXDR(t),
 					},
 				},
 			}, nil)
@@ -909,6 +912,22 @@ func testStellarAccount(t *testing.T) string {
 	addr, err := strkey.Encode(strkey.VersionByteAccountID, accountID)
 	require.NoError(t, err)
 	return addr
+}
+
+func voidScValXDR(t *testing.T) string {
+	t.Helper()
+	b64, err := xdr.MarshalBase64(xdr.ScVal{Type: xdr.ScValTypeScvVoid})
+	require.NoError(t, err)
+	return b64
+}
+
+func minimalSimulateSuccess() protocol.SimulateTransactionResponse {
+	empty := ""
+	return protocol.SimulateTransactionResponse{
+		Results: []protocol.SimulateHostFunctionResult{
+			{ReturnValueXDR: &empty},
+		},
+	}
 }
 
 // simulatedTxSource decodes the simulated transaction XDR and returns its source account address.

@@ -223,7 +223,7 @@ func (s *stellarService) SimulateTransaction(ctx context.Context, req stellartyp
 
 	switch len(simResult.Results) {
 	case 0:
-		if resp.Success {
+		if resp.Success && simResult.RestorePreamble == nil {
 			return resp, fmt.Errorf("simulation succeeded but returned no host function results")
 		}
 	case 1:
