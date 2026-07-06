@@ -3,6 +3,7 @@ package txm
 import (
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 
@@ -21,6 +22,7 @@ type StellarTx struct {
 
 	Attempt        uint64
 	Status         commontypes.TransactionStatus
+	BroadcastAt    time.Time // set when SendTransaction accepts the tx
 	TxHash         string
 	Fee             *big.Int // total fee in stroops; updated to actual FeeCharged on confirmation
 	LedgerCloseTime int64    // unix seconds when tx was included in a ledger; from GetTransaction
