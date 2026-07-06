@@ -153,7 +153,7 @@ type stellarTxmMetrics struct {
 
 	reachedMaxAttempts   metric.Int64Gauge
 	timeUntilTxConfirmed metric.Float64Histogram
-	lifecycleFailure   metric.Int64Counter
+	lifecycleFailure     metric.Int64Counter
 
 	// Stellar-specific metrics
 	restoreTotal   metric.Int64Counter

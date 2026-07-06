@@ -699,11 +699,11 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		if accepted {
 			ctxLogger.Debugw("tx broadcast successfully", "attempt", currentAttempt, "seq", seq, "hash", submitResult.Hash)
 			s.markBroadcastAt(tx)
-			s.updateTransactionStatus(tx, commontypes.Unconfirmed)
 			s.metrics.IncrementBroadcastedTxs(ctx)
 			if err := s.metrics.EmitTxMessage(ctx, submitResult.Hash, tx.FromAddress, seq, tx); err != nil {
 				ctxLogger.Errorw("Beholder error emitting tx message", "error", err)
 			}
+			s.updateTransactionStatus(tx, commontypes.Unconfirmed)
 			return
 		}
 

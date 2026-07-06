@@ -20,17 +20,17 @@ type StellarTx struct {
 	Operations         []txnbuild.Operation
 	LedgerBoundsOffset uint32 // per-tx override (0 = use config default)
 
-	Attempt        uint64
-	Status         commontypes.TransactionStatus
-	BroadcastAt    time.Time // set when SendTransaction accepts the tx
-	TxHash         string
+	Attempt         uint64
+	Status          commontypes.TransactionStatus
+	BroadcastAt     time.Time // set when SendTransaction accepts the tx
+	TxHash          string
 	Fee             *big.Int // total fee in stroops; updated to actual FeeCharged on confirmation
 	LedgerCloseTime int64    // unix seconds when tx was included in a ledger; from GetTransaction
 	ResultXDR       string   // XDR-encoded transaction result from GetTransaction
-	ResultCode     string   // result code from GetTransaction (for diagnostics)
-	ResultMetaXDR  string   // XDR-encoded result meta from GetTransaction SUCCESS
-	MaxLedger      uint32   // ledger bounds set during broadcast
-	MinResourceFee int64    // from simulation result
+	ResultCode      string   // result code from GetTransaction (for diagnostics)
+	ResultMetaXDR   string   // XDR-encoded result meta from GetTransaction SUCCESS
+	MaxLedger       uint32   // ledger bounds set during broadcast
+	MinResourceFee  int64    // from simulation result
 
 	// Done is closed when the transaction reaches a terminal state.
 	Done     chan struct{}
@@ -48,14 +48,14 @@ type TxRequest struct {
 
 // TxResult is returned by EnqueueAndWait and Simulate with the outcome of a transaction.
 type TxResult struct {
-	ID            string
-	Hash          string
-	Status        commontypes.TransactionStatus
+	ID              string
+	Hash            string
+	Status          commontypes.TransactionStatus
 	Fee             *big.Int // total fee charged in stroops
 	LedgerCloseTime int64    // unix seconds when tx was included in a ledger; 0 if unknown
 	ResultXDR       string   // XDR-encoded transaction result from GetTransaction
-	ResultMetaXDR string   // XDR-encoded result meta from GetTransaction
-	Error         error
+	ResultMetaXDR   string   // XDR-encoded result meta from GetTransaction
+	Error           error
 }
 
 // Error reason constants classify broadcast and confirmation failures.

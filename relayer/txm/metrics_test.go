@@ -17,9 +17,9 @@ import (
 	"github.com/smartcontractkit/chainlink-common/pkg/config"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
+	svrv1 "github.com/smartcontractkit/chainlink-protos/svr/v1"
 	protocolrpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
 	"github.com/stellar/go-stellar-sdk/protocols/stellarcore"
-	svrv1 "github.com/smartcontractkit/chainlink-protos/svr/v1"
 )
 
 const testChainID = "stellar:testnet"
