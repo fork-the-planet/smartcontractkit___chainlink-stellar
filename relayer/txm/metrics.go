@@ -4,22 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/stellar/go-stellar-sdk/strkey"
-	"github.com/stellar/go-stellar-sdk/txnbuild"
-	"github.com/stellar/go-stellar-sdk/xdr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/smartcontractkit/chainlink-common/pkg/beholder"
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 	"github.com/smartcontractkit/chainlink-common/pkg/metrics"
-	svrv1 "github.com/smartcontractkit/chainlink-protos/svr/v1"
 )
 
 var (
@@ -31,11 +24,6 @@ var (
 	promStellarTxmSuccessTxs = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "stellar_txm_tx_success",
 		Help: "Number of transactions confirmed with GetTransaction SUCCESS",
-	}, []string{"chainID"})
-
-	promStellarTxmFinalizedTxs = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_tx_finalized",
-		Help: "Number of transactions that reached a terminal on-chain status",
 	}, []string{"chainID"})
 
 	promStellarTxmPendingTxs = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -57,11 +45,6 @@ var (
 		Name: "stellar_txm_tx_dropped",
 		Help: "Transactions dropped due to backpressure (oldest-evicted or new-rejected)",
 	}, []string{"chainID", "reason"})
-
-	promStellarTxmReachedMaxAttempts = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "txm_reached_max_attempts",
-		Help: "A gauge that is treated as boolean; 1 if the condition is true, 0 otherwise. Controls whether the TXM has reached max attempts threshold or not.",
-	}, []string{"chainID"})
 
 	promStellarTxmTimeUntilTxConfirmed = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "txm_time_until_tx_confirmed",
@@ -108,7 +91,6 @@ var (
 type Metrics interface {
 	IncrementBroadcastedTxs(context.Context)
 	IncrementSuccessTxs(context.Context)
-	IncrementFinalizedTxs(context.Context)
 	SetPendingTxs(context.Context, int)
 	IncrementErrorTxs(context.Context, string)
 	IncrementRetryTxs(context.Context, string)
@@ -119,41 +101,21 @@ type Metrics interface {
 	ObserveSimulationDuration(context.Context, float64)
 	ObserveInclusionFee(context.Context, int64)
 	ObserveResourceFee(context.Context, int64)
-	IncrementLifecycleFailure(context.Context, LifecycleFailureStage)
-	ReachedMaxAttempts(context.Context, bool)
 	RecordTimeUntilTxConfirmed(context.Context, float64)
-	EmitTxMessage(context.Context, string, string, int64, *StellarTx) error
 }
-
-// LifecycleFailureStage represents a stage in the transaction lifecycle where a failure can occur.
-type LifecycleFailureStage string
-
-const (
-	StageEnqueue    LifecycleFailureStage = "enqueue"
-	StageSequence   LifecycleFailureStage = "sequence"
-	StageSimulation LifecycleFailureStage = "simulation"
-	StageRestore    LifecycleFailureStage = "restore"
-	StageAssembly   LifecycleFailureStage = "assembly"
-	StageSigning    LifecycleFailureStage = "signing"
-	StageBroadcast  LifecycleFailureStage = "broadcast"
-)
 
 type stellarTxmMetrics struct {
 	metrics.Labeler
 	chainID string
 
-	// Shared metrics (all chain TXMs have these)
-	broadcastedTxs metric.Int64Counter
-	successTxs     metric.Int64Counter
-	finalizedTxs   metric.Int64Counter
-	pendingTxs     metric.Int64Gauge
-	errorTxs       metric.Int64Counter
-	retryTxs       metric.Int64Counter
-	droppedTxs     metric.Int64Counter
-
-	reachedMaxAttempts   metric.Int64Gauge
+	// Transaction lifecycle metrics
+	broadcastedTxs       metric.Int64Counter
+	successTxs           metric.Int64Counter
+	pendingTxs           metric.Int64Gauge
+	errorTxs             metric.Int64Counter
+	retryTxs             metric.Int64Counter
+	droppedTxs           metric.Int64Counter
 	timeUntilTxConfirmed metric.Float64Histogram
-	lifecycleFailure     metric.Int64Counter
 
 	// Stellar-specific metrics
 	restoreTotal   metric.Int64Counter
@@ -178,11 +140,6 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) Metrics {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_success: %w", err))
 	}
 
-	finalizedTxs, err := meter.Int64Counter("stellar_txm_tx_finalized")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_finalized: %w", err))
-	}
-
 	pendingTxs, err := meter.Int64Gauge("stellar_txm_tx_pending")
 	if err != nil {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_pending: %w", err))
@@ -203,19 +160,9 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) Metrics {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_dropped: %w", err))
 	}
 
-	reachedMaxAttempts, err := meter.Int64Gauge("txm_reached_max_attempts")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("txm_reached_max_attempts: %w", err))
-	}
-
 	timeUntilTxConfirmed, err := meter.Float64Histogram("txm_time_until_tx_confirmed")
 	if err != nil {
 		initErr = errors.Join(initErr, fmt.Errorf("txm_time_until_tx_confirmed: %w", err))
-	}
-
-	lifecycleFailure, err := meter.Int64Counter("txm_transaction_lifecycle_failure_total")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("txm_transaction_lifecycle_failure_total: %w", err))
 	}
 
 	restoreTotal, err := meter.Int64Counter("stellar_txm_restore_total")
@@ -257,17 +204,13 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) Metrics {
 		chainID: chainID,
 		Labeler: metrics.NewLabeler().With("chainID", chainID),
 
-		broadcastedTxs: broadcastedTxs,
-		successTxs:     successTxs,
-		finalizedTxs:   finalizedTxs,
-		pendingTxs:     pendingTxs,
-		errorTxs:       errorTxs,
-		retryTxs:       retryTxs,
-		droppedTxs:     droppedTxs,
-
-		reachedMaxAttempts:   reachedMaxAttempts,
+		broadcastedTxs:       broadcastedTxs,
+		successTxs:           successTxs,
+		pendingTxs:           pendingTxs,
+		errorTxs:             errorTxs,
+		retryTxs:             retryTxs,
+		droppedTxs:           droppedTxs,
 		timeUntilTxConfirmed: timeUntilTxConfirmed,
-		lifecycleFailure:     lifecycleFailure,
 
 		restoreTotal:   restoreTotal,
 		restoreSuccess: restoreSuccess,
@@ -286,7 +229,7 @@ func (m *stellarTxmMetrics) getOtelAttributes() []attribute.KeyValue {
 	return beholder.OtelAttributes(m.Labels).AsStringAttributes()
 }
 
-// --- Shared metrics (ported from Aptos) ---
+// --- Transaction lifecycle metrics ---
 
 func (m *stellarTxmMetrics) IncrementBroadcastedTxs(ctx context.Context) {
 	promStellarTxmBroadcastedTxs.WithLabelValues(m.chainID).Add(1)
@@ -296,11 +239,6 @@ func (m *stellarTxmMetrics) IncrementBroadcastedTxs(ctx context.Context) {
 func (m *stellarTxmMetrics) IncrementSuccessTxs(ctx context.Context) {
 	promStellarTxmSuccessTxs.WithLabelValues(m.chainID).Add(1)
 	m.successTxs.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
-}
-
-func (m *stellarTxmMetrics) IncrementFinalizedTxs(ctx context.Context) {
-	promStellarTxmFinalizedTxs.WithLabelValues(m.chainID).Add(1)
-	m.finalizedTxs.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
 }
 
 func (m *stellarTxmMetrics) SetPendingTxs(ctx context.Context, count int) {
@@ -326,51 +264,9 @@ func (m *stellarTxmMetrics) IncrementDroppedTxs(ctx context.Context, reason stri
 	m.droppedTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
-func (m *stellarTxmMetrics) IncrementLifecycleFailure(ctx context.Context, stage LifecycleFailureStage) {
-	m.lifecycleFailure.Add(ctx, 1,
-		metric.WithAttributes(
-			attribute.String("chainID", m.chainID),
-			attribute.String("stage", string(stage)),
-		),
-	)
-}
-
-func (m *stellarTxmMetrics) ReachedMaxAttempts(ctx context.Context, reached bool) {
-	var value float64
-	if reached {
-		value = 1
-	}
-	promStellarTxmReachedMaxAttempts.WithLabelValues(m.chainID).Set(value)
-	m.reachedMaxAttempts.Record(ctx, int64(value))
-}
-
 func (m *stellarTxmMetrics) RecordTimeUntilTxConfirmed(ctx context.Context, duration float64) {
 	promStellarTxmTimeUntilTxConfirmed.WithLabelValues(m.chainID).Observe(duration)
-	m.timeUntilTxConfirmed.Record(ctx, duration)
-}
-
-func (m *stellarTxmMetrics) EmitTxMessage(ctx context.Context, hash, fromAddress string, sequence int64, tx *StellarTx) error {
-	message := &svrv1.TxMessage{
-		Hash:        hash,
-		FromAddress: fromAddress,
-		ToAddress:   contractIDFromTx(tx),
-		Nonce:       strconv.FormatInt(sequence, 10),
-		CreatedAt:   time.Now().UnixMicro(),
-		ChainId:     m.chainID,
-	}
-
-	messageBytes, err := proto.Marshal(message)
-	if err != nil {
-		return err
-	}
-
-	return beholder.GetEmitter().Emit(
-		ctx,
-		messageBytes,
-		"beholder_domain", "svr",
-		"beholder_entity", "svr.v1.TxMessage",
-		"beholder_data_schema", "/beholder-tx-message/versions/2",
-	)
+	m.timeUntilTxConfirmed.Record(ctx, duration, metric.WithAttributes(m.getOtelAttributes()...))
 }
 
 // --- Stellar-specific metrics ---
@@ -411,8 +307,6 @@ func (noopStellarTxmMetrics) IncrementBroadcastedTxs(context.Context) {}
 
 func (noopStellarTxmMetrics) IncrementSuccessTxs(context.Context) {}
 
-func (noopStellarTxmMetrics) IncrementFinalizedTxs(context.Context) {}
-
 func (noopStellarTxmMetrics) SetPendingTxs(context.Context, int) {}
 
 func (noopStellarTxmMetrics) IncrementErrorTxs(context.Context, string) {}
@@ -433,53 +327,4 @@ func (noopStellarTxmMetrics) ObserveInclusionFee(context.Context, int64) {}
 
 func (noopStellarTxmMetrics) ObserveResourceFee(context.Context, int64) {}
 
-func (noopStellarTxmMetrics) IncrementLifecycleFailure(context.Context, LifecycleFailureStage) {}
-
-func (noopStellarTxmMetrics) ReachedMaxAttempts(context.Context, bool) {}
-
 func (noopStellarTxmMetrics) RecordTimeUntilTxConfirmed(context.Context, float64) {}
-
-func (noopStellarTxmMetrics) EmitTxMessage(context.Context, string, string, int64, *StellarTx) error {
-	return nil
-}
-
-func contractIDFromTx(tx *StellarTx) string {
-	if tx == nil {
-		return ""
-	}
-	for _, op := range tx.Operations {
-		ihf, ok := op.(*txnbuild.InvokeHostFunction)
-		if !ok || ihf.HostFunction.InvokeContract == nil {
-			continue
-		}
-		addr := ihf.HostFunction.InvokeContract.ContractAddress
-		if addr.Type != xdr.ScAddressTypeScAddressTypeContract {
-			continue
-		}
-		contractID, err := strkey.Encode(strkey.VersionByteContract, addr.ContractId[:])
-		if err != nil {
-			return ""
-		}
-		return contractID
-	}
-	return ""
-}
-
-func lifecycleStageForErrorReason(reason string) LifecycleFailureStage {
-	switch reason {
-	case ErrorReasonSequenceNumber, ErrorReasonStoreCreate, ErrorReasonBadSeq:
-		return StageSequence
-	case ErrorReasonSimulation:
-		return StageSimulation
-	case ErrorReasonRestoreFailed:
-		return StageRestore
-	case ErrorReasonAssembly:
-		return StageAssembly
-	case ErrorReasonSigning:
-		return StageSigning
-	case DropReasonChannelFullNewRejected, DropReasonChannelFullOldestEvicted:
-		return StageEnqueue
-	default:
-		return StageBroadcast
-	}
-}
