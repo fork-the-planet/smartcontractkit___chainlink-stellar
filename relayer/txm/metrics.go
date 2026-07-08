@@ -87,8 +87,8 @@ var (
 	}, []string{"chainID"})
 )
 
-// Metrics is the metrics contract for the Stellar TXM transaction lifecycle.
-type Metrics interface {
+// TxmMetrics is the metrics contract for the Stellar TXM transaction lifecycle.
+type TxmMetrics interface {
 	IncrementBroadcastedTxs(context.Context)
 	IncrementSuccessTxs(context.Context)
 	SetPendingTxs(context.Context, int)
@@ -126,7 +126,7 @@ type stellarTxmMetrics struct {
 	feeResource    metric.Int64Histogram
 }
 
-func NewStellarTxmMetrics(lggr logger.Logger, chainID string) Metrics {
+func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 	var initErr error
 	meter := beholder.GetMeter()
 
@@ -221,7 +221,7 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) Metrics {
 	}
 }
 
-func NewNoopStellarTxmMetrics() Metrics {
+func NewNoopStellarTxmMetrics() TxmMetrics {
 	return noopStellarTxmMetrics{}
 }
 

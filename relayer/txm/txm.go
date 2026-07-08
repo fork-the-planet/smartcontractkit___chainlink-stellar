@@ -42,7 +42,7 @@ type StellarTxm struct {
 	keystore   core.Keystore
 	config     Config
 	chainID    string
-	metrics    Metrics
+	metrics    TxmMetrics
 	feeStrat   FeeStrategy
 
 	// transactions + transactionsLock guard both the tx ID → *StellarTx map and
