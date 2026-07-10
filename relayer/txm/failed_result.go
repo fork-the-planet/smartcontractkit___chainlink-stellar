@@ -1,13 +1,11 @@
 package txm
 
 import (
-	"fmt"
-
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 type failedTxClassification struct {
-	resultCode string
+	resultCode ErrorReason
 	retryable  bool
 }
 
@@ -18,10 +16,10 @@ func classifyFailedTransactionResult(resultXDR string) failedTxClassification {
 
 	var txResult xdr.TransactionResult
 	if err := xdr.SafeUnmarshalBase64(resultXDR, &txResult); err != nil {
-		return failedTxClassification{resultCode: fmt.Sprintf("%s_decode_error", ErrorReasonRevert)}
+		return failedTxClassification{resultCode: ErrorReasonRevertDecode}
 	}
 
-	resultCode := txResult.Result.Code.String()
+	resultCode := ErrorReason(txResult.Result.Code.String())
 	results, ok := txResult.Result.GetResults()
 	if !ok || len(results) == 0 {
 		return failedTxClassification{resultCode: resultCode}
@@ -30,24 +28,24 @@ func classifyFailedTransactionResult(resultXDR string) failedTxClassification {
 	for _, opResult := range results {
 		if opResult.Code != xdr.OperationResultCodeOpInner {
 			return failedTxClassification{
-				resultCode: opResult.Code.String(),
+				resultCode: ErrorReason(opResult.Code.String()),
 				retryable:  opResult.Code == xdr.OperationResultCodeOpExceededWorkLimit,
 			}
 		}
 
 		tr, ok := opResult.GetTr()
 		if !ok {
-			return failedTxClassification{resultCode: opResult.Code.String()}
+			return failedTxClassification{resultCode: ErrorReason(opResult.Code.String())}
 		}
 
 		if invokeResult, ok := tr.GetInvokeHostFunctionResult(); ok {
 			return failedTxClassification{
-				resultCode: invokeResult.Code.String(),
+				resultCode: ErrorReason(invokeResult.Code.String()),
 				retryable:  isRetryableInvokeHostFunctionResult(invokeResult.Code),
 			}
 		}
 
-		return failedTxClassification{resultCode: tr.Type.String()}
+		return failedTxClassification{resultCode: ErrorReason(tr.Type.String())}
 	}
 
 	return failedTxClassification{resultCode: resultCode}

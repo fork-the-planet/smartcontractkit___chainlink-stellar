@@ -44,43 +44,43 @@ func TestClassifyFailedTransactionResult(t *testing.T) {
 	tests := []struct {
 		name       string
 		resultXDR  string
-		resultCode string
+		resultCode ErrorReason
 		retryable  bool
 	}{
 		{
 			name:       "resource limit exceeded is retryable",
 			resultXDR:  buildFailedInvokeHostFunctionResultXDR(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionResourceLimitExceeded),
-			resultCode: xdr.InvokeHostFunctionResultCodeInvokeHostFunctionResourceLimitExceeded.String(),
+			resultCode: ErrorReason(xdr.InvokeHostFunctionResultCodeInvokeHostFunctionResourceLimitExceeded.String()),
 			retryable:  true,
 		},
 		{
 			name:       "entry archived is retryable",
 			resultXDR:  buildFailedInvokeHostFunctionResultXDR(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionEntryArchived),
-			resultCode: xdr.InvokeHostFunctionResultCodeInvokeHostFunctionEntryArchived.String(),
+			resultCode: ErrorReason(xdr.InvokeHostFunctionResultCodeInvokeHostFunctionEntryArchived.String()),
 			retryable:  true,
 		},
 		{
 			name:       "insufficient refundable fee is retryable",
 			resultXDR:  buildFailedInvokeHostFunctionResultXDR(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionInsufficientRefundableFee),
-			resultCode: xdr.InvokeHostFunctionResultCodeInvokeHostFunctionInsufficientRefundableFee.String(),
+			resultCode: ErrorReason(xdr.InvokeHostFunctionResultCodeInvokeHostFunctionInsufficientRefundableFee.String()),
 			retryable:  true,
 		},
 		{
 			name:       "contract trap is terminal",
 			resultXDR:  buildFailedInvokeHostFunctionResultXDR(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionTrapped),
-			resultCode: xdr.InvokeHostFunctionResultCodeInvokeHostFunctionTrapped.String(),
+			resultCode: ErrorReason(xdr.InvokeHostFunctionResultCodeInvokeHostFunctionTrapped.String()),
 			retryable:  false,
 		},
 		{
 			name:       "malformed invocation is terminal",
 			resultXDR:  buildFailedInvokeHostFunctionResultXDR(t, xdr.InvokeHostFunctionResultCodeInvokeHostFunctionMalformed),
-			resultCode: xdr.InvokeHostFunctionResultCodeInvokeHostFunctionMalformed.String(),
+			resultCode: ErrorReason(xdr.InvokeHostFunctionResultCodeInvokeHostFunctionMalformed.String()),
 			retryable:  false,
 		},
 		{
 			name:       "generic exceeded work limit is retryable",
 			resultXDR:  buildFailedOperationResultXDR(t, xdr.OperationResultCodeOpExceededWorkLimit),
-			resultCode: xdr.OperationResultCodeOpExceededWorkLimit.String(),
+			resultCode: ErrorReason(xdr.OperationResultCodeOpExceededWorkLimit.String()),
 			retryable:  true,
 		},
 		{
@@ -92,7 +92,7 @@ func TestClassifyFailedTransactionResult(t *testing.T) {
 		{
 			name:       "invalid result xdr is terminal decode error",
 			resultXDR:  "not-xdr",
-			resultCode: "revert_decode_error",
+			resultCode: ErrorReasonRevertDecode,
 			retryable:  false,
 		},
 	}

@@ -28,7 +28,7 @@ func TestNoopStellarTxmMetrics(t *testing.T) {
 		m.IncrementSuccessTxs(ctx)
 		m.SetPendingTxs(ctx, 5)
 		m.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
-		m.IncrementRetryTxs(ctx, RetryReasonTimedOut.String())
+		m.IncrementRetryTxs(ctx, RetryReasonTimedOut)
 		m.IncrementDroppedTxs(ctx, DropReasonChannelFullNewRejected)
 		m.IncrementRestoreTotal(ctx)
 		m.IncrementRestoreSuccess(ctx)

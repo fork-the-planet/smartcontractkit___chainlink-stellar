@@ -92,9 +92,9 @@ type TxmMetrics interface {
 	IncrementBroadcastedTxs(context.Context)
 	IncrementSuccessTxs(context.Context)
 	SetPendingTxs(context.Context, int)
-	IncrementErrorTxs(context.Context, string)
-	IncrementRetryTxs(context.Context, string)
-	IncrementDroppedTxs(context.Context, string)
+	IncrementErrorTxs(context.Context, ErrorReason)
+	IncrementRetryTxs(context.Context, RetryReason)
+	IncrementDroppedTxs(context.Context, DropReason)
 	IncrementRestoreTotal(context.Context)
 	IncrementRestoreSuccess(context.Context)
 	IncrementRestoreFailed(context.Context)
@@ -180,17 +180,23 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore_failed: %w", err))
 	}
 
-	simDuration, err := meter.Float64Histogram("stellar_txm_simulation_duration_seconds")
+	simDuration, err := meter.Float64Histogram("stellar_txm_simulation_duration_seconds",
+		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+	)
 	if err != nil {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_simulation_duration_seconds: %w", err))
 	}
 
-	feeInclusion, err := meter.Int64Histogram("stellar_txm_fee_inclusion_stroops")
+	feeInclusion, err := meter.Int64Histogram("stellar_txm_fee_inclusion_stroops",
+		metric.WithExplicitBucketBoundaries(100, 200, 500, 1000, 5000, 10000, 50000, 100000),
+	)
 	if err != nil {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_fee_inclusion_stroops: %w", err))
 	}
 
-	feeResource, err := meter.Int64Histogram("stellar_txm_fee_resource_stroops")
+	feeResource, err := meter.Int64Histogram("stellar_txm_fee_resource_stroops",
+		metric.WithExplicitBucketBoundaries(10000, 50000, 100000, 500000, 1000000, 5000000),
+	)
 	if err != nil {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_fee_resource_stroops: %w", err))
 	}
@@ -246,21 +252,21 @@ func (m *stellarTxmMetrics) SetPendingTxs(ctx context.Context, count int) {
 	m.pendingTxs.Record(ctx, int64(count), metric.WithAttributes(m.getOtelAttributes()...))
 }
 
-func (m *stellarTxmMetrics) IncrementErrorTxs(ctx context.Context, reason string) {
-	promStellarTxmErrorTxs.WithLabelValues(m.chainID, reason).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", reason))
+func (m *stellarTxmMetrics) IncrementErrorTxs(ctx context.Context, reason ErrorReason) {
+	promStellarTxmErrorTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
+	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
 	m.errorTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
-func (m *stellarTxmMetrics) IncrementRetryTxs(ctx context.Context, reason string) {
-	promStellarTxmRetryTxs.WithLabelValues(m.chainID, reason).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", reason))
+func (m *stellarTxmMetrics) IncrementRetryTxs(ctx context.Context, reason RetryReason) {
+	promStellarTxmRetryTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
+	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
 	m.retryTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
-func (m *stellarTxmMetrics) IncrementDroppedTxs(ctx context.Context, reason string) {
-	promStellarTxmDroppedTxs.WithLabelValues(m.chainID, reason).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", reason))
+func (m *stellarTxmMetrics) IncrementDroppedTxs(ctx context.Context, reason DropReason) {
+	promStellarTxmDroppedTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
+	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
 	m.droppedTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
@@ -309,11 +315,11 @@ func (noopStellarTxmMetrics) IncrementSuccessTxs(context.Context) {}
 
 func (noopStellarTxmMetrics) SetPendingTxs(context.Context, int) {}
 
-func (noopStellarTxmMetrics) IncrementErrorTxs(context.Context, string) {}
+func (noopStellarTxmMetrics) IncrementErrorTxs(context.Context, ErrorReason) {}
 
-func (noopStellarTxmMetrics) IncrementRetryTxs(context.Context, string) {}
+func (noopStellarTxmMetrics) IncrementRetryTxs(context.Context, RetryReason) {}
 
-func (noopStellarTxmMetrics) IncrementDroppedTxs(context.Context, string) {}
+func (noopStellarTxmMetrics) IncrementDroppedTxs(context.Context, DropReason) {}
 
 func (noopStellarTxmMetrics) IncrementRestoreTotal(context.Context) {}
 

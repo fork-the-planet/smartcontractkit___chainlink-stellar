@@ -455,7 +455,7 @@ func TestStellarTxm_Enqueue_ChannelFull_EvictsOldest(t *testing.T) {
 	txm.transactionsLock.RUnlock()
 	require.NotNil(t, oldTx)
 	require.NotNil(t, newTx)
-	assert.Equal(t, DropReasonChannelFullOldestEvicted, oldTx.ResultCode)
+	assert.Equal(t, string(DropReasonChannelFullOldestEvicted), oldTx.ResultCode)
 	select {
 	case <-oldTx.Done:
 		// expected — closeDone was called

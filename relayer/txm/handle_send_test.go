@@ -98,7 +98,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "a1"}, 1, store, 9)
 		require.True(t, acc)
 		require.False(t, fatal)
-		require.Equal(t, "", reason)
+		require.Empty(t, reason)
 	})
 
 	t.Run("PENDING clears stale previous result fields", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, retriedTx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "a1"}, 1, store, 9)
 		require.True(t, acc)
 		require.False(t, fatal)
-		require.Equal(t, "", reason)
+		require.Empty(t, reason)
 		assert.Empty(t, retriedTx.ResultXDR)
 		assert.Empty(t, retriedTx.ResultMetaXDR)
 		assert.Empty(t, retriedTx.ResultCode)
@@ -126,7 +126,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusDuplicate, Hash: "a2"}, 1, store, 9)
 		require.True(t, acc)
 		require.False(t, fatal)
-		require.Equal(t, "", reason)
+		require.Empty(t, reason)
 	})
 
 	t.Run("PENDING without hash is fatal", func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusError, ErrorResultXDR: insuffXDR}, 1, store, 9)
 		require.False(t, acc)
 		require.True(t, fatal)
-		assert.Equal(t, xdr.TransactionResultCodeTxInsufficientBalance.String(), reason)
+		assert.Equal(t, ErrorReason(xdr.TransactionResultCodeTxInsufficientBalance.String()), reason)
 	})
 
 	t.Run("ERROR bad auth", func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusError, ErrorResultXDR: badAuthXDR}, 1, store, 9)
 		require.False(t, acc)
 		require.True(t, fatal)
-		assert.Equal(t, xdr.TransactionResultCodeTxBadAuth.String(), reason)
+		assert.Equal(t, ErrorReason(xdr.TransactionResultCodeTxBadAuth.String()), reason)
 	})
 
 	t.Run("ERROR tx_no_account is fatal", func(t *testing.T) {
@@ -191,7 +191,7 @@ func TestStellarTxm_handleSendResult(t *testing.T) {
 		acc, fatal, reason := s.handleSendResult(ctx, tx, protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusError, ErrorResultXDR: noAccountXDR}, 1, store, 9)
 		require.False(t, acc)
 		require.True(t, fatal)
-		assert.Equal(t, xdr.TransactionResultCodeTxNoAccount.String(), reason)
+		assert.Equal(t, ErrorReason(xdr.TransactionResultCodeTxNoAccount.String()), reason)
 	})
 
 	t.Run("unknown status", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestStellarTxm_classifySubmitErrorCode(t *testing.T) {
 		name       string
 		code       xdr.TransactionResultCode
 		wantFatal  bool
-		wantReason string
+		wantReason ErrorReason
 	}{
 		// Retryable allowlist.
 		{"tx_bad_seq is retryable (resync)", xdr.TransactionResultCodeTxBadSeq, false, ErrorReasonBadSeq},
@@ -230,21 +230,21 @@ func TestStellarTxm_classifySubmitErrorCode(t *testing.T) {
 		{"tx_internal_error is retryable (transient)", xdr.TransactionResultCodeTxInternalError, false, ErrorReasonInternalError},
 
 		// Fatal — every other documented code.
-		{"tx_no_account is fatal", xdr.TransactionResultCodeTxNoAccount, true, xdr.TransactionResultCodeTxNoAccount.String()},
-		{"tx_insufficient_balance is fatal", xdr.TransactionResultCodeTxInsufficientBalance, true, xdr.TransactionResultCodeTxInsufficientBalance.String()},
-		{"tx_bad_auth is fatal", xdr.TransactionResultCodeTxBadAuth, true, xdr.TransactionResultCodeTxBadAuth.String()},
-		{"tx_bad_auth_extra is fatal", xdr.TransactionResultCodeTxBadAuthExtra, true, xdr.TransactionResultCodeTxBadAuthExtra.String()},
-		{"tx_too_early is fatal", xdr.TransactionResultCodeTxTooEarly, true, xdr.TransactionResultCodeTxTooEarly.String()},
-		{"tx_too_late is fatal", xdr.TransactionResultCodeTxTooLate, true, xdr.TransactionResultCodeTxTooLate.String()},
-		{"tx_missing_operation is fatal", xdr.TransactionResultCodeTxMissingOperation, true, xdr.TransactionResultCodeTxMissingOperation.String()},
-		{"tx_not_supported is fatal", xdr.TransactionResultCodeTxNotSupported, true, xdr.TransactionResultCodeTxNotSupported.String()},
-		{"tx_fee_bump_inner_failed is fatal", xdr.TransactionResultCodeTxFeeBumpInnerFailed, true, xdr.TransactionResultCodeTxFeeBumpInnerFailed.String()},
-		{"tx_bad_sponsorship is fatal", xdr.TransactionResultCodeTxBadSponsorship, true, xdr.TransactionResultCodeTxBadSponsorship.String()},
-		{"tx_bad_min_seq_age_or_gap is fatal", xdr.TransactionResultCodeTxBadMinSeqAgeOrGap, true, xdr.TransactionResultCodeTxBadMinSeqAgeOrGap.String()},
-		{"tx_malformed is fatal", xdr.TransactionResultCodeTxMalformed, true, xdr.TransactionResultCodeTxMalformed.String()},
-		{"tx_soroban_invalid is fatal", xdr.TransactionResultCodeTxSorobanInvalid, true, xdr.TransactionResultCodeTxSorobanInvalid.String()},
-		{"tx_frozen_key_accessed is fatal", xdr.TransactionResultCodeTxFrozenKeyAccessed, true, xdr.TransactionResultCodeTxFrozenKeyAccessed.String()},
-		{"tx_failed (generic op-level container) is fatal at submit", xdr.TransactionResultCodeTxFailed, true, xdr.TransactionResultCodeTxFailed.String()},
+		{"tx_no_account is fatal", xdr.TransactionResultCodeTxNoAccount, true, ErrorReason(xdr.TransactionResultCodeTxNoAccount.String())},
+		{"tx_insufficient_balance is fatal", xdr.TransactionResultCodeTxInsufficientBalance, true, ErrorReason(xdr.TransactionResultCodeTxInsufficientBalance.String())},
+		{"tx_bad_auth is fatal", xdr.TransactionResultCodeTxBadAuth, true, ErrorReason(xdr.TransactionResultCodeTxBadAuth.String())},
+		{"tx_bad_auth_extra is fatal", xdr.TransactionResultCodeTxBadAuthExtra, true, ErrorReason(xdr.TransactionResultCodeTxBadAuthExtra.String())},
+		{"tx_too_early is fatal", xdr.TransactionResultCodeTxTooEarly, true, ErrorReason(xdr.TransactionResultCodeTxTooEarly.String())},
+		{"tx_too_late is fatal", xdr.TransactionResultCodeTxTooLate, true, ErrorReason(xdr.TransactionResultCodeTxTooLate.String())},
+		{"tx_missing_operation is fatal", xdr.TransactionResultCodeTxMissingOperation, true, ErrorReason(xdr.TransactionResultCodeTxMissingOperation.String())},
+		{"tx_not_supported is fatal", xdr.TransactionResultCodeTxNotSupported, true, ErrorReason(xdr.TransactionResultCodeTxNotSupported.String())},
+		{"tx_fee_bump_inner_failed is fatal", xdr.TransactionResultCodeTxFeeBumpInnerFailed, true, ErrorReason(xdr.TransactionResultCodeTxFeeBumpInnerFailed.String())},
+		{"tx_bad_sponsorship is fatal", xdr.TransactionResultCodeTxBadSponsorship, true, ErrorReason(xdr.TransactionResultCodeTxBadSponsorship.String())},
+		{"tx_bad_min_seq_age_or_gap is fatal", xdr.TransactionResultCodeTxBadMinSeqAgeOrGap, true, ErrorReason(xdr.TransactionResultCodeTxBadMinSeqAgeOrGap.String())},
+		{"tx_malformed is fatal", xdr.TransactionResultCodeTxMalformed, true, ErrorReason(xdr.TransactionResultCodeTxMalformed.String())},
+		{"tx_soroban_invalid is fatal", xdr.TransactionResultCodeTxSorobanInvalid, true, ErrorReason(xdr.TransactionResultCodeTxSorobanInvalid.String())},
+		{"tx_frozen_key_accessed is fatal", xdr.TransactionResultCodeTxFrozenKeyAccessed, true, ErrorReason(xdr.TransactionResultCodeTxFrozenKeyAccessed.String())},
+		{"tx_failed (generic op-level container) is fatal at submit", xdr.TransactionResultCodeTxFailed, true, ErrorReason(xdr.TransactionResultCodeTxFailed.String())},
 	}
 
 	for _, tt := range tests {

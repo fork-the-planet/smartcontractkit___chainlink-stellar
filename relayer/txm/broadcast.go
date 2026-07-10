@@ -206,7 +206,7 @@ func (s *StellarTxm) handleSendResult(
 	seq int64,
 	txStore *TxStore,
 	maxLedger uint32,
-) (accepted bool, fatalErr bool, retryReason string) {
+) (accepted bool, fatalErr bool, retryReason ErrorReason) {
 	if tx == nil {
 		s.baseLogger.Errorw("handleSendResult: tx is nil")
 		return false, true, ErrorReasonNilTx
@@ -267,7 +267,7 @@ func parseSubmitErrorResult(errorResultXDR string) (code xdr.TransactionResultCo
 	return txResult.Result.Code, true
 }
 
-func classifySubmitErrorCode(code xdr.TransactionResultCode) (fatal bool, reason string) {
+func classifySubmitErrorCode(code xdr.TransactionResultCode) (fatal bool, reason ErrorReason) {
 	switch code {
 	case xdr.TransactionResultCodeTxBadSeq:
 		return false, ErrorReasonBadSeq
@@ -276,6 +276,6 @@ func classifySubmitErrorCode(code xdr.TransactionResultCode) (fatal bool, reason
 	case xdr.TransactionResultCodeTxInternalError:
 		return false, ErrorReasonInternalError
 	default:
-		return true, code.String()
+		return true, ErrorReason(code.String())
 	}
 }

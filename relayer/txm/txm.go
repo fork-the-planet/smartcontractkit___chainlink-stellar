@@ -321,7 +321,7 @@ func (s *StellarTxm) dropOldestForBackpressure(ctx context.Context, dropped *Ste
 	s.transactionsLock.Lock()
 	ok := false
 	if cur, exists := s.transactions[dropped.ID]; exists && cur == dropped {
-		dropped.ResultCode = DropReasonChannelFullOldestEvicted
+		dropped.ResultCode = string(DropReasonChannelFullOldestEvicted)
 		ok = true
 	}
 	s.transactionsLock.Unlock()
@@ -408,14 +408,14 @@ func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.T
 
 // markTxFailed sets Failed (and closes Done via updateTransactionStatus) and records
 // an error metric. Use when no TxStore sequence was reserved for this attempt.
-func (s *StellarTxm) markTxFailed(ctx context.Context, tx *StellarTx, metricReason string) {
+func (s *StellarTxm) markTxFailed(ctx context.Context, tx *StellarTx, metricReason ErrorReason) {
 	s.updateTransactionStatus(tx, commontypes.Failed)
 	s.metrics.IncrementErrorTxs(ctx, metricReason)
 }
 
 // releaseSeqAndFailTx releases a reserved sequence, marks the tx Failed, and records
 // an error metric. Used when simulate/send aborts after GetNextSequence.
-func (s *StellarTxm) releaseSeqAndFailTx(ctx context.Context, txStore *TxStore, seq int64, tx *StellarTx, metricReason string) {
+func (s *StellarTxm) releaseSeqAndFailTx(ctx context.Context, txStore *TxStore, seq int64, tx *StellarTx, metricReason ErrorReason) {
 	txStore.Release(seq)
 	s.updateTransactionStatus(tx, commontypes.Failed)
 	s.metrics.IncrementErrorTxs(ctx, metricReason)
@@ -920,7 +920,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					}
 					s.updateTransactionResultXDR(utx.Tx, resp.ResultXDR)
 					classification := classifyFailedTransactionResult(resp.ResultXDR)
-					s.updateTransactionResultCode(utx.Tx, classification.resultCode)
+					s.updateTransactionResultCode(utx.Tx, string(classification.resultCode))
 					s.updateTransactionLedgerCloseTime(utx.Tx, resp.LedgerCloseTime)
 
 				ctxLogger.Infow("confirmed tx: failed on-chain", "hash", hash, "resultCode", classification.resultCode, "retryable", classification.retryable)
@@ -990,23 +990,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 
 // --- Retry ---
 
-func (r RetryReason) String() string {
-	switch r {
-	case RetryReasonResourceExhaustion:
-		return "resource_exhaustion"
-	case RetryReasonTimedOut:
-		return "timed_out"
-	case RetryReasonBadSeq:
-		return "bad_seq"
-	case RetryReasonTryAgainLater:
-		return "try_again_later"
-	case RetryReasonClientUnavailable:
-		return "client_unavailable"
-	default:
-		return "unknown"
-	}
-}
-
 func (s *StellarTxm) maybeRetry(ctx context.Context, utx *UnconfirmedTx, reason RetryReason) bool {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, utx.Tx.ID, utx.Tx.Metadata)
 	currentAttempt := s.getTransactionAttempt(utx.Tx)
@@ -1018,7 +1001,7 @@ func (s *StellarTxm) maybeRetry(ctx context.Context, utx *UnconfirmedTx, reason 
 	select {
 	case s.broadcastChan <- utx.Tx:
 		ctxLogger.Debugw("retrying tx", "attempt", currentAttempt, "hash", utx.Hash, "retryReason", reason)
-		s.metrics.IncrementRetryTxs(ctx, reason.String())
+		s.metrics.IncrementRetryTxs(ctx, reason)
 		return true
 	default:
 		ctxLogger.Errorw("failed to enqueue tx for rebroadcast (channel full)", "attempt", currentAttempt, "hash", utx.Hash, "retryReason", reason)
