@@ -113,7 +113,8 @@ func (s *stellarService) GetLatestLedger(ctx context.Context) (stellartypes.GetL
 	}, nil
 }
 
-// GetLedgers fetches a paginated range of ledgers.
+// GetLedgers fetches ledgers starting at StartLedger (or Pagination.Cursor).
+// Pagination is optional; when nil, the RPC uses its default page size.
 func (s *stellarService) GetLedgers(ctx context.Context, req stellartypes.GetLedgersRequest) (stellartypes.GetLedgersResponse, error) {
 	rpc, err := s.chain.GetClient(ctx)
 	if err != nil {
