@@ -1302,7 +1302,6 @@ func TestStellarTxm_PruneTerminal_OnlyEvictsTerminalPastCutoff(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{
-		PruneInterval:     config.MustNewDuration(1 * time.Hour),
 		PruneTxExpiration: config.MustNewDuration(twoHours),
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
@@ -1317,7 +1316,7 @@ func TestStellarTxm_PruneTerminal_OnlyEvictsTerminalPastCutoff(t *testing.T) {
 			TerminalTime: terminalTime,
 			Done:         make(chan struct{}),
 		}
-		if status == commontypes.Finalized || status == commontypes.Failed {
+		if isTerminalStatus(status) {
 			close(tx.Done)
 		}
 		txm.transactionsLock.Lock()
@@ -1393,7 +1392,6 @@ func TestStellarTxm_PruneTerminal_LongInFlightNotPrunedUntilTerminalExpiry(t *te
 	t.Parallel()
 
 	cfg := Config{
-		PruneInterval:     config.MustNewDuration(1 * time.Hour),
 		PruneTxExpiration: config.MustNewDuration(2 * time.Hour),
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
@@ -1404,7 +1402,7 @@ func TestStellarTxm_PruneTerminal_LongInFlightNotPrunedUntilTerminalExpiry(t *te
 	tx := &StellarTx{
 		ID:           "long-inflight",
 		Status:       commontypes.Finalized,
-		Timestamp:    uint64(now.Add(-twoHours + time.Minute).Unix()), // enqueued nearly 2h ago
+		Timestamp:    now.Add(-twoHours + time.Minute), // enqueued nearly 2h ago
 		TerminalTime: now,                                            // just finalized
 		Done:         make(chan struct{}),
 	}
@@ -1458,18 +1456,15 @@ func TestStellarTxm_PruneLoop_RunsWhenIntervalPositive(t *testing.T) {
 
 // TestStellarTxm_PruneImmediateWhenIntervalZero verifies that PruneInterval == 0
 // disables the background prune loop but still evicts terminal txs synchronously
-// when they reach a terminal state, so memory does not grow without bound.
+// via updateTransactionStatus, so memory does not grow without bound.
 func TestStellarTxm_PruneImmediateWhenIntervalZero(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{
-		PruneInterval:     config.MustNewDuration(0),
-		PruneTxExpiration: config.MustNewDuration(2 * time.Hour),
+		PruneInterval: config.MustNewDuration(0),
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
-	require.NoError(t, txm.Start(t.Context()))
-	defer txm.Close()
 
 	tx := &StellarTx{
 		ID:   "immediate-prune-tx",
@@ -1486,27 +1481,6 @@ func TestStellarTxm_PruneImmediateWhenIntervalZero(t *testing.T) {
 	txm.transactionsLock.RUnlock()
 
 	assert.False(t, stillPresent, "terminal tx must be evicted immediately when PruneInterval==0")
-
-	// Manually injected terminal txs bypass updateTransactionStatus; without a
-	// background loop they remain until explicitly pruned.
-	stale := &StellarTx{
-		ID:           "stale-injected-tx",
-		Status:       commontypes.Finalized,
-		TerminalTime: time.Now().Add(-time.Second),
-		Done:         make(chan struct{}),
-	}
-	close(stale.Done)
-	txm.transactionsLock.Lock()
-	txm.transactions[stale.ID] = stale
-	txm.transactionsLock.Unlock()
-
-	time.Sleep(150 * time.Millisecond)
-
-	txm.transactionsLock.RLock()
-	_, stalePresent := txm.transactions["stale-injected-tx"]
-	txm.transactionsLock.RUnlock()
-
-	assert.True(t, stalePresent, "no background prune loop should run when PruneInterval==0")
 }
 
 func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T) {

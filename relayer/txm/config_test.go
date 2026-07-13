@@ -20,6 +20,7 @@ func TestResolve_AllDefaults(t *testing.T) {
 	assert.Equal(t, DefaultConfigSet.SubmitRetryDelay, cfg.SubmitRetryDelay)
 	assert.Equal(t, DefaultConfigSet.MaxTxRetryAttempts, cfg.MaxTxRetryAttempts)
 	assert.Equal(t, DefaultConfigSet.PruneInterval, cfg.PruneInterval)
+	assert.Equal(t, DefaultConfigSet.PruneTxExpiration, cfg.PruneTxExpiration)
 	assert.Equal(t, DefaultConfigSet.FeeStatsPollInterval, cfg.FeeStatsPollInterval)
 	assert.Equal(t, DefaultConfigSet.BaseInclusionFee, cfg.BaseInclusionFee)
 	assert.Equal(t, DefaultConfigSet.MaxInclusionFee, cfg.MaxInclusionFee)

@@ -181,7 +181,7 @@ func (s *StellarTxm) Enqueue(ctx context.Context, req TxRequest) (string, error)
 
 	tx := &StellarTx{
 		ID:                 txID,
-		Timestamp:          getTimestampSecs(),
+		Timestamp:          time.Now(),
 		FromAddress:        fromAddr,
 		Operations:         req.Operations,
 		LedgerBoundsOffset: req.LedgerBoundsOffset,
@@ -325,7 +325,7 @@ func (s *StellarTxm) dropOldestForBackpressure(ctx context.Context, dropped *Ste
 	ctxLogger := GetContextedTxLogger(s.baseLogger, dropped.ID, dropped.Metadata)
 	ctxLogger.Warnw("oldest queued tx evicted due to channel backpressure",
 		"droppedTxID", dropped.ID,
-		"ageSecs", uint64(time.Now().Unix())-dropped.Timestamp)
+		"age", time.Since(dropped.Timestamp).Round(time.Second))
 }
 
 // --- Status queries ---
@@ -386,10 +386,26 @@ func (s *StellarTxm) InflightCount() (int, int) {
 
 // --- Transaction status helpers ---
 
+func isTerminalStatus(status commontypes.TransactionStatus) bool {
+	return status == commontypes.Finalized || status == commontypes.Failed
+}
+
+// terminalPastRetention reports whether a terminal tx has exceeded the retention
+// window. expiration may be 0 for immediate eviction (sync-prune mode).
+func terminalPastRetention(tx *StellarTx, expiration time.Duration) bool {
+	if !isTerminalStatus(tx.Status) {
+		return false
+	}
+	if tx.TerminalTime.IsZero() {
+		return false
+	}
+	return time.Since(tx.TerminalTime) >= expiration
+}
+
 func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.TransactionStatus) {
 	s.transactionsLock.Lock()
 	tx.Status = status
-	terminal := status == commontypes.Failed || status == commontypes.Finalized
+	terminal := isTerminalStatus(status)
 	if terminal && tx.TerminalTime.IsZero() {
 		tx.TerminalTime = time.Now()
 	}
@@ -406,6 +422,9 @@ func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.T
 // Must be called with transactionsLock held.
 func (s *StellarTxm) maybeEvictTerminalTx(tx *StellarTx) {
 	if s.config.PruneInterval.Duration() > 0 {
+		return
+	}
+	if !terminalPastRetention(tx, 0) {
 		return
 	}
 	s.baseLogger.Debugw("maybeEvictTerminalTx: evicting terminal tx immediately",
@@ -533,7 +552,7 @@ func (s *StellarTxm) broadcastLoop() {
 			}
 
 			sort.Slice(broadcastTxs, func(i, j int) bool {
-				return broadcastTxs[i].Timestamp < broadcastTxs[j].Timestamp
+				return broadcastTxs[i].Timestamp.Before(broadcastTxs[j].Timestamp)
 			})
 
 			for _, tx := range broadcastTxs {
@@ -952,7 +971,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 			latestLedger, ledgerErr := client.GetLatestLedger(ctx)
 
 			txTimeout := time.Duration(*s.config.TxTimeoutSecs) * time.Second
-			wallClockExpired := time.Since(time.Unix(int64(utx.Tx.Timestamp), 0)) > txTimeout
+			wallClockExpired := time.Since(utx.Tx.Timestamp) > txTimeout
 
 			if ledgerErr != nil {
 				ctxLogger.Errorw("couldn't fetch latest ledger for expiry check", "error", ledgerErr)
@@ -971,7 +990,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 				}
 				if wallClockExpired && !ledgerExpired {
 					ctxLogger.Warnw("tx expired via wall-clock fallback", "hash", hash,
-						"age", time.Since(time.Unix(int64(utx.Tx.Timestamp), 0)).Round(time.Second))
+						"age", time.Since(utx.Tx.Timestamp).Round(time.Second))
 				}
 			}
 
@@ -1000,7 +1019,9 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 // pruneLoop runs on a time.Ticker and evicts terminal transactions whose
 // retention window (measured from TerminalTime) has expired. It is started
 // only when PruneInterval > 0; when PruneInterval is zero, terminal txs are
-// evicted synchronously in updateTransactionStatus instead.
+// evicted synchronously in updateTransactionStatus instead. An initial prune
+// runs immediately on start so stale txs from a restart are not delayed by a
+// full tick.
 func (s *StellarTxm) pruneLoop() {
 	defer s.done.Done()
 
@@ -1008,6 +1029,7 @@ func (s *StellarTxm) pruneLoop() {
 	defer ticker.Stop()
 
 	s.baseLogger.Debugw("pruneLoop: started")
+	s.pruneTerminal()
 	for {
 		select {
 		case <-ticker.C:
@@ -1029,17 +1051,12 @@ func (s *StellarTxm) pruneTerminal() {
 	defer s.transactionsLock.Unlock()
 
 	for id, tx := range s.transactions {
-		if tx.Status != commontypes.Finalized && tx.Status != commontypes.Failed {
+		if !terminalPastRetention(tx, expiration) {
 			continue
 		}
-		if tx.TerminalTime.IsZero() {
-			continue
-		}
-		if time.Since(tx.TerminalTime) < expiration {
-			continue
-		}
+		age := time.Since(tx.TerminalTime)
 		s.baseLogger.Debugw("pruneTerminal: evicting expired terminal tx",
-			"txID", id, "status", tx.Status, "terminalAge", time.Since(tx.TerminalTime))
+			"txID", id, "status", tx.Status, "terminalAge", age)
 		delete(s.transactions, id)
 	}
 }

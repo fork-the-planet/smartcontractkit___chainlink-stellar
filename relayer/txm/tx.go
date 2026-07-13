@@ -14,7 +14,7 @@ import (
 type StellarTx struct {
 	ID          string
 	Metadata    *commontypes.TxMeta
-	Timestamp   uint64
+	Timestamp   time.Time // when the tx was enqueued; zero if unset
 	FromAddress string // G... strkey: source account and signer for this TXM
 
 	Operations         []txnbuild.Operation
