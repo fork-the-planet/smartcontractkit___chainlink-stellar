@@ -112,3 +112,12 @@ const (
 	RetryReasonTryAgainLater      RetryReason = "try_again_later"
 	RetryReasonClientUnavailable  RetryReason = "client_unavailable"
 )
+
+// RestoreOutcome classifies RestoreFootprint lifecycle events recorded by TXM metrics.
+type RestoreOutcome string
+
+const (
+	RestoreOutcomeInitiated RestoreOutcome = "initiated"
+	RestoreOutcomeSuccess   RestoreOutcome = "success"
+	RestoreOutcomeFailed    RestoreOutcome = "failed"
+)

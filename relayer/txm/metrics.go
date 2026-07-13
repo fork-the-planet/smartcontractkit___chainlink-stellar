@@ -31,20 +31,10 @@ var (
 		Help: "Current in-flight unconfirmed transactions",
 	}, []string{"chainID"})
 
-	promStellarTxmErrorTxs = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_tx_error",
-		Help: "Transaction errors by reason",
-	}, []string{"chainID", "reason"})
-
-	promStellarTxmRetryTxs = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_tx_retry",
-		Help: "Transaction retries by reason",
-	}, []string{"chainID", "reason"})
-
-	promStellarTxmDroppedTxs = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_tx_dropped",
-		Help: "Transactions dropped due to backpressure (oldest-evicted or new-rejected)",
-	}, []string{"chainID", "reason"})
+	promStellarTxmOutcomeTxs = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "stellar_txm_tx_outcome",
+		Help: "Transaction errors, retries, and drops by outcome and reason",
+	}, []string{"chainID", "outcome", "reason"})
 
 	promStellarTxmTimeUntilTxConfirmed = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "txm_time_until_tx_confirmed",
@@ -53,25 +43,15 @@ var (
 
 	// Stellar-specific metrics
 
-	promStellarTxmRestoreTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_restore_total",
-		Help: "RestoreFootprint transactions submitted",
-	}, []string{"chainID"})
-
-	promStellarTxmRestoreSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_restore_success",
-		Help: "RestoreFootprint transactions that succeeded",
-	}, []string{"chainID"})
-
-	promStellarTxmRestoreFailed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "stellar_txm_restore_failed",
-		Help: "RestoreFootprint transactions that failed",
-	}, []string{"chainID"})
+	promStellarTxmRestore = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "stellar_txm_restore",
+		Help: "RestoreFootprint lifecycle events by outcome",
+	}, []string{"chainID", "outcome"})
 
 	promStellarTxmSimDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "stellar_txm_simulation_duration_seconds",
-		Help:    "Time spent in SimulateTransaction calls",
-		Buckets: prometheus.DefBuckets,
+		Name:    "stellar_txm_simulation_duration_ns",
+		Help:    "Time spent in SimulateTransaction calls, in nanoseconds",
+		Buckets: []float64{5e6, 1e7, 2.5e7, 5e7, 1e8, 2.5e8, 5e8, 1e9, 2.5e9, 5e9, 1e10},
 	}, []string{"chainID"})
 
 	promStellarTxmFeeInclusion = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -95,10 +75,8 @@ type TxmMetrics interface {
 	IncrementErrorTxs(context.Context, ErrorReason)
 	IncrementRetryTxs(context.Context, RetryReason)
 	IncrementDroppedTxs(context.Context, DropReason)
-	IncrementRestoreTotal(context.Context)
-	IncrementRestoreSuccess(context.Context)
-	IncrementRestoreFailed(context.Context)
-	ObserveSimulationDuration(context.Context, float64)
+	IncrementRestore(context.Context, RestoreOutcome)
+	ObserveSimulationDuration(context.Context, int64)
 	ObserveInclusionFee(context.Context, int64)
 	ObserveResourceFee(context.Context, int64)
 	RecordTimeUntilTxConfirmed(context.Context, float64)
@@ -112,18 +90,14 @@ type stellarTxmMetrics struct {
 	broadcastedTxs       metric.Int64Counter
 	successTxs           metric.Int64Counter
 	pendingTxs           metric.Int64Gauge
-	errorTxs             metric.Int64Counter
-	retryTxs             metric.Int64Counter
-	droppedTxs           metric.Int64Counter
+	outcomeTxs           metric.Int64Counter
 	timeUntilTxConfirmed metric.Float64Histogram
 
 	// Stellar-specific metrics
-	restoreTotal   metric.Int64Counter
-	restoreSuccess metric.Int64Counter
-	restoreFailed  metric.Int64Counter
-	simDuration    metric.Float64Histogram
-	feeInclusion   metric.Int64Histogram
-	feeResource    metric.Int64Histogram
+	restore      metric.Int64Counter
+	simDuration  metric.Int64Histogram
+	feeInclusion metric.Int64Histogram
+	feeResource  metric.Int64Histogram
 }
 
 func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
@@ -145,19 +119,9 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_pending: %w", err))
 	}
 
-	errorTxs, err := meter.Int64Counter("stellar_txm_tx_error")
+	outcomeTxs, err := meter.Int64Counter("stellar_txm_tx_outcome")
 	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_error: %w", err))
-	}
-
-	retryTxs, err := meter.Int64Counter("stellar_txm_tx_retry")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_retry: %w", err))
-	}
-
-	droppedTxs, err := meter.Int64Counter("stellar_txm_tx_dropped")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_dropped: %w", err))
+		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_tx_outcome: %w", err))
 	}
 
 	timeUntilTxConfirmed, err := meter.Float64Histogram("txm_time_until_tx_confirmed")
@@ -165,26 +129,17 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 		initErr = errors.Join(initErr, fmt.Errorf("txm_time_until_tx_confirmed: %w", err))
 	}
 
-	restoreTotal, err := meter.Int64Counter("stellar_txm_restore_total")
+	restore, err := meter.Int64Counter("stellar_txm_restore")
 	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore_total: %w", err))
+		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore: %w", err))
 	}
 
-	restoreSuccess, err := meter.Int64Counter("stellar_txm_restore_success")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore_success: %w", err))
-	}
-
-	restoreFailed, err := meter.Int64Counter("stellar_txm_restore_failed")
-	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore_failed: %w", err))
-	}
-
-	simDuration, err := meter.Float64Histogram("stellar_txm_simulation_duration_seconds",
-		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+	simDuration, err := meter.Int64Histogram("stellar_txm_simulation_duration_ns",
+		metric.WithUnit("ns"),
+		metric.WithExplicitBucketBoundaries(5e6, 1e7, 2.5e7, 5e7, 1e8, 2.5e8, 5e8, 1e9, 2.5e9, 5e9, 1e10),
 	)
 	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_simulation_duration_seconds: %w", err))
+		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_simulation_duration_ns: %w", err))
 	}
 
 	feeInclusion, err := meter.Int64Histogram("stellar_txm_fee_inclusion_stroops",
@@ -213,17 +168,13 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 		broadcastedTxs:       broadcastedTxs,
 		successTxs:           successTxs,
 		pendingTxs:           pendingTxs,
-		errorTxs:             errorTxs,
-		retryTxs:             retryTxs,
-		droppedTxs:           droppedTxs,
+		outcomeTxs:           outcomeTxs,
 		timeUntilTxConfirmed: timeUntilTxConfirmed,
 
-		restoreTotal:   restoreTotal,
-		restoreSuccess: restoreSuccess,
-		restoreFailed:  restoreFailed,
-		simDuration:    simDuration,
-		feeInclusion:   feeInclusion,
-		feeResource:    feeResource,
+		restore:      restore,
+		simDuration:  simDuration,
+		feeInclusion: feeInclusion,
+		feeResource:  feeResource,
 	}
 }
 
@@ -253,21 +204,25 @@ func (m *stellarTxmMetrics) SetPendingTxs(ctx context.Context, count int) {
 }
 
 func (m *stellarTxmMetrics) IncrementErrorTxs(ctx context.Context, reason ErrorReason) {
-	promStellarTxmErrorTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
-	m.errorTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+	m.recordOutcome(ctx, "error", string(reason))
 }
 
 func (m *stellarTxmMetrics) IncrementRetryTxs(ctx context.Context, reason RetryReason) {
-	promStellarTxmRetryTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
-	m.retryTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+	m.recordOutcome(ctx, "retry", string(reason))
 }
 
 func (m *stellarTxmMetrics) IncrementDroppedTxs(ctx context.Context, reason DropReason) {
-	promStellarTxmDroppedTxs.WithLabelValues(m.chainID, string(reason)).Add(1)
-	otelAttrs := append(m.getOtelAttributes(), attribute.String("reason", string(reason)))
-	m.droppedTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+	m.recordOutcome(ctx, "drop", string(reason))
+}
+
+func (m *stellarTxmMetrics) recordOutcome(ctx context.Context, outcome, reason string) {
+	promStellarTxmOutcomeTxs.WithLabelValues(m.chainID, outcome, reason).Add(1)
+	otelAttrs := append(
+		m.getOtelAttributes(),
+		attribute.String("outcome", outcome),
+		attribute.String("reason", reason),
+	)
+	m.outcomeTxs.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
 func (m *stellarTxmMetrics) RecordTimeUntilTxConfirmed(ctx context.Context, duration float64) {
@@ -277,24 +232,18 @@ func (m *stellarTxmMetrics) RecordTimeUntilTxConfirmed(ctx context.Context, dura
 
 // --- Stellar-specific metrics ---
 
-func (m *stellarTxmMetrics) IncrementRestoreTotal(ctx context.Context) {
-	promStellarTxmRestoreTotal.WithLabelValues(m.chainID).Add(1)
-	m.restoreTotal.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
+func (m *stellarTxmMetrics) IncrementRestore(ctx context.Context, outcome RestoreOutcome) {
+	promStellarTxmRestore.WithLabelValues(m.chainID, string(outcome)).Add(1)
+	otelAttrs := append(
+		m.getOtelAttributes(),
+		attribute.String("outcome", string(outcome)),
+	)
+	m.restore.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
-func (m *stellarTxmMetrics) IncrementRestoreSuccess(ctx context.Context) {
-	promStellarTxmRestoreSuccess.WithLabelValues(m.chainID).Add(1)
-	m.restoreSuccess.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
-}
-
-func (m *stellarTxmMetrics) IncrementRestoreFailed(ctx context.Context) {
-	promStellarTxmRestoreFailed.WithLabelValues(m.chainID).Add(1)
-	m.restoreFailed.Add(ctx, 1, metric.WithAttributes(m.getOtelAttributes()...))
-}
-
-func (m *stellarTxmMetrics) ObserveSimulationDuration(ctx context.Context, seconds float64) {
-	promStellarTxmSimDuration.WithLabelValues(m.chainID).Observe(seconds)
-	m.simDuration.Record(ctx, seconds, metric.WithAttributes(m.getOtelAttributes()...))
+func (m *stellarTxmMetrics) ObserveSimulationDuration(ctx context.Context, nanoseconds int64) {
+	promStellarTxmSimDuration.WithLabelValues(m.chainID).Observe(float64(nanoseconds))
+	m.simDuration.Record(ctx, nanoseconds, metric.WithAttributes(m.getOtelAttributes()...))
 }
 
 func (m *stellarTxmMetrics) ObserveInclusionFee(ctx context.Context, stroops int64) {
@@ -321,13 +270,9 @@ func (noopStellarTxmMetrics) IncrementRetryTxs(context.Context, RetryReason) {}
 
 func (noopStellarTxmMetrics) IncrementDroppedTxs(context.Context, DropReason) {}
 
-func (noopStellarTxmMetrics) IncrementRestoreTotal(context.Context) {}
+func (noopStellarTxmMetrics) IncrementRestore(context.Context, RestoreOutcome) {}
 
-func (noopStellarTxmMetrics) IncrementRestoreSuccess(context.Context) {}
-
-func (noopStellarTxmMetrics) IncrementRestoreFailed(context.Context) {}
-
-func (noopStellarTxmMetrics) ObserveSimulationDuration(context.Context, float64) {}
+func (noopStellarTxmMetrics) ObserveSimulationDuration(context.Context, int64) {}
 
 func (noopStellarTxmMetrics) ObserveInclusionFee(context.Context, int64) {}
 

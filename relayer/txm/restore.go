@@ -63,8 +63,7 @@ func (s *StellarTxm) handleRestore(
 		return fmt.Errorf("failed to encode signed restore transaction: %w", err)
 	}
 
-	// Count one RestoreTotal per logical restore
-	s.metrics.IncrementRestoreTotal(ctx)
+	s.metrics.IncrementRestore(ctx, RestoreOutcomeInitiated)
 
 	var lastErr error
 	for attempt := uint(0); attempt < *s.config.MaxRestoreAttempts; attempt++ {
@@ -94,14 +93,14 @@ func (s *StellarTxm) handleRestore(
 				continue
 			}
 			if resp.Status == protocolrpc.TransactionStatusSuccess {
-				s.metrics.IncrementRestoreSuccess(ctx)
+				s.metrics.IncrementRestore(ctx, RestoreOutcomeSuccess)
 				ctxLogger.Infow("restore transaction confirmed", "seq", seq, "hash", submitResult.Hash)
 				if err := s.resyncSequence(ctx, client, tx); err != nil {
 					return fmt.Errorf("failed to resync sequence after restore: %w", err)
 				}
 				return nil
 			}
-			s.metrics.IncrementRestoreFailed(ctx)
+			s.metrics.IncrementRestore(ctx, RestoreOutcomeFailed)
 			return fmt.Errorf("restore transaction failed on-chain: %s", resp.Status)
 
 		case stellarcore.TXStatusTryAgainLater:
@@ -113,19 +112,19 @@ func (s *StellarTxm) handleRestore(
 			continue
 
 		case stellarcore.TXStatusError:
-			s.metrics.IncrementRestoreFailed(ctx)
+			s.metrics.IncrementRestore(ctx, RestoreOutcomeFailed)
 			if submitResult.ErrorResultXDR != "" {
 				return fmt.Errorf("restore transaction rejected: %s", submitResult.ErrorResultXDR)
 			}
 			return fmt.Errorf("restore transaction rejected with %s", stellarcore.TXStatusError)
 
 		default:
-			s.metrics.IncrementRestoreFailed(ctx)
+			s.metrics.IncrementRestore(ctx, RestoreOutcomeFailed)
 			return fmt.Errorf("unexpected restore transaction status: %s", submitResult.Status)
 		}
 	}
 
-	s.metrics.IncrementRestoreFailed(ctx)
+	s.metrics.IncrementRestore(ctx, RestoreOutcomeFailed)
 	if lastErr != nil {
 		return fmt.Errorf("restore attempts exhausted: %w", lastErr)
 	}
