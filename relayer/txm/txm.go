@@ -419,12 +419,10 @@ func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.T
 }
 
 // maybeEvictTerminalTx removes a terminal tx when background pruning is disabled.
-// Must be called with transactionsLock held.
+// Must be called with transactionsLock held. The caller (updateTransactionStatus)
+// has already stamped TerminalTime before invoking this.
 func (s *StellarTxm) maybeEvictTerminalTx(tx *StellarTx) {
 	if s.config.PruneInterval.Duration() > 0 {
-		return
-	}
-	if !terminalPastRetention(tx, 0) {
 		return
 	}
 	s.baseLogger.Debugw("maybeEvictTerminalTx: evicting terminal tx immediately",
