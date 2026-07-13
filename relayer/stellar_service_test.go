@@ -186,6 +186,90 @@ func TestStellarService_GetLatestLedger(t *testing.T) {
 	})
 }
 
+func TestStellarService_GetLedgers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success", func(t *testing.T) {
+		ctx := t.Context()
+
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().GetLedgers(ctx, protocol.GetLedgersRequest{
+			StartLedger: 4242,
+			Pagination:  &protocol.LedgerPaginationOptions{Cursor: "cur-in", Limit: 2},
+			Format:      protocol.FormatBase64,
+		}).Return(protocol.GetLedgersResponse{
+			Ledgers: []protocol.LedgerInfo{
+				{
+					Hash:            "ledgerhash-1",
+					Sequence:        4242,
+					LedgerCloseTime: 9876543210,
+					LedgerHeader:    "header-xdr-1",
+					LedgerMetadata:  "meta-xdr-1",
+				},
+				{
+					Hash:            "ledgerhash-2",
+					Sequence:        4243,
+					LedgerCloseTime: 9876543215,
+					LedgerHeader:    "header-xdr-2",
+					LedgerMetadata:  "meta-xdr-2",
+				},
+			},
+			LatestLedger:          5000,
+			LatestLedgerCloseTime: 9876543299,
+			OldestLedger:          1,
+			OldestLedgerCloseTime: 1000,
+			Cursor:                "cur-out",
+		}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.GetLedgers(ctx, stellartypes.GetLedgersRequest{
+			StartLedger: 4242,
+			Pagination:  &stellartypes.LedgerPaginationOptions{Cursor: "cur-in", Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Ledgers, 2)
+		require.Equal(t, "ledgerhash-1", resp.Ledgers[0].Hash)
+		require.Equal(t, uint32(4242), resp.Ledgers[0].Sequence)
+		require.Equal(t, int64(9876543210), resp.Ledgers[0].LedgerCloseTime)
+		require.Equal(t, "header-xdr-1", resp.Ledgers[0].LedgerHeaderXDR)
+		require.Equal(t, "meta-xdr-1", resp.Ledgers[0].LedgerMetadataXDR)
+		require.Equal(t, uint32(4243), resp.Ledgers[1].Sequence)
+		require.Equal(t, uint32(5000), resp.LatestLedger)
+		require.Equal(t, int64(9876543299), resp.LatestLedgerCloseTime)
+		require.Equal(t, uint32(1), resp.OldestLedger)
+		require.Equal(t, "cur-out", resp.Cursor)
+	})
+
+	t.Run("EmptyRange", func(t *testing.T) {
+		ctx := t.Context()
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().GetLedgers(ctx, protocol.GetLedgersRequest{
+			StartLedger: 100,
+			Format:      protocol.FormatBase64,
+		}).Return(protocol.GetLedgersResponse{Ledgers: nil, LatestLedger: 200}, nil)
+
+		svc := newTestStellarService(t, rpc)
+		resp, err := svc.GetLedgers(ctx, stellartypes.GetLedgersRequest{StartLedger: 100})
+		require.NoError(t, err)
+		require.Empty(t, resp.Ledgers)
+		require.Equal(t, uint32(200), resp.LatestLedger)
+	})
+
+	t.Run("RPCError", func(t *testing.T) {
+		ctx := t.Context()
+		rpc := mocks.NewMockRPCClient(t)
+		rpc.EXPECT().GetLedgers(ctx, protocol.GetLedgersRequest{
+			StartLedger: 1,
+			Format:      protocol.FormatBase64,
+		}).Return(protocol.GetLedgersResponse{}, errors.New("start ledger must be within the ledger range"))
+
+		svc := newTestStellarService(t, rpc)
+		_, err := svc.GetLedgers(ctx, stellartypes.GetLedgersRequest{StartLedger: 1})
+		require.ErrorContains(t, err, "start ledger must be within the ledger range")
+		require.ErrorIs(t, err, multinode.ErrNodeError)
+	})
+}
+
 // testContractID returns a valid C… StrKey contract address (all-zero contract).
 func testContractID(t *testing.T) string {
 	t.Helper()

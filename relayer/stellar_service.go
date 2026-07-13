@@ -113,6 +113,50 @@ func (s *stellarService) GetLatestLedger(ctx context.Context) (stellartypes.GetL
 	}, nil
 }
 
+// GetLedgers fetches a paginated range of ledgers.
+func (s *stellarService) GetLedgers(ctx context.Context, req stellartypes.GetLedgersRequest) (stellartypes.GetLedgersResponse, error) {
+	rpc, err := s.chain.GetClient(ctx)
+	if err != nil {
+		return stellartypes.GetLedgersResponse{}, fmt.Errorf("failed to get chain client: %w", err)
+	}
+
+	protoReq := protocol.GetLedgersRequest{
+		StartLedger: req.StartLedger,
+		Format:      protocol.FormatBase64,
+	}
+	if req.Pagination != nil {
+		protoReq.Pagination = &protocol.LedgerPaginationOptions{
+			Cursor: req.Pagination.Cursor,
+			Limit:  uint(req.Pagination.Limit),
+		}
+	}
+
+	out, err := rpc.GetLedgers(ctx, protoReq)
+	if err != nil {
+		return stellartypes.GetLedgersResponse{}, fmt.Errorf("failed to get ledgers: %w: %w", multinode.ErrNodeError, err)
+	}
+
+	ledgers := make([]stellartypes.LedgerInfo, len(out.Ledgers))
+	for i, l := range out.Ledgers {
+		ledgers[i] = stellartypes.LedgerInfo{
+			Hash:              l.Hash,
+			Sequence:          l.Sequence,
+			LedgerCloseTime:   l.LedgerCloseTime,
+			LedgerHeaderXDR:   l.LedgerHeader,
+			LedgerMetadataXDR: l.LedgerMetadata,
+		}
+	}
+
+	return stellartypes.GetLedgersResponse{
+		Ledgers:               ledgers,
+		LatestLedger:          out.LatestLedger,
+		LatestLedgerCloseTime: out.LatestLedgerCloseTime,
+		OldestLedger:          out.OldestLedger,
+		OldestLedgerCloseTime: out.OldestLedgerCloseTime,
+		Cursor:                out.Cursor,
+	}, nil
+}
+
 // SimulateTransaction performs a Soroban InvokeHostFunction simulation.
 //
 // It builds an unsigned InvokeHostFunction transaction, sends it to Stellar RPC's
