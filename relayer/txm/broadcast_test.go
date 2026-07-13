@@ -744,9 +744,9 @@ func TestStellarTxm_HandleRestore_RestoreTotalNotInflatedByRetry(t *testing.T) {
 		SubmitRetryDelay: config.MustNewDuration(1 * time.Millisecond),
 	}
 
-	totalBefore := testutil.ToFloat64(promStellarTxmRestoreTotal.WithLabelValues(chainID))
-	failedBefore := testutil.ToFloat64(promStellarTxmRestoreFailed.WithLabelValues(chainID))
-	successBefore := testutil.ToFloat64(promStellarTxmRestoreSuccess.WithLabelValues(chainID))
+	initiatedBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeInitiated)))
+	failedBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeFailed)))
+	successBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeSuccess)))
 
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainID)
 	require.NoError(t, err)
@@ -762,14 +762,14 @@ func TestStellarTxm_HandleRestore_RestoreTotalNotInflatedByRetry(t *testing.T) {
 	assert.GreaterOrEqual(t, sendCalls.Load(), int32(2),
 		"loop must iterate at least twice — that's the scenario that exposed the bug")
 
-	totalAfter := testutil.ToFloat64(promStellarTxmRestoreTotal.WithLabelValues(chainID))
-	failedAfter := testutil.ToFloat64(promStellarTxmRestoreFailed.WithLabelValues(chainID))
-	successAfter := testutil.ToFloat64(promStellarTxmRestoreSuccess.WithLabelValues(chainID))
+	initiatedAfter := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeInitiated)))
+	failedAfter := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeFailed)))
+	successAfter := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeSuccess)))
 
-	assert.Equal(t, float64(1), totalAfter-totalBefore,
-		"RestoreTotal must increment exactly once per logical restore")
+	assert.Equal(t, float64(1), initiatedAfter-initiatedBefore,
+		"restore initiated must increment exactly once per logical restore")
 	assert.Equal(t, float64(1), failedAfter-failedBefore,
-		"RestoreFailed fires once on attempt-exhaustion")
+		"restore failed fires once on attempt-exhaustion")
 	assert.Equal(t, float64(0), successAfter-successBefore,
 		"no success expected on this path")
 }
@@ -802,9 +802,9 @@ func TestStellarTxm_HandleRestore_RestoreTotalCountsOnceOnSuccess(t *testing.T) 
 		SubmitRetryDelay:   config.MustNewDuration(1 * time.Millisecond),
 	}
 
-	totalBefore := testutil.ToFloat64(promStellarTxmRestoreTotal.WithLabelValues(chainID))
-	successBefore := testutil.ToFloat64(promStellarTxmRestoreSuccess.WithLabelValues(chainID))
-	failedBefore := testutil.ToFloat64(promStellarTxmRestoreFailed.WithLabelValues(chainID))
+	initiatedBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeInitiated)))
+	successBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeSuccess)))
+	failedBefore := testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeFailed)))
 
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(mock), chainID)
 	require.NoError(t, err)
@@ -818,11 +818,11 @@ func TestStellarTxm_HandleRestore_RestoreTotalCountsOnceOnSuccess(t *testing.T) 
 
 	require.NoError(t, txm.handleRestore(t.Context(), client, tx, preamble, 1))
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(promStellarTxmRestoreTotal.WithLabelValues(chainID))-totalBefore,
-		"RestoreTotal must increment exactly once per logical restore")
-	assert.Equal(t, float64(1), testutil.ToFloat64(promStellarTxmRestoreSuccess.WithLabelValues(chainID))-successBefore,
-		"RestoreSuccess fires once on terminal success")
-	assert.Equal(t, float64(0), testutil.ToFloat64(promStellarTxmRestoreFailed.WithLabelValues(chainID))-failedBefore,
+	assert.Equal(t, float64(1), testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeInitiated)))-initiatedBefore,
+		"restore initiated must increment exactly once per logical restore")
+	assert.Equal(t, float64(1), testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeSuccess)))-successBefore,
+		"restore success fires once on terminal success")
+	assert.Equal(t, float64(0), testutil.ToFloat64(promStellarTxmRestore.WithLabelValues(chainID, string(RestoreOutcomeFailed)))-failedBefore,
 		"no failure expected on this path")
 }
 

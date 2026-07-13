@@ -42,7 +42,7 @@ type StellarTxm struct {
 	keystore   core.Keystore
 	config     Config
 	chainID    string
-	metrics    *stellarTxmMetrics
+	metrics    TxmMetrics
 	feeStrat   FeeStrategy
 
 	// transactions + transactionsLock guard both the tx ID → *StellarTx map and
@@ -89,10 +89,7 @@ func New(
 		return nil, fmt.Errorf("resolve network passphrase: %w", err)
 	}
 
-	metrics, err := newStellarTxmMetrics(chainID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize metrics: %w", err)
-	}
+	metrics := NewStellarTxmMetrics(lgr, chainID)
 
 	return &StellarTxm{
 		baseLogger: logger.Named(lgr, "StellarTxm"),
@@ -324,7 +321,7 @@ func (s *StellarTxm) dropOldestForBackpressure(ctx context.Context, dropped *Ste
 	s.transactionsLock.Lock()
 	ok := false
 	if cur, exists := s.transactions[dropped.ID]; exists && cur == dropped {
-		dropped.ResultCode = DropReasonChannelFullOldestEvicted
+		dropped.ResultCode = string(DropReasonChannelFullOldestEvicted)
 		ok = true
 	}
 	s.transactionsLock.Unlock()
@@ -411,17 +408,33 @@ func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.T
 
 // markTxFailed sets Failed (and closes Done via updateTransactionStatus) and records
 // an error metric. Use when no TxStore sequence was reserved for this attempt.
-func (s *StellarTxm) markTxFailed(ctx context.Context, tx *StellarTx, metricReason string) {
+func (s *StellarTxm) markTxFailed(ctx context.Context, tx *StellarTx, metricReason ErrorReason) {
 	s.updateTransactionStatus(tx, commontypes.Failed)
 	s.metrics.IncrementErrorTxs(ctx, metricReason)
 }
 
 // releaseSeqAndFailTx releases a reserved sequence, marks the tx Failed, and records
 // an error metric. Used when simulate/send aborts after GetNextSequence.
-func (s *StellarTxm) releaseSeqAndFailTx(ctx context.Context, txStore *TxStore, seq int64, tx *StellarTx, metricReason string) {
+func (s *StellarTxm) releaseSeqAndFailTx(ctx context.Context, txStore *TxStore, seq int64, tx *StellarTx, metricReason ErrorReason) {
 	txStore.Release(seq)
 	s.updateTransactionStatus(tx, commontypes.Failed)
 	s.metrics.IncrementErrorTxs(ctx, metricReason)
+}
+
+func (s *StellarTxm) markBroadcastAt(tx *StellarTx) {
+	s.transactionsLock.Lock()
+	defer s.transactionsLock.Unlock()
+	tx.BroadcastAt = time.Now()
+}
+
+func (s *StellarTxm) recordTimeUntilConfirmed(ctx context.Context, tx *StellarTx) {
+	s.transactionsLock.Lock()
+	broadcastAt := tx.BroadcastAt
+	s.transactionsLock.Unlock()
+	if broadcastAt.IsZero() {
+		return
+	}
+	s.metrics.RecordTimeUntilTxConfirmed(ctx, time.Since(broadcastAt).Seconds())
 }
 
 func (s *StellarTxm) updateTransactionHash(tx *StellarTx, hash string) {
@@ -681,8 +694,9 @@ func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *Stella
 		accepted, fatalErr, retryReason := s.handleSendResult(ctx, tx, submitResult, seq, txStore, maxLedger)
 		if accepted {
 			ctxLogger.Debugw("tx broadcast successfully", "attempt", currentAttempt, "seq", seq, "hash", submitResult.Hash)
-			s.updateTransactionStatus(tx, commontypes.Unconfirmed)
+			s.markBroadcastAt(tx)
 			s.metrics.IncrementBroadcastedTxs(ctx)
+			s.updateTransactionStatus(tx, commontypes.Unconfirmed)
 			return
 		}
 
@@ -893,9 +907,10 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					}
 					s.updateTransactionLedgerCloseTime(utx.Tx, resp.LedgerCloseTime)
 
-					ctxLogger.Infow("confirmed tx: successful", "hash", hash)
-					s.metrics.IncrementSuccessTxs(ctx)
-					s.updateTransactionStatus(utx.Tx, commontypes.Finalized)
+				ctxLogger.Infow("confirmed tx: successful", "hash", hash)
+				s.metrics.IncrementSuccessTxs(ctx)
+				s.recordTimeUntilConfirmed(ctx, utx.Tx)
+				s.updateTransactionStatus(utx.Tx, commontypes.Finalized)
 					continue
 
 				case protocolrpc.TransactionStatusFailed:
@@ -905,20 +920,23 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					}
 					s.updateTransactionResultXDR(utx.Tx, resp.ResultXDR)
 					classification := classifyFailedTransactionResult(resp.ResultXDR)
-					s.updateTransactionResultCode(utx.Tx, classification.resultCode)
+					s.updateTransactionResultCode(utx.Tx, string(classification.resultCode))
 					s.updateTransactionLedgerCloseTime(utx.Tx, resp.LedgerCloseTime)
 
-					ctxLogger.Infow("confirmed tx: failed on-chain", "hash", hash, "resultCode", classification.resultCode, "retryable", classification.retryable)
-					s.metrics.IncrementErrorTxs(ctx, classification.resultCode)
+				ctxLogger.Infow("confirmed tx: failed on-chain", "hash", hash, "resultCode", classification.resultCode, "retryable", classification.retryable)
 
-					if !classification.retryable {
-						s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-						continue
-					}
-					s.incrementTransactionAttempt(utx.Tx)
-					if !s.maybeRetry(ctx, utx, RetryReasonResourceExhaustion) {
-						s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-					}
+				if !classification.retryable {
+					// Terminal on-chain failure — count once at the point of no-return.
+					s.metrics.IncrementErrorTxs(ctx, classification.resultCode)
+					s.updateTransactionStatus(utx.Tx, commontypes.Failed)
+					continue
+				}
+				s.incrementTransactionAttempt(utx.Tx)
+				if !s.maybeRetry(ctx, utx, RetryReasonResourceExhaustion) {
+					// Retryable failure but max attempts exhausted — count once here.
+					s.metrics.IncrementErrorTxs(ctx, classification.resultCode)
+					s.updateTransactionStatus(utx.Tx, commontypes.Failed)
+				}
 					continue
 				}
 			}
@@ -950,19 +968,20 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 				}
 			}
 
-			// Expired: confirm as failed, recycle the sequence.
-			if confirmErr := txStore.Confirm(utx.Sequence, hash, true); confirmErr != nil {
-				ctxLogger.Errorw("couldn't confirm expired tx", "error", confirmErr)
-				s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-				s.metrics.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
-				continue
-			}
-
+		// Expired: confirm as failed, recycle the sequence.
+		if confirmErr := txStore.Confirm(utx.Sequence, hash, true); confirmErr != nil {
+			ctxLogger.Errorw("couldn't confirm expired tx", "error", confirmErr)
 			s.metrics.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
-			s.incrementTransactionAttempt(utx.Tx)
-			if !s.maybeRetry(ctx, utx, RetryReasonTimedOut) {
-				s.updateTransactionStatus(utx.Tx, commontypes.Failed)
-			}
+			s.updateTransactionStatus(utx.Tx, commontypes.Failed)
+			continue
+		}
+
+		s.incrementTransactionAttempt(utx.Tx)
+		if !s.maybeRetry(ctx, utx, RetryReasonTimedOut) {
+			// Terminal timeout — count once when we know it won't retry.
+			s.metrics.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
+			s.updateTransactionStatus(utx.Tx, commontypes.Failed)
+		}
 		}
 	}
 
@@ -970,23 +989,6 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 }
 
 // --- Retry ---
-
-func (r RetryReason) String() string {
-	switch r {
-	case RetryReasonResourceExhaustion:
-		return "resource_exhaustion"
-	case RetryReasonTimedOut:
-		return "timed_out"
-	case RetryReasonBadSeq:
-		return "bad_seq"
-	case RetryReasonTryAgainLater:
-		return "try_again_later"
-	case RetryReasonClientUnavailable:
-		return "client_unavailable"
-	default:
-		return "unknown"
-	}
-}
 
 func (s *StellarTxm) maybeRetry(ctx context.Context, utx *UnconfirmedTx, reason RetryReason) bool {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, utx.Tx.ID, utx.Tx.Metadata)
@@ -999,10 +1001,11 @@ func (s *StellarTxm) maybeRetry(ctx context.Context, utx *UnconfirmedTx, reason 
 	select {
 	case s.broadcastChan <- utx.Tx:
 		ctxLogger.Debugw("retrying tx", "attempt", currentAttempt, "hash", utx.Hash, "retryReason", reason)
-		s.metrics.IncrementRetryTxs(ctx, reason.String())
+		s.metrics.IncrementRetryTxs(ctx, reason)
 		return true
 	default:
 		ctxLogger.Errorw("failed to enqueue tx for rebroadcast (channel full)", "attempt", currentAttempt, "hash", utx.Hash, "retryReason", reason)
+		s.metrics.IncrementDroppedTxs(ctx, DropReasonChannelFullNewRejected)
 		return false
 	}
 }
