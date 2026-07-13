@@ -33,7 +33,7 @@ func TestNoopStellarTxmMetrics(t *testing.T) {
 		m.IncrementRestore(ctx, RestoreOutcomeInitiated)
 		m.IncrementRestore(ctx, RestoreOutcomeSuccess)
 		m.IncrementRestore(ctx, RestoreOutcomeFailed)
-		m.ObserveSimulationDuration(ctx, 500_000_000)
+		m.ObserveSimulationDuration(ctx, 500)
 		m.ObserveInclusionFee(ctx, 1000)
 		m.ObserveResourceFee(ctx, 5000)
 		m.RecordTimeUntilTxConfirmed(ctx, 1)

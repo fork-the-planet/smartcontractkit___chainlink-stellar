@@ -55,7 +55,7 @@ func (s *StellarTxm) simulateTransaction(ctx context.Context, client RPCClient, 
 	simResult, err := client.SimulateTransaction(ctx, protocolrpc.SimulateTransactionRequest{
 		Transaction: txXDR,
 	})
-	s.metrics.ObserveSimulationDuration(ctx, time.Since(start).Nanoseconds())
+	s.metrics.ObserveSimulationDuration(ctx, time.Since(start).Milliseconds())
 	if err != nil {
 		return protocolrpc.SimulateTransactionResponse{}, fmt.Errorf("rpc simulate transaction failed: %w", err)
 	}

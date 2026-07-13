@@ -49,9 +49,9 @@ var (
 	}, []string{"chainID", "outcome"})
 
 	promStellarTxmSimDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "stellar_txm_simulation_duration_ns",
-		Help:    "Time spent in SimulateTransaction calls, in nanoseconds",
-		Buckets: []float64{5e6, 1e7, 2.5e7, 5e7, 1e8, 2.5e8, 5e8, 1e9, 2.5e9, 5e9, 1e10},
+		Name:    "stellar_txm_simulation_duration_ms",
+		Help:    "Time spent in SimulateTransaction calls, in milliseconds",
+		Buckets: []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096},
 	}, []string{"chainID"})
 
 	promStellarTxmFeeInclusion = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -134,12 +134,12 @@ func NewStellarTxmMetrics(lggr logger.Logger, chainID string) TxmMetrics {
 		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_restore: %w", err))
 	}
 
-	simDuration, err := meter.Int64Histogram("stellar_txm_simulation_duration_ns",
-		metric.WithUnit("ns"),
-		metric.WithExplicitBucketBoundaries(5e6, 1e7, 2.5e7, 5e7, 1e8, 2.5e8, 5e8, 1e9, 2.5e9, 5e9, 1e10),
+	simDuration, err := meter.Int64Histogram("stellar_txm_simulation_duration_ms",
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096),
 	)
 	if err != nil {
-		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_simulation_duration_ns: %w", err))
+		initErr = errors.Join(initErr, fmt.Errorf("stellar_txm_simulation_duration_ms: %w", err))
 	}
 
 	feeInclusion, err := meter.Int64Histogram("stellar_txm_fee_inclusion_stroops",
@@ -241,9 +241,9 @@ func (m *stellarTxmMetrics) IncrementRestore(ctx context.Context, outcome Restor
 	m.restore.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 }
 
-func (m *stellarTxmMetrics) ObserveSimulationDuration(ctx context.Context, nanoseconds int64) {
-	promStellarTxmSimDuration.WithLabelValues(m.chainID).Observe(float64(nanoseconds))
-	m.simDuration.Record(ctx, nanoseconds, metric.WithAttributes(m.getOtelAttributes()...))
+func (m *stellarTxmMetrics) ObserveSimulationDuration(ctx context.Context, milliseconds int64) {
+	promStellarTxmSimDuration.WithLabelValues(m.chainID).Observe(float64(milliseconds))
+	m.simDuration.Record(ctx, milliseconds, metric.WithAttributes(m.getOtelAttributes()...))
 }
 
 func (m *stellarTxmMetrics) ObserveInclusionFee(ctx context.Context, stroops int64) {
