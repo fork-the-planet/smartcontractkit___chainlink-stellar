@@ -1,8 +1,6 @@
 package txm
 
 import (
-	"time"
-
 	"github.com/smartcontractkit/chainlink-common/pkg/logger"
 
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
@@ -17,8 +15,4 @@ func GetContextedTxLogger(lgr logger.Logger, txID string, meta *commontypes.TxMe
 		}
 	}
 	return logger.With(lgr, fields...)
-}
-
-func getTimestampSecs() uint64 {
-	return uint64(time.Now().Unix())
 }

@@ -14,7 +14,7 @@ import (
 type StellarTx struct {
 	ID          string
 	Metadata    *commontypes.TxMeta
-	Timestamp   uint64
+	Timestamp   time.Time // when the tx was enqueued; zero if unset
 	FromAddress string // G... strkey: source account and signer for this TXM
 
 	Operations         []txnbuild.Operation
@@ -22,6 +22,7 @@ type StellarTx struct {
 
 	Attempt         uint64
 	Status          commontypes.TransactionStatus
+	TerminalTime    time.Time // when status first became Finalized or Failed; zero if not yet terminal
 	BroadcastAt     time.Time // set when SendTransaction accepts the tx
 	TxHash          string
 	Fee             *big.Int // total fee in stroops; updated to actual FeeCharged on confirmation

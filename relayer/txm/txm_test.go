@@ -1287,6 +1287,202 @@ func TestStellarTxm_ConfirmLoop_UpdatesFeeAndMetaFromXDR(t *testing.T) {
 	assert.NoError(t, result.Error)
 }
 
+// --- Prune tests ---
+
+// twoHours is the default PruneTxExpiration, shared across prune tests.
+const twoHours = 2 * time.Hour
+
+// TestStellarTxm_PruneTerminal_OnlyEvictsTerminalPastCutoff verifies the core
+// pruning invariants without running the full goroutine lifecycle:
+//   - in-flight (Pending/Unconfirmed) txs are never pruned regardless of age
+//   - terminal txs with zero TerminalTime are never pruned (shouldn't happen in prod, defensive)
+//   - terminal txs not yet past PruneTxExpiration are kept
+//   - terminal txs past PruneTxExpiration are removed
+func TestStellarTxm_PruneTerminal_OnlyEvictsTerminalPastCutoff(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		PruneTxExpiration: config.MustNewDuration(twoHours),
+	}
+	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	inject := func(id string, status commontypes.TransactionStatus, terminalTime time.Time) {
+		tx := &StellarTx{
+			ID:           id,
+			Status:       status,
+			TerminalTime: terminalTime,
+			Done:         make(chan struct{}),
+		}
+		if isTerminalStatus(status) {
+			close(tx.Done)
+		}
+		txm.transactionsLock.Lock()
+		txm.transactions[id] = tx
+		txm.transactionsLock.Unlock()
+	}
+
+	inject("inflight-pending", commontypes.Pending, time.Time{})
+	inject("inflight-unconfirmed", commontypes.Unconfirmed, time.Time{})
+	inject("terminal-no-time", commontypes.Finalized, time.Time{})                      // TerminalTime unset — must not be pruned
+	inject("terminal-fresh", commontypes.Finalized, now.Add(-twoHours/2))               // within window
+	inject("terminal-expired-finalized", commontypes.Finalized, now.Add(-twoHours-time.Second)) // past window
+	inject("terminal-expired-failed", commontypes.Failed, now.Add(-twoHours-time.Second))     // past window
+
+	txm.pruneTerminal()
+
+	txm.transactionsLock.RLock()
+	_, hasInflightPending := txm.transactions["inflight-pending"]
+	_, hasInflightUnconfirmed := txm.transactions["inflight-unconfirmed"]
+	_, hasTerminalNoTime := txm.transactions["terminal-no-time"]
+	_, hasTerminalFresh := txm.transactions["terminal-fresh"]
+	_, hasExpiredFinalized := txm.transactions["terminal-expired-finalized"]
+	_, hasExpiredFailed := txm.transactions["terminal-expired-failed"]
+	txm.transactionsLock.RUnlock()
+
+	assert.True(t, hasInflightPending, "in-flight Pending tx must not be pruned")
+	assert.True(t, hasInflightUnconfirmed, "in-flight Unconfirmed tx must not be pruned")
+	assert.True(t, hasTerminalNoTime, "terminal tx with zero TerminalTime must not be pruned")
+	assert.True(t, hasTerminalFresh, "terminal tx within retention window must not be pruned")
+	assert.False(t, hasExpiredFinalized, "expired Finalized tx must be pruned")
+	assert.False(t, hasExpiredFailed, "expired Failed tx must be pruned")
+}
+
+// TestStellarTxm_TerminalTime_SetOnFirstTerminalWrite verifies that
+// updateTransactionStatus stamps TerminalTime exactly once and does not overwrite
+// it on a subsequent terminal write (e.g. double-failed).
+func TestStellarTxm_TerminalTime_SetOnFirstTerminalWrite(t *testing.T) {
+	t.Parallel()
+
+	txm, err := New(logger.Test(t), &mockKeystore{}, Config{}, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
+	require.NoError(t, err)
+
+	tx := &StellarTx{ID: "tt-test", Done: make(chan struct{})}
+	txm.transactionsLock.Lock()
+	txm.transactions[tx.ID] = tx
+	txm.transactionsLock.Unlock()
+
+	before := time.Now()
+	txm.updateTransactionStatus(tx, commontypes.Failed)
+	after := time.Now()
+
+	txm.transactionsLock.RLock()
+	first := tx.TerminalTime
+	txm.transactionsLock.RUnlock()
+
+	assert.False(t, first.Before(before), "TerminalTime should be >= time before call")
+	assert.False(t, first.After(after), "TerminalTime should be <= time after call")
+
+	// A second terminal write must not overwrite TerminalTime.
+	txm.updateTransactionStatus(tx, commontypes.Finalized)
+
+	txm.transactionsLock.RLock()
+	second := tx.TerminalTime
+	txm.transactionsLock.RUnlock()
+
+	assert.Equal(t, first, second, "TerminalTime must not be overwritten on subsequent terminal write")
+}
+
+// TestStellarTxm_PruneTerminal_InFlightNeverPruned verifies that a tx which
+// was in-flight for a long time (enqueued long ago) is not pruned until
+// PruneTxExpiration elapses *after* it reaches a terminal state.
+func TestStellarTxm_PruneTerminal_LongInFlightNotPrunedUntilTerminalExpiry(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		PruneTxExpiration: config.MustNewDuration(2 * time.Hour),
+	}
+	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	tx := &StellarTx{
+		ID:           "long-inflight",
+		Status:       commontypes.Finalized,
+		Timestamp:    now.Add(-twoHours + time.Minute), // enqueued nearly 2h ago
+		TerminalTime: now,                                            // just finalized
+		Done:         make(chan struct{}),
+	}
+	close(tx.Done)
+	txm.transactionsLock.Lock()
+	txm.transactions[tx.ID] = tx
+	txm.transactionsLock.Unlock()
+
+	txm.pruneTerminal()
+
+	txm.transactionsLock.RLock()
+	_, stillPresent := txm.transactions["long-inflight"]
+	txm.transactionsLock.RUnlock()
+
+	assert.True(t, stillPresent, "tx that just finalized must not be pruned even if enqueued long ago")
+}
+
+// TestStellarTxm_PruneLoop_RunsWhenIntervalPositive verifies that the prune
+// goroutine is started when PruneInterval > 0 and that it actually removes
+// expired terminal transactions without manual intervention.
+func TestStellarTxm_PruneLoop_RunsWhenIntervalPositive(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		PruneInterval:     config.MustNewDuration(50 * time.Millisecond),
+		PruneTxExpiration: config.MustNewDuration(0), // expire immediately — any terminal time qualifies
+	}
+	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
+	require.NoError(t, err)
+	require.NoError(t, txm.Start(t.Context()))
+	defer txm.Close()
+
+	tx := &StellarTx{
+		ID:           "prune-loop-tx",
+		Status:       commontypes.Finalized,
+		TerminalTime: time.Now().Add(-time.Second), // expired: 1s ago, expiration window = 0
+		Done:         make(chan struct{}),
+	}
+	close(tx.Done)
+	txm.transactionsLock.Lock()
+	txm.transactions[tx.ID] = tx
+	txm.transactionsLock.Unlock()
+
+	require.Eventually(t, func() bool {
+		txm.transactionsLock.RLock()
+		_, present := txm.transactions["prune-loop-tx"]
+		txm.transactionsLock.RUnlock()
+		return !present
+	}, 2*time.Second, 25*time.Millisecond, "pruneLoop should have evicted the expired terminal tx")
+}
+
+// TestStellarTxm_PruneImmediateWhenIntervalZero verifies that PruneInterval == 0
+// disables the background prune loop but still evicts terminal txs synchronously
+// via updateTransactionStatus, so memory does not grow without bound.
+func TestStellarTxm_PruneImmediateWhenIntervalZero(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		PruneInterval: config.MustNewDuration(0),
+	}
+	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, newTestGetClient(&mockRPCClient{}), chainsel.STELLAR_TESTNET.ChainID)
+	require.NoError(t, err)
+
+	tx := &StellarTx{
+		ID:   "immediate-prune-tx",
+		Done: make(chan struct{}),
+	}
+	txm.transactionsLock.Lock()
+	txm.transactions[tx.ID] = tx
+	txm.transactionsLock.Unlock()
+
+	txm.updateTransactionStatus(tx, commontypes.Finalized)
+
+	txm.transactionsLock.RLock()
+	_, stillPresent := txm.transactions["immediate-prune-tx"]
+	txm.transactionsLock.RUnlock()
+
+	assert.False(t, stillPresent, "terminal tx must be evicted immediately when PruneInterval==0")
+}
+
 func TestStellarTxm_ConfirmLoop_TerminalContractFailureDoesNotRetry(t *testing.T) {
 	t.Parallel()
 	accountXDR := buildAccountEntryXDR(t, testAddress, 100)
