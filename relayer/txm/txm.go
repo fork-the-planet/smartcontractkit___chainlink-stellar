@@ -390,13 +390,27 @@ func (s *StellarTxm) updateTransactionStatus(tx *StellarTx, status commontypes.T
 	s.transactionsLock.Lock()
 	tx.Status = status
 	terminal := status == commontypes.Failed || status == commontypes.Finalized
-	if terminal && tx.TerminalTime == 0 {
-		tx.TerminalTime = getTimestampSecs()
+	if terminal && tx.TerminalTime.IsZero() {
+		tx.TerminalTime = time.Now()
+	}
+	if terminal {
+		s.maybeEvictTerminalTx(tx)
 	}
 	s.transactionsLock.Unlock()
 	if terminal {
 		s.closeDone(tx)
 	}
+}
+
+// maybeEvictTerminalTx removes a terminal tx when background pruning is disabled.
+// Must be called with transactionsLock held.
+func (s *StellarTxm) maybeEvictTerminalTx(tx *StellarTx) {
+	if s.config.PruneInterval.Duration() > 0 {
+		return
+	}
+	s.baseLogger.Debugw("maybeEvictTerminalTx: evicting terminal tx immediately",
+		"txID", tx.ID, "status", tx.Status)
+	delete(s.transactions, tx.ID)
 }
 
 // markTxFailed sets Failed (and closes Done via updateTransactionStatus) and records
@@ -985,8 +999,8 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 
 // pruneLoop runs on a time.Ticker and evicts terminal transactions whose
 // retention window (measured from TerminalTime) has expired. It is started
-// only when PruneInterval > 0; setting PruneInterval to zero disables
-// background pruning entirely (useful in tests that control state directly).
+// only when PruneInterval > 0; when PruneInterval is zero, terminal txs are
+// evicted synchronously in updateTransactionStatus instead.
 func (s *StellarTxm) pruneLoop() {
 	defer s.done.Done()
 
@@ -1009,8 +1023,7 @@ func (s *StellarTxm) pruneLoop() {
 // terminal (Finalized or Failed) and whose TerminalTime is older than
 // PruneTxExpiration. In-flight transactions are never touched.
 func (s *StellarTxm) pruneTerminal() {
-	now := getTimestampSecs()
-	cutoff := uint64(s.config.PruneTxExpiration.Duration().Seconds())
+	expiration := s.config.PruneTxExpiration.Duration()
 
 	s.transactionsLock.Lock()
 	defer s.transactionsLock.Unlock()
@@ -1019,14 +1032,14 @@ func (s *StellarTxm) pruneTerminal() {
 		if tx.Status != commontypes.Finalized && tx.Status != commontypes.Failed {
 			continue
 		}
-		if tx.TerminalTime == 0 {
+		if tx.TerminalTime.IsZero() {
 			continue
 		}
-		if (now - tx.TerminalTime) < cutoff {
+		if time.Since(tx.TerminalTime) < expiration {
 			continue
 		}
 		s.baseLogger.Debugw("pruneTerminal: evicting expired terminal tx",
-			"txID", id, "status", tx.Status, "terminalAgeSecs", now-tx.TerminalTime)
+			"txID", id, "status", tx.Status, "terminalAge", time.Since(tx.TerminalTime))
 		delete(s.transactions, id)
 	}
 }
