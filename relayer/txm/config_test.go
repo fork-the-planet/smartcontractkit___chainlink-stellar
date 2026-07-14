@@ -19,6 +19,7 @@ func TestResolve_AllDefaults(t *testing.T) {
 	assert.Equal(t, DefaultConfigSet.MaxSubmitRetryAttempts, cfg.MaxSubmitRetryAttempts)
 	assert.Equal(t, DefaultConfigSet.SubmitRetryDelay, cfg.SubmitRetryDelay)
 	assert.Equal(t, DefaultConfigSet.MaxTxRetryAttempts, cfg.MaxTxRetryAttempts)
+	assert.Equal(t, DefaultConfigSet.MaxGetClientRetryAttempts, cfg.MaxGetClientRetryAttempts)
 	assert.Equal(t, DefaultConfigSet.PruneInterval, cfg.PruneInterval)
 	assert.Equal(t, DefaultConfigSet.PruneTxExpiration, cfg.PruneTxExpiration)
 	assert.Equal(t, DefaultConfigSet.FeeStatsPollInterval, cfg.FeeStatsPollInterval)

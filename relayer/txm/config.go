@@ -67,6 +67,7 @@ type Config struct {
 	TxTimeoutSecs          *int64           `toml:"TxTimeoutSecs"`
 	LedgerBoundsOffset     *uint32          `toml:"LedgerBoundsOffset"`
 	MaxTxRetryAttempts     *uint64          `toml:"MaxTxRetryAttempts"`
+	MaxGetClientRetryAttempts *uint64 `toml:"MaxGetClientRetryAttempts"`
 	MaxRestoreAttempts     *uint            `toml:"MaxRestoreAttempts"`
 
 	// SimulationTerminalHints are matched case-insensitively as substrings
@@ -109,6 +110,7 @@ var DefaultConfigSet = Config{
 	TxTimeoutSecs:          ptr(int64(300)), // 5 minutes wall-clock fallback
 	LedgerBoundsOffset:     ptr(uint32(50)), // ~5 min at 6s/ledger
 	MaxTxRetryAttempts:     ptr(uint64(5)),
+	MaxGetClientRetryAttempts: ptr(uint64(10)),
 	MaxRestoreAttempts:     ptr(uint(3)),
 
 	PruneInterval:     config.MustNewDuration(10 * time.Minute),
@@ -163,6 +165,9 @@ func (c *Config) Resolve() {
 	}
 	if c.MaxTxRetryAttempts == nil {
 		c.MaxTxRetryAttempts = ptr(*DefaultConfigSet.MaxTxRetryAttempts)
+	}
+	if c.MaxGetClientRetryAttempts == nil {
+		c.MaxGetClientRetryAttempts = ptr(*DefaultConfigSet.MaxGetClientRetryAttempts)
 	}
 	if c.MaxRestoreAttempts == nil {
 		c.MaxRestoreAttempts = ptr(*DefaultConfigSet.MaxRestoreAttempts)

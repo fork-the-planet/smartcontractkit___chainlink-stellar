@@ -512,6 +512,18 @@ func (s *StellarTxm) getTransactionAttempt(tx *StellarTx) uint64 {
 	return tx.Attempt
 }
 
+func (s *StellarTxm) incrementInfraAttempts(tx *StellarTx) {
+	s.transactionsLock.Lock()
+	defer s.transactionsLock.Unlock()
+	tx.InfraAttempts++
+}
+
+func (s *StellarTxm) getInfraAttempts(tx *StellarTx) uint64 {
+	s.transactionsLock.RLock()
+	defer s.transactionsLock.RUnlock()
+	return tx.InfraAttempts
+}
+
 // closeDone closes the transaction's Done channel to unblock EnqueueAndWait callers.
 // Terminal statuses set via updateTransactionStatus also invoke closeDone.
 func (s *StellarTxm) closeDone(tx *StellarTx) {
@@ -570,21 +582,11 @@ func (s *StellarTxm) broadcastLoop() {
 func (s *StellarTxm) simulateAssembleSignAndSend(ctx context.Context, tx *StellarTx) {
 	ctxLogger := GetContextedTxLogger(s.baseLogger, tx.ID, tx.Metadata)
 	client, err := s.getClient(ctx)
-	if err != nil {
-		ctxLogger.Errorw("failed to get RPC client", "error", err)
-		s.incrementTransactionAttempt(tx)
-		if s.getTransactionAttempt(tx) < *s.config.MaxTxRetryAttempts {
-			select {
-			case <-time.After(s.config.SubmitRetryDelay.Duration()):
-			case <-ctx.Done():
-				return
-			}
-		}
-		if !s.maybeRetry(ctx, &UnconfirmedTx{Tx: tx}, RetryReasonClientUnavailable) {
-			s.markTxFailed(ctx, tx, ErrorReasonClientUnavailable)
-		}
-		return
-	}
+    if err != nil {
+        ctxLogger.Errorw("failed to get RPC client", "error", err)
+        s.retryGetClientOrFail(ctx, tx, ctxLogger)
+        return
+    }
 
 	txStore := s.accountStore.GetTxStore(tx.FromAddress)
 	if txStore == nil {
@@ -958,6 +960,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 					s.incrementTransactionAttempt(utx.Tx)
 					if !s.maybeRetry(ctx, utx, RetryReasonResourceExhaustion) {
 						// Retryable failure but max attempts exhausted — count once here.
+						s.metrics.IncrementMaxAttemptsReached(ctx, RetryBudgetLifecycle)
 						s.metrics.IncrementErrorTxs(ctx, classification.resultCode)
 						s.updateTransactionStatus(utx.Tx, commontypes.Failed)
 					}
@@ -1003,6 +1006,7 @@ func (s *StellarTxm) checkUnconfirmed(ctx context.Context) {
 			s.incrementTransactionAttempt(utx.Tx)
 			if !s.maybeRetry(ctx, utx, RetryReasonTimedOut) {
 				// Terminal timeout — count once when we know it won't retry.
+				s.metrics.IncrementMaxAttemptsReached(ctx, RetryBudgetLifecycle)
 				s.metrics.IncrementErrorTxs(ctx, ErrorReasonTimedOut)
 				s.updateTransactionStatus(utx.Tx, commontypes.Failed)
 			}
@@ -1215,4 +1219,41 @@ func (s *StellarTxm) resyncSequence(ctx context.Context, client RPCClient, tx *S
 		"prevOnchain", prevOnchain, "updatedOnchain", updatedOnchain,
 	)
 	return nil
+}
+
+// retryGetClientOrFail handles a getClient (multinode RPC selection) failure
+// separately from the tx lifecycle retry budget (MaxTxRetryAttempts). It
+// increments a dedicated InfraAttempts counter and re-enqueues the tx for
+// another broadcast attempt after SubmitRetryDelay backoff. Only when
+// InfraAttempts reaches MaxGetClientRetryAttempts does the tx fail with
+// ErrorReasonClientUnavailable — a genuinely dead RPC pool, not a transient
+// blip. This prevents infra outages from stealing retries reserved for
+// legitimate post-submit lifecycle failures (RetryReasonTimedOut,
+// RetryReasonResourceExhaustion).
+func (s *StellarTxm) retryGetClientOrFail(ctx context.Context, tx *StellarTx, ctxLogger logger.Logger) {
+    s.incrementInfraAttempts(tx)
+    attempts := s.getInfraAttempts(tx)
+
+    if attempts < *s.config.MaxGetClientRetryAttempts {
+        select {
+        case <-time.After(s.config.SubmitRetryDelay.Duration()):
+        case <-ctx.Done():
+            return
+        }
+        select {
+        case s.broadcastChan <- tx:
+            ctxLogger.Debugw("re-enqueuing tx after getClient failure",
+                "infraAttempts", attempts, "maxGetClientRetries", *s.config.MaxGetClientRetryAttempts)
+        default:
+            ctxLogger.Errorw("broadcast channel full, cannot re-enqueue after getClient failure",
+                "infraAttempts", attempts)
+            s.metrics.IncrementDroppedTxs(ctx, DropReasonChannelFullNewRejected)
+        }
+        return
+    }
+
+    ctxLogger.Errorw("getClient retries exhausted, failing tx",
+        "infraAttempts", attempts, "maxGetClientRetries", *s.config.MaxGetClientRetryAttempts)
+    s.metrics.IncrementMaxAttemptsReached(ctx, RetryBudgetInfra)
+    s.markTxFailed(ctx, tx, ErrorReasonClientUnavailable)
 }
