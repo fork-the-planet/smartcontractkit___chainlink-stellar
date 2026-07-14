@@ -1,6 +1,6 @@
 default: build
 
-all: test
+all: forwarder/test
 
 test: build
 	cargo test
