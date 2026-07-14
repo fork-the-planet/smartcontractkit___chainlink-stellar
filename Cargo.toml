@@ -18,7 +18,8 @@ members = [
   "contracts/rmn_proxy",
   "contracts/rmn_remote",
   "contracts/router",
-  "contracts/cre",
+  "contracts/cre/forwarder",
+  "contracts/cre/test/read_fixture",
   "contracts/common/*",
 ]
 
