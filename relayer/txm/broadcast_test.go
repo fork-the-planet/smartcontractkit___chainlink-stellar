@@ -657,14 +657,22 @@ func TestStellarTxm_BroadcastPipeline_GetClientFailsThenRetries(t *testing.T) {
 		return st == commontypes.Unconfirmed
 	}, 5*time.Second, 50*time.Millisecond)
 	assert.GreaterOrEqual(t, getClientCalls.Load(), int32(2))
+
+	// getClient failure must not consume the lifecycle Attempt budget.
+	txm.transactionsLock.RLock()
+	tracked := txm.transactions[txID]
+	txm.transactionsLock.RUnlock()
+	require.NotNil(t, tracked)
+	assert.Equal(t, uint64(0), tracked.Attempt, "lifecycle Attempt must not be incremented by getClient failure")
+	assert.Equal(t, uint64(1), tracked.InfraAttempts, "InfraAttempts must be incremented once for the single getClient failure")
 }
 
 func TestStellarTxm_BroadcastPipeline_GetClientFailsUntilRetryBudgetExhausted(t *testing.T) {
 	t.Parallel()
 	getClient := func(context.Context) (RPCClient, error) { return nil, fmt.Errorf("no rpc") }
 	cfg := Config{
-		MaxTxRetryAttempts: ptr(uint64(2)),
-		SubmitRetryDelay:   config.MustNewDuration(10 * time.Millisecond),
+		MaxGetClientRetryAttempts: ptr(uint64(2)),
+		SubmitRetryDelay:          config.MustNewDuration(10 * time.Millisecond),
 	}
 	txm, err := New(logger.Test(t), &mockKeystore{}, cfg, getClient, chainsel.STELLAR_TESTNET.ChainID)
 	require.NoError(t, err)
@@ -682,7 +690,8 @@ func TestStellarTxm_BroadcastPipeline_GetClientFailsUntilRetryBudgetExhausted(t 
 	tracked := txm.transactions[txID]
 	txm.transactionsLock.RUnlock()
 	require.NotNil(t, tracked)
-	assert.Equal(t, uint64(2), tracked.Attempt)
+	assert.Equal(t, uint64(2), tracked.InfraAttempts, "InfraAttempts must reach the MaxGetClientRetryAttempts cap")
+	assert.Equal(t, uint64(0), tracked.Attempt, "lifecycle Attempt must remain untouched by getClient failures")
 	assert.Equal(t, 0, txm.accountStore.GetTotalInflightCount(), "client failures happen before sequence allocation")
 }
 
@@ -849,4 +858,48 @@ func TestStellarTxm_BuildPreliminaryTx_SeqZero_DoesNotProduceNegativeSequence(t 
 		require.NoError(t, err)
 		assert.Equal(t, int64(50), built.SequenceNumber())
 	})
+}
+
+// TestStellarTxm_BroadcastPipeline_GetClientFailuresDoNotStealLifecycleBudget
+// verifies the core invariant of the fix: getClient (infra) failures consume
+// InfraAttempts, not the lifecycle Attempt budget. After several getClient
+// failures followed by a successful broadcast, the tx must still have the
+// full MaxTxRetryAttempts budget available for post-submit lifecycle retries.
+func TestStellarTxm_BroadcastPipeline_GetClientFailuresDoNotStealLifecycleBudget(t *testing.T) {
+    t.Parallel()
+    accountXDR := buildAccountEntryXDR(t, testAddress, 100)
+    mock := &mockRPCClient{
+        getLedgerEntriesResp: protocolrpc.GetLedgerEntriesResponse{Entries: []protocolrpc.LedgerEntryResult{{DataXDR: accountXDR}}},
+        getLatestLedgerResp:  protocolrpc.GetLatestLedgerResponse{Sequence: 1000},
+        simulateResp:         protocolrpc.SimulateTransactionResponse{MinResourceFee: 10_000},
+        sendTransactionResp:  protocolrpc.SendTransactionResponse{Status: stellarcore.TXStatusPending, Hash: "test-hash"},
+    }
+    c := newTestClient(mock)
+    var getClientCalls atomic.Int32
+    getClient := func(context.Context) (RPCClient, error) {
+        // Fail the first 3 getClient calls (infra), then succeed.
+        if getClientCalls.Add(1) <= 3 {
+            return nil, fmt.Errorf("no rpc")
+        }
+        return c, nil
+    }
+    cfg := Config{SubmitRetryDelay: config.MustNewDuration(10 * time.Millisecond)}
+    txm, err := New(logger.Test(t), &mockKeystore{}, cfg, getClient, chainsel.STELLAR_TESTNET.ChainID)
+    require.NoError(t, err)
+    require.NoError(t, txm.Start(t.Context()))
+    defer txm.Close()
+    txID, err := txm.Enqueue(t.Context(), TxRequest{FromAddress: testAddress, Operations: []txnbuild.Operation{testInvokeNoopOp()}})
+    require.NoError(t, err)
+    require.Eventually(t, func() bool {
+        st, e := txm.GetStatus(txID)
+        require.NoError(t, e)
+        return st == commontypes.Unconfirmed
+    }, 5*time.Second, 50*time.Millisecond)
+
+    txm.transactionsLock.RLock()
+    tracked := txm.transactions[txID]
+    txm.transactionsLock.RUnlock()
+    require.NotNil(t, tracked)
+    assert.Equal(t, uint64(3), tracked.InfraAttempts, "3 getClient failures must increment InfraAttempts to 3")
+    assert.Equal(t, uint64(0), tracked.Attempt, "lifecycle Attempt must be 0 — no post-submit retry happened yet")
 }

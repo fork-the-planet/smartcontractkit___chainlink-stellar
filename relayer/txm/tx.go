@@ -21,6 +21,7 @@ type StellarTx struct {
 	LedgerBoundsOffset uint32 // per-tx override (0 = use config default)
 
 	Attempt         uint64
+	InfraAttempts   uint64 // getClient (RPC node selection) retries
 	Status          commontypes.TransactionStatus
 	TerminalTime    time.Time // when status first became Finalized or Failed; zero if not yet terminal
 	BroadcastAt     time.Time // set when SendTransaction accepts the tx
@@ -103,15 +104,26 @@ const (
 	DropReasonChannelFullNewRejected DropReason = "channel_full_new_rejected"
 )
 
-// RetryReason classifies why a transaction is being retried (Layer 3 lifecycle retries).
+// RetryReason classifies why a transaction is being retried (post-submit lifecycle retries).
 type RetryReason string
 
 const (
 	RetryReasonResourceExhaustion RetryReason = "resource_exhaustion"
 	RetryReasonTimedOut           RetryReason = "timed_out"
-	RetryReasonBadSeq             RetryReason = "bad_seq"
-	RetryReasonTryAgainLater      RetryReason = "try_again_later"
-	RetryReasonClientUnavailable  RetryReason = "client_unavailable"
+)
+
+// RetryBudget identifies which retry budget a tx exhausted before failing.
+// This distinguishes retry-exhausted failures from first-attempt non-retryable
+// failures in the max_attempts_reached metric.
+type RetryBudget string
+
+const (
+	// RetryBudgetLifecycle: the tx exhausted MaxTxRetryAttempts after repeated
+	// post-submit lifecycle failures (on-chain resource exhaustion or ledger timeout).
+	RetryBudgetLifecycle RetryBudget = "lifecycle"
+	// RetryBudgetInfra: the tx exhausted MaxGetClientRetryAttempts after repeated
+	// getClient (multinode RPC selection) failures before it could be simulated or submitted.
+	RetryBudgetInfra RetryBudget = "infra"
 )
 
 // RestoreOutcome classifies RestoreFootprint lifecycle events recorded by TXM metrics.
