@@ -1234,7 +1234,12 @@ func (s *StellarTxm) retryGetClientOrFail(ctx context.Context, tx *StellarTx, ct
     s.incrementInfraAttempts(tx)
     attempts := s.getInfraAttempts(tx)
 
-    if attempts < *s.config.MaxGetClientRetryAttempts {
+    maxRetries := uint64(0)
+    if s.config.MaxGetClientRetryAttempts != nil {
+        maxRetries = *s.config.MaxGetClientRetryAttempts
+    }
+
+    if attempts < maxRetries {
         select {
         case <-time.After(s.config.SubmitRetryDelay.Duration()):
         case <-ctx.Done():
@@ -1243,7 +1248,7 @@ func (s *StellarTxm) retryGetClientOrFail(ctx context.Context, tx *StellarTx, ct
         select {
         case s.broadcastChan <- tx:
             ctxLogger.Debugw("re-enqueuing tx after getClient failure",
-                "infraAttempts", attempts, "maxGetClientRetries", *s.config.MaxGetClientRetryAttempts)
+                "infraAttempts", attempts, "maxGetClientRetries", maxRetries)
         default:
             ctxLogger.Errorw("broadcast channel full, cannot re-enqueue after getClient failure",
                 "infraAttempts", attempts)
@@ -1253,7 +1258,7 @@ func (s *StellarTxm) retryGetClientOrFail(ctx context.Context, tx *StellarTx, ct
     }
 
     ctxLogger.Errorw("getClient retries exhausted, failing tx",
-        "infraAttempts", attempts, "maxGetClientRetries", *s.config.MaxGetClientRetryAttempts)
+        "infraAttempts", attempts, "maxGetClientRetries", maxRetries)
     s.metrics.IncrementMaxAttemptsReached(ctx, RetryBudgetInfra)
     s.markTxFailed(ctx, tx, ErrorReasonClientUnavailable)
 }
