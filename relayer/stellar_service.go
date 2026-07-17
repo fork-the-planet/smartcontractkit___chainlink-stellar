@@ -397,20 +397,24 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 		reply.BlockTimestamp = &ts
 	}
 
+	// EnqueueAndWait only returns Finalized or Failed (see txm.isTerminalStatus).
+	// Within Failed, ResultXDR distinguishes on-chain reverts (set, from
+	// GetTransaction) from pipeline failures (empty):
+	//   - On-chain revert → TxFailed + Error string, no Go error (callers branch on TxStatus).
+	//   - Pipeline failure → TxFatal + Go error (infrastructure problem).
 	switch result.Status {
 	case relaytypes.Finalized:
 		reply.TxStatus = stellartypes.TxSuccess
 	case relaytypes.Failed:
-		reply.TxStatus = stellartypes.TxFailed
-		if result.Error != nil {
-			return reply, result.Error
+		if result.ResultXDR != "" {
+			reply.TxStatus = stellartypes.TxFailed
+			if result.Error != nil {
+				reply.Error = result.Error.Error()
+			}
+			return reply, nil
 		}
-	default:
 		reply.TxStatus = stellartypes.TxFatal
-		if result.Error != nil {
-			return reply, result.Error
-		}
-		return reply, fmt.Errorf("submit transaction: unexpected terminal status %v", result.Status)
+		return reply, fmt.Errorf("submit transaction: pipeline failure")
 	}
 
 	return reply, nil

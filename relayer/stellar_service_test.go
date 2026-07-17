@@ -844,15 +844,86 @@ func TestStellarService_SubmitTransaction(t *testing.T) {
 			Hash:      "failhash",
 			Status:    commontypes.Failed,
 			ResultXDR: "failedResultXDR",
-			Error:     errors.New("tx revert: contract error"),
+			Error:     errors.New("transaction result: tx_failed"),
+		}, nil)
+
+		svc := newTestStellarServiceWithTxm(t, txMgr)
+		reply, err := svc.SubmitTransaction(ctx, baseReq)
+		// On-chain reverts return (reply, nil) with TxFailed + Error string so
+		// callers branch on TxStatus rather than err for reverts.
+		require.NoError(t, err)
+		require.Equal(t, stellartypes.TxFailed, reply.TxStatus)
+		require.Equal(t, "failhash", reply.TxHash)
+		require.Equal(t, "failedResultXDR", reply.ResultXDR)
+		require.Equal(t, "transaction result: tx_failed", reply.Error)
+	})
+
+	t.Run("Failed_OnChain_NilError", func(t *testing.T) {
+		// Defensive guard: if ResultXDR is set but Error is nil (e.g. a future
+		// TXM path that sets ResultXDR without ResultCode), the mapping must
+		// still classify as TxFailed and not panic or return a Go error.
+		ctx := t.Context()
+		txMgr := mocks.NewMockStellarTxManager(t)
+		txMgr.EXPECT().EnqueueAndWait(mock.Anything, mock.Anything).Return(&txm.TxResult{
+			ID:        "idem-1",
+			Hash:      "failhash",
+			Status:    commontypes.Failed,
+			ResultXDR: "failedResultXDR",
+		}, nil)
+
+		svc := newTestStellarServiceWithTxm(t, txMgr)
+		reply, err := svc.SubmitTransaction(ctx, baseReq)
+		require.NoError(t, err)
+		require.Equal(t, stellartypes.TxFailed, reply.TxStatus)
+		require.Empty(t, reply.Error)
+	})
+
+	t.Run("Failed_Pipeline_NoResultXDR", func(t *testing.T) {
+		ctx := t.Context()
+		txMgr := mocks.NewMockStellarTxManager(t)
+		txMgr.EXPECT().EnqueueAndWait(mock.Anything, mock.Anything).Return(&txm.TxResult{
+			ID:     "idem-1",
+			Hash:   "",
+			Status: commontypes.Failed,
+			// ResultXDR empty: pipeline failure (simulation/signing/assembly/timeout).
+			// Error is nil because txResultLocked only sets it from ResultCode,
+			// which pipeline paths (except backpressure) leave empty.
 		}, nil)
 
 		svc := newTestStellarServiceWithTxm(t, txMgr)
 		reply, err := svc.SubmitTransaction(ctx, baseReq)
 		require.Error(t, err)
-		require.ErrorContains(t, err, "contract error")
-		require.Equal(t, stellartypes.TxFailed, reply.TxStatus)
-		require.Equal(t, "failhash", reply.TxHash)
+		require.ErrorContains(t, err, "pipeline failure")
+		require.Equal(t, stellartypes.TxFatal, reply.TxStatus)
+		require.Empty(t, reply.Error, "pipeline failures must not populate the on-chain Error string")
+		require.Empty(t, reply.ResultXDR)
+	})
+
+	t.Run("Failed_Pipeline_BackpressureDrop", func(t *testing.T) {
+		// Regression guard: dropOldestForBackpressure sets ResultCode (not ResultXDR)
+		// for a pipeline failure. This locks in that ResultXDR — not ResultCode —
+		// is the on-chain discriminator. A ResultCode-based heuristic would
+		// misclassify this backpressure drop as an on-chain revert.
+		//
+		// The mock returns the TxResult that txResultLocked would produce for a
+		// backpressure-dropped tx: ResultCode set → Error derived from it, but
+		// ResultXDR empty.
+		ctx := t.Context()
+		txMgr := mocks.NewMockStellarTxManager(t)
+		txMgr.EXPECT().EnqueueAndWait(mock.Anything, mock.Anything).Return(&txm.TxResult{
+			ID:     "idem-1",
+			Hash:   "",
+			Status: commontypes.Failed,
+			Error:  errors.New("transaction result: channel_full_oldest_evicted"),
+		}, nil)
+
+		svc := newTestStellarServiceWithTxm(t, txMgr)
+		reply, err := svc.SubmitTransaction(ctx, baseReq)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "pipeline failure")
+		require.Equal(t, stellartypes.TxFatal, reply.TxStatus)
+		require.Empty(t, reply.Error)
+		require.Empty(t, reply.ResultXDR)
 	})
 
 	t.Run("Fatal_TxmError", func(t *testing.T) {
