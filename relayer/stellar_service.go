@@ -397,19 +397,22 @@ func (s *stellarService) SubmitTransaction(ctx context.Context, req stellartypes
 		reply.BlockTimestamp = &ts
 	}
 
+	// ResultXDR set → on-chain revert; empty → pipeline failure.
 	switch result.Status {
 	case relaytypes.Finalized:
 		reply.TxStatus = stellartypes.TxSuccess
 	case relaytypes.Failed:
-		reply.TxStatus = stellartypes.TxFailed
-		if result.Error != nil {
-			return reply, result.Error
+		if result.ResultXDR != "" {
+			reply.TxStatus = stellartypes.TxFailed
+			if result.Error != nil {
+				reply.Error = result.Error.Error()
+			}
+			return reply, nil
 		}
+		reply.TxStatus = stellartypes.TxFatal
+		return reply, fmt.Errorf("submit transaction: pipeline failure")
 	default:
 		reply.TxStatus = stellartypes.TxFatal
-		if result.Error != nil {
-			return reply, result.Error
-		}
 		return reply, fmt.Errorf("submit transaction: unexpected terminal status %v", result.Status)
 	}
 
